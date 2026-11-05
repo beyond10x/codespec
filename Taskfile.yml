@@ -1,0 +1,62 @@
+version: '3'
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_INCREMENTAL: '0'
+
+vars:
+  ADAPTERS: '{{.ROOT_DIR}}/target/adapters'
+  CODESPEC: '{{.ROOT_DIR}}/target/debug/codespec'
+
+tasks:
+  default:
+    cmds: [{task: check}]
+
+  check:
+    desc: The gate. Format, lint, test, schema drift, adapters, examples.
+    cmds:
+      - cargo fmt --all --check
+      - cargo clippy --workspace --all-targets --locked -- -D warnings
+      - cargo test --workspace --locked
+      - task: adapters-check
+      - task: examples-check
+
+  build:
+    desc: Build the codespec CLI and every adapter into target/.
+    cmds:
+      - cargo build --locked -p b10x-codespec-cli
+      - task: adapters
+
+  adapters:
+    desc: Build every adapter program into target/adapters.
+    cmds:
+      - mkdir -p {{.ADAPTERS}}
+      - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
+
+  adapters-check:
+    desc: Format and vet every adapter in its own language.
+    cmds:
+      - test -z "$(cd adapters/go && gofmt -l .)"
+      - cd adapters/go && go vet ./...
+
+  schema:
+    desc: Regenerate schemas/cir-1.schema.json from the model.
+    cmds:
+      - cargo run --locked -q -p b10x-codespec-cli -- schema > schemas/cir-1.schema.json
+
+  examples:
+    desc: Re-read every example's source into its checked-in cir/1 document.
+    deps: [build]
+    cmds:
+      - '{{.CODESPEC}} read --lang go examples/orders/source --out examples/orders/orders.read.cir.json --adapters {{.ADAPTERS}}'
+
+  examples-check:
+    desc: Fail when reading an example twice gives different bytes, or bytes other than the checked-in document.
+    deps: [build]
+    cmds:
+      - mkdir -p target/examples-check
+      - '{{.CODESPEC}} read --lang go examples/orders/source --out target/examples-check/orders.1.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang go examples/orders/source --out target/examples-check/orders.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/examples-check/orders.1.json target/examples-check/orders.2.json
+      - cmp target/examples-check/orders.1.json examples/orders/orders.read.cir.json
+      - '{{.CODESPEC}} validate --canonical examples/orders/orders.read.cir.json'

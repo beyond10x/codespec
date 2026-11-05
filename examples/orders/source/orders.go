@@ -1,0 +1,137 @@
+// Package orders takes, pays, ships and cancels customer orders.
+package orders
+
+import (
+	"errors"
+	"fmt"
+)
+
+type OrderID string
+
+type Status string
+
+const (
+	Pending   Status = "pending"
+	Paid      Status = "paid"
+	Shipped   Status = "shipped"
+	Cancelled Status = "cancelled"
+)
+
+type Order struct {
+	ID       OrderID
+	Customer string
+	Total    int64
+	Status   Status
+	Tracking string
+	Gift     bool
+}
+
+var ErrInvalidTotal = errors.New("total must be positive")
+
+type ErrWrongState struct {
+	Status Status
+}
+
+func (e ErrWrongState) Error() string { return fmt.Sprintf("order is %s", e.Status) }
+
+type OrderPlaced struct {
+	ID       OrderID
+	Customer string
+	Total    int64
+}
+
+type OrderPaid struct{ ID OrderID }
+
+type OrderShipped struct {
+	ID       OrderID
+	Tracking string
+}
+
+type OrderCancelled struct{ ID OrderID }
+
+type Service struct {
+	orders map[OrderID]*Order
+	events chan<- any
+	seq    int
+}
+
+func New(events chan<- any) *Service {
+	return &Service{orders: map[OrderID]*Order{}, events: events}
+}
+
+func (s *Service) Place(customer string, total int64, gift bool) (OrderID, error) {
+	if total <= 0 {
+		return "", ErrInvalidTotal
+	}
+	s.seq++
+	id := OrderID(fmt.Sprintf("o-%d", s.seq))
+	s.orders[id] = &Order{ID: id, Customer: customer, Total: total, Status: Pending, Gift: gift}
+	s.events <- OrderPlaced{ID: id, Customer: customer, Total: total}
+	return id, nil
+}
+
+func (s *Service) Pay(id OrderID) error {
+	o, ok := s.orders[id]
+	if !ok {
+		return fmt.Errorf("no order %s", id)
+	}
+	if o.Status != Pending {
+		return ErrWrongState{Status: o.Status}
+	}
+	o.Status = Paid
+	s.events <- OrderPaid{ID: id}
+	return nil
+}
+
+func (s *Service) Ship(id OrderID, tracking string) error {
+	o, ok := s.orders[id]
+	if !ok {
+		return fmt.Errorf("no order %s", id)
+	}
+	if o.Status != Paid {
+		return ErrWrongState{Status: o.Status}
+	}
+	o.Status = Shipped
+	o.Tracking = tracking
+	s.events <- OrderShipped{ID: id, Tracking: tracking}
+	return nil
+}
+
+func (s *Service) Cancel(id OrderID) error {
+	o, ok := s.orders[id]
+	if !ok {
+		return fmt.Errorf("no order %s", id)
+	}
+	if o.Status != Pending && o.Status != Paid {
+		return ErrWrongState{Status: o.Status}
+	}
+	o.Status = Cancelled
+	s.events <- OrderCancelled{ID: id}
+	return nil
+}
+
+func (s *Service) Get(id OrderID) (Order, bool) {
+	o, ok := s.orders[id]
+	if !ok {
+		return Order{}, false
+	}
+	return *o, true
+}
+
+func (s *Service) PendingOrders() []Order {
+	var out []Order
+	for _, o := range s.orders {
+		if o.Status == Pending {
+			out = append(out, *o)
+		}
+	}
+	return out
+}
+
+func (s *Service) Audit() {
+	go func() {
+		for _, o := range s.orders {
+			fmt.Println(o.ID)
+		}
+	}()
+}

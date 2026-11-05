@@ -1,0 +1,16 @@
+[package]
+name = "b10x-codespec-model"
+description = "The cir/1 code intermediate representation: Rust types, strict reading, canonical JSON and its JSON Schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_model"
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true

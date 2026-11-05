@@ -1,0 +1,16 @@
+[package]
+name = "b10x-codespec-cli"
+description = "The codespec command: validate cir/1, print its schema, run reader and writer adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "codespec"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+clap.workspace = true

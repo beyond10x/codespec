@@ -1,0 +1,2295 @@
+{
+  "format": "cir/1",
+  "name": "orders",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.0.0"
+  },
+  "doc": "Package orders takes, pays, ships and cancels customer orders.",
+  "types": [
+    {
+      "k": "newtype",
+      "name": "OrderID",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "pos": "orders.go:9"
+    },
+    {
+      "k": "enum",
+      "name": "Status",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "Pending",
+          "value": {
+            "k": "lit",
+            "value": "\"pending\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Paid",
+          "value": {
+            "k": "lit",
+            "value": "\"paid\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Shipped",
+          "value": {
+            "k": "lit",
+            "value": "\"shipped\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Cancelled",
+          "value": {
+            "k": "lit",
+            "value": "\"cancelled\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "orders.go:11"
+    },
+    {
+      "k": "struct",
+      "name": "Order",
+      "exported": true,
+      "fields": [
+        {
+          "name": "ID",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        },
+        {
+          "name": "Customer",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Total",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "Status",
+          "t": {
+            "k": "named",
+            "name": "Status"
+          }
+        },
+        {
+          "name": "Tracking",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Gift",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "pos": "orders.go:20"
+    },
+    {
+      "k": "struct",
+      "name": "ErrWrongState",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Status",
+          "t": {
+            "k": "named",
+            "name": "Status"
+          }
+        }
+      ],
+      "pos": "orders.go:31"
+    },
+    {
+      "k": "struct",
+      "name": "OrderPlaced",
+      "exported": true,
+      "fields": [
+        {
+          "name": "ID",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        },
+        {
+          "name": "Customer",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Total",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "orders.go:37"
+    },
+    {
+      "k": "struct",
+      "name": "OrderPaid",
+      "exported": true,
+      "fields": [
+        {
+          "name": "ID",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        }
+      ],
+      "pos": "orders.go:43"
+    },
+    {
+      "k": "struct",
+      "name": "OrderShipped",
+      "exported": true,
+      "fields": [
+        {
+          "name": "ID",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        },
+        {
+          "name": "Tracking",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "pos": "orders.go:45"
+    },
+    {
+      "k": "struct",
+      "name": "OrderCancelled",
+      "exported": true,
+      "fields": [
+        {
+          "name": "ID",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        }
+      ],
+      "pos": "orders.go:50"
+    },
+    {
+      "k": "struct",
+      "name": "Service",
+      "exported": true,
+      "fields": [
+        {
+          "name": "orders",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "named",
+              "name": "OrderID"
+            },
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Order"
+              }
+            }
+          }
+        },
+        {
+          "name": "events",
+          "t": {
+            "k": "chan",
+            "elem": {
+              "k": "any"
+            },
+            "dir": "send"
+          }
+        },
+        {
+          "name": "seq",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "orders.go:52"
+    }
+  ],
+  "errors": [
+    {
+      "name": "ErrInvalidTotal",
+      "message": "total must be positive",
+      "pos": "orders.go:29"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Error",
+      "exported": true,
+      "recv": {
+        "name": "e",
+        "t": {
+          "k": "named",
+          "name": "ErrWrongState"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"order is %s\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "e",
+                    "t": {
+                      "k": "named",
+                      "name": "ErrWrongState"
+                    }
+                  },
+                  "name": "Status",
+                  "t": {
+                    "k": "named",
+                    "name": "Status"
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "orders.go:35"
+        }
+      ],
+      "pos": "orders.go:35"
+    },
+    {
+      "name": "New",
+      "exported": true,
+      "params": [
+        {
+          "name": "events",
+          "t": {
+            "k": "chan",
+            "elem": {
+              "k": "any"
+            },
+            "dir": "send"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Service",
+                "fields": [
+                  {
+                    "name": "orders",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "map",
+                        "key": {
+                          "k": "named",
+                          "name": "OrderID"
+                        },
+                        "elem": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Order"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "events",
+                    "value": {
+                      "k": "var",
+                      "name": "events",
+                      "t": {
+                        "k": "chan",
+                        "elem": {
+                          "k": "any"
+                        },
+                        "dir": "send"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            }
+          ],
+          "pos": "orders.go:59"
+        }
+      ],
+      "pos": "orders.go:58"
+    },
+    {
+      "name": "Place",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "customer",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "total",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "gift",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "named",
+          "name": "OrderID"
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "\"\"",
+                  "t": {
+                    "k": "named",
+                    "name": "OrderID"
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrInvalidTotal",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:64"
+            }
+          ],
+          "pos": "orders.go:63"
+        },
+        {
+          "k": "incr",
+          "x": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "seq",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "orders.go:66"
+        },
+        {
+          "k": "let",
+          "names": [
+            "id"
+          ],
+          "rhs": [
+            {
+              "k": "conv",
+              "name": "OrderID",
+              "x": {
+                "k": "intrinsic",
+                "name": "sprintf",
+                "args": [
+                  {
+                    "k": "lit",
+                    "value": "\"o-%d\"",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Service"
+                        }
+                      }
+                    },
+                    "name": "seq",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "named",
+                "name": "OrderID"
+              }
+            }
+          ],
+          "pos": "orders.go:67"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Service"
+                    }
+                  }
+                },
+                "name": "orders",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "OrderID"
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "named",
+                  "name": "OrderID"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Order"
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Order",
+                "fields": [
+                  {
+                    "name": "ID",
+                    "value": {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "named",
+                        "name": "OrderID"
+                      }
+                    }
+                  },
+                  {
+                    "name": "Customer",
+                    "value": {
+                      "k": "var",
+                      "name": "customer",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  },
+                  {
+                    "name": "Total",
+                    "value": {
+                      "k": "var",
+                      "name": "total",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "Status",
+                    "value": {
+                      "k": "const",
+                      "name": "Pending",
+                      "t": {
+                        "k": "named",
+                        "name": "Status"
+                      }
+                    }
+                  },
+                  {
+                    "name": "Gift",
+                    "value": {
+                      "k": "var",
+                      "name": "gift",
+                      "t": {
+                        "k": "bool"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Order"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Order"
+                }
+              }
+            }
+          ],
+          "pos": "orders.go:68"
+        },
+        {
+          "k": "send",
+          "chan": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "events",
+            "t": {
+              "k": "chan",
+              "elem": {
+                "k": "any"
+              },
+              "dir": "send"
+            }
+          },
+          "x": {
+            "k": "struct",
+            "name": "OrderPlaced",
+            "fields": [
+              {
+                "name": "ID",
+                "value": {
+                  "k": "var",
+                  "name": "id",
+                  "t": {
+                    "k": "named",
+                    "name": "OrderID"
+                  }
+                }
+              },
+              {
+                "name": "Customer",
+                "value": {
+                  "k": "var",
+                  "name": "customer",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              },
+              {
+                "name": "Total",
+                "value": {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "named",
+              "name": "OrderPlaced"
+            }
+          },
+          "pos": "orders.go:69"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "id",
+              "t": {
+                "k": "named",
+                "name": "OrderID"
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "orders.go:70"
+        }
+      ],
+      "pos": "orders.go:62"
+    },
+    {
+      "name": "Pay",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "o",
+            "ok"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Service"
+                    }
+                  }
+                },
+                "name": "orders",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "OrderID"
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "named",
+                  "name": "OrderID"
+                }
+              },
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  },
+                  {
+                    "k": "bool"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "orders.go:74"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "unop",
+            "op": "!",
+            "x": {
+              "k": "var",
+              "name": "ok",
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"no order %s\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "named",
+                        "name": "OrderID"
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:76"
+            }
+          ],
+          "pos": "orders.go:75"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Status",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            },
+            "y": {
+              "k": "const",
+              "name": "Pending",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "to_error",
+                  "x": {
+                    "k": "struct",
+                    "name": "ErrWrongState",
+                    "fields": [
+                      {
+                        "name": "Status",
+                        "value": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "o",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Order"
+                              }
+                            }
+                          },
+                          "name": "Status",
+                          "t": {
+                            "k": "named",
+                            "name": "Status"
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "ErrWrongState"
+                    }
+                  },
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:79"
+            }
+          ],
+          "pos": "orders.go:78"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Status",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "const",
+              "name": "Paid",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "pos": "orders.go:81"
+        },
+        {
+          "k": "send",
+          "chan": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "events",
+            "t": {
+              "k": "chan",
+              "elem": {
+                "k": "any"
+              },
+              "dir": "send"
+            }
+          },
+          "x": {
+            "k": "struct",
+            "name": "OrderPaid",
+            "fields": [
+              {
+                "name": "ID",
+                "value": {
+                  "k": "var",
+                  "name": "id",
+                  "t": {
+                    "k": "named",
+                    "name": "OrderID"
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "named",
+              "name": "OrderPaid"
+            }
+          },
+          "pos": "orders.go:82"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "orders.go:83"
+        }
+      ],
+      "pos": "orders.go:73"
+    },
+    {
+      "name": "Ship",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        },
+        {
+          "name": "tracking",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "o",
+            "ok"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Service"
+                    }
+                  }
+                },
+                "name": "orders",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "OrderID"
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "named",
+                  "name": "OrderID"
+                }
+              },
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  },
+                  {
+                    "k": "bool"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "orders.go:87"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "unop",
+            "op": "!",
+            "x": {
+              "k": "var",
+              "name": "ok",
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"no order %s\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "named",
+                        "name": "OrderID"
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:89"
+            }
+          ],
+          "pos": "orders.go:88"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Status",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            },
+            "y": {
+              "k": "const",
+              "name": "Paid",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "to_error",
+                  "x": {
+                    "k": "struct",
+                    "name": "ErrWrongState",
+                    "fields": [
+                      {
+                        "name": "Status",
+                        "value": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "o",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Order"
+                              }
+                            }
+                          },
+                          "name": "Status",
+                          "t": {
+                            "k": "named",
+                            "name": "Status"
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "ErrWrongState"
+                    }
+                  },
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:92"
+            }
+          ],
+          "pos": "orders.go:91"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Status",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "const",
+              "name": "Shipped",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "pos": "orders.go:94"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Tracking",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "tracking",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "orders.go:95"
+        },
+        {
+          "k": "send",
+          "chan": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "events",
+            "t": {
+              "k": "chan",
+              "elem": {
+                "k": "any"
+              },
+              "dir": "send"
+            }
+          },
+          "x": {
+            "k": "struct",
+            "name": "OrderShipped",
+            "fields": [
+              {
+                "name": "ID",
+                "value": {
+                  "k": "var",
+                  "name": "id",
+                  "t": {
+                    "k": "named",
+                    "name": "OrderID"
+                  }
+                }
+              },
+              {
+                "name": "Tracking",
+                "value": {
+                  "k": "var",
+                  "name": "tracking",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "named",
+              "name": "OrderShipped"
+            }
+          },
+          "pos": "orders.go:96"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "orders.go:97"
+        }
+      ],
+      "pos": "orders.go:86"
+    },
+    {
+      "name": "Cancel",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "o",
+            "ok"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Service"
+                    }
+                  }
+                },
+                "name": "orders",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "OrderID"
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "named",
+                  "name": "OrderID"
+                }
+              },
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  },
+                  {
+                    "k": "bool"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "orders.go:101"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "unop",
+            "op": "!",
+            "x": {
+              "k": "var",
+              "name": "ok",
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"no order %s\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "named",
+                        "name": "OrderID"
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:103"
+            }
+          ],
+          "pos": "orders.go:102"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "&&",
+            "x": {
+              "k": "binop",
+              "op": "!=",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "o",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                },
+                "name": "Status",
+                "t": {
+                  "k": "named",
+                  "name": "Status"
+                }
+              },
+              "y": {
+                "k": "const",
+                "name": "Pending",
+                "t": {
+                  "k": "named",
+                  "name": "Status"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": "!=",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "o",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                },
+                "name": "Status",
+                "t": {
+                  "k": "named",
+                  "name": "Status"
+                }
+              },
+              "y": {
+                "k": "const",
+                "name": "Paid",
+                "t": {
+                  "k": "named",
+                  "name": "Status"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "to_error",
+                  "x": {
+                    "k": "struct",
+                    "name": "ErrWrongState",
+                    "fields": [
+                      {
+                        "name": "Status",
+                        "value": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "o",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Order"
+                              }
+                            }
+                          },
+                          "name": "Status",
+                          "t": {
+                            "k": "named",
+                            "name": "Status"
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "ErrWrongState"
+                    }
+                  },
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "orders.go:106"
+            }
+          ],
+          "pos": "orders.go:105"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "name": "Status",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "const",
+              "name": "Cancelled",
+              "t": {
+                "k": "named",
+                "name": "Status"
+              }
+            }
+          ],
+          "pos": "orders.go:108"
+        },
+        {
+          "k": "send",
+          "chan": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "events",
+            "t": {
+              "k": "chan",
+              "elem": {
+                "k": "any"
+              },
+              "dir": "send"
+            }
+          },
+          "x": {
+            "k": "struct",
+            "name": "OrderCancelled",
+            "fields": [
+              {
+                "name": "ID",
+                "value": {
+                  "k": "var",
+                  "name": "id",
+                  "t": {
+                    "k": "named",
+                    "name": "OrderID"
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "named",
+              "name": "OrderCancelled"
+            }
+          },
+          "pos": "orders.go:109"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "orders.go:110"
+        }
+      ],
+      "pos": "orders.go:100"
+    },
+    {
+      "name": "Get",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "named",
+            "name": "OrderID"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "named",
+          "name": "Order"
+        },
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "o",
+            "ok"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Service"
+                    }
+                  }
+                },
+                "name": "orders",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "OrderID"
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "named",
+                  "name": "OrderID"
+                }
+              },
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Order"
+                    }
+                  },
+                  {
+                    "k": "bool"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "orders.go:114"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "unop",
+            "op": "!",
+            "x": {
+              "k": "var",
+              "name": "ok",
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "struct",
+                  "name": "Order",
+                  "fields": [],
+                  "t": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "false",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "orders.go:116"
+            }
+          ],
+          "pos": "orders.go:115"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "o",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Order"
+                  }
+                }
+              },
+              "t": {
+                "k": "named",
+                "name": "Order"
+              }
+            },
+            {
+              "k": "lit",
+              "value": "true",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "orders.go:118"
+        }
+      ],
+      "pos": "orders.go:113"
+    },
+    {
+      "name": "PendingOrders",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "named",
+            "name": "Order"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "out",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "named",
+              "name": "Order"
+            }
+          },
+          "pos": "orders.go:122"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "o",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Service"
+                }
+              }
+            },
+            "name": "orders",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "named",
+                "name": "OrderID"
+              },
+              "elem": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Order"
+                }
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "o",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Order"
+                      }
+                    }
+                  },
+                  "name": "Status",
+                  "t": {
+                    "k": "named",
+                    "name": "Status"
+                  }
+                },
+                "y": {
+                  "k": "const",
+                  "name": "Pending",
+                  "t": {
+                    "k": "named",
+                    "name": "Status"
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "named",
+                          "name": "Order"
+                        }
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "intrinsic",
+                      "name": "append",
+                      "args": [
+                        {
+                          "k": "var",
+                          "name": "out",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "named",
+                              "name": "Order"
+                            }
+                          }
+                        },
+                        {
+                          "k": "unop",
+                          "op": "*",
+                          "x": {
+                            "k": "var",
+                            "name": "o",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Order"
+                              }
+                            }
+                          },
+                          "t": {
+                            "k": "named",
+                            "name": "Order"
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "named",
+                          "name": "Order"
+                        }
+                      }
+                    }
+                  ],
+                  "pos": "orders.go:125"
+                }
+              ],
+              "pos": "orders.go:124"
+            }
+          ],
+          "pos": "orders.go:123"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "named",
+                  "name": "Order"
+                }
+              }
+            }
+          ],
+          "pos": "orders.go:128"
+        }
+      ],
+      "pos": "orders.go:121"
+    },
+    {
+      "name": "Audit",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Service"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "go",
+          "src": "go func() {\n\tfor _, o := range s.orders {\n\t\tfmt.Println(o.ID)\n\t}\n}()",
+          "reason": "goroutine: concurrency is outside cir/1",
+          "pos": "orders.go:132"
+        }
+      ],
+      "pos": "orders.go:131"
+    }
+  ],
+  "layout": [
+    "type:OrderID",
+    "type:Status",
+    "type:Order",
+    "error:ErrInvalidTotal",
+    "type:ErrWrongState",
+    "func:ErrWrongState.Error",
+    "type:OrderPlaced",
+    "type:OrderPaid",
+    "type:OrderShipped",
+    "type:OrderCancelled",
+    "type:Service",
+    "func:New",
+    "func:Service.Place",
+    "func:Service.Pay",
+    "func:Service.Ship",
+    "func:Service.Cancel",
+    "func:Service.Get",
+    "func:Service.PendingOrders",
+    "func:Service.Audit"
+  ],
+  "refusals": [
+    {
+      "pos": "orders.go:132",
+      "what": "go func() { …",
+      "reason": "goroutine: concurrency is outside cir/1"
+    }
+  ]
+}

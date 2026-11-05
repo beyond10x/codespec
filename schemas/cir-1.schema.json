@@ -1,0 +1,1564 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Module",
+  "description": "One source module: a Go package, a Rust crate module, a Java compilation unit set.",
+  "type": "object",
+  "properties": {
+    "consts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ConstDecl"
+      }
+    },
+    "doc": {
+      "type": "string"
+    },
+    "errors": {
+      "description": "Sentinel errors: module-level error values built from a fixed message.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ErrorVar"
+      }
+    },
+    "facts": {
+      "description": "Whole-module analysis results, written by passes and read by writers.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Facts"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "format": {
+      "description": "Always `cir/1`.",
+      "type": "string"
+    },
+    "funcs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Func"
+      }
+    },
+    "layout": {
+      "description": "Source declaration order, `type:<name>`, `const:<name>`, `error:<name>`, `func:<name>` or\n`func:<receiver type>.<name>`, for writers that keep it.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "reader": {
+      "description": "Which reader produced this document.",
+      "$ref": "#/$defs/Reader"
+    },
+    "refusals": {
+      "description": "Every construct the reader kept as `foreign` or could not read.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Refusal"
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TypeDecl"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "name",
+    "reader",
+    "types",
+    "funcs",
+    "layout"
+  ],
+  "$defs": {
+    "Case": {
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Stmt"
+          }
+        },
+        "values": {
+          "description": "The values this case matches; empty for the default case.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Expr"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "values",
+        "body"
+      ]
+    },
+    "ChanDir": {
+      "type": "string",
+      "enum": [
+        "send",
+        "recv",
+        "both"
+      ]
+    },
+    "ConstDecl": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "pos": {
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/Type"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "t",
+        "value",
+        "pos"
+      ]
+    },
+    "ErrorVar": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pos": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "message",
+        "pos"
+      ]
+    },
+    "Expr": {
+      "description": "An expression. `t` is the type the reader computed for it.",
+      "oneOf": [
+        {
+          "description": "A literal in the source language's spelling.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "lit"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "value",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "nil"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "t"
+          ]
+        },
+        {
+          "description": "A local, parameter or receiver.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "var"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t"
+          ]
+        },
+        {
+          "description": "A declared constant or enum variant.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "const"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t"
+          ]
+        },
+        {
+          "description": "A sentinel error.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "errvar"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "field"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "name",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "index": {
+              "$ref": "#/$defs/Expr"
+            },
+            "k": {
+              "type": "string",
+              "const": "index"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "index",
+            "t"
+          ]
+        },
+        {
+          "description": "A call of a module function.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "call"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "method"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "name",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "binop"
+            },
+            "op": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            },
+            "y": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "op",
+            "x",
+            "y",
+            "t"
+          ]
+        },
+        {
+          "description": "`!`, `-`, `*` (dereference) or `&` (reference).",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "unop"
+            },
+            "op": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "op",
+            "x",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FieldInit"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "struct"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "fields",
+            "t"
+          ]
+        },
+        {
+          "description": "A conversion to the named type `name`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "conv"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "x",
+            "t"
+          ]
+        },
+        {
+          "description": "An empty map or slice.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "make"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "t"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "zero"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "t"
+          ]
+        },
+        {
+          "description": "`sprintf`, `errorf`, `println`, `append` or `len`.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "intrinsic"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "description": "A value of an error struct used where an error is expected.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "to_error"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "t"
+          ]
+        }
+      ]
+    },
+    "Facts": {
+      "description": "Whole-module facts. Writers read these instead of deciding anything themselves.",
+      "type": "object",
+      "properties": {
+        "comma_ok": {
+          "description": "Functions whose `(T, bool)` result is always `(zero, false)` or `(x, true)`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "displays": {
+          "description": "Types with a text rendering: an `Error()`/`String()` method, or a string enum or newtype.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fallible": {
+          "description": "Functions whose last result is an error, every error path returning zero values.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "messages": {
+          "description": "For channels of `any`: every type sent on one.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "read_only": {
+          "description": "Methods that write nothing rooted at their receiver.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shared": {
+          "description": "Struct types a reference to which is stored in a container or a struct field.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unordered_iteration": {
+          "description": "Positions of loops over a map, whose order the source language leaves unspecified.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "shared"
+      ]
+    },
+    "Field": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/Type"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "t"
+      ]
+    },
+    "FieldInit": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ]
+    },
+    "Func": {
+      "description": "A function or, with `recv`, a method.",
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Stmt"
+          }
+        },
+        "doc": {
+          "type": "string"
+        },
+        "exported": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Param"
+          }
+        },
+        "pos": {
+          "type": "string"
+        },
+        "recv": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "exported",
+        "params",
+        "results",
+        "body",
+        "pos"
+      ]
+    },
+    "IntWidth": {
+      "description": "Integer width. `platform` is the source language's machine-word integer (Go `int`).",
+      "type": "string",
+      "enum": [
+        "platform",
+        "8",
+        "16",
+        "32",
+        "64"
+      ]
+    },
+    "Param": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/Type"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "t"
+      ]
+    },
+    "Reader": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "description": "The source language: `go`, `rust`, …",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "name",
+        "version"
+      ]
+    },
+    "Refusal": {
+      "type": "object",
+      "properties": {
+        "pos": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "what": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pos",
+        "what",
+        "reason"
+      ]
+    },
+    "Stmt": {
+      "description": "A statement.",
+      "oneOf": [
+        {
+          "description": "`names := rhs`; a name `_` discards.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "let"
+            },
+            "names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pos": {
+              "type": "string"
+            },
+            "rhs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "names",
+            "rhs",
+            "pos"
+          ]
+        },
+        {
+          "description": "`var name t`, the zero value.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "var"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t",
+            "pos"
+          ]
+        },
+        {
+          "description": "`lhs = rhs`, or `lhs <op> rhs` for a compound operator such as `+=`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "assign"
+            },
+            "lhs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "op": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "rhs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "lhs",
+            "rhs",
+            "pos"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "incr"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "pos"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "decr"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "pos"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cond": {
+              "$ref": "#/$defs/Expr"
+            },
+            "else": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "if"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "then": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "cond",
+            "then",
+            "pos"
+          ]
+        },
+        {
+          "description": "`for key, val := range over { body }`; `_` for an unused name.",
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "for_range"
+            },
+            "key": {
+              "type": "string"
+            },
+            "over": {
+              "$ref": "#/$defs/Expr"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "val": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "key",
+            "val",
+            "over",
+            "body",
+            "pos"
+          ]
+        },
+        {
+          "description": "A `switch` on `tag`, or on `true` when `tag` is absent.",
+          "type": "object",
+          "properties": {
+            "cases": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Case"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "switch"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "tag": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Expr"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "cases",
+            "pos"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "return"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "results",
+            "pos"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "expr"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "pos"
+          ]
+        },
+        {
+          "description": "`chan <- x`.",
+          "type": "object",
+          "properties": {
+            "chan": {
+              "$ref": "#/$defs/Expr"
+            },
+            "k": {
+              "type": "string",
+              "const": "send"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "chan",
+            "x",
+            "pos"
+          ]
+        },
+        {
+          "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent.",
+          "type": "object",
+          "properties": {
+            "index": {
+              "$ref": "#/$defs/Expr"
+            },
+            "k": {
+              "type": "string",
+              "const": "lookup_else"
+            },
+            "map": {
+              "$ref": "#/$defs/Expr"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "then": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "map",
+            "index",
+            "then",
+            "pos"
+          ]
+        },
+        {
+          "description": "Source the reader kept verbatim, in `lang`, because cir/1 cannot express it.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "foreign"
+            },
+            "lang": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "src": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "lang",
+            "src",
+            "reason",
+            "pos"
+          ]
+        }
+      ]
+    },
+    "Type": {
+      "description": "A type expression.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "int"
+            },
+            "signed": {
+              "type": "boolean"
+            },
+            "width": {
+              "$ref": "#/$defs/IntWidth"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "width",
+            "signed"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "bool"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k"
+          ]
+        },
+        {
+          "description": "The source language's error type (Go `error`).",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "error"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k"
+          ]
+        },
+        {
+          "description": "The top type (Go `any`).",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "any"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "unit"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k"
+          ]
+        },
+        {
+          "description": "A type the module declares.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "named"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name"
+          ]
+        },
+        {
+          "description": "A reference to `elem`.",
+          "type": "object",
+          "properties": {
+            "elem": {
+              "$ref": "#/$defs/Type"
+            },
+            "k": {
+              "type": "string",
+              "const": "ptr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "elem"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "elem": {
+              "$ref": "#/$defs/Type"
+            },
+            "k": {
+              "type": "string",
+              "const": "slice"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "elem"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "elem": {
+              "$ref": "#/$defs/Type"
+            },
+            "k": {
+              "type": "string",
+              "const": "map"
+            },
+            "key": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "key",
+            "elem"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "$ref": "#/$defs/ChanDir"
+            },
+            "elem": {
+              "$ref": "#/$defs/Type"
+            },
+            "k": {
+              "type": "string",
+              "const": "chan"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "elem",
+            "dir"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "elems": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "tuple"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "elems"
+          ]
+        }
+      ]
+    },
+    "TypeDecl": {
+      "description": "A named type declaration.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "doc": {
+              "type": "string"
+            },
+            "exported": {
+              "type": "boolean"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Field"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "struct"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "exported",
+            "fields",
+            "pos"
+          ]
+        },
+        {
+          "description": "A basic type given a name.",
+          "type": "object",
+          "properties": {
+            "doc": {
+              "type": "string"
+            },
+            "exported": {
+              "type": "boolean"
+            },
+            "k": {
+              "type": "string",
+              "const": "newtype"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "under": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "exported",
+            "under",
+            "pos"
+          ]
+        },
+        {
+          "description": "A newtype whose values are exactly the declared variants.",
+          "type": "object",
+          "properties": {
+            "doc": {
+              "type": "string"
+            },
+            "exported": {
+              "type": "boolean"
+            },
+            "k": {
+              "type": "string",
+              "const": "enum"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "under": {
+              "$ref": "#/$defs/Type"
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Variant"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "exported",
+            "under",
+            "variants",
+            "pos"
+          ]
+        },
+        {
+          "description": "Tagged variants, each carrying its own fields.",
+          "type": "object",
+          "properties": {
+            "doc": {
+              "type": "string"
+            },
+            "exported": {
+              "type": "boolean"
+            },
+            "k": {
+              "type": "string",
+              "const": "union"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/UnionVariant"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "exported",
+            "variants",
+            "pos"
+          ]
+        }
+      ]
+    },
+    "UnionVariant": {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Field"
+          }
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fields"
+      ]
+    },
+    "Variant": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Expr"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ]
+    }
+  }
+}
