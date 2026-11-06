@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-06T15:49:42Z",
+  "actor": "human:timo",
+  "artifact": "story:feature-vocabulary",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/series-both-ways 7d318a8, exit 0"
+  }
+}
