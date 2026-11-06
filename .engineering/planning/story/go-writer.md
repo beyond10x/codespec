@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-writer
 kind: story
-status: active
+status: implemented
 title: Go writer on go/ast and go/printer
 summary: codespec-write-go emits a gofmt-clean, compiling Go package from cir/1
 relations:
@@ -14,10 +14,11 @@ scope:
   path: adapters/go/cmd/codespec-write-go
 - confidence: cited
   path: examples/orders/out/go
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-11-06T00:09:10Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-11-06T00:32:43Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: Go writer on go/ast and go/printer
 

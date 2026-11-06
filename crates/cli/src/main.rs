@@ -1,4 +1,5 @@
-//! `codespec`: validate `cir/1` documents, print the schema, and run reader and writer adapters.
+//! `codespec`: validate `cir/1` documents, print the schema, apply passes, and run reader and writer
+//! adapters.
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -42,6 +43,12 @@ enum Cmd {
         /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
+    },
+    /// Apply every pass (lookup-guard, then the facts) to a cir/1 module and write the result to OUT.
+    Pass {
+        file: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Validate a cir/1 module and run the writer adapter for LANG, writing into OUT.
     Write {
@@ -112,6 +119,14 @@ fn run(cmd: Cmd) -> Result<(), String> {
             }
             let m = read_module(&output.stdout, &prog.display().to_string())?;
             std::fs::write(&out, m.to_json()).map_err(|e| format!("{}: {e}", out.display()))?;
+            Ok(())
+        }
+        Cmd::Pass { file, out } => {
+            let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let m = read_module(&bytes, &file.display().to_string())?;
+            let json = codespec_passes::run(&m).to_json();
+            read_module(json.as_bytes(), "pass output")?;
+            std::fs::write(&out, json).map_err(|e| format!("{}: {e}", out.display()))?;
             Ok(())
         }
         Cmd::Write {

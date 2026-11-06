@@ -20,6 +20,7 @@ tasks:
       - cargo test --workspace --locked
       - task: adapters-check
       - task: examples-check
+      - task: examples-pass
       - task: examples-go
 
   build:
@@ -50,20 +51,36 @@ tasks:
     deps: [build]
     cmds:
       - '{{.CODESPEC}} read --lang go examples/orders/source --out examples/orders/orders.read.cir.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} pass examples/orders/orders.read.cir.json --out examples/orders/orders.cir.json'
       - '{{.CODESPEC}} write --lang go examples/orders/orders.read.cir.json --out examples/orders/out/go --adapters {{.ADAPTERS}}'
 
   examples-go:
-    desc: Write the orders example as Go, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.
+    desc: Write the orders example as Go, before and after the passes, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.
     deps: [build]
     cmds:
-      - rm -rf target/examples-go
-      - mkdir -p target/examples-go
+      - rm -rf target/examples-go target/examples-go-pass
+      - mkdir -p target/examples-go target/examples-go-pass
       - '{{.CODESPEC}} write --lang go examples/orders/orders.read.cir.json --out target/examples-go --adapters {{.ADAPTERS}}'
       - diff -r target/examples-go examples/orders/out/go
       - cmp target/examples-go/orders.go examples/orders/out/go/orders.go
       - test -z "$(gofmt -l target/examples-go)"
       - go vet ./target/examples-go/orders.go
+      - '{{.CODESPEC}} write --lang go examples/orders/orders.cir.json --out target/examples-go-pass --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-go-pass examples/orders/out/go
+      - test -z "$(gofmt -l target/examples-go-pass)"
+      - go vet ./target/examples-go-pass/orders.go
       - cd adapters/go && go test -count=1 ./cmd/codespec-write-go
+
+  examples-pass:
+    desc: Fail when the passes over an example give bytes other than its checked-in document, or change their own output.
+    deps: [build]
+    cmds:
+      - mkdir -p target/examples-pass
+      - '{{.CODESPEC}} pass examples/orders/orders.read.cir.json --out target/examples-pass/orders.1.json'
+      - '{{.CODESPEC}} pass target/examples-pass/orders.1.json --out target/examples-pass/orders.2.json'
+      - cmp target/examples-pass/orders.1.json examples/orders/orders.cir.json
+      - cmp target/examples-pass/orders.1.json target/examples-pass/orders.2.json
+      - '{{.CODESPEC}} validate --canonical examples/orders/orders.cir.json'
 
   examples-check:
     desc: Fail when reading an example twice gives different bytes, or bytes other than the checked-in document.

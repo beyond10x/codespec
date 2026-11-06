@@ -57,6 +57,7 @@ name = "b10x-codespec-cli"
 version = "0.0.0"
 dependencies = [
  "b10x-codespec-model",
+ "b10x-codespec-passes",
  "clap",
 ]
 
@@ -67,6 +68,13 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "b10x-codespec-passes"
+version = "0.0.0"
+dependencies = [
+ "b10x-codespec-model",
 ]
 
 [[package]]

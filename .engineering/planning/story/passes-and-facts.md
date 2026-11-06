@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:passes-and-facts
 kind: story
-status: proposed
+status: active
 title: Passes and facts in Rust
 summary: lookup-guard and the seven facts of docs/design.md section 4, as codespec pass
 relations:
@@ -18,9 +18,10 @@ scope:
   path: crates/passes
 - confidence: cited
   path: examples/orders/orders.cir.json
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T00:09:10Z", actor: "human:timo", revision: 8}
+- {from: "proposed", to: "active", at: "2026-11-06T00:32:44Z", actor: "human:timo", revision: 9}
 ---
 # Story: Passes and facts in Rust
 
