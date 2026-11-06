@@ -1,0 +1,5 @@
+file                                            read  refused  closure  dynamic  gorm  groovy-semantics  spring  type  uncategorised  unresolved  unsupported
+grails-app/domain/fees/Rate.groovy                 2        0        0        0     0                 0       0     0              0           0            0
+grails-app/services/fees/LateFeeService.groovy     8        0        0        0     0                 0       0     0              0           0            0
+total                                             10        0        0        0     0                 0       0     0              0           0            0
+read 10 of 10 functions, 100.0%
