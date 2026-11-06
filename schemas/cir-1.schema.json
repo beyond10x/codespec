@@ -403,7 +403,7 @@
           ]
         },
         {
-          "description": "`!`, `-`, `*` (dereference) or `&` (reference).",
+          "description": "`!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&`\n(reference).",
           "type": "object",
           "properties": {
             "k": {

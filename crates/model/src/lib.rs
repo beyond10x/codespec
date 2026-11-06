@@ -403,7 +403,8 @@ pub enum Expr {
         y: Box<Expr>,
         t: Type,
     },
-    /// `!`, `-`, `*` (dereference) or `&` (reference).
+    /// `!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&`
+    /// (reference).
     Unop {
         op: String,
         x: Box<Expr>,
