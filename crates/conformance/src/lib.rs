@@ -17,9 +17,10 @@
 //!     java/Case.java         optional: the case in Java, package `<case>` with `-` read as `_`
 //! ```
 //!
-//! A case directory holds exactly these five files, and may hold a `java/` directory, which
-//! this crate does not read: the Java reader's tests run it through `codespec read --lang java`,
-//! the passes, the Go writer and `codespec-run-go` against `expected.txt`
+//! A case directory holds exactly these five files, and may hold `java/` and `rust/` directories,
+//! which the kit checks here do not read; [`conform::reader_corpus`] builds the reader corpora
+//! from them. The Java reader's tests also run `java/` through `codespec read --lang java`, the
+//! passes, the Go writer and `codespec-run-go` against `expected.txt`
 //! (`adapters/java/test/codespec/read/ReaderTest.java`). `case.cir.json` and `expected.txt` are
 //! generated (`codespec-conformance check --write`), never edited by hand; the other three are
 //! written by hand. The exception is a case written by hand, below.
@@ -153,7 +154,8 @@
 //!
 //! [`conform`] runs the kit against one reader or writer by its `--describe` manifest and writes a
 //! `codespec-conformance-report/1`; `codespec conform` is its command line. The reader corpus of
-//! the in-repository readers is `conformance/reader/<lang>/<case>/`.
+//! the in-repository readers is `conformance/reader/<lang>/<case>/`, built from the case sources
+//! (`rust/`, `java/` and `case.go`) by [`conform::reader_corpus`].
 
 pub mod conform;
 

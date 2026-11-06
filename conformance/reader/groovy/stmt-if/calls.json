@@ -1,0 +1,23 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Sign",
+      "args": [
+        "5"
+      ]
+    },
+    {
+      "func": "Sign",
+      "args": [
+        "-5"
+      ]
+    },
+    {
+      "func": "Sign",
+      "args": [
+        "0"
+      ]
+    }
+  ]
+}

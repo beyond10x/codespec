@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "go",
     "version": "0.2.0",
-    "manifest_sha256": "9c3d43ddb17a4d1305558c21c9908967a1fc4c1b098ebb39443e505cc23242ff"
+    "manifest_sha256": "578703dd1757584dbadd55b47faf470807739643fc2c562612a437a751a4a77f"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "dfd17e8a3e65ede941526dffd16828ab5688561b9742c125a7ebe0c5b268e636"
+    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
   },
   "codespec": "0.2.0",
   "features": [
@@ -127,8 +127,13 @@
     {
       "id": "decl.union",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-union"
+      ],
+      "case": "decl-union",
+      "reason": "refused",
+      "detail": "codespec-write-go: case.go:7: union Shape: Go has no tagged union"
     },
     {
       "id": "expr.binop",
@@ -260,9 +265,11 @@
     },
     {
       "id": "expr.zero",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-zero"
+      ]
     },
     {
       "id": "fact.comma_ok",
@@ -354,9 +361,11 @@
     },
     {
       "id": "intrinsic.sorted_keys",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-sorted-keys"
+      ]
     },
     {
       "id": "intrinsic.sprintf",
@@ -776,15 +785,19 @@
     },
     {
       "id": "type.tuple",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-tuple"
+      ]
     },
     {
       "id": "type.unit",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-unit"
+      ]
     },
     {
       "id": "unop.complement",
@@ -862,12 +875,12 @@
     }
   ],
   "summary": {
-    "claimed": 100,
-    "pass": 100,
+    "claimed": 104,
+    "pass": 104,
     "fail": 0,
-    "refused_unclaimed": 0,
+    "refused_unclaimed": 1,
     "pass_unclaimed": 0,
-    "untested": 5,
+    "untested": 0,
     "boundary_fail": 0
   },
   "conforms": true

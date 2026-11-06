@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "go",
     "version": "0.2.0",
-    "manifest_sha256": "3d808bca91fce501b4a1e4dce137dc9b13c58599c8315dcd82c4d8b32a18f862"
+    "manifest_sha256": "f0548077d5aef85bf7b5fde3f06196b4448d96eb7b838049c08b97d51526d425"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "dfd17e8a3e65ede941526dffd16828ab5688561b9742c125a7ebe0c5b268e636"
+    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
   },
   "corpus": {
-    "sha256": "2552bf526f5d253defc05ac9dd5a402bbe41d3c1951f9d473f5d65f5abc50e8a"
+    "sha256": "da533b55af5a2b49a312e51c7b8c929e51cb148119442708ddef3478df363e24"
   },
   "codespec": "0.2.0",
   "features": [
@@ -130,8 +130,14 @@
     {
       "id": "decl.union",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-union"
+      ],
+      "case": "decl-union",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.union outside a foreign statement"
     },
     {
       "id": "expr.binop",
@@ -264,50 +270,98 @@
     {
       "id": "expr.zero",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-zero"
+      ],
+      "case": "expr-zero",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.zero outside a foreign statement"
     },
     {
       "id": "fact.comma_ok",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-comma-ok"
+      ],
+      "case": "fact-comma-ok",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.comma_ok outside a foreign statement"
     },
     {
       "id": "fact.displays",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-displays"
+      ],
+      "case": "fact-displays",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.displays outside a foreign statement"
     },
     {
       "id": "fact.fallible",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-fallible"
+      ],
+      "case": "fact-fallible",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.fallible outside a foreign statement"
     },
     {
       "id": "fact.messages",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-messages"
+      ],
+      "case": "fact-messages",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.messages outside a foreign statement"
     },
     {
       "id": "fact.read_only",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-read-only"
+      ],
+      "case": "fact-read-only",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.read_only outside a foreign statement"
     },
     {
       "id": "fact.shared",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-shared"
+      ],
+      "case": "fact-shared",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.shared outside a foreign statement"
     },
     {
       "id": "fact.unordered_iteration",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "fact-unordered-iteration"
+      ],
+      "case": "fact-unordered-iteration",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use fact.unordered_iteration outside a foreign statement"
     },
     {
       "id": "intrinsic.append",
@@ -344,8 +398,14 @@
     {
       "id": "intrinsic.sorted_keys",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-sorted-keys"
+      ],
+      "case": "intrinsic-sorted-keys",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use intrinsic.sorted_keys outside a foreign statement"
     },
     {
       "id": "intrinsic.sprintf",
@@ -613,9 +673,11 @@
     },
     {
       "id": "stmt.foreign",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-foreign"
+      ]
     },
     {
       "id": "stmt.if",
@@ -644,8 +706,14 @@
     {
       "id": "stmt.lookup_else",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "stmt-lookup-else"
+      ],
+      "case": "stmt-lookup-else",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use stmt.lookup_else outside a foreign statement"
     },
     {
       "id": "stmt.return",
@@ -762,14 +830,22 @@
     {
       "id": "type.tuple",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "pass",
+      "cases": [
+        "type-tuple"
+      ]
     },
     {
       "id": "type.unit",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-unit"
+      ],
+      "case": "type-unit",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.unit outside a foreign statement"
     },
     {
       "id": "unop.complement",
@@ -830,12 +906,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 91,
-    "pass": 91,
+    "claimed": 92,
+    "pass": 92,
     "fail": 0,
-    "refused_unclaimed": 0,
-    "pass_unclaimed": 0,
-    "untested": 14,
+    "refused_unclaimed": 12,
+    "pass_unclaimed": 1,
+    "untested": 0,
     "boundary_fail": 0
   },
   "conforms": true

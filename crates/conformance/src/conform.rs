@@ -15,8 +15,10 @@
 //! A writer is called `<writer> <out dir>` with the module on standard input; a runner
 //! `<runner> --build <dir> <written dir> <calls.json>`; a reader `<reader> <source dir>`, printing
 //! the module. A writer **refuses** a function by exiting non-zero (nothing of the module is
-//! written) or by writing `<out dir>/refusals.json`, an array that is not empty. A runner exits 0
-//! with the output, 2 when it refuses the calls, 1 when the build or the program fails.
+//! written) or by writing `<out dir>/refusals.json`, an array that is not empty; the case's
+//! `detail` is then its stderr, or each listed refusal as `name (pos): reason`, joined by `; `. A
+//! runner exits 0 with the output, 2 when it refuses the calls, 1 when the build or the program
+//! fails.
 //!
 //! # The run's inputs and its work directory
 //!
@@ -69,6 +71,22 @@
 //!
 //! An unclaimed feature whose case stops at step 2 by `read_failed` or at step 3 is *refused*;
 //! a claimed one fails.
+//!
+//! ## The in-repository corpora
+//!
+//! The corpus of each reader this repository ships, `conformance/reader/<lang>` for a language of
+//! [`CORPUS_LANGS`], is built by [`reader_corpus`] from the kit's own case sources, never written
+//! by hand nor copied from a writer's output; `codespec-docs generate` writes it and `generate
+//! --check` fails when a file differs from its case source, is missing or is extra. Per kit case:
+//!
+//! | lang | from the case | corpus files |
+//! |---|---|---|
+//! | `go` | `case.go` | `case.go` |
+//! | `rust` | `rust/case.rs` | `src/lib.rs` and a `Cargo.toml` naming the package `<case>` with `-` read as `_`, with its own `[workspace]` |
+//! | `java` | `java/Case.java` | `Case.java` |
+//! | `groovy` | `java/Case.java` | `Case.groovy`: Groovy 2.4 compiles every Java source of the kit unchanged, and `codespec-run-groovy` runs it to the case's `expected.txt` at step 1 |
+//!
+//! each beside a copy of the case's `calls.json`. A case without the source has no corpus entry.
 //!
 //! # Verdicts
 //!
@@ -709,6 +727,22 @@ enum Wrote {
 }
 
 /// Write `module` into `out`; also the writer's exit code, `None` when it timed out.
+/// A writer's `refusals.json` as one line, each refusal `name (pos): reason` (`pos` when given),
+/// joined by `; `; `None` when it is not an array of objects each with a string `name` and
+/// `reason`, and then the file's text is the detail.
+fn refusal_lines(listed: &Value) -> Option<String> {
+    let mut out = Vec::new();
+    for r in listed.as_array()? {
+        let name = r.get("name")?.as_str()?;
+        let reason = r.get("reason")?.as_str()?;
+        match r.get("pos").and_then(Value::as_str) {
+            Some(pos) => out.push(format!("{name} ({pos}): {reason}")),
+            None => out.push(format!("{name}: {reason}")),
+        }
+    }
+    Some(out.join("; "))
+}
+
 fn write(
     ctx: &Ctx,
     writer: &dyn Program,
@@ -729,7 +763,10 @@ fn write(
             .map_err(|e| format!("{}: {e}", refusals.display()))?;
         let listed: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         if !listed.as_array().is_some_and(|a| a.is_empty()) {
-            return Ok((Wrote::Refused(text), e.code));
+            return Ok((
+                Wrote::Refused(refusal_lines(&listed).unwrap_or(text)),
+                e.code,
+            ));
         }
     }
     Ok((Wrote::Done, e.code))
@@ -883,13 +920,11 @@ fn verdicts(
                 } else {
                     Verdict::Refused
                 };
-                if r.verdict == Verdict::Fail {
-                    r.case = Some(case.clone());
-                    r.step = *step;
-                    r.reason = Some(*reason);
-                    r.first_difference = first_difference.clone();
-                    r.detail = detail.clone();
-                }
+                r.case = Some(case.clone());
+                r.step = *step;
+                r.reason = Some(*reason);
+                r.first_difference = first_difference.clone();
+                r.detail = detail.clone();
             }
             r
         })
@@ -1545,6 +1580,56 @@ pub fn conform_adapter_within(t: &Target, limit: Duration) -> Result<Report, Err
         &program(&t.adapters, "codespec-write-go")?,
         &program(&t.adapters, "codespec-run-go")?,
     )
+}
+
+/// The languages whose reader corpus [`reader_corpus`] builds from the kit.
+pub const CORPUS_LANGS: &[&str] = &["go", "rust", "java", "groovy"];
+
+/// The reader corpus of `lang`, one of [`CORPUS_LANGS`], built from the case sources of the kit
+/// at `kit` as the module doc's table says: every file by its path relative to the corpus
+/// directory (`<case>/…`, `/`-separated), in path order.
+pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, Error> {
+    if !CORPUS_LANGS.contains(&lang) {
+        return Err(format!(
+            "no corpus is built for language {lang:?}, one of {CORPUS_LANGS:?}"
+        ));
+    }
+    let mut out = Vec::new();
+    for case in load_cases(&kit.join("cases"))? {
+        let dir = &case.dir;
+        let source = match lang {
+            "go" => dir.join("case.go"),
+            "rust" => dir.join("rust/case.rs"),
+            _ => dir.join("java/Case.java"),
+        };
+        if !source.is_file() {
+            continue;
+        }
+        let name = &case.name;
+        let text = read_file(&source)?;
+        match lang {
+            "go" => out.push((format!("{name}/case.go"), text)),
+            "rust" => {
+                out.push((
+                    format!("{name}/Cargo.toml"),
+                    format!(
+                        "[package]\nname = \"{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n",
+                        crate::package_name(name)
+                    )
+                    .into_bytes(),
+                ));
+                out.push((format!("{name}/src/lib.rs"), text));
+            }
+            "java" => out.push((format!("{name}/Case.java"), text)),
+            _ => out.push((format!("{name}/Case.groovy"), text)),
+        }
+        out.push((
+            format!("{name}/calls.json"),
+            read_file(&dir.join("calls.json"))?,
+        ));
+    }
+    out.sort();
+    Ok(out)
 }
 
 /// One line on a report: the adapter, whether it conforms and the summary's counts.

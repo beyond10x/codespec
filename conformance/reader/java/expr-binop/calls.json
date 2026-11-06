@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Less",
+      "args": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "func": "Less",
+      "args": [
+        "2",
+        "1"
+      ]
+    }
+  ]
+}

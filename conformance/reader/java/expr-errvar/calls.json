@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Check",
+      "args": [
+        "\"\""
+      ]
+    },
+    {
+      "func": "Check",
+      "args": [
+        "\"x\""
+      ]
+    }
+  ]
+}

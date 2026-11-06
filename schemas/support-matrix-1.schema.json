@@ -120,7 +120,7 @@
       ]
     },
     "state": {
-      "description": "verified: claimed in the manifest and the conformance report passes. claimed: in the manifest, no report. failing: claimed, and the report fails. refused: not claimed. n/a: not applicable to this role, so never claimable and left out of coverage (every reader cell of a fact feature, which is writer-only). none: no adapter for that role.",
+      "description": "verified: claimed in the manifest and the conformance report passes. claimed: in the manifest, and no report, or a report with no case for it. failing: claimed, and the report fails it. refused: not claimed. n/a: not applicable to this role, so never claimable and left out of coverage (every reader cell of a fact feature, which is writer-only). none: no adapter for that role.",
       "enum": ["verified", "claimed", "failing", "refused", "n/a", "none"]
     }
   }

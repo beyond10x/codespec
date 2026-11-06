@@ -1,0 +1,820 @@
+{
+  "format": "codespec-conformance-report/1",
+  "adapter": {
+    "role": "reader",
+    "lang": "groovy",
+    "version": "0.2.0",
+    "manifest_sha256": "e2436446e77d1a9f67a91d3dbbd264cb292ea1c2eff893dccd42b11c5a1aa068"
+  },
+  "kit": {
+    "version": "0.2.0",
+    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
+  },
+  "corpus": {
+    "sha256": "82c9491c06209189193230c26e3d3b20fe9dd04ed54ba0bf3b4742e52a1665de"
+  },
+  "codespec": "0.2.0",
+  "features": [
+    {
+      "id": "assign.add",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-add"
+      ]
+    },
+    {
+      "id": "assign.and",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-and"
+      ]
+    },
+    {
+      "id": "assign.and_not",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.div",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "assign-div"
+      ],
+      "case": "assign-div",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use assign.div outside a foreign statement"
+    },
+    {
+      "id": "assign.mul",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-mul"
+      ]
+    },
+    {
+      "id": "assign.or",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-or"
+      ]
+    },
+    {
+      "id": "assign.rem",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-rem"
+      ]
+    },
+    {
+      "id": "assign.shl",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.shr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.sub",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-sub"
+      ]
+    },
+    {
+      "id": "assign.xor",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "assign-xor"
+      ]
+    },
+    {
+      "id": "decl.enum",
+      "claimed": true,
+      "verdict": "fail",
+      "cases": [],
+      "reason": "no_case"
+    },
+    {
+      "id": "decl.newtype",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.struct",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-struct"
+      ]
+    },
+    {
+      "id": "decl.union",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.binop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-binop"
+      ]
+    },
+    {
+      "id": "expr.call",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "expr-call"
+      ]
+    },
+    {
+      "id": "expr.const",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-const"
+      ]
+    },
+    {
+      "id": "expr.conv",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-conv"
+      ]
+    },
+    {
+      "id": "expr.errvar",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-errvar"
+      ],
+      "case": "expr-errvar",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.errvar outside a foreign statement"
+    },
+    {
+      "id": "expr.field",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-field"
+      ]
+    },
+    {
+      "id": "expr.index",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-index"
+      ]
+    },
+    {
+      "id": "expr.intrinsic",
+      "claimed": true,
+      "verdict": "fail",
+      "cases": [],
+      "reason": "no_case"
+    },
+    {
+      "id": "expr.lit",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-lit"
+      ]
+    },
+    {
+      "id": "expr.make",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-make"
+      ]
+    },
+    {
+      "id": "expr.method",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "expr-method"
+      ]
+    },
+    {
+      "id": "expr.nil",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.struct",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-struct"
+      ]
+    },
+    {
+      "id": "expr.to_error",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.unop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-unop"
+      ]
+    },
+    {
+      "id": "expr.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-var"
+      ]
+    },
+    {
+      "id": "expr.zero",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.comma_ok",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.displays",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.fallible",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.messages",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.read_only",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.shared",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.unordered_iteration",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.append",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-append"
+      ]
+    },
+    {
+      "id": "intrinsic.errorf",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.len",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-len"
+      ]
+    },
+    {
+      "id": "intrinsic.println",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.sorted_keys",
+      "claimed": true,
+      "verdict": "fail",
+      "cases": [],
+      "reason": "no_case"
+    },
+    {
+      "id": "intrinsic.sprintf",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-sprintf"
+      ]
+    },
+    {
+      "id": "op.add",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-add"
+      ]
+    },
+    {
+      "id": "op.and",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-and"
+      ]
+    },
+    {
+      "id": "op.and_not",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.div",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "op-div"
+      ],
+      "case": "op-div",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use op.div outside a foreign statement"
+    },
+    {
+      "id": "op.eq",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-eq"
+      ]
+    },
+    {
+      "id": "op.ge",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-ge"
+      ]
+    },
+    {
+      "id": "op.gt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-gt"
+      ]
+    },
+    {
+      "id": "op.land",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-land"
+      ]
+    },
+    {
+      "id": "op.le",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-le"
+      ]
+    },
+    {
+      "id": "op.lor",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-lor"
+      ]
+    },
+    {
+      "id": "op.lt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-lt"
+      ]
+    },
+    {
+      "id": "op.mul",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-mul"
+      ]
+    },
+    {
+      "id": "op.ne",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-ne"
+      ]
+    },
+    {
+      "id": "op.or",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-or"
+      ]
+    },
+    {
+      "id": "op.rem",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-rem"
+      ]
+    },
+    {
+      "id": "op.shl",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.shr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.sub",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-sub"
+      ]
+    },
+    {
+      "id": "op.xor",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "op-xor"
+      ]
+    },
+    {
+      "id": "sem.continue.post",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "sem-continue-post"
+      ]
+    },
+    {
+      "id": "sem.int.wrap",
+      "claimed": true,
+      "verdict": "fail",
+      "cases": [
+        "sem-int-wrap"
+      ],
+      "case": "sem-int-wrap",
+      "step": 3,
+      "reason": "foreign_statement",
+      "detail": "the module keeps source as a foreign statement; sem.int.wrap counts only when nothing of its case is foreign"
+    },
+    {
+      "id": "sem.map.order",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-map-order"
+      ]
+    },
+    {
+      "id": "sem.multi_assign.order",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "sem.rem.sign",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "sem-rem-sign"
+      ]
+    },
+    {
+      "id": "sem.switch.break",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.assign",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-assign"
+      ]
+    },
+    {
+      "id": "stmt.break",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-break"
+      ]
+    },
+    {
+      "id": "stmt.continue",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "stmt-continue"
+      ]
+    },
+    {
+      "id": "stmt.decr",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "stmt-decr"
+      ]
+    },
+    {
+      "id": "stmt.expr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.for",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-for"
+      ]
+    },
+    {
+      "id": "stmt.for_range",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-for-range"
+      ]
+    },
+    {
+      "id": "stmt.foreign",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.if",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-if"
+      ]
+    },
+    {
+      "id": "stmt.incr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-incr"
+      ]
+    },
+    {
+      "id": "stmt.let",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-let"
+      ]
+    },
+    {
+      "id": "stmt.lookup_else",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.return",
+      "claimed": true,
+      "verdict": "fail",
+      "cases": [],
+      "reason": "no_case"
+    },
+    {
+      "id": "stmt.send",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.switch",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-switch"
+      ]
+    },
+    {
+      "id": "stmt.var",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.any",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.bool",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-bool"
+      ]
+    },
+    {
+      "id": "type.chan",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.error",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-error"
+      ],
+      "case": "type-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.error outside a foreign statement"
+    },
+    {
+      "id": "type.int",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-int"
+      ]
+    },
+    {
+      "id": "type.map",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-map"
+      ]
+    },
+    {
+      "id": "type.named",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-named"
+      ]
+    },
+    {
+      "id": "type.ptr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-ptr"
+      ]
+    },
+    {
+      "id": "type.slice",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-slice"
+      ]
+    },
+    {
+      "id": "type.string",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-string"
+      ]
+    },
+    {
+      "id": "type.tuple",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.unit",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.complement",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "unop-complement"
+      ]
+    },
+    {
+      "id": "unop.deref",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.neg",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "unop-neg"
+      ]
+    },
+    {
+      "id": "unop.not",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "unop-not"
+      ]
+    },
+    {
+      "id": "unop.plus",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "unop-plus"
+      ]
+    },
+    {
+      "id": "unop.recv",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.ref",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-ref"
+      ]
+    }
+  ],
+  "boundary": [],
+  "summary": {
+    "claimed": 42,
+    "pass": 37,
+    "fail": 5,
+    "refused_unclaimed": 4,
+    "pass_unclaimed": 26,
+    "untested": 33,
+    "boundary_fail": 0
+  },
+  "conforms": false
+}

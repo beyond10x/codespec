@@ -6,6 +6,16 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec-run-java` and `codespec-run-groovy` (`adapters/jvm/src/codespec/run`): the JVM runners
+  of the conformance kit; they compile a package with javac or Groovy 2.4 and make a `calls.json`
+  against its static methods.
+- Conformance reports for every adapter in `website/data/conformance/`: the Java and Groovy readers
+  join the Go and Rust readers and writers. The reader corpora `conformance/reader/<lang>` are built
+  from the kit's case sources (`case.go`, `rust/case.rs`, `java/Case.java`) and drift-checked.
+- The support matrix `website/data/support-matrix.json` is generated from the feature list, the
+  adapters' manifests and their reports, with a note on every failing cell, every claim without a
+  case and every refusal a report explains.
+- A writer's refusal listed in `refusals.json` is reported as `name (pos): reason`.
 - `codespec features` prints the `cir/1` feature vocabulary (`codespec-features/1`, 105 ids), checked
   in as `schemas/cir-1.features.json`; `features_from_json` reads it strictly.
 - `cir/1` intrinsic `sorted_keys`: the keys of a map in ascending order (integers numerically, strings

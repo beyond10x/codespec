@@ -83,7 +83,7 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-ledger` | the Java `ledger` package read twice with `codespec-read-java` (byte-equal, equal to `ledger.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/ledger --seeds 200 --commands 300` byte-equal over the original Java, Go and Rust |
 | `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
-| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the four conformance reports equal to `codespec conform` run again on the Go and Rust readers and writers (needs `task build`), no raw admonition title |
+| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy}` equal to what the kit's case sources build, the six conformance reports equal to `codespec conform` run again on the Go, Rust, Java and Groovy readers and the Go and Rust writers (needs `task build`), the support matrix equal to what the manifests and reports build, no raw admonition title |
 
 Not in the gate: the site build, `task docs-site` (`npm --prefix website ci --allow-git=root &&
 npm --prefix website run build`; npm 12 needs `--allow-git=root` for the Git-pinned
@@ -102,7 +102,9 @@ Never edit these by hand; change the generator and regenerate.
 | `schemas/cir-1.features.json` | `codespec features`, from `crates/model/src/features.rs` | `task schema` |
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
-| `website/data/conformance/{reader,writer}-{go,rust}.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>` | `task docs-generate` |
+| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs` or `java/Case.java` (Groovy: `java/Case.java` as `Case.groovy`) and `calls.json` | `task docs-generate` |
+| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy; writers go, rust | `task docs-generate` |
+| `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
 
 A change to the CLI, a crate's `description`, the model, an example or the capability list is
@@ -148,6 +150,10 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `crates/cli/tests/harness.rs::a_planted_one_token_change_in_the_rust_output_fails_with_seed_rust_and_first_line`;
   traces are platform-independent: `crates/harness/tests/harness.rs::a_trace_is_pinned_across_platforms`.
 - Generated site files are current: `crates/docs/src/main.rs::every_generated_file_is_current_in_this_tree`;
+  each reader corpus is what the kit's case sources build:
+  `crates/docs/src/main.rs::every_reader_corpus_is_built_from_the_kit_case_sources`; the support
+  matrix reaches every cell state from fixture manifests and reports:
+  `crates/docs/src/support.rs::a_matrix_from_fixture_manifests_and_reports_reaches_every_state`;
   every shipped capability rests on an existing check:
   `crates/docs/src/status.rs::every_shipped_capability_rests_on_a_test_that_exists`.
 

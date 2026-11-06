@@ -18,13 +18,8 @@ conformance case under
 [`conformance/cases`](https://github.com/beyond10x/codespec/tree/main/conformance/cases), the small
 program that decides it; an id without a link has no case yet.
 
-:::note[Sample data]
-
-The cells below are a hand-made sample that shows the layout. `codespec-docs` will generate
-`website/data/support-matrix.json` from each adapter's `--describe` manifest and its conformance
-report, so a cell cannot claim more than a report shows.
-
-:::
+`codespec-docs` generates the matrix from the feature list, each adapter's `--describe` manifest and
+its conformance report, so a cell cannot claim more than a report shows.
 
 <SupportMatrix data={matrix} />
 
@@ -35,7 +30,7 @@ Each state has a colour and a symbol, so the matrix reads the same without colou
 | symbol | state | means |
 |---|---|---|
 | ✓ | verified | the adapter claims the feature in its manifest and its conformance report passes |
-| ○ | claimed | the manifest claims the feature; no conformance report covers it yet |
+| ○ | claimed | the manifest claims the feature; no conformance report, or no case of the report, covers it yet |
 | ✗ | failing | claimed, and the conformance report fails it: a wrong output or a refusal |
 | ⊘ | refused | the manifest does not claim the feature; the adapter refuses it instead of writing it wrong |
 | n/a | n/a | not applicable to this role: a fact is computed by `codespec pass` and read by writers, so no reader can claim it |

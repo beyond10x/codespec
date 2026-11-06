@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "rust",
     "version": "0.2.0",
-    "manifest_sha256": "5140536c30a5782745a66c919018a2eae74bcf6777b9197c0154904af4a383c5"
+    "manifest_sha256": "5c8a65645fad1d80746ab27660ed47b7f57dd7b4adc8c22769d0434dd4b381a3"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "dfd17e8a3e65ede941526dffd16828ab5688561b9742c125a7ebe0c5b268e636"
+    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
   },
   "codespec": "0.2.0",
   "features": [
@@ -70,16 +70,16 @@
     },
     {
       "id": "assign.shl",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "assign-shl"
       ]
     },
     {
       "id": "assign.shr",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "assign-shr"
       ]
@@ -110,8 +110,8 @@
     },
     {
       "id": "decl.newtype",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "decl-newtype"
       ]
@@ -126,9 +126,11 @@
     },
     {
       "id": "decl.union",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-union"
+      ]
     },
     {
       "id": "expr.binop",
@@ -260,9 +262,11 @@
     },
     {
       "id": "expr.zero",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-zero"
+      ]
     },
     {
       "id": "fact.comma_ok",
@@ -290,8 +294,8 @@
     },
     {
       "id": "fact.messages",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "fact-messages"
       ]
@@ -354,9 +358,11 @@
     },
     {
       "id": "intrinsic.sorted_keys",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-sorted-keys"
+      ]
     },
     {
       "id": "intrinsic.sprintf",
@@ -488,16 +494,16 @@
     },
     {
       "id": "op.shl",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "op-shl"
       ]
     },
     {
       "id": "op.shr",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "op-shr"
       ]
@@ -628,7 +634,10 @@
       "verdict": "refused",
       "cases": [
         "stmt-foreign"
-      ]
+      ],
+      "case": "stmt-foreign",
+      "reason": "refused",
+      "detail": "Count (case.go:6): foreign go statement: defer is outside cir/1"
     },
     {
       "id": "stmt.if",
@@ -672,8 +681,8 @@
     },
     {
       "id": "stmt.send",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "stmt-send"
       ]
@@ -696,8 +705,8 @@
     },
     {
       "id": "type.any",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "type-any"
       ]
@@ -712,8 +721,8 @@
     },
     {
       "id": "type.chan",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "type-chan"
       ]
@@ -752,8 +761,8 @@
     },
     {
       "id": "type.ptr",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "type-ptr"
       ]
@@ -776,15 +785,19 @@
     },
     {
       "id": "type.tuple",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-tuple"
+      ]
     },
     {
       "id": "type.unit",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-unit"
+      ]
     },
     {
       "id": "unop.complement",
@@ -796,8 +809,8 @@
     },
     {
       "id": "unop.deref",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "unop-deref"
       ]
@@ -828,8 +841,8 @@
     },
     {
       "id": "unop.recv",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "unop-recv"
       ]
@@ -862,12 +875,12 @@
     }
   ],
   "summary": {
-    "claimed": 87,
-    "pass": 87,
+    "claimed": 104,
+    "pass": 104,
     "fail": 0,
-    "refused_unclaimed": 13,
+    "refused_unclaimed": 1,
     "pass_unclaimed": 0,
-    "untested": 5,
+    "untested": 0,
     "boundary_fail": 0
   },
   "conforms": true

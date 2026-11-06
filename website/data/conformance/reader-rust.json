@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "rust",
     "version": "0.2.0",
-    "manifest_sha256": "e57f4c312d975a2f61848c6fc7befd1c5caed033e0b0a490e423784869f280c5"
+    "manifest_sha256": "cbd985899c7bcab557b9a9f773332c8b4c5321dc14487b06b965b70e87700d0d"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "dfd17e8a3e65ede941526dffd16828ab5688561b9742c125a7ebe0c5b268e636"
+    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
   },
   "corpus": {
-    "sha256": "8b7417ad4923295987669372daae84f50e848386867f81cf6f76985cc1c20186"
+    "sha256": "ac8e256a1dae8a70ddc110c5c6d8625307e3c6fd1c0a04980caa948c709c7acc"
   },
   "codespec": "0.2.0",
   "features": [
@@ -25,15 +25,19 @@
     },
     {
       "id": "assign.and",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-and"
+      ]
     },
     {
       "id": "assign.and_not",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-and-not"
+      ]
     },
     {
       "id": "assign.div",
@@ -53,9 +57,11 @@
     },
     {
       "id": "assign.or",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-or"
+      ]
     },
     {
       "id": "assign.rem",
@@ -67,15 +73,19 @@
     },
     {
       "id": "assign.shl",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shl"
+      ]
     },
     {
       "id": "assign.shr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shr"
+      ]
     },
     {
       "id": "assign.sub",
@@ -87,9 +97,11 @@
     },
     {
       "id": "assign.xor",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-xor"
+      ]
     },
     {
       "id": "decl.enum",
@@ -171,9 +183,11 @@
     },
     {
       "id": "expr.index",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-index"
+      ]
     },
     {
       "id": "expr.intrinsic",
@@ -193,9 +207,11 @@
     },
     {
       "id": "expr.make",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-make"
+      ]
     },
     {
       "id": "expr.method",
@@ -309,9 +325,11 @@
     },
     {
       "id": "intrinsic.len",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-len"
+      ]
     },
     {
       "id": "intrinsic.println",
@@ -353,9 +371,11 @@
     },
     {
       "id": "op.and_not",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-and-not"
+      ]
     },
     {
       "id": "op.div",
@@ -455,15 +475,19 @@
     },
     {
       "id": "op.shl",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shl"
+      ]
     },
     {
       "id": "op.shr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shr"
+      ]
     },
     {
       "id": "op.sub",
@@ -499,9 +523,11 @@
     },
     {
       "id": "sem.map.order",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-map-order"
+      ]
     },
     {
       "id": "sem.multi_assign.order",
@@ -521,9 +547,11 @@
     },
     {
       "id": "sem.switch.break",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-switch-break"
+      ]
     },
     {
       "id": "stmt.assign",
@@ -543,9 +571,11 @@
     },
     {
       "id": "stmt.continue",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-continue"
+      ]
     },
     {
       "id": "stmt.decr",
@@ -573,9 +603,11 @@
     },
     {
       "id": "stmt.for_range",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-for-range"
+      ]
     },
     {
       "id": "stmt.foreign",
@@ -609,9 +641,11 @@
     },
     {
       "id": "stmt.lookup_else",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-lookup-else"
+      ]
     },
     {
       "id": "stmt.return",
@@ -623,15 +657,19 @@
     },
     {
       "id": "stmt.send",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-send"
+      ]
     },
     {
       "id": "stmt.switch",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-switch"
+      ]
     },
     {
       "id": "stmt.var",
@@ -657,9 +695,11 @@
     },
     {
       "id": "type.chan",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-chan"
+      ]
     },
     {
       "id": "type.error",
@@ -679,9 +719,11 @@
     },
     {
       "id": "type.map",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-map"
+      ]
     },
     {
       "id": "type.named",
@@ -693,9 +735,11 @@
     },
     {
       "id": "type.ptr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-ptr"
+      ]
     },
     {
       "id": "type.slice",
@@ -735,9 +779,11 @@
     },
     {
       "id": "unop.deref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-deref"
+      ]
     },
     {
       "id": "unop.neg",
@@ -769,19 +815,21 @@
     },
     {
       "id": "unop.ref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-ref"
+      ]
     }
   ],
   "boundary": [],
   "summary": {
-    "claimed": 64,
-    "pass": 64,
+    "claimed": 88,
+    "pass": 88,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 41,
+    "untested": 17,
     "boundary_fail": 0
   },
   "conforms": true

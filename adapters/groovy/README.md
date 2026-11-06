@@ -24,6 +24,13 @@ and an enum. Each directory under `testdata/refuse` holds one construct the read
 Grails application, read in part by this reader; `testdata/lending/EXPECTED.md` is what the Grails
 layer is to read of it.
 
+`codespec-run-groovy` (`codespec.run.groovy.Main`, on `codespec.run.Runner` in
+[`../jvm/src`](../jvm/src/codespec/run/Runner.java)) compiles a Groovy package to classes with the
+same Groovy 2.4.10 and makes a `calls.json` against its static methods. The conformance corpus
+`conformance/reader/groovy` is the kit's `java/Case.java` sources, each as `Case.groovy`: Groovy
+compiles every one unchanged, and step 1 of `codespec conform` requires each to run to its case's
+`expected.txt` under Groovy before the reader reads it.
+
 ## Refusal categories
 
 Each refusal and each `foreign` reason begins with one of these categories, then `: ` and the detail.

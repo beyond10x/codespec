@@ -27,7 +27,7 @@ export const FAMILY_LABEL: Record<string, string> = {
 
 export const STATE_META: Record<State, {symbol: string; label: string; meaning: string}> = {
   verified: {symbol: '✓', label: 'verified', meaning: 'claimed, conformance passes'},
-  claimed: {symbol: '○', label: 'claimed', meaning: 'in the manifest, no report yet'},
+  claimed: {symbol: '○', label: 'claimed', meaning: 'in the manifest, no report or case yet'},
   failing: {symbol: '✗', label: 'failing', meaning: 'claimed, conformance fails'},
   refused: {symbol: '⊘', label: 'refused', meaning: 'not claimed'},
   'n/a': {symbol: 'n/a', label: 'n/a', meaning: 'not applicable to this role'},

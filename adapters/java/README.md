@@ -52,6 +52,13 @@ The kit cases without a Java source, and why:
 The ledger-only rows are `ReaderTest.LEDGER_ONLY`, which the test holds against the kit: a claimed
 case subject needs a Java source or a row there.
 
+`codespec-run-java` (`codespec.run.java.Main`, on `codespec.run.Runner` in
+[`../jvm/src`](../jvm/src/codespec/run/Runner.java)) compiles a Java package with the JDK's
+compiler and makes a `calls.json` against its static methods; `codespec conform --role reader
+--lang java` runs every `java/Case.java` of the kit with it (step 1) over the corpus
+`conformance/reader/java`, built from those sources. A claimed feature whose kit case has no Java
+source, the ledger-only rows above, has no corpus case, and the report fails it as `no_case`.
+
 ## Assumptions
 
 The document describes the Java program only under these assumptions; the reader does not check

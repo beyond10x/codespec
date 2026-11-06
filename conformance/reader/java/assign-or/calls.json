@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "OrWith",
+      "args": [
+        "12",
+        "10"
+      ]
+    }
+  ]
+}
