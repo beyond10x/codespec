@@ -1,0 +1,16 @@
+trace = "ledger"
+
+[[implementation]]
+name = "original"
+build = ["javac", "--release", "17", "-Xlint:all", "-Werror", "-encoding", "UTF-8", "-d", "{build}/java", "source/Account.java", "source/DuplicateAccount.java", "source/InsufficientFunds.java", "source/Kind.java", "source/Ledger.java", "source/LedgerException.java", "source/NonPositiveAmount.java", "source/UnknownAccount.java", "drivers/java/driver/Main.java"]
+run = ["java", "-Xshare:auto", "-XX:TieredStopAtLevel=1", "-cp", "{build}/java", "driver.Main"]
+
+[[implementation]]
+name = "go"
+build = ["go", "build", "-C", "drivers/go", "-overlay", "overlay-go.json", "-o", "{build}/go", "."]
+run = ["{build}/go"]
+
+[[implementation]]
+name = "rust"
+build = ["cargo", "build", "--locked", "--quiet", "--manifest-path", "drivers/rust/Cargo.toml", "--target-dir", "{build}/rust-target"]
+run = ["{build}/rust-target/debug/ledger-driver"]

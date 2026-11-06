@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use codespec_harness::{
-    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, run_driver, series_trace,
-    trace,
+    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, ledger_trace, run_driver,
+    series_trace, trace,
 };
 
 fn root() -> PathBuf {
@@ -277,4 +277,142 @@ reserve Ω5 0
 stock b2
 find x9
 low 7
+";
+
+#[test]
+fn the_manifest_selects_the_ledger_trace() {
+    let ok = "trace = \"ledger\"\n[[implementation]]\nname = \"a\"\nbuild = [\"true\"]\nrun = [\"cat\"]\n";
+    assert_eq!(Manifest::parse(ok).unwrap().trace, TraceKind::Ledger);
+}
+
+/// What one ledger trace reaches, counted by a model of the example's `Ledger`: each error path
+/// and each integer edge crossed.
+#[derive(Default, Debug)]
+struct LedgerReach {
+    unknown_account: u32,
+    duplicate_account: u32,
+    non_positive_amount: u32,
+    insufficient_funds: u32,
+    long_past_max: u32,
+    long_past_min: u32,
+    int_past_max: u32,
+    int_past_min: u32,
+}
+
+/// Runs the trace against a model of `examples/ledger/source`: `open` refuses an open id,
+/// `post` refuses a non-positive amount, then an unknown id, then a withdrawal above the balance;
+/// a fee may overdraw; `award` refuses an unknown id. Balances are `long`, points `int`.
+fn ledger_reach(t: &str, r: &mut LedgerReach) {
+    let mut accounts: std::collections::BTreeMap<String, (i64, i32)> = Default::default();
+    for l in t.lines() {
+        let f: Vec<&str> = l.split(' ').collect();
+        match f[0] {
+            "new" => accounts.clear(),
+            "open" => {
+                if accounts.contains_key(f[1]) {
+                    r.duplicate_account += 1;
+                } else {
+                    accounts.insert(f[1].to_string(), (0, 0));
+                }
+            }
+            "post" => {
+                let amount: i64 = f[3].parse().unwrap();
+                if amount <= 0 {
+                    r.non_positive_amount += 1;
+                    continue;
+                }
+                let Some((balance, _)) = accounts.get_mut(f[1]) else {
+                    r.unknown_account += 1;
+                    continue;
+                };
+                match f[2] {
+                    "deposit" => {
+                        if balance.checked_add(amount).is_none() {
+                            r.long_past_max += 1;
+                        }
+                        *balance = balance.wrapping_add(amount);
+                    }
+                    "withdrawal" if *balance < amount => r.insufficient_funds += 1,
+                    "withdrawal" | "fee" => {
+                        if balance.checked_sub(amount).is_none() {
+                            r.long_past_min += 1;
+                        }
+                        *balance = balance.wrapping_sub(amount);
+                    }
+                    k => panic!("kind {k}"),
+                }
+            }
+            "award" => {
+                let n: i32 = f[2].parse().unwrap();
+                let Some((_, points)) = accounts.get_mut(f[1]) else {
+                    r.unknown_account += 1;
+                    continue;
+                };
+                if points.checked_add(n).is_none() {
+                    if n > 0 {
+                        r.int_past_max += 1;
+                    } else {
+                        r.int_past_min += 1;
+                    }
+                }
+                *points = points.wrapping_add(n);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn ledger_traces_reach_every_command_each_error_path_and_both_edges_of_int_and_long() {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut r = LedgerReach::default();
+    for seed in 0..200 {
+        let t = ledger_trace(seed, 300);
+        assert_eq!(t, ledger_trace(seed, 300));
+        assert_eq!(t.lines().count(), 300);
+        assert!(t.starts_with("new\n"), "seed {seed}");
+        for l in t.lines() {
+            let f: Vec<&str> = l.split(' ').collect();
+            assert!(f.iter().all(|x| !x.is_empty()), "empty field in {l:?}");
+            seen.insert(f[0].to_string());
+        }
+        ledger_reach(&t, &mut r);
+    }
+    let want: Vec<String> = [
+        "award", "balances", "count", "find", "largest", "new", "open", "post", "reach", "tallied",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), want);
+    for (what, n) in [
+        ("unknown account", r.unknown_account),
+        ("duplicate account", r.duplicate_account),
+        ("non-positive amount", r.non_positive_amount),
+        ("insufficient funds", r.insufficient_funds),
+        ("long past its maximum", r.long_past_max),
+        ("long past its minimum", r.long_past_min),
+        ("int past its maximum", r.int_past_max),
+        ("int past its minimum", r.int_past_min),
+    ] {
+        assert!(n >= 50, "{what}: {n} times over seeds 0-199; {r:?}");
+    }
+}
+
+#[test]
+fn a_ledger_trace_is_pinned_across_platforms() {
+    assert_eq!(ledger_trace(0, 12), PINNED_LEDGER_SEED_0);
+}
+
+const PINNED_LEDGER_SEED_0: &str = "new
+new
+largest B
+balances
+open B
+count
+balances
+new
+post bob fee 926
+open ｚ
+reach zoë 1661
+post ｚ withdrawal 139
 ";

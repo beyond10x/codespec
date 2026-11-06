@@ -1,0 +1,10 @@
+[package]
+name = "ledger-driver"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ledger = { path = "../../out/rust" }
+
+[workspace]
