@@ -9,10 +9,10 @@
 //!   one the reader made for the class, not a declared function, and is not counted.
 //! - A refusal outside every function counts under its file and category. It is also a refused
 //!   function, one the reader did not read at all, when it refuses a method's declaration: its
-//!   `what` is a call shape (`T(…)`, a refused constructor), or `T.<hook>` for a Groovy hook through
-//!   which a class answers names it does not declare (`methodMissing`, `propertyMissing`,
-//!   `invokeMethod`, `getProperty`, `setProperty`). Other declaration refusals (a field, domain
-//!   metadata, an injected dependency) are not functions.
+//!   `what` is a call shape: `T(…)` for a refused constructor, `T.m(…)` for a refused method,
+//!   such as a Groovy hook (`methodMissing`) through which a class answers names it does not
+//!   declare. Other declaration refusals (a field, domain metadata, an injected dependency) are
+//!   not functions.
 //! - A refusal's category is the text of its `reason` before the first `: ` when that is one of
 //!   the Groovy reader's eight categories, and `uncategorised` otherwise, so every reader's output
 //!   is measured.
@@ -40,17 +40,6 @@ pub const CATEGORIES: [&str; 9] = [
     "uncategorised",
     "unresolved",
     "unsupported",
-];
-
-/// The methods through which a Groovy class answers names it does not declare.
-const DYNAMIC_HOOKS: [&str; 7] = [
-    "methodMissing",
-    "propertyMissing",
-    "$static_methodMissing",
-    "$static_propertyMissing",
-    "invokeMethod",
-    "getProperty",
-    "setProperty",
 ];
 
 /// A measurement of one module.
@@ -142,9 +131,6 @@ fn holds_foreign(body: &[Stmt]) -> bool {
 /// Whether a refusal outside every function refuses a method's declaration.
 fn refuses_a_declared_function(what: &str) -> bool {
     what.ends_with("(…)")
-        || what
-            .rsplit_once('.')
-            .is_some_and(|(_, name)| DYNAMIC_HOOKS.contains(&name))
 }
 
 #[derive(Default)]

@@ -192,8 +192,8 @@ fn a_hand_built_module_of_two_files_gives_the_exact_text_and_json_reports() {
 }
 
 /// A JVM reader's `New<Class>` at its class's own line is a constructor the reader made, not a
-/// declared function; a refusal of a method's declaration (a dynamic hook such as `methodMissing`,
-/// or a `what` naming a call shape, `Cart(…)`) is a refused function with no body.
+/// declared function; a refusal of a method's declaration (a `what` ending in `(…)`, such as
+/// `Cart.methodMissing(…)` or `Cart(…)`) is a refused function with no body; `Cart.hasMany` is not.
 #[test]
 fn a_synthesized_constructor_is_not_counted_and_a_refused_declaration_is_a_refused_function() {
     let doc = r#"{
@@ -210,7 +210,7 @@ fn a_synthesized_constructor_is_not_counted_and_a_refused_declaration_is_a_refus
   ],
   "layout": [],
   "refusals": [
-    {"pos": "Cart.groovy:5", "what": "Cart.methodMissing", "reason": "dynamic: methodMissing declared"},
+    {"pos": "Cart.groovy:5", "what": "Cart.methodMissing(…)", "reason": "dynamic: methodMissing declared"},
     {"pos": "Cart.groovy:9", "what": "Cart(…)", "reason": "unsupported: a second constructor"},
     {"pos": "Cart.groovy:2", "what": "Cart.hasMany", "reason": "gorm: mapping metadata hasMany"}
   ]
@@ -231,7 +231,7 @@ fn a_synthesized_constructor_is_not_counted_and_a_refused_declaration_is_a_refus
     assert_eq!(
         rows,
         vec![
-            ("Cart.groovy", vec![], vec!["Cart(…)", "Cart.methodMissing"]),
+            ("Cart.groovy", vec![], vec!["Cart(…)", "Cart.methodMissing(…)"]),
             ("Till.groovy", vec!["NewTill"], vec![]),
         ]
     );
@@ -382,7 +382,10 @@ fn the_lending_functions_read_and_refused_are_the_ones_expected_md_names() {
     }
     let bytes = std::fs::read(root().join(LENDING)).unwrap();
     let report = measure(&Module::from_json(&bytes).unwrap());
-    let method = |key: &String| key.rsplit('.').next().unwrap().to_string();
+    let method = |key: &String| {
+        let name = key.rsplit('.').next().unwrap();
+        name.strip_suffix("(…)").unwrap_or(name).to_string()
+    };
     let got: BTreeMap<String, (Vec<String>, Vec<String>)> = report
         .files
         .iter()
