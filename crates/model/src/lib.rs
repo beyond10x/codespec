@@ -303,6 +303,27 @@ pub enum Stmt {
         body: Vec<Stmt>,
         pos: Pos,
     },
+    /// `for init; cond; post { body }`: `init` runs once, `cond` is checked before each iteration
+    /// (absent: always true), `post` runs after each iteration, including one a `continue` ends.
+    /// `init` is a `let` or an `assign`; `post` an `assign`, `incr` or `decr`.
+    For {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        init: Option<Box<Stmt>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cond: Option<Expr>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        post: Option<Box<Stmt>>,
+        body: Vec<Stmt>,
+        pos: Pos,
+    },
+    /// Leaves the innermost enclosing `for` or `for_range`.
+    Break {
+        pos: Pos,
+    },
+    /// Ends the current iteration of the innermost enclosing `for` or `for_range`.
+    Continue {
+        pos: Pos,
+    },
     /// A `switch` on `tag`, or on `true` when `tag` is absent.
     Switch {
         #[serde(default, skip_serializing_if = "Option::is_none")]

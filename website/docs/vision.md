@@ -74,16 +74,10 @@ Two questions decide each adapter, and the harness answers both:
 | M0 | model, schema, CLI (`validate`, `schema`, `read`, `write`), Go reader, `orders` | `task check` green; `orders` read twice gives the same bytes | shipped in 0.1.0 |
 | M1 | passes, Go writer, Rust writer, harness | `orders`: original Go, Go output and Rust output byte-equal on 200 × 300 traces | shipped in 0.1.0 |
 | M2 | a tree-sitter Go reader | — | dropped ([Not used](#not-used)) |
-| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | the M1 criteria on both examples | planned |
+| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | the M1 criteria on both examples | done in 0.2.0 (`series`) |
 | M4 | Rust reader on `syn`; Rust → `cir/1` → Go | harness green on a Rust example | shipped in 0.1.0 (`inventory`) |
 
 Release 0.1.0 is M0, M1 and M4: Go reader, Rust reader, Go writer, Rust writer, passes, harness.
-
-:::caution[Planned]
-
-M3 is planned. Nothing on this site describes it as working.
-
-:::
 
 ## Not used
 

@@ -172,3 +172,39 @@ fn the_written_crate_builds_without_warnings() {
         String::from_utf8_lossy(&o.stderr)
     );
 }
+
+fn series() -> Value {
+    let path = example("../series/series.cir.json");
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn a_continue_in_a_three_clause_for_runs_the_post_statement_first() {
+    let (_, lib) = write_ok(&series(), "series-continue");
+    let lib = squash(&lib);
+    assert!(
+        lib.contains("{i=i.wrapping_add(1i64);continue;}"),
+        "EvenSum's continue skips i++:\n{lib}"
+    );
+}
+
+#[test]
+fn a_swap_reads_every_value_before_it_assigns_any() {
+    let (_, lib) = write_ok(&series(), "series-swap");
+    let lib = squash(&lib);
+    assert!(
+        lib.contains(
+            "let__value0=self.values[jasusize];let__value1=self.values[iasusize];\
+             self.values[iasusize]=__value0;self.values[jasusize]=__value1;"
+        ),
+        "Reverse's swap is not two reads then two writes:\n{lib}"
+    );
+}
+
+#[test]
+fn a_local_slice_read_by_no_later_statement_is_moved_not_refused() {
+    let (out, lib) = write_ok(&series(), "series-move");
+    assert!(squash(&lib).contains("self.values=kept;"), "{lib}");
+    let refusals = std::fs::read_to_string(out.join("refusals.json")).unwrap();
+    assert_eq!(refusals.trim(), "[]");
+}

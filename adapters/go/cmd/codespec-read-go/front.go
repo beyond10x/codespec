@@ -24,6 +24,9 @@ type front struct {
 	mod    *Module
 	conv   map[string]bool // named types the code converts arbitrary values to
 	layout []string
+	// breaks holds the enclosing statements an unlabeled `break` would leave, innermost last:
+	// "loop" or "switch". cir/1 `break` leaves a loop only.
+	breaks []string
 }
 
 func load(dir string) (*Module, error) {
@@ -379,6 +382,15 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 	return out
 }
 
+// inside reads the statements of a loop or switch body, with that construct as the target of an
+// unlabeled break.
+func (f *front) inside(target string, list []ast.Stmt, results []Type) []Stmt {
+	f.breaks = append(f.breaks, target)
+	out := f.stmts(list, results)
+	f.breaks = f.breaks[:len(f.breaks)-1]
+	return out
+}
+
 func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 	pos := f.pos(s.Pos())
 	switch s := s.(type) {
@@ -456,7 +468,67 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 		if s.Value != nil {
 			val = s.Value.(*ast.Ident).Name
 		}
-		return Stmt{K: "for_range", Key: key, Val: val, Over: &over, Body: f.stmts(s.Body.List, results), Pos: pos}
+		return Stmt{K: "for_range", Key: key, Val: val, Over: &over, Body: f.inside("loop", s.Body.List, results), Pos: pos}
+	case *ast.ForStmt:
+		st := Stmt{K: "for", Pos: pos}
+		if s.Init != nil {
+			init := f.stmt(s.Init, results)
+			if init.K != "let" && init.K != "assign" {
+				return f.foreign(s, "for with an init statement other than := or =")
+			}
+			st.Init = &init
+		}
+		if s.Cond != nil {
+			c, ok := f.expr(s.Cond)
+			if !ok {
+				return f.foreign(s, "expression outside cir/1")
+			}
+			st.Cond = &c
+		}
+		if s.Post != nil {
+			post := f.stmt(s.Post, results)
+			if post.K != "assign" && post.K != "incr" && post.K != "decr" {
+				return f.foreign(s, "for with a post statement other than =, ++ or --")
+			}
+			st.Post = &post
+		}
+		st.Body = f.inside("loop", s.Body.List, results)
+		return st
+	case *ast.BranchStmt:
+		if s.Label != nil {
+			return f.foreign(s, "labeled branch is outside cir/1")
+		}
+		switch s.Tok {
+		case token.BREAK:
+			if len(f.breaks) == 0 || f.breaks[len(f.breaks)-1] != "loop" {
+				return f.foreign(s, "break out of a switch: cir/1 break leaves a loop")
+			}
+			return Stmt{K: "break", Pos: pos}
+		case token.CONTINUE:
+			return Stmt{K: "continue", Pos: pos}
+		}
+		return f.foreign(s, s.Tok.String()+" is outside cir/1")
+	case *ast.SwitchStmt:
+		if s.Init != nil {
+			return f.foreign(s, "switch with an init statement")
+		}
+		st := Stmt{K: "switch", Pos: pos}
+		if s.Tag != nil {
+			tag, ok := f.expr(s.Tag)
+			if !ok {
+				return f.foreign(s, "expression outside cir/1")
+			}
+			st.Tag = &tag
+		}
+		for _, cl := range s.Body.List {
+			cc := cl.(*ast.CaseClause)
+			vs, ok := f.exprs(cc.List)
+			if !ok {
+				return f.foreign(s, "expression outside cir/1")
+			}
+			st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
+		}
+		return st
 	case *ast.ReturnStmt:
 		rs, ok := f.exprs(s.Results)
 		if !ok {

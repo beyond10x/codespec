@@ -158,6 +158,26 @@ func (e *enc) stmt(s Stmt) node {
 		}
 	case "for_range":
 		n["key"], n["val"], n["over"], n["body"] = s.Key, s.Val, e.expr(*s.Over), e.stmts(s.Body)
+	case "for":
+		if s.Init != nil {
+			n["init"] = e.stmt(*s.Init)
+		}
+		if s.Cond != nil {
+			n["cond"] = e.expr(*s.Cond)
+		}
+		if s.Post != nil {
+			n["post"] = e.stmt(*s.Post)
+		}
+		n["body"] = e.stmts(s.Body)
+	case "break", "continue":
+	case "switch":
+		if s.Tag != nil {
+			n["tag"] = e.expr(*s.Tag)
+		}
+		n["cases"] = e.list(len(s.Cases), func(i int) any {
+			c := s.Cases[i]
+			return node{"values": e.exprs(c.Values), "body": e.stmts(c.Body)}
+		})
 	case "return":
 		n["results"] = e.exprs(s.Results)
 	case "send":

@@ -96,6 +96,9 @@ type Func struct {
 //	incr / decr  X++ / X--
 //	if           Cond Then Else
 //	for_range    for Key, Val := range Over { Body }
+//	for          for Init; Cond; Post { Body }       (each of Init, Cond, Post optional)
+//	break, continue                                (unlabeled, of the innermost loop)
+//	switch       switch Tag { Cases }             (Tag nil: switch true)
 //	return       Results
 //	expr         X
 //	send         Chan <- X
@@ -120,6 +123,10 @@ type Stmt struct {
 	Index   *Expr    `json:"index,omitempty"`
 	Body    []Stmt   `json:"body,omitempty"`
 	Results []Expr   `json:"results,omitempty"`
+	Init    *Stmt    `json:"init,omitempty"`
+	Post    *Stmt    `json:"post,omitempty"`
+	Tag     *Expr    `json:"tag,omitempty"`
+	Cases   []Case   `json:"cases,omitempty"`
 	Lang    string   `json:"lang,omitempty"`
 	Src     string   `json:"src,omitempty"`
 	Reason  string   `json:"reason,omitempty"`
@@ -145,6 +152,13 @@ type Stmt struct {
 //	make     T: an empty map or slice
 //	intrinsic Name(Args): sprintf, errorf, println, append, len
 //	to_error X: a value of an error struct used as error
+//
+// Case is one clause of a switch; no Values for the default clause.
+type Case struct {
+	Values []Expr `json:"values"`
+	Body   []Stmt `json:"body"`
+}
+
 type Expr struct {
 	K          string   `json:"k"`
 	T          *Type    `json:"t,omitempty"`

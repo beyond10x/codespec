@@ -17,8 +17,8 @@
 //! default `target/harness`). Unknown fields, an empty `run`, an empty list and duplicate names are
 //! refused.
 //!
-//! `trace = "inventory"` at the top selects the inventory trace generator; without it, or with
-//! `trace = "orders"`, the orders one. Another name is refused.
+//! `trace = "inventory"` at the top selects the inventory trace generator, `trace = "series"` the
+//! series one; without it, or with `trace = "orders"`, the orders one. Another name is refused.
 //!
 //! # Trace
 //!
@@ -75,6 +75,32 @@
 //! | `value <category>` | `ValueOf` | `value <category> <n>` |
 //! | `low <threshold>` | `LowStock` | `low <n>` followed by ` \| <sku>` per SKU, sorted, since map order is not fixed |
 //! | `reserved` | `Reserved` | `reserved <n>` |
+//!
+//! # Series trace and output
+//!
+//! [`series_trace`] draws on the same generator. About a sixth of samples are an `int64` extreme or
+//! another value whose sum, midpoint, negation or `3n + 1` overflows; a fifth of windows are zero,
+//! negative or extreme; `steps` and `prime` get a quarter of edge inputs, every one of which ends
+//! in at most 46,341 iterations. Each command prints one line; `<n>`, `<v>` are decimal.
+//!
+//! | line | call | output |
+//! |---|---|---|
+//! | `new` | `New()` | `new` |
+//! | `push <v>` | `Push` | `push <n>` |
+//! | `sum` | `Sum` | `sum <v>` |
+//! | `mean`, `median` | `Mean`, `Median` | `<cmd> ok <v>` or `<cmd> err <error>` |
+//! | `sorted` | `Sorted` | `sorted <n>` followed by ` <v>` per value |
+//! | `reverse` | `Reverse`; `trend` and `window` see the new order | `reverse` |
+//! | `trend` | `Trend` | `trend <trend>` |
+//! | `window <w>` | `MaxWindow` | `window ok <v>` or `window err <error>` |
+//! | `gcd` | `Gcd` | `gcd <v>` |
+//! | `evens` | `EvenSum` | `evens <v>` |
+//! | `drop <v>` | `Drop` | `drop <n>` |
+//! | `len` | `Len` | `len <n>` |
+//! | `steps <n>` | `Steps` | `steps ok <n>` or `steps err <error>` |
+//! | `prime <n>` | `IsPrime` | `prime <true\|false>` |
+//! | `bucket <v>` | `Bucket` | `bucket <name>` |
+//! | `residue <v>` | `Residue` | `residue <name>` |
 //!
 //! # Comparison
 //!
@@ -230,6 +256,99 @@ fn qty(r: &mut SplitMix64) -> i64 {
     }
 }
 
+/// Values that overflow a sum, a midpoint, a negation or `3n + 1`.
+const EDGE_VALUES: &[i64] = &[
+    i64::MAX,
+    i64::MIN,
+    i64::MIN + 1,
+    -1,
+    0,
+    1,
+    1 << 62,
+    -(1 << 62),
+    3_037_000_500,
+];
+/// Inputs to `IsPrime` whose trial division ends quickly: `i64::MAX` is divisible by 7, the
+/// largest prime here needs 46,341 divisions.
+const EDGE_PRIMES: &[i64] = &[
+    i64::MAX,
+    i64::MIN,
+    -7,
+    0,
+    1,
+    2,
+    7_919,
+    999_983,
+    2_147_483_647,
+];
+const EDGE_STEPS: &[i64] = &[i64::MAX, i64::MIN, 0, -5, 1, 27, 1 << 62, 3_037_000_501];
+
+/// The `series` trace of `commands` commands for `seed` (manifest `trace = "series"`).
+pub fn series_trace(seed: u64, commands: usize) -> String {
+    let mut r = SplitMix64(seed);
+    let mut out = String::new();
+    for i in 0..commands {
+        let roll = r.below(100);
+        if i == 0 || roll < 2 {
+            out.push_str("new\n");
+            continue;
+        }
+        let line = match roll {
+            2..=31 => format!("push {}", value(&mut r)),
+            32..=35 => "sum".to_string(),
+            36..=39 => "mean".to_string(),
+            40..=44 => "median".to_string(),
+            45..=48 => "sorted".to_string(),
+            49..=51 => "reverse".to_string(),
+            52..=55 => "trend".to_string(),
+            56..=61 => {
+                let w = if r.below(5) == 0 {
+                    r.pick(&["0", "-1", "-9223372036854775808", "9223372036854775807"])
+                        .to_string()
+                } else {
+                    (1 + r.below(8)).to_string()
+                };
+                format!("window {w}")
+            }
+            62..=65 => "gcd".to_string(),
+            66..=69 => "evens".to_string(),
+            70..=74 => format!("drop {}", value(&mut r)),
+            75..=77 => "len".to_string(),
+            78..=83 => {
+                let n = if r.below(4) == 0 {
+                    EDGE_STEPS[r.below(EDGE_STEPS.len() as u64) as usize]
+                } else {
+                    1 + r.below(10_000) as i64
+                };
+                format!("steps {n}")
+            }
+            84..=89 => {
+                let n = if r.below(4) == 0 {
+                    EDGE_PRIMES[r.below(EDGE_PRIMES.len() as u64) as usize]
+                } else {
+                    r.below(2_000) as i64
+                };
+                format!("prime {n}")
+            }
+            90..=94 => format!("bucket {}", value(&mut r)),
+            _ => format!("residue {}", value(&mut r)),
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// A sample: mostly in `-50..=50`, so `drop` and `gcd` find shared values; a sixth from
+/// [`EDGE_VALUES`]; a sixth up to 2,000 in size.
+fn value(r: &mut SplitMix64) -> i64 {
+    match r.below(6) {
+        0 => EDGE_VALUES[r.below(EDGE_VALUES.len() as u64) as usize],
+        1 => r.below(4_001) as i64 - 2_000,
+        _ => r.below(101) as i64 - 50,
+    }
+}
+
 /// `harness.toml`: the implementations of one example, the first the reference.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -249,6 +368,8 @@ pub enum TraceKind {
     Orders,
     /// [`inventory_trace`]: the `inventory` crate.
     Inventory,
+    /// [`series_trace`]: the `series` package.
+    Series,
 }
 
 impl TraceKind {
@@ -257,6 +378,7 @@ impl TraceKind {
         match self {
             TraceKind::Orders => trace(seed, commands),
             TraceKind::Inventory => inventory_trace(seed, commands),
+            TraceKind::Series => series_trace(seed, commands),
         }
     }
 }

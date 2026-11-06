@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 625.4 2716" width="625.4" height="2716" role="img" aria-labelledby="title">
+<title id="title">Steps, EvenSum, Reverse and Residue of the cir/1 module series after codespec pass</title>
+<style>
+text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: #1b1f24; }
+.edge { stroke: #8a929c; stroke-width: 1.2; fill: none; }
+.module { fill: #d7ecdf; stroke: #2f7d4f; }
+.group { fill: #eceff3; stroke: #6b7480; }
+.decl { fill: #dde8f7; stroke: #3a6db0; }
+.stmt { fill: #f6e7cf; stroke: #a8701f; }
+.expr { fill: #f1e2f3; stroke: #8a4a92; }
+rect { stroke-width: 1; }
+</style>
+<path class="edge" d="M28 44V66H46"/>
+<path class="edge" d="M58 80V102H76"/>
+<path class="edge" d="M58 80V138H76"/>
+<path class="edge" d="M28 44V174H46"/>
+<path class="edge" d="M58 188V210H76"/>
+<path class="edge" d="M58 188V246H76"/>
+<path class="edge" d="M28 44V282H46"/>
+<path class="edge" d="M58 296V318H76"/>
+<path class="edge" d="M88 332V354H106"/>
+<path class="edge" d="M118 368V390H136"/>
+<path class="edge" d="M118 368V426H136"/>
+<path class="edge" d="M148 440V462H166"/>
+<path class="edge" d="M148 440V498H166"/>
+<path class="edge" d="M118 368V534H136"/>
+<path class="edge" d="M148 548V570H166"/>
+<path class="edge" d="M148 548V606H166"/>
+<path class="edge" d="M118 368V642H136"/>
+<path class="edge" d="M148 656V678H166"/>
+<path class="edge" d="M148 656V714H166"/>
+<path class="edge" d="M58 296V750H76"/>
+<path class="edge" d="M88 764V786H106"/>
+<path class="edge" d="M118 800V822H136"/>
+<path class="edge" d="M88 764V858H106"/>
+<path class="edge" d="M118 872V894H136"/>
+<path class="edge" d="M118 872V930H136"/>
+<path class="edge" d="M148 944V966H166"/>
+<path class="edge" d="M118 872V1002H136"/>
+<path class="edge" d="M148 1016V1038H166"/>
+<path class="edge" d="M148 1016V1074H166"/>
+<path class="edge" d="M118 872V1110H136"/>
+<path class="edge" d="M148 1124V1146H166"/>
+<path class="edge" d="M118 872V1182H136"/>
+<path class="edge" d="M148 1196V1218H166"/>
+<path class="edge" d="M88 764V1254H106"/>
+<path class="edge" d="M118 1268V1290H136"/>
+<path class="edge" d="M58 296V1326H76"/>
+<path class="edge" d="M88 1340V1362H106"/>
+<path class="edge" d="M118 1376V1398H136"/>
+<path class="edge" d="M118 1376V1434H136"/>
+<path class="edge" d="M148 1448V1470H166"/>
+<path class="edge" d="M148 1448V1514H166"/>
+<path class="edge" d="M88 1340V1558H106"/>
+<path class="edge" d="M118 1572V1594H136"/>
+<path class="edge" d="M88 1340V1630H106"/>
+<path class="edge" d="M118 1644V1666H136"/>
+<path class="edge" d="M118 1644V1702H136"/>
+<path class="edge" d="M148 1716V1738H166"/>
+<path class="edge" d="M148 1716V1774H166"/>
+<path class="edge" d="M178 1788V1810H196"/>
+<path class="edge" d="M148 1716V1846H166"/>
+<path class="edge" d="M178 1860V1882H196"/>
+<path class="edge" d="M118 1644V1918H136"/>
+<path class="edge" d="M148 1932V1954H166"/>
+<path class="edge" d="M118 1644V1990H136"/>
+<path class="edge" d="M148 2004V2026H166"/>
+<path class="edge" d="M148 2004V2062H166"/>
+<path class="edge" d="M88 1340V2098H106"/>
+<path class="edge" d="M118 2112V2134H136"/>
+<path class="edge" d="M118 2112V2170H136"/>
+<path class="edge" d="M58 296V2206H76"/>
+<path class="edge" d="M88 2220V2242H106"/>
+<path class="edge" d="M118 2256V2278H136"/>
+<path class="edge" d="M118 2256V2314H136"/>
+<path class="edge" d="M148 2328V2350H166"/>
+<path class="edge" d="M118 2256V2386H136"/>
+<path class="edge" d="M148 2400V2422H166"/>
+<path class="edge" d="M118 2256V2458H136"/>
+<path class="edge" d="M148 2472V2494H166"/>
+<path class="edge" d="M28 44V2530H46"/>
+<path class="edge" d="M58 2544V2574H76"/>
+<path class="edge" d="M58 2544V2634H76"/>
+<path class="edge" d="M58 2544V2686H76"/>
+<rect class="module" x="16" y="16" width="414.2" height="28" rx="5"/>
+<text x="26" y="34">module series · cir/1 · read by codespec-read-go 0.2.0</text>
+<rect class="group" x="46" y="52" width="85.7" height="28" rx="5"/>
+<text x="56" y="70">types (2)</text>
+<rect class="decl" x="76" y="88" width="246.3" height="28" rx="5"/>
+<text x="86" y="106">enum Trend : string, 4 variants</text>
+<rect class="decl" x="76" y="124" width="239" height="28" rx="5"/>
+<text x="86" y="142">struct Series { values []int }</text>
+<rect class="group" x="46" y="160" width="93" height="28" rx="5"/>
+<text x="56" y="178">errors (2)</text>
+<rect class="decl" x="76" y="196" width="224.4" height="28" rx="5"/>
+<text x="86" y="214">ErrEmpty = &quot;series is empty&quot;</text>
+<rect class="decl" x="76" y="232" width="312" height="28" rx="5"/>
+<text x="86" y="250">ErrBadWindow = &quot;window must be positive&quot;</text>
+<rect class="group" x="46" y="268" width="85.7" height="28" rx="5"/>
+<text x="56" y="286">funcs (4)</text>
+<rect class="decl" x="76" y="304" width="173.3" height="28" rx="5"/>
+<text x="86" y="322">func Series.Reverse()</text>
+<rect class="stmt" x="106" y="340" width="180.6" height="28" rx="5"/>
+<text x="116" y="358">for (init; cond; post)</text>
+<rect class="expr" x="136" y="376" width="166" height="28" rx="5"/>
+<text x="146" y="394">binop · i &lt; j : bool</text>
+<rect class="stmt" x="136" y="412" width="78.4" height="28" rx="5"/>
+<text x="146" y="430">let i, j</text>
+<rect class="expr" x="166" y="448" width="114.9" height="28" rx="5"/>
+<text x="176" y="466">lit · 0 : int</text>
+<rect class="expr" x="166" y="484" width="246.3" height="28" rx="5"/>
+<text x="176" y="502">binop · len(s.values) - 1 : int</text>
+<rect class="stmt" x="136" y="520" width="260.9" height="28" rx="5"/>
+<text x="146" y="538">assign s.values[i], s.values[j] =</text>
+<rect class="expr" x="166" y="556" width="202.5" height="28" rx="5"/>
+<text x="176" y="574">index · s.values[j] : int</text>
+<rect class="expr" x="166" y="592" width="202.5" height="28" rx="5"/>
+<text x="176" y="610">index · s.values[i] : int</text>
+<rect class="stmt" x="136" y="628" width="114.9" height="28" rx="5"/>
+<text x="146" y="646">assign i, j =</text>
+<rect class="expr" x="166" y="664" width="158.7" height="28" rx="5"/>
+<text x="176" y="682">binop · i + 1 : int</text>
+<rect class="expr" x="166" y="700" width="158.7" height="28" rx="5"/>
+<text x="176" y="718">binop · j - 1 : int</text>
+<rect class="decl" x="76" y="736" width="217.1" height="28" rx="5"/>
+<text x="86" y="754">func Series.EvenSum() → int</text>
+<rect class="stmt" x="106" y="772" width="85.7" height="28" rx="5"/>
+<text x="116" y="790">let total</text>
+<rect class="expr" x="136" y="808" width="114.9" height="28" rx="5"/>
+<text x="146" y="826">lit · 0 : int</text>
+<rect class="stmt" x="106" y="844" width="180.6" height="28" rx="5"/>
+<text x="116" y="862">for (init; cond; post)</text>
+<rect class="expr" x="136" y="880" width="253.6" height="28" rx="5"/>
+<text x="146" y="898">binop · i &lt; len(s.values) : bool</text>
+<rect class="stmt" x="136" y="916" width="56.5" height="28" rx="5"/>
+<text x="146" y="934">let i</text>
+<rect class="expr" x="166" y="952" width="114.9" height="28" rx="5"/>
+<text x="176" y="970">lit · 0 : int</text>
+<rect class="stmt" x="136" y="988" width="34.6" height="28" rx="5"/>
+<text x="146" y="1006">if</text>
+<rect class="expr" x="166" y="1024" width="275.5" height="28" rx="5"/>
+<text x="176" y="1042">binop · ….values[i] % 2 != 0 : bool</text>
+<rect class="stmt" x="166" y="1060" width="78.4" height="28" rx="5"/>
+<text x="176" y="1078">continue</text>
+<rect class="stmt" x="136" y="1096" width="129.5" height="28" rx="5"/>
+<text x="146" y="1114">assign total +=</text>
+<rect class="expr" x="166" y="1132" width="202.5" height="28" rx="5"/>
+<text x="176" y="1150">index · s.values[i] : int</text>
+<rect class="stmt" x="136" y="1168" width="49.2" height="28" rx="5"/>
+<text x="146" y="1186">incr</text>
+<rect class="expr" x="166" y="1204" width="114.9" height="28" rx="5"/>
+<text x="176" y="1222">var · i : int</text>
+<rect class="stmt" x="106" y="1240" width="63.8" height="28" rx="5"/>
+<text x="116" y="1258">return</text>
+<rect class="expr" x="136" y="1276" width="144.1" height="28" rx="5"/>
+<text x="146" y="1294">var · total : int</text>
+<rect class="decl" x="76" y="1312" width="253.6" height="28" rx="5"/>
+<text x="86" y="1330">func Steps(n int) → (int, error)</text>
+<rect class="stmt" x="106" y="1348" width="34.6" height="28" rx="5"/>
+<text x="116" y="1366">if</text>
+<rect class="expr" x="136" y="1384" width="173.3" height="28" rx="5"/>
+<text x="146" y="1402">binop · n &lt;= 0 : bool</text>
+<rect class="stmt" x="136" y="1420" width="63.8" height="28" rx="5"/>
+<text x="146" y="1438">return</text>
+<rect class="expr" x="166" y="1456" width="114.9" height="28" rx="5"/>
+<text x="176" y="1474">lit · 0 : int</text>
+<rect class="expr" x="166" y="1492" width="443.4" height="44" rx="5"/>
+<text x="176" y="1510">intrinsic · errorf(&quot;steps of %d: n must be positive&quot;, n) :</text>
+<text x="176" y="1526">error</text>
+<rect class="stmt" x="106" y="1544" width="85.7" height="28" rx="5"/>
+<text x="116" y="1562">let steps</text>
+<rect class="expr" x="136" y="1580" width="114.9" height="28" rx="5"/>
+<text x="146" y="1598">lit · 0 : int</text>
+<rect class="stmt" x="106" y="1616" width="93" height="28" rx="5"/>
+<text x="116" y="1634">for (cond)</text>
+<rect class="expr" x="136" y="1652" width="173.3" height="28" rx="5"/>
+<text x="146" y="1670">binop · n != 1 : bool</text>
+<rect class="stmt" x="136" y="1688" width="34.6" height="28" rx="5"/>
+<text x="146" y="1706">if</text>
+<rect class="expr" x="166" y="1724" width="202.5" height="28" rx="5"/>
+<text x="176" y="1742">binop · n % 2 == 0 : bool</text>
+<rect class="stmt" x="166" y="1760" width="100.3" height="28" rx="5"/>
+<text x="176" y="1778">assign n /=</text>
+<rect class="expr" x="196" y="1796" width="114.9" height="28" rx="5"/>
+<text x="206" y="1814">lit · 2 : int</text>
+<rect class="stmt" x="166" y="1832" width="93" height="28" rx="5"/>
+<text x="176" y="1850">assign n =</text>
+<rect class="expr" x="196" y="1868" width="187.9" height="28" rx="5"/>
+<text x="206" y="1886">binop · 3 * n + 1 : int</text>
+<rect class="stmt" x="136" y="1904" width="49.2" height="28" rx="5"/>
+<text x="146" y="1922">incr</text>
+<rect class="expr" x="166" y="1940" width="144.1" height="28" rx="5"/>
+<text x="176" y="1958">var · steps : int</text>
+<rect class="stmt" x="136" y="1976" width="34.6" height="28" rx="5"/>
+<text x="146" y="1994">if</text>
+<rect class="expr" x="166" y="2012" width="253.6" height="28" rx="5"/>
+<text x="176" y="2030">binop · steps == maxSteps : bool</text>
+<rect class="stmt" x="166" y="2048" width="56.5" height="28" rx="5"/>
+<text x="176" y="2066">break</text>
+<rect class="stmt" x="106" y="2084" width="63.8" height="28" rx="5"/>
+<text x="116" y="2102">return</text>
+<rect class="expr" x="136" y="2120" width="144.1" height="28" rx="5"/>
+<text x="146" y="2138">var · steps : int</text>
+<rect class="expr" x="136" y="2156" width="144.1" height="28" rx="5"/>
+<text x="146" y="2174">nil · nil : error</text>
+<rect class="decl" x="76" y="2192" width="224.4" height="28" rx="5"/>
+<text x="86" y="2210">func Residue(v int) → string</text>
+<rect class="stmt" x="106" y="2228" width="129.5" height="28" rx="5"/>
+<text x="116" y="2246">switch, 3 cases</text>
+<rect class="expr" x="136" y="2264" width="158.7" height="28" rx="5"/>
+<text x="146" y="2282">binop · v % 3 : int</text>
+<rect class="stmt" x="136" y="2300" width="63.8" height="28" rx="5"/>
+<text x="146" y="2318">return</text>
+<rect class="expr" x="166" y="2336" width="209.8" height="28" rx="5"/>
+<text x="176" y="2354">lit · &quot;divisible&quot; : string</text>
+<rect class="stmt" x="136" y="2372" width="63.8" height="28" rx="5"/>
+<text x="146" y="2390">return</text>
+<rect class="expr" x="166" y="2408" width="202.5" height="28" rx="5"/>
+<text x="176" y="2426">lit · &quot;one-over&quot; : string</text>
+<rect class="stmt" x="136" y="2444" width="63.8" height="28" rx="5"/>
+<text x="146" y="2462">return</text>
+<rect class="expr" x="166" y="2480" width="209.8" height="28" rx="5"/>
+<text x="176" y="2498">lit · &quot;one-under&quot; : string</text>
+<rect class="group" x="46" y="2516" width="56.5" height="28" rx="5"/>
+<text x="56" y="2534">facts</text>
+<rect class="decl" x="76" y="2552" width="421.5" height="44" rx="5"/>
+<text x="86" y="2570">fallible: Series.Mean, Series.Median, Series.MaxWindow,</text>
+<text x="86" y="2586">Steps</text>
+<rect class="decl" x="76" y="2604" width="443.4" height="60" rx="5"/>
+<text x="86" y="2622">read_only: Series.Sum, Series.Mean, Series.Sorted,</text>
+<text x="86" y="2638">Series.Median, Series.Trend, Series.MaxWindow, Series.Gcd,</text>
+<text x="86" y="2654">Series.EvenSum, Series.Len</text>
+<rect class="decl" x="76" y="2672" width="129.5" height="28" rx="5"/>
+<text x="86" y="2690">displays: Trend</text>
+</svg>

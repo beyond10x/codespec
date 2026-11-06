@@ -101,7 +101,7 @@ fn nested(s: &Stmt) -> Stmt {
             *then = lookup_guard(then);
             *otherwise = lookup_guard(otherwise);
         }
-        Stmt::ForRange { body, .. } => *body = lookup_guard(body),
+        Stmt::ForRange { body, .. } | Stmt::For { body, .. } => *body = lookup_guard(body),
         Stmt::Switch { cases, .. } => {
             for c in cases {
                 c.body = lookup_guard(&c.body);
@@ -181,6 +181,17 @@ fn walk_stmts<'a>(body: &'a [Stmt], f: &mut dyn FnMut(&'a Stmt)) {
                 walk_stmts(otherwise, f);
             }
             Stmt::ForRange { body, .. } => walk_stmts(body, f),
+            Stmt::For {
+                init, post, body, ..
+            } => {
+                if let Some(init) = init {
+                    walk_stmts(std::slice::from_ref(&**init), f);
+                }
+                walk_stmts(body, f);
+                if let Some(post) = post {
+                    walk_stmts(std::slice::from_ref(&**post), f);
+                }
+            }
             Stmt::Switch { cases, .. } => {
                 for c in cases {
                     walk_stmts(&c.body, f);
@@ -196,7 +207,8 @@ fn walk_stmts<'a>(body: &'a [Stmt], f: &mut dyn FnMut(&'a Stmt)) {
 fn stmt_exprs<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
     match s {
         Stmt::Let { rhs, .. } => rhs.iter().for_each(f),
-        Stmt::Var { .. } | Stmt::Foreign { .. } => {}
+        Stmt::Var { .. } | Stmt::Foreign { .. } | Stmt::Break { .. } | Stmt::Continue { .. } => {}
+        Stmt::For { cond, .. } => cond.iter().for_each(f),
         Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).for_each(f),
         Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => f(x),
         Stmt::If { cond, .. } => f(cond),
