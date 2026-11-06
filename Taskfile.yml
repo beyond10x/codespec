@@ -78,7 +78,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language; read the Java ledger and the Groovy typed package twice each through codespec read, byte-equal and canonical; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
+    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -103,6 +103,11 @@ tasks:
       - cmp target/groovy-check/typed.1.json target/groovy-check/typed.2.json
       - '{{.CODESPEC}} validate --canonical target/groovy-check/typed.1.json'
       - '! grep -q ''"refusals"'' target/groovy-check/typed.1.json'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out target/groovy-check/lending.1.json --adapters {{.ADAPTERS}}'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out target/groovy-check/lending.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/groovy-check/lending.1.json target/groovy-check/lending.2.json
+      - '{{.CODESPEC}} validate --canonical target/groovy-check/lending.1.json'
+      - cmp target/groovy-check/lending.1.json adapters/groovy/testdata/lending.read.cir.json
       - rm -rf target/manifests
       - mkdir -p target/manifests
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust codespec-read-java codespec-read-groovy; do {{.ADAPTERS}}/$a --describe > target/manifests/$a.json || exit 1; done
@@ -167,6 +172,7 @@ tasks:
       - '{{.CODESPEC}} pass examples/ledger/ledger.read.cir.json --out examples/ledger/ledger.cir.json'
       - '{{.CODESPEC}} write --lang go examples/ledger/ledger.read.cir.json --out examples/ledger/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/ledger/ledger.cir.json --out examples/ledger/out/rust --adapters {{.ADAPTERS}}'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out adapters/groovy/testdata/lending.read.cir.json --adapters {{.ADAPTERS}}'
 
   examples-ledger:
     desc: Read the Java ledger package twice, pass it, write it as Go and as Rust, require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then build the Java driver with javac and run the original Java, the Go output and the Rust output on 200 seeded traces of 300 commands byte-equal.

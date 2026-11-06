@@ -15,7 +15,7 @@ import java.util.stream.Stream;
  *
  * <pre>java -cp &lt;classes&gt;:&lt;groovy-all jar&gt; codespec.read.groovy.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt;</pre>
  *
- * It prints one line per case and a summary {@code N passed, M failed}, and exits 1 when any case
+ * It prints one line per case and a summary {@code N passed, M failed, K skipped}, and exits 1 when any case
  * fails.
  *
  * <p>Each fixture under {@code testdata/refuse/} marks one line {@code // refused <category>}. The
@@ -98,23 +98,45 @@ public final class ReaderTest {
             () -> t.notReadAs("def-widened", s -> Json.write(s).contains("\"width\": \"64\"")));
         cases.put("a_list_grown_through_a_method_while_a_for_each_iterates_it_is_not_read_as_a_loop_that_runs_on",
             () -> t.notReadAs("modified-while-iterated", s -> true));
+        // Grails: the lending application under testdata/lending.
+        cases.put("lending_read_matches_expected_md_and_the_markers_per_artefact", t::lendingMatchesExpected);
+        cases.put("lending_read_twice_gives_the_same_canonical_bytes", t::lendingReadTwiceIsCanonical);
+        cases.put("lending_read_equals_the_checked_in_document", t::lendingEqualsTheCheckedInDocument);
+        cases.put("lending_resolve_only_files_yield_nothing_and_due_dates_resolves", t::lendingResolveOnlyYieldsNothing);
+        cases.put("lending_a_tool_string_property_is_a_pointer_with_zero_value_nil", t::lendingToolNameIsAPointer);
+        cases.put("lending_find_by_name_and_save_are_foreign_gorm_at_their_lines", t::lendingGormCallsAreForeign);
+        cases.put("lending_spring_injected_fields_and_calls_through_them_are_refused_spring", t::lendingSpringInjection);
+        cases.put("lending_domain_metadata_is_refused_gorm_mapping_metadata", t::lendingDomainMetadata);
+        cases.put("lending_without_the_grails_jars_the_transactional_service_is_refused_unresolved_at_its_import",
+            t::lendingTransactionalUnresolvedWithoutJars);
+        cases.put("lending_every_reason_begins_with_a_category", t::lendingEveryReasonHasACategory);
+        cases.put("a_directory_without_application_properties_reads_as_plain_groovy", t::plainDirectoryReadsAsGroovy);
+        cases.put("two_artefacts_with_one_simple_name_are_both_refused", t::duplicateSimpleNamesAreRefused);
+        cases.put("the_readme_names_the_grails_jars_as_grails_home_paths", t::theReadmeNamesTheGrailsJars);
+        cases.put("lending_with_the_grails_jars_the_transactional_service_reads", t::lendingTransactionalWithJars);
+        cases.put("lending_with_the_grails_jars_no_identifier_of_the_transactional_transform_is_in_the_read",
+            t::lendingNoTransformIdentifier);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
         }
         int passed = 0;
         int failed = 0;
+        int skipped = 0;
         for (Map.Entry<String, Case> c : cases.entrySet()) {
             try {
                 c.getValue().run();
                 System.out.println("ok   " + c.getKey());
                 passed++;
+            } catch (Skip s) {
+                System.out.println("skip " + c.getKey() + ": " + s.getMessage());
+                skipped++;
             } catch (Throwable e) {
                 System.out.println("FAIL " + c.getKey() + ": " + e);
                 failed++;
             }
         }
-        System.out.println(passed + " passed, " + failed + " failed");
+        System.out.println(passed + " passed, " + failed + " failed, " + skipped + " skipped");
         System.exit(failed == 0 ? 0 : 1);
     }
 
@@ -343,6 +365,339 @@ public final class ReaderTest {
             }
         }
         check(missing.isEmpty(), "README.md lacks " + missing);
+    }
+
+    // ---- Grails: the lending application ----
+
+    /** A case that cannot run here; the summary counts it as skipped, saying why. */
+    static final class Skip extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        Skip(String why) {
+            super(why, null, false, false);
+        }
+    }
+
+    /**
+     * The Grails 2.5.6 distribution jars a Grails application is read with, relative to {@code
+     * GRAILS_HOME}: {@code grails.transaction.Transactional} and its transform (grails-core), the
+     * Spring enums its members name (spring-tx), and the classes the transform loads as it runs
+     * (jsr250-api, spring-beans, spring-core, grails-bootstrap). README.md names each.
+     */
+    static final List<String> GRAILS_JARS = List.of(
+        "dist/grails-core-2.5.6.jar",
+        "lib/org.springframework/spring-tx/jars/spring-tx-4.1.9.RELEASE.jar",
+        "lib/javax.annotation/jsr250-api/jars/jsr250-api-1.0.jar",
+        "lib/org.springframework/spring-beans/jars/spring-beans-4.1.9.RELEASE.jar",
+        "lib/org.springframework/spring-core/jars/spring-core-4.1.9.RELEASE.jar",
+        "dist/grails-bootstrap-2.5.6.jar");
+
+    /** The identifiers {@code TransactionalTransform} introduces, which no read may hold. */
+    static final List<String> TRANSFORM_IDENTIFIERS = List.of(
+        "$tt__", "transactionManager", "transactionStatus", "GrailsTransactionTemplate", "PlatformTransactionManager");
+
+    private static final String AUDIT = "grails-app/services/lending/TransactionalAuditService.groovy";
+    private static final String LOAN_SERVICE = "grails-app/services/lending/LoanService.groovy";
+
+    private Path lendingDir() {
+        return testdata.resolve("lending");
+    }
+
+    private Map<String, Object> lending() throws Exception {
+        return Main.read(lendingDir(), List.of());
+    }
+
+    private List<Path> grailsJars() {
+        String home = System.getenv("GRAILS_HOME");
+        if (home == null || home.isEmpty()) {
+            throw new Skip("GRAILS_HOME is not set; set it to a Grails 2.5.6 distribution to run this case");
+        }
+        List<Path> out = new ArrayList<>();
+        for (String j : GRAILS_JARS) {
+            Path p = Path.of(home).resolve(j);
+            check(Files.isRegularFile(p), "GRAILS_HOME has no " + j);
+            out.add(p);
+        }
+        return out;
+    }
+
+    private void lendingMatchesExpected() throws Exception {
+        List<String> problems = Lending.compare(lending(), lendingDir());
+        check(problems.isEmpty(), "the lending read differs from the fixture:\n  " + String.join("\n  ", problems));
+    }
+
+    private void lendingReadTwiceIsCanonical() throws Exception {
+        String a = Json.write(lending());
+        String b = Json.write(lending());
+        check(a.equals(b), "two reads of lending differ");
+        Path doc = work.resolve("lending.raw.json");
+        Files.writeString(doc, a, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder(codespec.toString(), "validate", "--canonical", doc.toString()).inheritIO().start();
+        check(p.waitFor() == 0, "codespec validate --canonical failed on the lending read");
+    }
+
+    private void lendingEqualsTheCheckedInDocument() throws Exception {
+        Path checkedIn = testdata.resolve("lending.read.cir.json");
+        check(Files.isRegularFile(checkedIn), "no " + checkedIn);
+        check(Json.write(lending()).equals(Files.readString(checkedIn)), "the lending read differs from " + checkedIn
+            + "; regenerate it with task examples");
+    }
+
+    private void lendingResolveOnlyYieldsNothing() throws Exception {
+        Map<String, Object> doc = lending();
+        List<String> found = new ArrayList<>();
+        for (Map<String, Object> s : statements(doc)) {
+            String pos = (String) s.get("pos");
+            if (pos != null && (pos.startsWith("grails-app/controllers/") || pos.startsWith("src/")
+                || pos.startsWith("grails-app/utils/") || pos.startsWith("grails-app/conf/"))) {
+                found.add(pos);
+            }
+        }
+        for (Object r : list(doc.get("refusals"))) {
+            String pos = (String) map(r).get("pos");
+            if (!pos.startsWith("grails-app/domain/") && !pos.startsWith("grails-app/services/")) {
+                found.add(pos);
+            }
+        }
+        for (String name : List.of("ToolController", "ShelfCodes", "DueDates")) {
+            if (byNameOrNull(list(doc.get("types")), name) != null) {
+                found.add("type " + name);
+            }
+        }
+        check(found.isEmpty(), "read from a resolve-only file: " + found);
+        int line = lineOf(lendingDir().resolve(LOAN_SERVICE), "DueDates.dueDay(");
+        for (Object r : list(doc.get("refusals"))) {
+            Map<String, Object> rm = map(r);
+            if ((LOAN_SERVICE + ":" + line).equals(rm.get("pos"))) {
+                check(!((String) rm.get("reason")).startsWith("unresolved"), "the DueDates call is refused " + rm.get("reason"));
+            }
+        }
+        check(funcByKeyOrNull(doc, "LoanService.dueDayFor") != null, "LoanService.dueDayFor was not read as a function");
+    }
+
+    private void lendingToolNameIsAPointer() throws Exception {
+        Map<String, Object> doc = lending();
+        String ptrString = "{\"k\":\"ptr\",\"elem\":{\"k\":\"string\"}}";
+        for (String[] sf : new String[][] {{"Tool", "name"}, {"Tool", "shelf"}, {"Member", "fullName"}, {"Member", "email"}}) {
+            Map<String, Object> s = byName(list(doc.get("types")), sf[0]);
+            Object t = byName(list(s.get("fields")), sf[1]).get("t");
+            check(same(t, ptrString), sf[0] + "." + sf[1] + " is " + Json.write(t).replaceAll("\\s+", " "));
+            Map<String, Object> ctor = funcByKey(doc, "New" + sf[0]);
+            Map<String, Object> lit = map(map(list(map(list(ctor.get("body")).get(0)).get("rhs")).get(0)).get("x"));
+            check(byNameOrNull(list(lit.get("fields")), sf[1]) == null, "New" + sf[0] + " sets " + sf[1] + ": its zero value is not nil");
+        }
+    }
+
+    private void lendingGormCallsAreForeign() throws Exception {
+        Map<String, Object> doc = lending();
+        String catalog = "grails-app/services/lending/CatalogService.groovy";
+        foreignWith(doc, catalog + ":" + lineOf(lendingDir().resolve(catalog), "Tool.findByName(n)"), "gorm: findByName");
+        foreignWith(doc, LOAN_SERVICE + ":" + lineOf(lendingDir().resolve(LOAN_SERVICE), "loan.save()"), "gorm: save");
+    }
+
+    private void foreignWith(Map<String, Object> doc, String pos, String prefix) {
+        boolean refusal = false;
+        for (Object r : list(doc.get("refusals"))) {
+            if (pos.equals(map(r).get("pos")) && ((String) map(r).get("reason")).startsWith(prefix)) {
+                refusal = true;
+            }
+        }
+        check(refusal, "no refusal starting " + prefix + " at " + pos);
+        boolean foreign = false;
+        for (Map<String, Object> f : foreigns(doc.get("funcs"))) {
+            if (pos.equals(f.get("pos")) && ((String) f.get("reason")).startsWith(prefix)) {
+                foreign = true;
+            }
+        }
+        check(foreign, "no foreign statement starting " + prefix + " at " + pos);
+    }
+
+    private void lendingSpringInjection() throws Exception {
+        Map<String, Object> doc = lending();
+        Path src = lendingDir().resolve(LOAN_SERVICE);
+        for (String field : List.of("def catalogService", "FeeService feeService")) {
+            String pos = LOAN_SERVICE + ":" + lineOf(src, field);
+            check(reasonsAt(doc, pos).equals(List.of("spring: injected dependency")), pos + " " + reasonsAt(doc, pos));
+        }
+        foreignWith(doc, LOAN_SERVICE + ":" + lineOf(src, "catalogService.toolById"), "spring: call through an injected dependency");
+        foreignWith(doc, LOAN_SERVICE + ":" + lineOf(src, "feeService.lateFeeCents"), "spring: call through an injected dependency");
+        Map<String, Object> s = byName(list(doc.get("types")), "LoanService");
+        check(list(s.get("fields")).isEmpty(), "LoanService holds the injected fields: " + Json.write(s.get("fields")));
+    }
+
+    private void lendingDomainMetadata() throws Exception {
+        Map<String, Object> doc = lending();
+        String[][] want = {
+            {"grails-app/domain/lending/Loan.groovy", "static belongsTo", "belongsTo"},
+            {"grails-app/domain/lending/Loan.groovy", "static mapping", "mapping"},
+            {"grails-app/domain/lending/Member.groovy", "static hasMany", "hasMany"},
+            {"grails-app/domain/lending/Member.groovy", "static constraints", "constraints"},
+            {"grails-app/domain/lending/Tool.groovy", "static hasMany", "hasMany"},
+            {"grails-app/domain/lending/Tool.groovy", "static constraints", "constraints"},
+            {"grails-app/domain/lending/Tool.groovy", "static mapping", "mapping"},
+        };
+        for (String[] w : want) {
+            String pos = w[0] + ":" + lineOf(lendingDir().resolve(w[0]), w[1]);
+            check(reasonsAt(doc, pos).equals(List.of("gorm: mapping metadata " + w[2])), pos + " " + reasonsAt(doc, pos));
+        }
+    }
+
+    private static List<String> reasonsAt(Map<String, Object> doc, String pos) {
+        List<String> out = new ArrayList<>();
+        for (Object r : list(doc.get("refusals"))) {
+            if (pos.equals(map(r).get("pos"))) {
+                out.add((String) map(r).get("reason"));
+            }
+        }
+        return out;
+    }
+
+    private void lendingTransactionalUnresolvedWithoutJars() throws Exception {
+        Map<String, Object> doc = lending();
+        String pos = AUDIT + ":" + lineOf(lendingDir().resolve(AUDIT), "import grails.transaction.Transactional");
+        check(reasonsAt(doc, pos).equals(List.of("unresolved: grails.transaction.Transactional")), pos + " " + reasonsAt(doc, pos));
+        for (Object r : list(doc.get("refusals"))) {
+            String p = (String) map(r).get("pos");
+            check(!p.startsWith(AUDIT) || p.equals(pos), "a second refusal in the refused artefact: " + p);
+        }
+        check(byNameOrNull(list(doc.get("types")), "TransactionalAuditService") == null, "TransactionalAuditService was read");
+        for (String key : List.of("CatalogService.doubled", "FeeService.receipt", "Member.greeting")) {
+            check(funcByKeyOrNull(doc, key) != null, key + " was not read beside the refused artefact");
+        }
+    }
+
+    private void lendingEveryReasonHasACategory() throws Exception {
+        Map<String, Object> doc = lending();
+        List<String> bad = new ArrayList<>();
+        List<String> reasons = new ArrayList<>(foreignReasons(doc.get("funcs")));
+        for (Object r : list(doc.get("refusals"))) {
+            reasons.add((String) map(r).get("reason"));
+        }
+        for (String reason : reasons) {
+            int colon = reason.indexOf(": ");
+            if (colon < 0 || !CATEGORIES.contains(reason.substring(0, colon))) {
+                bad.add(reason);
+            }
+        }
+        check(bad.isEmpty(), "reasons without a category: " + bad);
+    }
+
+    private void plainDirectoryReadsAsGroovy() throws Exception {
+        Map<String, Object> doc = Main.read(testdata.resolve("typed"), List.of());
+        check(!doc.containsKey("refusals"), "refusals: " + Json.write(doc.getOrDefault("refusals", List.of())));
+        check(Json.write(doc).equals(Json.write(typed())), "Main.read of typed differs from the plain read");
+    }
+
+    private void duplicateSimpleNamesAreRefused() throws Exception {
+        Path app = work.resolve("duplicate-app");
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=dup\n");
+        write(app.resolve("grails-app/domain/a/Book.groovy"), "package a\n\nclass Book {\n    int pages = 0\n}\n");
+        write(app.resolve("grails-app/domain/b/Book.groovy"), "package b\n\nclass Book {\n    int copies = 0\n}\n");
+        write(app.resolve("grails-app/services/a/ShelfService.groovy"),
+            "package a\n\nclass ShelfService {\n    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        check(reasonsAt(doc, "grails-app/domain/a/Book.groovy:3").equals(List.of("unsupported: duplicate simple name Book")),
+            "a/Book " + reasonsAt(doc, "grails-app/domain/a/Book.groovy:3"));
+        check(reasonsAt(doc, "grails-app/domain/b/Book.groovy:3").equals(List.of("unsupported: duplicate simple name Book")),
+            "b/Book " + reasonsAt(doc, "grails-app/domain/b/Book.groovy:3"));
+        check(byNameOrNull(list(doc.get("types")), "Book") == null, "a Book was read");
+        check(funcByKeyOrNull(doc, "ShelfService.one") != null, "ShelfService.one was not read");
+        check("dup".equals(doc.get("name")), "module name " + doc.get("name"));
+    }
+
+    private static void write(Path p, String text) throws IOException {
+        Files.createDirectories(p.getParent());
+        Files.writeString(p, text, StandardCharsets.UTF_8);
+    }
+
+    private void theReadmeNamesTheGrailsJars() throws Exception {
+        String readme = Files.readString(root.resolve("adapters/groovy/README.md"));
+        for (String j : GRAILS_JARS) {
+            check(readme.contains("$GRAILS_HOME/" + j), "README.md does not name $GRAILS_HOME/" + j);
+        }
+        check(readme.contains("CODESPEC_GROOVY_CLASSPATH"), "README.md does not name CODESPEC_GROOVY_CLASSPATH");
+        check(!readme.contains("/home/"), "README.md names a home directory");
+    }
+
+    private void lendingTransactionalWithJars() throws Exception {
+        List<Path> jars = grailsJars();
+        Map<String, Object> doc = Main.read(lendingDir(), jars);
+        for (Object r : list(doc.get("refusals"))) {
+            Map<String, Object> rm = map(r);
+            check(!((String) rm.get("reason")).startsWith("unresolved"), "with the Grails jars: " + rm.get("pos") + " " + rm.get("reason"));
+        }
+        check(byNameOrNull(list(doc.get("types")), "TransactionalAuditService") != null, "TransactionalAuditService was not read");
+        List<String> lines = Files.readAllLines(lendingDir().resolve(AUDIT));
+        for (int i = 0; i < lines.size(); i++) {
+            String method = Lending.methodName(lines.get(i));
+            if (method == null) {
+                continue;
+            }
+            String pos = AUDIT + ":" + (i + 1);
+            Map<String, Object> fn = funcByKeyOrNull(doc, "TransactionalAuditService." + method);
+            List<String> reasons = reasonsAt(doc, pos);
+            boolean refused = fn == null && reasons.size() == 1 && reasons.get(0).startsWith("unsupported: grails transform");
+            boolean readFromSource = fn != null && pos.equals(fn.get("pos")) && reasons.isEmpty() && withinMethod(fn, lines, i + 1);
+            check(refused || readFromSource, method + " at " + pos + " is neither read from its source body nor refused as"
+                + " grails transform: " + (fn == null ? "no function" : Json.write(fn).replaceAll("\\s+", " ")) + " " + reasons);
+        }
+        List<String> others = new ArrayList<>();
+        for (String p : Lending.compare(doc, lendingDir())) {
+            if (!p.startsWith(AUDIT)) {
+                others.add(p);
+            }
+        }
+        check(others.isEmpty(), "with the Grails jars the other artefacts differ:\n  " + String.join("\n  ", others));
+    }
+
+    /** Whether every statement of a function lies in the source lines of the method declared at {@code line}. */
+    private static boolean withinMethod(Map<String, Object> fn, List<String> lines, int line) {
+        int indent = lines.get(line - 1).length() - lines.get(line - 1).stripLeading().length();
+        int end = line;
+        while (end < lines.size()) {
+            String l = lines.get(end);
+            end++;
+            if (l.stripLeading().startsWith("}") && l.length() - l.stripLeading().length() == indent) {
+                break;
+            }
+        }
+        for (Map<String, Object> s : statements(fn.get("body"))) {
+            int at = Lending.lineOf((String) s.get("pos"));
+            if (at <= line || at > end) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void lendingNoTransformIdentifier() throws Exception {
+        List<Path> jars = grailsJars();
+        Map<String, Object> doc = Main.read(lendingDir(), jars);
+        List<String> found = new ArrayList<>();
+        holds(doc, "(module)", found);
+        check(found.isEmpty(), "identifiers of the transactional transform in the read: " + found);
+    }
+
+    /** Every identifier of {@link #TRANSFORM_IDENTIFIERS} in a string under {@code o}, with the nearest enclosing position. */
+    private static void holds(Object o, String pos, List<String> found) {
+        if (o instanceof Map) {
+            Map<String, Object> m = map(o);
+            String here = m.get("pos") instanceof String ? (String) m.get("pos") : pos;
+            for (Map.Entry<String, Object> e : m.entrySet()) {
+                holds(e.getKey(), here, found);
+                holds(e.getValue(), here, found);
+            }
+        } else if (o instanceof List) {
+            for (Object v : list(o)) {
+                holds(v, pos, found);
+            }
+        } else if (o instanceof String) {
+            for (String id : TRANSFORM_IDENTIFIERS) {
+                if (((String) o).contains(id)) {
+                    found.add(id + " at " + pos);
+                }
+            }
+        }
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----
