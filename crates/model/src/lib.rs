@@ -14,6 +14,10 @@ pub use features::{
     FEATURE_FAMILIES, FEATURES_FORMAT, Feature, FeatureDocument, FeaturesReadError,
     features_from_json, features_json, vocabulary,
 };
+pub mod manifest;
+pub use manifest::{
+    ADAPTER_FORMAT, ADAPTER_ROLES, AdapterManifest, ManifestReadError, manifest_from_json,
+};
 
 /// The format this crate reads and writes.
 pub const FORMAT: &str = "cir/1";

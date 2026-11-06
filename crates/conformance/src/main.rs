@@ -1,5 +1,6 @@
 //! `codespec-conformance`: prints the generated `kit.json`, lists the features a `cir/1` module
-//! uses, and checks or regenerates the cases of a kit (crate doc of `codespec_conformance`).
+//! uses, reads an adapter manifest, and checks or regenerates the cases of a kit (crate doc of
+//! `codespec_conformance`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -7,7 +8,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand};
-use codespec_conformance::{Tools, check_case, features_used, kit_json, load_cases};
+use codespec_conformance::{
+    Tools, check_case, check_manifest, features_used, kit_json, load_cases,
+};
 use codespec_model::Module;
 
 #[derive(Parser)]
@@ -29,6 +32,15 @@ enum Cmd {
     Features {
         /// The cir/1 module.
         module: PathBuf,
+    },
+    /// Read an adapter's codespec-adapter/1 manifest strictly and print the feature ids it claims,
+    /// one per line.
+    Manifest {
+        /// The manifest, as the adapter's --describe printed it.
+        manifest: PathBuf,
+        /// A cir/1 module the adapter read; every claimed feature must be used by one of them.
+        #[arg(long = "read")]
+        read: Vec<PathBuf>,
     },
     /// Read, pass and run every case, comparing with its case.cir.json and expected.txt.
     Check {
@@ -75,6 +87,22 @@ fn run(cli: Cli) -> Result<(), String> {
             let bytes = std::fs::read(&module).map_err(|e| format!("{}: {e}", module.display()))?;
             let m = Module::from_json(&bytes).map_err(|e| format!("{}: {e}", module.display()))?;
             for id in features_used(&m)? {
+                println!("{id}");
+            }
+            Ok(())
+        }
+        Cmd::Manifest { manifest, read } => {
+            let bytes =
+                std::fs::read(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+            let mut modules = Vec::new();
+            for p in &read {
+                let b = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+                modules.push(Module::from_json(&b).map_err(|e| format!("{}: {e}", p.display()))?);
+            }
+            let refs: Vec<&Module> = modules.iter().collect();
+            let claimed = check_manifest(&bytes, &refs)
+                .map_err(|e| format!("{}: {e}", manifest.display()))?;
+            for id in claimed {
                 println!("{id}");
             }
             Ok(())
