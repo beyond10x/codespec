@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Service.Audit",
+    "pos": "orders.go:132",
+    "reason": "foreign go statement: goroutine: concurrency is outside cir/1"
+  }
+]

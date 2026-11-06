@@ -2,50 +2,66 @@
 format: aep.planning-md/3
 id: epic:go-and-rust-writers-with-harness
 kind: epic
-status: draft
+status: implemented
 title: Passes, a Go writer, a Rust writer and the comparison harness
 summary: Passes in Rust, a Go writer on go/ast and go/printer, a Rust writer, and a harness that runs the original, the Go output and the Rust output of examples/orders on 200 seeded traces of 300 commands and requires byte-equal output.
-revision: 1
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 4}
+- {from: "proposed", to: "active", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-11-06T02:14:12Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
-<!-- Starting point for an `epic` artifact, seeded by `aep artifact new epic <name>`.
-     No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
-     and relations you gave it, and a second copy in this file would be the one that went stale.
-     Delete the italic guidance as you fill each section. -->
-
-# Epic: <name>
+# Epic: Passes, a Go writer, a Rust writer and the comparison harness
 
 ## Outcome
 
-*The change in the world this delivers, for whom, and how anybody would know it had happened.*
+`examples/orders` goes Go → `cir/1` → Go and Go → `cir/1` → Rust without a hand edit (the one function
+holding a `foreign` statement, `Audit`, is listed as a writer refusal in the Rust output), and the
+original, the Go output and the Rust output print byte-equal output on 200 seeded traces of 300
+commands each. Anybody can see it: `task check` runs the harness and fails on the first differing
+line, naming the seed and the line.
 
 ## Why Now
 
-*What makes this the right thing to start — a commitment, a constraint, a cost that is growing. An
-epic with no answer here is a backlog entry.*
+M0 (`epic:cir1-model-and-go-reader`) gives a `cir/1` document and nothing that consumes it. Until a
+writer and the harness exist, nothing shows whether `cir/1` carries enough detail
+(`docs/design.md` § 2, questions 1 and 2).
 
 ## Scope
 
-*The shape of the work: the surfaces it touches and the capabilities it adds. Not a task list — the
-stories underneath carry that, through `decomposes`.*
+- `crates/passes`: the passes and facts of `docs/design.md` § 4, in Rust, and `codespec pass`.
+- `adapters/go/cmd/codespec-write-go`: a Go writer that builds `go/ast` and prints with
+  `go/printer`.
+- A Rust writer, `codespec-write-rust`.
+- `crates/harness`: seeded trace generation, running N implementations, byte comparison;
+  `codespec harness`.
+- Per-example drivers under `examples/orders/drivers/` that read a trace and call the service.
 
 ## Out of Scope
 
-*What is deliberately left out, and where it goes instead. This is the section that gets read in
-three months when somebody asks why the thing they wanted is missing.*
+- A tree-sitter reader (`epic:tree-sitter-go-reader`, M2).
+- A second example (`epic:algorithmic-example`, M3).
+- Reading Rust (`epic:rust-reader`, M4).
+- Translating the goroutine refused at `examples/orders/source/orders.go:132`: it stays `foreign`.
+  The Go writer prints it verbatim; the Rust writer leaves the enclosing function `Audit` out and
+  lists it as a refusal. No trace calls `Audit`: its output depends on map order and goroutine
+  scheduling.
+- ESS conformance as an oracle (`docs/design.md` § 6).
 
 ## Risks
 
-*What could make this take twice as long or land wrong, and what would show it early.*
+- The Rust writer needs facts the passes do not yet compute; shows as a writer refusal on `orders`.
+- Go `map` iteration order: the original's output must not depend on it, or no two runs agree;
+  shows as the original disagreeing with itself across two runs of one seed.
 
 ## Ambiguities
 
-*Each gap this epic leaves for the stories under it, classified. `inferable` — the answer is
-already written down, so give the `path:line` or the artifact id that settles it.
-`requires-stakeholder-input` — nobody here can decide it, so name who does, and raise that entry as
-a `decision-blocker` with a `blocks` edge to this epic, or it is a sentence somebody improvises
-later.*
+- Rust writer language: `inferable` — `docs/design.md` § 2 names `syn` + `prettyplease`, so the
+  writer is Rust.
+- Trace format: `inferable` — line-oriented, one command per line, defined by `crates/harness` and
+  read by every driver.
 
 ## Done When
 
-*The condition under which this epic moves to `implemented` — stated once, here, so it is not
-renegotiated story by story.*
+`task check` on `main` runs `codespec harness` over `examples/orders` with 200 seeds × 300 commands
+and three implementations, exit 0, and a planted one-token change in the Rust output fails it.

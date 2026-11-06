@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 588.1 1176" width="588.1" height="1176" role="img" aria-labelledby="title">
+<title id="title">The cir/1 module greeter after codespec pass</title>
+<style>
+text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: #1b1f24; }
+.edge { stroke: #8a929c; stroke-width: 1.2; fill: none; }
+.module { fill: #d7ecdf; stroke: #2f7d4f; }
+.group { fill: #eceff3; stroke: #6b7480; }
+.decl { fill: #dde8f7; stroke: #3a6db0; }
+.stmt { fill: #f6e7cf; stroke: #a8701f; }
+.expr { fill: #f1e2f3; stroke: #8a4a92; }
+rect { stroke-width: 1; }
+</style>
+<path class="edge" d="M28 44V66H46"/>
+<path class="edge" d="M58 80V102H76"/>
+<path class="edge" d="M28 44V138H46"/>
+<path class="edge" d="M58 152V174H76"/>
+<path class="edge" d="M28 44V210H46"/>
+<path class="edge" d="M58 224V246H76"/>
+<path class="edge" d="M88 260V282H106"/>
+<path class="edge" d="M118 296V318H136"/>
+<path class="edge" d="M58 224V354H76"/>
+<path class="edge" d="M88 368V390H106"/>
+<path class="edge" d="M118 404V426H136"/>
+<path class="edge" d="M118 404V462H136"/>
+<path class="edge" d="M148 476V498H166"/>
+<path class="edge" d="M148 476V534H166"/>
+<path class="edge" d="M88 368V570H106"/>
+<path class="edge" d="M118 584V606H136"/>
+<path class="edge" d="M88 368V642H106"/>
+<path class="edge" d="M118 656V678H136"/>
+<path class="edge" d="M118 656V714H136"/>
+<path class="edge" d="M58 224V750H76"/>
+<path class="edge" d="M88 764V786H106"/>
+<path class="edge" d="M118 800V822H136"/>
+<path class="edge" d="M148 836V858H166"/>
+<path class="edge" d="M148 836V894H166"/>
+<path class="edge" d="M88 764V930H106"/>
+<path class="edge" d="M118 944V966H136"/>
+<path class="edge" d="M118 944V1002H136"/>
+<path class="edge" d="M28 44V1038H46"/>
+<path class="edge" d="M58 1052V1074H76"/>
+<path class="edge" d="M58 1052V1110H76"/>
+<path class="edge" d="M58 1052V1146H76"/>
+<rect class="module" x="16" y="16" width="421.5" height="28" rx="5"/>
+<text x="26" y="34">module greeter · cir/1 · read by codespec-read-go 0.1.0</text>
+<rect class="group" x="46" y="52" width="85.7" height="28" rx="5"/>
+<text x="56" y="70">types (1)</text>
+<rect class="decl" x="76" y="88" width="319.3" height="28" rx="5"/>
+<text x="86" y="106">struct Greeter { greeted map[string]int }</text>
+<rect class="group" x="46" y="124" width="93" height="28" rx="5"/>
+<text x="56" y="142">errors (1)</text>
+<rect class="decl" x="76" y="160" width="282.8" height="28" rx="5"/>
+<text x="86" y="178">ErrNoName = &quot;name must not be empty&quot;</text>
+<rect class="group" x="46" y="196" width="85.7" height="28" rx="5"/>
+<text x="56" y="214">funcs (3)</text>
+<rect class="decl" x="76" y="232" width="173.3" height="28" rx="5"/>
+<text x="86" y="250">func New() → *Greeter</text>
+<rect class="stmt" x="106" y="268" width="63.8" height="28" rx="5"/>
+<text x="116" y="286">return</text>
+<rect class="expr" x="136" y="304" width="436.1" height="28" rx="5"/>
+<text x="146" y="322">unop · &amp;Greeter{greeted: make(map[string]int)} : *Greeter</text>
+<rect class="decl" x="76" y="340" width="377.7" height="28" rx="5"/>
+<text x="86" y="358">func Greeter.Greet(name string) → (string, error)</text>
+<rect class="stmt" x="106" y="376" width="34.6" height="28" rx="5"/>
+<text x="116" y="394">if</text>
+<rect class="expr" x="136" y="412" width="202.5" height="28" rx="5"/>
+<text x="146" y="430">binop · name == &quot;&quot; : bool</text>
+<rect class="stmt" x="136" y="448" width="63.8" height="28" rx="5"/>
+<text x="146" y="466">return</text>
+<rect class="expr" x="166" y="484" width="144.1" height="28" rx="5"/>
+<text x="176" y="502">lit · &quot;&quot; : string</text>
+<rect class="expr" x="166" y="520" width="209.8" height="28" rx="5"/>
+<text x="176" y="538">errvar · ErrNoName : error</text>
+<rect class="stmt" x="106" y="556" width="195.2" height="28" rx="5"/>
+<text x="116" y="574">assign g.greeted[name] =</text>
+<rect class="expr" x="136" y="592" width="260.9" height="28" rx="5"/>
+<text x="146" y="610">binop · g.greeted[name] + 1 : int</text>
+<rect class="stmt" x="106" y="628" width="63.8" height="28" rx="5"/>
+<text x="116" y="646">return</text>
+<rect class="expr" x="136" y="664" width="370.4" height="28" rx="5"/>
+<text x="146" y="682">intrinsic · sprintf(&quot;Hello, %s!&quot;, name) : string</text>
+<rect class="expr" x="136" y="700" width="144.1" height="28" rx="5"/>
+<text x="146" y="718">nil · nil : error</text>
+<rect class="decl" x="76" y="736" width="348.5" height="28" rx="5"/>
+<text x="86" y="754">func Greeter.Count(name string) → (int, bool)</text>
+<rect class="stmt" x="106" y="772" width="297.4" height="28" rx="5"/>
+<text x="116" y="790">lookup_else n = g.greeted[name], else:</text>
+<rect class="stmt" x="136" y="808" width="63.8" height="28" rx="5"/>
+<text x="146" y="826">return</text>
+<rect class="expr" x="166" y="844" width="114.9" height="28" rx="5"/>
+<text x="176" y="862">lit · 0 : int</text>
+<rect class="expr" x="166" y="880" width="151.4" height="28" rx="5"/>
+<text x="176" y="898">lit · false : bool</text>
+<rect class="stmt" x="106" y="916" width="63.8" height="28" rx="5"/>
+<text x="116" y="934">return</text>
+<rect class="expr" x="136" y="952" width="114.9" height="28" rx="5"/>
+<text x="146" y="970">var · n : int</text>
+<rect class="expr" x="136" y="988" width="144.1" height="28" rx="5"/>
+<text x="146" y="1006">lit · true : bool</text>
+<rect class="group" x="46" y="1024" width="56.5" height="28" rx="5"/>
+<text x="56" y="1042">facts</text>
+<rect class="decl" x="76" y="1060" width="187.9" height="28" rx="5"/>
+<text x="86" y="1078">comma_ok: Greeter.Count</text>
+<rect class="decl" x="76" y="1096" width="187.9" height="28" rx="5"/>
+<text x="86" y="1114">fallible: Greeter.Greet</text>
+<rect class="decl" x="76" y="1132" width="195.2" height="28" rx="5"/>
+<text x="86" y="1150">read_only: Greeter.Count</text>
+</svg>

@@ -1,0 +1,138 @@
+{
+  "format": "b10x-product-landing/1",
+  "product": {
+    "name": "codespec",
+    "mark": "cs",
+    "eyebrow": "Code intermediate representation · 0.1.0",
+    "promise": [
+      "Code as typed data.",
+      "Every translation runs against the original."
+    ],
+    "lede": "codespec reads a source language into cir/1, a typed and canonical JSON model of what code does inside: types, functions, statements, expressions. Passes rewrite it and compute facts once per module; writers emit Go or Rust from it and decide nothing the facts do not say. A harness runs the original and every output on the same seeded traces and compares them byte for byte. No language model anywhere: what a reader cannot express is kept verbatim and listed as a refusal.",
+    "description": "Read code into cir/1, rewrite it, write Go or Rust from it, and compare the original and the output byte for byte on seeded traces.",
+    "actions": [
+      {
+        "label": "Get started",
+        "href": "/docs/getting-started",
+        "kind": "primary"
+      },
+      {
+        "label": "See one program go through",
+        "href": "/docs/examples/greeter"
+      },
+      {
+        "label": "Vision",
+        "href": "/docs/vision"
+      },
+      {
+        "label": "What exists today",
+        "href": "/docs/status"
+      }
+    ],
+    "meta": "Rust CLI and passes · Go and Rust adapters · cir/1 JSON Schema · Apache-2.0",
+    "art": {
+      "kind": "code-pair",
+      "data": "data/greeter-code-pair.json",
+      "caption": "Generated from examples/greeter: the Go methods, and the Rust codespec writes from them."
+    },
+    "kpis": [
+      "shipped",
+      "decided",
+      "planned"
+    ]
+  },
+  "sections": [
+    {
+      "kind": "flow",
+      "eyebrow": "How it works",
+      "title": "Reader, passes, writer, harness.",
+      "lede": "Each step is a program with one job, and every document that crosses between them is validated against the model.",
+      "steps": [
+        {
+          "label": "read",
+          "title": "Lift the source",
+          "description": "A reader adapter, in the language with the best tooling for its source, prints one cir/1 module. The Go reader uses go/types."
+        },
+        {
+          "label": "pass",
+          "title": "Rewrite and analyse",
+          "description": "Deterministic, total passes: lookup-guard, then seven facts such as fallible, comma_ok and read_only."
+        },
+        {
+          "label": "write",
+          "title": "Emit a language",
+          "description": "The Go writer builds go/ast; the Rust writer builds syn trees. Both read their choices off the facts."
+        },
+        {
+          "label": "harness",
+          "title": "Prove it behaves the same",
+          "description": "The original, the Go output and the Rust output run on 200 seeded traces of 300 commands; any differing byte fails the run."
+        }
+      ]
+    },
+    {
+      "kind": "features",
+      "eyebrow": "What it does",
+      "title": "One definition, checked at every boundary.",
+      "lede": "The Rust model is the definition of cir/1; the schema, the adapters and every document follow it.",
+      "items": [
+        {
+          "title": "Strict and canonical",
+          "description": "Unknown fields, unknown kinds, untyped expressions and other formats are refused. One byte sequence per document.",
+          "status": "shipped",
+          "href": "/docs/concepts/cir-1"
+        },
+        {
+          "title": "Refusals, never guesses",
+          "description": "A goroutine becomes a foreign statement with its source and a reason; the Rust writer leaves that function out and lists it.",
+          "status": "shipped",
+          "href": "/docs/concepts/pipeline#refusals"
+        },
+        {
+          "title": "Facts computed once",
+          "description": "Writers read shared, fallible, comma_ok, read_only and the rest off the module instead of each deciding for itself.",
+          "status": "shipped",
+          "href": "/docs/concepts/pipeline#passes-and-facts"
+        },
+        {
+          "title": "Byte-for-byte evidence",
+          "description": "A one-token change planted in the Rust output fails the harness with the seed, the implementation and the first differing line.",
+          "status": "shipped",
+          "href": "/docs/concepts/harness"
+        },
+        {
+          "title": "A Rust reader on syn",
+          "description": "Rust to cir/1 to Go, held to the same harness. Decided for 0.1.0 and in progress.",
+          "status": "decided",
+          "href": "/docs/vision#milestones"
+        },
+        {
+          "title": "An algorithmic example",
+          "description": "Loops, switch, slices and arithmetic, held to the same criteria as orders.",
+          "status": "planned",
+          "href": "/docs/vision#milestones"
+        }
+      ]
+    },
+    {
+      "kind": "status",
+      "eyebrow": "Status",
+      "title": "0.1.0. Here is exactly what exists.",
+      "lede": "Shipped means code in the release, held by a named test or gate task.",
+      "items": "data/status.json"
+    },
+    {
+      "kind": "related",
+      "eyebrow": "Related tools",
+      "title": "Where codespec sits.",
+      "tools": [
+        {
+          "name": "ESS",
+          "description": "Executable system specifications describe a system from the outside. Not used by codespec today; later, an ESS conformance suite may serve as an equivalence oracle beside the harness.",
+          "href": "https://beyond10x.github.io/ess/",
+          "mark": "ES"
+        }
+      ]
+    }
+  ]
+}

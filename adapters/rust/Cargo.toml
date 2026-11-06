@@ -1,0 +1,23 @@
+[package]
+name = "codespec-write-rust"
+description = "Writes a cir/1 module and its facts as a Rust crate, built as syn trees and printed with prettyplease"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "codespec-write-rust"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+prettyplease.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+serde_json.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

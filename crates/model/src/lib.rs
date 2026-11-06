@@ -325,6 +325,7 @@ pub enum Stmt {
         pos: Pos,
     },
     /// `name := map[index]`, running `then` (which ends in a return) when the key is absent.
+    /// `name` is not bound inside `then`.
     LookupElse {
         name: String,
         map: Expr,
@@ -403,7 +404,8 @@ pub enum Expr {
         y: Box<Expr>,
         t: Type,
     },
-    /// `!`, `-`, `*` (dereference) or `&` (reference).
+    /// `!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&`
+    /// (reference).
     Unop {
         op: String,
         x: Box<Expr>,

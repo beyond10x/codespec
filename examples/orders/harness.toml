@@ -1,0 +1,14 @@
+[[implementation]]
+name = "original"
+build = ["go", "build", "-C", "drivers/go", "-overlay", "overlay-original.json", "-o", "{build}/original", "."]
+run = ["{build}/original"]
+
+[[implementation]]
+name = "go"
+build = ["go", "build", "-C", "drivers/go", "-overlay", "overlay-go.json", "-o", "{build}/go", "."]
+run = ["{build}/go"]
+
+[[implementation]]
+name = "rust"
+build = ["cargo", "build", "--locked", "--quiet", "--manifest-path", "drivers/rust/Cargo.toml", "--target-dir", "{build}/rust-target"]
+run = ["{build}/rust-target/debug/orders-driver"]

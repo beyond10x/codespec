@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-06T02:14:11Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-on-syn",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (worktree codespec-m1)"
+  }
+}

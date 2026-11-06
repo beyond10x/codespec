@@ -2,50 +2,49 @@
 format: aep.planning-md/3
 id: epic:rust-reader
 kind: epic
-status: draft
+status: implemented
 title: A Rust reader and Rust to Go
 summary: A reader for Rust into cir/1, unions for enums with data, and a Rust example translated to Go with the harness green.
-revision: 1
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T02:14:12Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
-<!-- Starting point for an `epic` artifact, seeded by `aep artifact new epic <name>`.
-     No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
-     and relations you gave it, and a second copy in this file would be the one that went stale.
-     Delete the italic guidance as you fill each section. -->
-
-# Epic: <name>
+# Epic: A Rust reader and Rust to Go
 
 ## Outcome
 
-*The change in the world this delivers, for whom, and how anybody would know it had happened.*
+`codespec read --lang rust <crate>` lifts a Rust crate into `cir/1`, and a Rust example goes
+Rust → `cir/1` → Go with the harness byte-equal on its traces.
 
-## Why Now
+## Decision (2026-11-06)
 
-*What makes this the right thing to start — a commitment, a constraint, a cost that is growing. An
-epic with no answer here is a backlog entry.*
+Each language is read with the tooling that knows its types; `cir/1` needs a type on every
+expression, and syntax trees alone (tree-sitter, `syn`) do not carry them.
+
+| option | types | decided |
+|---|---|---|
+| A: rust-analyzer's library crates (`ra_ap_*`): name resolution and inferred types | yes | no: a large, fast-moving dependency tree |
+| B: `syn` plus our own name resolution and inference | only what we write | **Rust uses this** (`story:rust-reader-on-syn`) |
+| C: a shared tree-sitter layer | syntax only | no: dropped, see `docs/design.md` § Not used |
+
+Operator, 2026-11-06: "it's clear that we can't use tree sitter for the actual code content, the
+body. … A for Rust, C for languages with no such tooling … use whatever is most efficient".
 
 ## Scope
 
-*The shape of the work: the surfaces it touches and the capabilities it adds. Not a task list — the
-stories underneath carry that, through `decomposes`.*
+- `adapters/rust`: a `codespec-read-rust` binary on the chosen typed tooling.
+- `cir/1` `union` read from Rust enums with data; `Result`/`Option` read back to the Go-shaped
+  forms the passes expect, or new facts where they do not fit.
+- A Rust example with a driver in the harness.
 
 ## Out of Scope
 
-*What is deliberately left out, and where it goes instead. This is the section that gets read in
-three months when somebody asks why the thing they wanted is missing.*
-
-## Risks
-
-*What could make this take twice as long or land wrong, and what would show it early.*
-
-## Ambiguities
-
-*Each gap this epic leaves for the stories under it, classified. `inferable` — the answer is
-already written down, so give the `path:line` or the artifact id that settles it.
-`requires-stakeholder-input` — nobody here can decide it, so name who does, and raise that entry as
-a `decision-blocker` with a `blocks` edge to this epic, or it is a sentence somebody improvises
-later.*
+- Readers for other languages (`epic:tree-sitter-go-reader` measures the tree-sitter route first).
 
 ## Done When
 
-*The condition under which this epic moves to `implemented` — stated once, here, so it is not
-renegotiated story by story.*
+The harness is byte-equal on a Rust example read by `codespec-read-rust` and written as Go.
+
+Revised the same day: "So to me, it sounds like it's not really feasible to do tree sitter. Also, I'm really not a fan of dependencies in general. So let's maybe forget about tree sitter entirely." Rust is read with `syn`, already a dependency of the Rust writer.

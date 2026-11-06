@@ -215,6 +215,10 @@ func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
 	case *types.Struct:
 		td.K = "struct"
 		for i := 0; i < u.NumFields(); i++ {
+			if u.Field(i).Embedded() {
+				f.refuse(ts, ts.Name.Name, "struct with an embedded field: field and method promotion are outside cir/1")
+				return
+			}
 			td.Fields = append(td.Fields, Field{Name: u.Field(i).Name(), T: f.typ(u.Field(i).Type())})
 		}
 	case *types.Basic:
@@ -311,7 +315,11 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	for i := 0; i < sig.Results().Len(); i++ {
 		fn.Results = append(fn.Results, f.typ(sig.Results().At(i).Type()))
 	}
-	fn.Body = f.stmts(d.Body.List, fn.Results)
+	if hasNamedResults(d.Type) {
+		fn.Body = []Stmt{f.namedResultsBody(d)}
+	} else {
+		fn.Body = f.stmts(d.Body.List, fn.Results)
+	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
 	key := "func:" + fn.Name
 	if fn.Recv != nil {
@@ -330,6 +338,29 @@ func recvName(t Type) string {
 func (f *front) foreign(s ast.Stmt, reason string) Stmt {
 	f.refuse(s, firstLine(f.src(s)), reason)
 	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos())}
+}
+
+func hasNamedResults(ft *ast.FuncType) bool {
+	if ft.Results == nil {
+		return false
+	}
+	for _, r := range ft.Results.List {
+		if len(r.Names) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// namedResultsBody keeps a function with named results as one foreign statement: its body,
+// unchanged, inside a closure that declares the same named results and is returned at once, so
+// bare returns and writes to the results keep their meaning under an unnamed signature.
+func (f *front) namedResultsBody(d *ast.FuncDecl) Stmt {
+	reason := "named results are outside cir/1: the body is kept in a closure that declares them"
+	sig := f.src(&ast.FuncType{Params: &ast.FieldList{}, Results: d.Type.Results})
+	src := "return " + sig + " " + f.src(d.Body) + "()"
+	f.refuse(d.Body, d.Name.Name, reason)
+	return Stmt{K: "foreign", Lang: "go", Src: src, Reason: reason, Pos: f.pos(d.Body.Pos())}
 }
 
 func firstLine(s string) string {
@@ -570,6 +601,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 }
 
 func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
+	if e.Ellipsis.IsValid() {
+		return Expr{}, false // a spread call: cir/1 has no spread argument
+	}
 	args, ok := f.exprs(e.Args)
 	if !ok {
 		return Expr{}, false

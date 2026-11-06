@@ -1,0 +1,15 @@
+{
+  "format": "b10x-code-pair/1",
+  "from": {
+    "code": "func (g *Greeter) Greet(name string) (string, error) {\n\tif name == \"\" {\n\t\treturn \"\", ErrNoName\n\t}\n\tg.greeted[name] = g.greeted[name] + 1\n\treturn fmt.Sprintf(\"Hello, %s!\", name), nil\n}\n\nfunc (g *Greeter) Count(name string) (int, bool) {\n\tn, ok := g.greeted[name]\n\tif !ok {\n\t\treturn 0, false\n\t}\n\treturn n, true\n}",
+    "language": "go",
+    "title": "greeter.go"
+  },
+  "recordedWith": "codespec-docs, from examples/greeter",
+  "to": {
+    "code": "impl Greeter {\n    pub fn greet(&mut self, name: String) -> Result<String, Error> {\n        if name == String::from(\"\") {\n            return Err(Error::ErrNoName);\n        }\n        self.greeted\n            .insert(\n                name.clone(),\n                self.greeted.get(&name).cloned().unwrap_or(0i64).wrapping_add(1i64),\n            );\n        Ok(format!(\"Hello, {}!\", name))\n    }\n    pub fn count(&self, name: String) -> Option<i64> {\n        let Some(n) = self.greeted.get(&name).cloned() else {\n            return None;\n        };\n        Some(n)\n    }\n}",
+    "language": "rust",
+    "title": "out/rust/src/lib.rs"
+  },
+  "via": "codespec read --lang go · codespec pass · codespec write --lang rust"
+}

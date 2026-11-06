@@ -1,4 +1,5 @@
-//! `codespec`: validate `cir/1` documents, print the schema, and run reader and writer adapters.
+//! `codespec`: validate `cir/1` documents, print the schema, apply passes, run reader and writer
+//! adapters, and compare implementations of an example on seeded traces (`harness`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -8,52 +9,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-use clap::{Parser, Subcommand};
+use clap::Parser as _;
+use codespec_cli::{Cli, Cmd};
 use codespec_model::{Module, schema_json};
-
-#[derive(Parser)]
-#[command(
-    name = "codespec",
-    version,
-    about = "Read code into cir/1, check it, write code from it"
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Cmd,
-}
-
-#[derive(Subcommand)]
-enum Cmd {
-    /// Validate a cir/1 document; with --canonical, also require its canonical encoding.
-    Validate {
-        file: PathBuf,
-        #[arg(long)]
-        canonical: bool,
-    },
-    /// Print the JSON Schema of cir/1.
-    Schema,
-    /// Run the reader adapter for LANG over SOURCE and write the validated cir/1 module to OUT.
-    Read {
-        #[arg(long)]
-        lang: String,
-        source: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
-        #[arg(long, env = "CODESPEC_ADAPTERS")]
-        adapters: PathBuf,
-    },
-    /// Validate a cir/1 module and run the writer adapter for LANG, writing into OUT.
-    Write {
-        #[arg(long)]
-        lang: String,
-        file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        #[arg(long, env = "CODESPEC_ADAPTERS")]
-        adapters: PathBuf,
-    },
-}
 
 fn main() -> ExitCode {
     match run(Cli::parse().command) {
@@ -114,6 +72,14 @@ fn run(cmd: Cmd) -> Result<(), String> {
             std::fs::write(&out, m.to_json()).map_err(|e| format!("{}: {e}", out.display()))?;
             Ok(())
         }
+        Cmd::Pass { file, out } => {
+            let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let m = read_module(&bytes, &file.display().to_string())?;
+            let json = codespec_passes::run(&m).to_json();
+            read_module(json.as_bytes(), "pass output")?;
+            std::fs::write(&out, json).map_err(|e| format!("{}: {e}", out.display()))?;
+            Ok(())
+        }
         Cmd::Write {
             lang,
             file,
@@ -140,6 +106,22 @@ fn run(cmd: Cmd) -> Result<(), String> {
             if !status.success() {
                 return Err(format!("{} exited with {status}", prog.display()));
             }
+            Ok(())
+        }
+        Cmd::Harness {
+            example,
+            seeds,
+            commands,
+            build_dir,
+        } => {
+            let summary = codespec_harness::check(&codespec_harness::Options {
+                example,
+                build_dir,
+                seeds,
+                commands,
+            })
+            .map_err(|e| e.to_string())?;
+            println!("{summary}");
             Ok(())
         }
     }
