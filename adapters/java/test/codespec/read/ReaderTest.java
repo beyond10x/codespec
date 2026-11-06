@@ -424,8 +424,8 @@ public final class ReaderTest {
         }
         Path shelf = dir.resolve("Shelf.java");
         List<String> want = List.of(
-            "Shelf.java:" + lineOf(shelf, "ratings(Map<String, List<Double>>") + " Shelf.ratings: " + MAP_OF_DOUBLE_LISTS_REASON,
-            "Shelf.java:" + lineOf(shelf, "tags(Set<String>") + " Shelf.tags: " + SET_OF_STRINGS_REASON);
+            "Shelf.java:" + lineOf(shelf, "ratings(Map<String, List<Double>>") + " Shelf.ratings(…): " + MAP_OF_DOUBLE_LISTS_REASON,
+            "Shelf.java:" + lineOf(shelf, "tags(Set<String>") + " Shelf.tags(…): " + SET_OF_STRINGS_REASON);
         check(got.equals(want), "refusals " + got + ", want " + want);
         check(funcByKeyOrNull(doc, "count") != null, "the method beside them was not read");
     }

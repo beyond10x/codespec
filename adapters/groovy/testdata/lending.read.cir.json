@@ -4092,7 +4092,7 @@
     },
     {
       "pos": "grails-app/domain/lending/Tool.groovy:40",
-      "what": "Tool.methodMissing",
+      "what": "Tool.methodMissing(…)",
       "reason": "dynamic: methodMissing declared: Groovy calls it at run time for names the class does not declare"
     },
     {

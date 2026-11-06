@@ -854,7 +854,7 @@ public final class Reader {
                 }
                 boolean ctor = ee.getKind() == ElementKind.CONSTRUCTOR;
                 String name = ctor ? "New" + te.getSimpleName() : ee.getSimpleName().toString();
-                String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name;
+                String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name + "(…)";
                 String why = null;
                 if (ctor && explicitCtor) {
                     why = "a second constructor: overloading is outside cir/1";
