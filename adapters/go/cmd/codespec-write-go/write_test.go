@@ -264,6 +264,28 @@ func TestLookupElseCompiles(t *testing.T) {
 	}
 }
 
+// lenAsInt64 is what codespec-read-rust reads from `self.values.len() as i64`: a `len` typed int64.
+const lenAsInt64 = `{
+  "format": "cir/1", "name": "ln",
+  "reader": {"language": "rust", "name": "test", "version": "0"},
+  "types": [],
+  "funcs": [{"name": "Count", "exported": true, "pos": "ln.rs:1",
+    "params": [{"name": "xs", "t": {"k": "slice", "elem": {"k": "int", "width": "64", "signed": true}}}],
+    "results": [{"k": "int", "width": "64", "signed": true}],
+    "body": [{"k": "return", "pos": "ln.rs:2", "results": [
+      {"k": "intrinsic", "name": "len", "t": {"k": "int", "width": "64", "signed": true},
+       "args": [{"k": "var", "name": "xs", "t": {"k": "slice", "elem": {"k": "int", "width": "64", "signed": true}}}]}]}]}],
+  "layout": ["func:Count"]
+}`
+
+func TestALenOfAnotherIntTypeIsConverted(t *testing.T) {
+	out, src := writeDoc(t, []byte(lenAsInt64))
+	vet(t, out)
+	if !strings.Contains(src, "return int64(len(xs))\n") {
+		t.Fatalf("a len typed int64 is not written as int64(len(xs)):\n%s", src)
+	}
+}
+
 func intT() string { return `{"k": "int", "width": "platform", "signed": true}` }
 
 func v(name string) string { return fmt.Sprintf(`{"k": "var", "name": %q, "t": %s}`, name, intT()) }
