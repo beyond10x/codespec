@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Pair",
+      "args": [
+        "\"x\"",
+        "\"y\""
+      ]
+    }
+  ]
+}

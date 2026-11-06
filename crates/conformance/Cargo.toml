@@ -1,0 +1,21 @@
+[package]
+name = "b10x-codespec-conformance"
+description = "The conformance kit: per-feature Go reference cases with their cir/1 modules, calls and expected outputs, the generated kit.json, and the runner that checks them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_conformance"
+
+[[bin]]
+name = "codespec-conformance"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true

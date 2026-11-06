@@ -1,0 +1,8 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.bool",
+    "expr.var",
+    "stmt.return"
+  ]
+}

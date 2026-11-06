@@ -1,0 +1,208 @@
+{
+  "format": "cir/1",
+  "name": "expr_index",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "At",
+      "exported": true,
+      "params": [
+        {
+          "name": "i",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "xs"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "xs",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "xs",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "10",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "xs",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "xs",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "20",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "xs",
+                "t": {
+                  "k": "slice",
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:8"
+        }
+      ],
+      "doc": "At indexes a slice of two values.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:At"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

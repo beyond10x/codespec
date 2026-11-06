@@ -1,0 +1,223 @@
+{
+  "format": "cir/1",
+  "name": "fact_shared",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Node",
+      "exported": true,
+      "fields": [
+        {
+          "name": "V",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Node is stored by reference in a map.",
+      "pos": "case.go:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Stored",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "m"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "map",
+                "key": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                "elem": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Node"
+                  }
+                }
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "m",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Node"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Node"
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Node",
+                "fields": [
+                  {
+                    "name": "V",
+                    "value": {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Node"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Node"
+                }
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "m",
+                  "t": {
+                    "k": "map",
+                    "key": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    },
+                    "elem": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Node"
+                      }
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Node"
+                  }
+                }
+              },
+              "name": "V",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Stored keeps a node in a map and reads it back.",
+      "pos": "case.go:9"
+    }
+  ],
+  "layout": [
+    "type:Node",
+    "func:Stored"
+  ],
+  "facts": {
+    "shared": [
+      "Node"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.switch",
+    "expr.lit",
+    "expr.var",
+    "stmt.return",
+    "type.int",
+    "type.string"
+  ]
+}

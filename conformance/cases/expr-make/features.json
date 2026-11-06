@@ -1,0 +1,14 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.make",
+    "expr.intrinsic",
+    "expr.var",
+    "intrinsic.len",
+    "stmt.let",
+    "stmt.return",
+    "type.int",
+    "type.map",
+    "type.string"
+  ]
+}

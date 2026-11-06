@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Positive",
+      "args": [
+        "5"
+      ]
+    },
+    {
+      "func": "Positive",
+      "args": [
+        "-5"
+      ]
+    }
+  ]
+}

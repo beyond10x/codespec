@@ -1,0 +1,12 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "unop.recv",
+    "expr.unop",
+    "expr.var",
+    "stmt.return",
+    "stmt.send",
+    "type.chan",
+    "type.int"
+  ]
+}

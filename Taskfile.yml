@@ -28,6 +28,7 @@ tasks:
       - task: examples-inventory
       - task: examples-series
       - task: harness
+      - task: conformance-cases
       - task: docs-check
 
   docs-generate:
@@ -123,7 +124,7 @@ tasks:
       - diff -r target/examples-go-pass examples/orders/out/go
       - test -z "$(gofmt -l target/examples-go-pass)"
       - go vet ./target/examples-go-pass/orders.go
-      - cd adapters/go && go test -count=1 ./cmd/codespec-write-go
+      - cd adapters/go && go test -count=1 ./...
 
   examples-rust:
     desc: Write the orders example as Rust, require it equal to the checked-in copy, Audit its one refusal, a build without warnings, and a module without facts refused.
@@ -149,6 +150,21 @@ tasks:
       - cargo fmt --manifest-path examples/orders/drivers/rust/Cargo.toml --check
       - cargo clippy --manifest-path examples/orders/drivers/rust/Cargo.toml --locked --target-dir target/harness/rust-target -- -D warnings
       - '{{.CODESPEC}} harness examples/orders --seeds 200 --commands 300 --build-dir target/harness'
+
+  conformance:
+    desc: Regenerate conformance/kit.json from the feature vocabulary and every case's case.cir.json and expected.txt from its case.go and calls.json.
+    deps: [build]
+    cmds:
+      - cargo run --locked -q -p b10x-codespec-conformance -- kit > conformance/kit.json
+      - cargo run --locked -q -p b10x-codespec-conformance -- check --write --codespec {{.CODESPEC}} --adapters {{.ADAPTERS}} --build-dir target/conformance
+
+  conformance-cases:
+    desc: Fail when conformance/kit.json is not the one the feature vocabulary generates, or a case's case.go read and passed differs from its case.cir.json, its reference run on calls.json from its expected.txt, or its features.json from the features its module uses.
+    deps: [build]
+    cmds:
+      - test -z "$(gofmt -l conformance)"
+      - cargo run --locked -q -p b10x-codespec-conformance -- kit | cmp - conformance/kit.json
+      - cargo run --locked -q -p b10x-codespec-conformance -- check --codespec {{.CODESPEC}} --adapters {{.ADAPTERS}} --build-dir target/conformance
 
   examples-pass:
     desc: Fail when the passes over an example give bytes other than its checked-in document, or change their own output.

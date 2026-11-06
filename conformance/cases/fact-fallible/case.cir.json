@@ -1,0 +1,131 @@
+{
+  "format": "cir/1",
+  "name": "fact_fallible",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "errors": [
+    {
+      "name": "ErrNegative",
+      "message": "negative",
+      "pos": "case.go:5"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Checked",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrNegative",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:10"
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Checked refuses a negative.",
+      "pos": "case.go:8"
+    }
+  ],
+  "layout": [
+    "error:ErrNegative",
+    "func:Checked"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Checked"
+    ]
+  }
+}

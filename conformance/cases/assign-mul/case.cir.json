@@ -1,0 +1,93 @@
+{
+  "format": "cir/1",
+  "name": "assign_mul",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "MulBy",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "op": "*=",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        }
+      ],
+      "doc": "MulBy multiplies in place.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:MulBy"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

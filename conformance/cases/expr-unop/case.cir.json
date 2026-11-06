@@ -1,0 +1,59 @@
+{
+  "format": "cir/1",
+  "name": "expr_unop",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Flip",
+      "exported": true,
+      "params": [
+        {
+          "name": "b",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "!",
+              "x": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Flip negates a bool.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Flip"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

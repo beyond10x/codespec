@@ -1,0 +1,13 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.expr",
+    "expr.intrinsic",
+    "expr.var",
+    "intrinsic.println",
+    "type.error",
+    "type.int",
+    "type.string",
+    "type.tuple"
+  ]
+}

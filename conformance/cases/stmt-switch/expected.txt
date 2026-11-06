@@ -1,0 +1,3 @@
+ok "one"
+ok "few"
+ok "many"

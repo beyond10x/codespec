@@ -1,0 +1,20 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.lookup_else",
+    "expr.errvar",
+    "expr.index",
+    "expr.lit",
+    "expr.make",
+    "expr.nil",
+    "expr.var",
+    "fact.fallible",
+    "stmt.assign",
+    "stmt.let",
+    "stmt.return",
+    "type.error",
+    "type.int",
+    "type.map",
+    "type.string"
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "format": "cir/1",
+  "name": "stmt_break",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Root",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "i"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "for",
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "binop",
+                  "op": "*",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "break",
+                  "pos": "case.go:8"
+                }
+              ],
+              "pos": "case.go:7"
+            },
+            {
+              "k": "incr",
+              "x": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "pos": "case.go:10"
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Root is the smallest i with i*i > n.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Root"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

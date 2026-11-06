@@ -1,0 +1,187 @@
+{
+  "format": "cir/1",
+  "name": "fact_read_only",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Cell",
+      "exported": true,
+      "fields": [
+        {
+          "name": "V",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Cell holds a value.",
+      "pos": "case.go:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Get",
+      "exported": true,
+      "recv": {
+        "name": "c",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Cell"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Cell"
+                  }
+                }
+              },
+              "name": "V",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        }
+      ],
+      "doc": "Get reads the value.",
+      "pos": "case.go:9"
+    },
+    {
+      "name": "Read",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "c"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Cell",
+                "fields": [
+                  {
+                    "name": "V",
+                    "value": {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Cell"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Cell"
+                }
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Cell"
+                  }
+                }
+              },
+              "name": "Get",
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:16"
+        }
+      ],
+      "doc": "Read builds a cell and reads it.",
+      "pos": "case.go:14"
+    }
+  ],
+  "layout": [
+    "type:Cell",
+    "func:Cell.Get",
+    "func:Read"
+  ],
+  "facts": {
+    "shared": [],
+    "read_only": [
+      "Cell.Get"
+    ]
+  }
+}

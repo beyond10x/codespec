@@ -1,0 +1,68 @@
+{
+  "format": "cir/1",
+  "name": "stmt_return",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Two",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "lit",
+              "value": "\"two\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Two returns two values.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Two"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "fact.shared",
+    "decl.struct",
+    "expr.field",
+    "expr.index",
+    "expr.lit",
+    "expr.make",
+    "expr.struct",
+    "expr.unop",
+    "expr.var",
+    "stmt.assign",
+    "stmt.let",
+    "stmt.return",
+    "type.int",
+    "type.map",
+    "type.named",
+    "type.ptr",
+    "unop.ref"
+  ]
+}

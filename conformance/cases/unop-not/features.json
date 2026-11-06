@@ -1,0 +1,12 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "unop.not",
+    "expr.binop",
+    "expr.unop",
+    "expr.var",
+    "op.land",
+    "stmt.return",
+    "type.bool"
+  ]
+}

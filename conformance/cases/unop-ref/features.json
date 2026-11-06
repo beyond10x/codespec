@@ -1,0 +1,16 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "unop.ref",
+    "decl.struct",
+    "expr.field",
+    "expr.struct",
+    "expr.unop",
+    "expr.var",
+    "stmt.let",
+    "stmt.return",
+    "type.int",
+    "type.named",
+    "type.ptr"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.named",
+    "decl.newtype",
+    "expr.conv",
+    "expr.var",
+    "stmt.let",
+    "stmt.return",
+    "type.int"
+  ]
+}

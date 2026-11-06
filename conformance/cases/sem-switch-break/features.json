@@ -1,0 +1,22 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.switch.break",
+    "expr.binop",
+    "expr.lit",
+    "expr.var",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.break",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "stmt.switch",
+    "type.bool",
+    "type.int"
+  ],
+  "edges": [
+    "break inside a switch inside a loop"
+  ]
+}

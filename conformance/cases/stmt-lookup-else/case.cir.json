@@ -1,0 +1,244 @@
+{
+  "format": "cir/1",
+  "name": "stmt_lookup_else",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "errors": [
+    {
+      "name": "ErrMissing",
+      "message": "missing",
+      "pos": "case.go:5"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Find",
+      "exported": true,
+      "params": [
+        {
+          "name": "k",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "m"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "map",
+                "key": {
+                  "k": "string"
+                },
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "m",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "\"a\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "m",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "\"b\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "2",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "lookup_else",
+          "name": "v",
+          "map": {
+            "k": "var",
+            "name": "m",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "index": {
+            "k": "var",
+            "name": "k",
+            "t": {
+              "k": "string"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrMissing",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:14"
+            }
+          ],
+          "pos": "case.go:12"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "v",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:16"
+        }
+      ],
+      "doc": "Find looks a key up in a map of two entries.",
+      "pos": "case.go:8"
+    }
+  ],
+  "layout": [
+    "error:ErrMissing",
+    "func:Find"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Find"
+    ]
+  }
+}

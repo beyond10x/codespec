@@ -1,0 +1,20 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.to_error",
+    "decl.struct",
+    "expr.binop",
+    "expr.field",
+    "expr.lit",
+    "expr.struct",
+    "expr.var",
+    "fact.displays",
+    "fact.fallible",
+    "fact.read_only",
+    "op.add",
+    "stmt.return",
+    "type.error",
+    "type.named",
+    "type.string"
+  ]
+}

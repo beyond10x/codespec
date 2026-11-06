@@ -1,0 +1,85 @@
+{
+  "format": "cir/1",
+  "name": "intrinsic_sprintf",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Label",
+      "exported": true,
+      "params": [
+        {
+          "name": "name",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"%s=%d\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "name",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:7"
+        }
+      ],
+      "doc": "Label formats a name and a count.",
+      "pos": "case.go:6"
+    }
+  ],
+  "layout": [
+    "func:Label"
+  ],
+  "facts": {
+    "shared": []
+  }
+}
