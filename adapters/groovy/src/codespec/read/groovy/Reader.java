@@ -150,7 +150,20 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * <p>Everything else is kept as a {@code foreign} statement holding its Groovy source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line. Every reason begins with one
  * category of the closed list in {@code README.md}: {@code dynamic}, {@code closure}, {@code
- * groovy-semantics}, {@code type}, {@code unresolved} and {@code unsupported} here.
+ * groovy-semantics}, {@code type}, {@code unresolved} and {@code unsupported}, and in a Grails
+ * application {@code gorm} and {@code spring}.
+ *
+ * <p>The Grails layer ({@link #read(Grails, List)}, README.md "Grails 2.5.6 applications"): the
+ * domain classes and services of the application are read, every other file of it compiled
+ * resolve-only, with the jars of {@code CODESPEC_GROOVY_CLASSPATH} on the classpath and their
+ * global AST transformations disabled. Positions name a file by its path in the application. A GORM
+ * call on a domain class, an instance of one or {@code this} in one is {@code foreign}, {@code gorm:
+ * <name>}; a domain metadata static is refused, {@code gorm: mapping metadata <name>}; a domain
+ * property of a reference type without an initializer is {@code JvmTypes.unassignedField} of its
+ * type, and a use of it is refused; a service field Spring injects is refused, {@code spring:
+ * injected dependency}, and a call through it is {@code foreign}; a method {@code
+ * TransactionalTransform} rewrote is refused, {@code unsupported: grails transform}. Two classes
+ * with one simple name are both refused.
  */
 public final class Reader {
     /** Why a directory could not be read at all. */
@@ -167,6 +180,8 @@ public final class Reader {
     static final String GROOVY = "groovy-semantics";
     static final String TYPE = "type";
     static final String UNRESOLVED = "unresolved";
+    static final String GORM = "gorm";
+    static final String SPRING = "spring";
     static final String UNSUPPORTED = "unsupported";
 
     /** A construct outside cir/1; the enclosing statement becomes foreign with this reason. */
@@ -295,6 +310,22 @@ public final class Reader {
     private final List<Object> layout = new ArrayList<>();
     private final List<Map<String, Object>> refusals = new ArrayList<>();
 
+    // ---- the Grails layer ----
+
+    /** The Grails application read, or null for a plain package. */
+    private Grails app;
+    /** The domain class and service files, by their path in the application. */
+    private final Set<String> domainFiles = new HashSet<>();
+    private final Set<String> serviceFiles = new HashSet<>();
+    /** Domain metadata statics ({@code static mapping}, …): refused, never a field or a constant. */
+    private final Set<FieldNode> metadata = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Service fields Spring injects: refused, never a field. */
+    private final Set<FieldNode> injected = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Domain properties of a reference type that hold null until set: {@code ptr(T)}. */
+    private final Set<FieldNode> nullable = Collections.newSetFromMap(new IdentityHashMap<>());
+    /** Methods the Grails {@code TransactionalTransform} rewrote: refused, never read. */
+    private final Set<MethodNode> transformed = Collections.newSetFromMap(new IdentityHashMap<>());
+
     private Reader() {}
 
     // ---- compiling ----
@@ -320,7 +351,27 @@ public final class Reader {
      * compiled so that references to them resolve, and never read.
      */
     public static Map<String, Object> read(List<Path> files, List<Path> resolveOnly) throws Failure {
+        return new Reader().run(files, resolveOnly, List.of());
+    }
+
+    /**
+     * Read the domain classes and services of a Grails application into one module named by its
+     * {@code app.name}, every other file of the application compiled resolve-only, with {@code
+     * classpath} (the jars of {@code CODESPEC_GROOVY_CLASSPATH}) after the Groovy jar.
+     */
+    static Map<String, Object> read(Grails app, List<Path> classpath) throws Failure {
         Reader r = new Reader();
+        r.app = app;
+        for (Path f : app.domain) {
+            r.domainFiles.add(app.relative(f));
+        }
+        for (Path f : app.services) {
+            r.serviceFiles.add(app.relative(f));
+        }
+        return r.run(app.read(), app.resolveOnly, classpath);
+    }
+
+    private Map<String, Object> run(List<Path> files, List<Path> resolveOnly, List<Path> classpath) throws Failure {
         List<Path> remaining = new ArrayList<>();
         for (Path f : files) {
             remaining.add(f.toAbsolutePath().normalize());
@@ -329,9 +380,10 @@ public final class Reader {
         for (Path f : resolveOnly) {
             resolve.add(f.toAbsolutePath().normalize());
         }
+        Set<String> disabled = globalTransforms(classpath);
         Map<String, String> packages = new HashMap<>();
         while (true) {
-            CompilationUnit cu = newUnit();
+            CompilationUnit cu = newUnit(classpath, disabled);
             for (Path f : remaining) {
                 cu.addSource(f.toFile());
             }
@@ -340,25 +392,68 @@ public final class Reader {
             }
             try {
                 cu.compile(Phases.CANONICALIZATION);
-                r.typeCheck(cu, remaining);
+                typeCheck(cu, remaining);
                 break;
             } catch (CompilationFailedException e) {
                 packagesOf(cu, packages);
-                Set<Path> refused = r.unresolvedFiles(cu, remaining, resolve);
+                Set<Path> refused = unresolvedFiles(cu, remaining, resolve);
                 remaining.removeAll(refused);
+                resolve.removeAll(refused);
                 if (remaining.isEmpty()) {
-                    return r.module(packageOf(files, packages));
+                    return module(app != null ? app.name : packageOf(files, packages));
                 }
             }
         }
-        return r.module(r.packageName());
+        return module(app != null ? app.name : packageName());
     }
 
-    private static CompilationUnit newUnit() {
+    /**
+     * The global AST transformations the jars of {@code classpath} register (their {@code
+     * META-INF/services/org.codehaus.groovy.transform.ASTTransformation}), all disabled: a Grails
+     * plugin's global transformation injects GORM methods and rewrites the code read. Groovy's own
+     * are not on that classpath and stay.
+     */
+    private static Set<String> globalTransforms(List<Path> classpath) throws Failure {
+        Set<String> out = new java.util.TreeSet<>();
+        for (Path jar : classpath) {
+            if (!Files.isRegularFile(jar)) {
+                throw new Failure(jar + ": no such jar on " + Main.CLASSPATH_ENV);
+            }
+            try (java.util.jar.JarFile j = new java.util.jar.JarFile(jar.toFile())) {
+                java.util.jar.JarEntry e = j.getJarEntry("META-INF/services/org.codehaus.groovy.transform.ASTTransformation");
+                if (e == null) {
+                    continue;
+                }
+                String text = new String(j.getInputStream(e).readAllBytes(), StandardCharsets.UTF_8);
+                for (String line : text.split("\n")) {
+                    String l = line.contains("#") ? line.substring(0, line.indexOf('#')) : line;
+                    if (!l.isBlank()) {
+                        out.add(l.trim());
+                    }
+                }
+            } catch (IOException ex) {
+                throw new Failure(jar + ": " + ex.getMessage());
+            }
+        }
+        return out;
+    }
+
+    private static CompilationUnit newUnit(List<Path> classpath, Set<String> disabledGlobals) {
         CompilerConfiguration config = new CompilerConfiguration();
         config.setSourceEncoding("UTF-8");
+        List<String> cp = new ArrayList<>();
+        for (Path p : classpath) {
+            cp.add(p.toAbsolutePath().normalize().toString());
+        }
+        config.setClasspathList(cp);
+        config.setDisabledGlobalASTTransformations(new HashSet<>(disabledGlobals));
         GroovyClassLoader loader = new GroovyClassLoader(new Hidden(Reader.class.getClassLoader()), config);
         return new CompilationUnit(config, null, loader);
+    }
+
+    /** A read file's name in every position: its path in the Grails application, else its file name. */
+    private String label(Path p) {
+        return app != null ? app.relative(p) : p.getFileName().toString();
     }
 
     /** The reader's own classes are not on the compile classpath of the code it reads. */
@@ -457,11 +552,17 @@ public final class Reader {
                 cls = cls.substring(0, sp);
             }
             if (!remaining.contains(p)) {
-                throw new Failure(p.getFileName() + ":" + se.getStartLine() + ": unable to resolve class " + cls
+                if (app != null && resolve.contains(p)) {
+                    // A resolve-only file of the application is not read: dropped from the
+                    // compilation, it yields nothing, and what references it does not resolve.
+                    refused.add(p);
+                    continue;
+                }
+                throw new Failure(label(p) + ":" + se.getStartLine() + ": unable to resolve class " + cls
                     + " in a file that is compiled but not read");
             }
             String line = lineText(p, se.getStartLine());
-            addRefusal(p.getFileName() + ":" + se.getStartLine(), line, UNRESOLVED + ": " + cls);
+            addRefusal(label(p) + ":" + se.getStartLine(), line, UNRESOLVED + ": " + cls);
             refused.add(p);
         }
         return refused;
@@ -490,7 +591,7 @@ public final class Reader {
                 sus.add(su);
             }
         }
-        sus.sort(Comparator.comparing(su -> Path.of(su.getName()).getFileName().toString()));
+        sus.sort(Comparator.comparing(su -> label(Path.of(su.getName()))));
         Map<String, Unit> byName = new HashMap<>();
         for (SourceUnit su : sus) {
             String text;
@@ -499,7 +600,7 @@ public final class Reader {
             } catch (IOException e) {
                 throw new Failure(su.getName() + ": " + e.getMessage());
             }
-            Unit u = new Unit(su, Path.of(su.getName()).getFileName().toString(), text);
+            Unit u = new Unit(su, label(Path.of(su.getName()).toAbsolutePath().normalize()), text);
             units.add(u);
             byName.put(su.getName(), u);
             List<ClassNode> classes = new ArrayList<>(su.getAST().getClasses());
@@ -510,6 +611,9 @@ public final class Reader {
             }
         }
         int before = errorCount(cu);
+        for (ClassNode cn : decls) {
+            transactionalTransform(cn);
+        }
         for (ClassNode cn : decls) {
             if (cn.isInterface() || cn.isAnnotationDefinition()) {
                 continue;
@@ -543,6 +647,55 @@ public final class Reader {
             }
             errs.add(new Err(u, se.getStartLine(), se.getStartColumn(), msg.replaceAll("\\s+", " ")));
         }
+    }
+
+    /** The annotation whose local transformation rewrites a Grails service's methods. */
+    private static final String TRANSACTIONAL = "grails.transaction.Transactional";
+
+    /** The interface {@code TransactionalTransform} adds to the class it rewrites. */
+    private static final String TRANSACTION_MANAGER_AWARE = "org.codehaus.groovy.grails.orm.support.TransactionManagerAware";
+
+    /** The prefix of the method into which {@code TransactionalTransform} moves a method's own body. */
+    private static final String MOVED_BODY = "$tt__";
+
+    /**
+     * The methods Grails's {@code TransactionalTransform} rewrote, which runs at {@code
+     * CANONICALIZATION} wherever {@code @grails.transaction.Transactional} resolves and which
+     * disabling global transformations does not turn off. It moves a method's body into a method
+     * of its own and replaces the body with a call through a transaction template. The reader
+     * reads neither: each rewritten method is refused ({@code unsupported: grails transform}), and
+     * both bodies are emptied before type checking, so the checker does not load the classes the
+     * rewrite names.
+     */
+    private void transactionalTransform(ClassNode cn) {
+        for (MethodNode moved : new ArrayList<>(cn.getMethods())) {
+            if (!moved.getName().startsWith(MOVED_BODY) || userNode(moved)) {
+                continue;
+            }
+            String name = moved.getName().substring(MOVED_BODY.length());
+            for (MethodNode m : cn.getMethods(name)) {
+                if (userNode(m) && m.getParameters().length + 1 == moved.getParameters().length) {
+                    transformed.add(m);
+                    m.setCode(new BlockStatement());
+                }
+            }
+            moved.setCode(new BlockStatement());
+        }
+    }
+
+    /** Whether a class carries {@code @grails.transaction.Transactional} or one of its methods was rewritten by it. */
+    private boolean transactional(ClassNode cn) {
+        for (AnnotationNode a : cn.getAnnotations()) {
+            if (a.getClassNode().getName().equals(TRANSACTIONAL)) {
+                return true;
+            }
+        }
+        for (MethodNode m : cn.getMethods()) {
+            if (transformed.contains(m)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static int errorCount(CompilationUnit cu) {
@@ -647,11 +800,18 @@ public final class Reader {
     }
 
     private void classify() {
+        Map<String, Integer> simpleNames = new HashMap<>();
+        for (ClassNode cn : decls) {
+            simpleNames.merge(cn.getNameWithoutPackage(), 1, Integer::sum);
+        }
         for (ClassNode cn : decls) {
             Unit u = unitOf.get(cn);
             String name = cn.getNameWithoutPackage();
             String why = null;
-            if (cn.isScript()) {
+            if (simpleNames.get(name) > 1) {
+                // One module has one namespace.
+                why = UNSUPPORTED + ": duplicate simple name " + name;
+            } else if (cn.isScript()) {
                 why = "statements outside a class: a script is outside cir/1";
             } else if (cn.getOuterClass() != null) {
                 why = "nested class: only top-level classes are read";
@@ -669,6 +829,7 @@ public final class Reader {
             if (cn.isEnum()) {
                 enums.put(cn.getName(), cn);
             } else {
+                grailsMembers(u, cn);
                 structs.put(cn.getName(), cn);
             }
         }
@@ -696,6 +857,57 @@ public final class Reader {
         }
     }
 
+    /** Domain metadata blocks, which GORM reads as configuration: never fields or constants. */
+    private static final Set<String> METADATA = Set.of(
+        "constraints", "mapping", "hasMany", "belongsTo", "hasOne", "transients", "embedded", "namedQueries");
+
+    private boolean isDomain(ClassNode cn) {
+        Unit u = cn == null ? null : unitOf.get(cn.redirect());
+        return u != null && domainFiles.contains(u.file) && !cn.isEnum();
+    }
+
+    private boolean isService(ClassNode cn) {
+        Unit u = cn == null ? null : unitOf.get(cn.redirect());
+        return u != null && serviceFiles.contains(u.file);
+    }
+
+    /**
+     * Refuses the members of a Grails artefact that are not fields though declared as such: a
+     * domain class's metadata statics ({@code gorm: mapping metadata <name>}) and a service field
+     * Spring injects ({@code spring: injected dependency}), each at its line.
+     */
+    private void grailsMembers(Unit u, ClassNode cn) {
+        boolean domain = isDomain(cn);
+        boolean service = isService(cn);
+        for (FieldNode f : userFields(cn)) {
+            if (domain && f.isStatic() && METADATA.contains(f.getName())) {
+                refuseDecl(u, f, cn.getNameWithoutPackage() + "." + f.getName(), GORM + ": mapping metadata " + f.getName());
+                consume(u, f);
+                metadata.add(f);
+            } else if (service && injectedField(f)) {
+                refuseDecl(u, f, cn.getNameWithoutPackage() + "." + f.getName(), SPRING + ": injected dependency");
+                consume(u, f);
+                injected.add(f);
+            }
+        }
+    }
+
+    /**
+     * Whether Spring injects a service's field by its name: an instance field without an
+     * initializer that is {@code def xService}, or whose type is a service (a read service, or a
+     * class outside {@code java.*} named {@code *Service}, as a plugin's are).
+     */
+    private boolean injectedField(FieldNode f) {
+        if (f.isStatic() || f.hasInitialExpression()) {
+            return false;
+        }
+        if (f.isDynamicTyped()) {
+            return f.getName().endsWith("Service") && f.getName().length() > "Service".length();
+        }
+        ClassNode t = f.getType();
+        return isService(t) || t.getNameWithoutPackage().endsWith("Service") && !t.getName().startsWith("java.");
+    }
+
     /** Why a class is not read as a struct or an enum, or null. */
     private String classShape(ClassNode cn) {
         if (cn.isAnnotationDefinition()) {
@@ -717,6 +929,9 @@ public final class Reader {
             return UNSUPPORTED + ": class extends " + cn.getSuperClass().getName() + ": inheritance is outside cir/1";
         }
         for (ClassNode i : cn.getInterfaces()) {
+            if (i.getName().equals(TRANSACTION_MANAGER_AWARE) && transactional(cn)) {
+                continue;
+            }
             if (!i.getName().equals("groovy.lang.GroovyObject")) {
                 return UNSUPPORTED + ": implements " + i.getName() + ": interfaces are outside the reader's subset";
             }
@@ -765,7 +980,7 @@ public final class Reader {
     private Map<FieldNode, String> badFields(ClassNode cn) {
         Map<FieldNode, String> out = new LinkedHashMap<>();
         for (FieldNode f : userFields(cn)) {
-            if (f.isStatic()) {
+            if (f.isStatic() || injected.contains(f)) {
                 continue;
             }
             String kind = cn.getProperty(f.getName()) != null ? "property" : "field";
@@ -780,6 +995,12 @@ public final class Reader {
                 continue;
             }
             if (!ClassHelper.isPrimitiveType(f.getType()) && !f.hasInitialExpression() && !assignedInEveryConstructor(cn, f)) {
+                if (isDomain(cn)) {
+                    // A domain property holds null until GORM or the code sets it: a pointer,
+                    // whose zero value is nil (JvmTypes.unassignedField).
+                    nullable.add(f);
+                    continue;
+                }
                 out.put(f, TYPE + ": " + kind + " " + f.getName() + " holds null until assigned, which no cir/1 zero value is:"
                     + " give it an initializer or assign it first in every constructor");
             }
@@ -889,6 +1110,10 @@ public final class Reader {
         String why = null;
         for (AnnotationNode a : n.getAnnotations()) {
             String qn = a.getClassNode().getName();
+            if (qn.equals(TRANSACTIONAL)) {
+                // Its transformation's rewrites are refused method by method (transactionalTransform).
+                continue;
+            }
             if (qn.equals("groovy.transform.CompileDynamic") || HARMLESS_ANNOTATIONS.contains(qn) && skips(a)) {
                 why = DYNAMIC + ": " + "@" + a.getClassNode().getNameWithoutPackage()
                     + " turns type checking off, so nothing here has an inferred type";
@@ -921,7 +1146,7 @@ public final class Reader {
             Unit u = unitOf.get(cn);
             String cname = cn.getNameWithoutPackage();
             for (FieldNode f : userFields(cn)) {
-                if (!f.isStatic()) {
+                if (!f.isStatic() || metadata.contains(f)) {
                     continue;
                 }
                 String why = null;
@@ -957,6 +1182,9 @@ public final class Reader {
                 }
                 if (why != null) {
                     // turned off by an annotation
+                } else if (transformed.contains(m)) {
+                    why = UNSUPPORTED + ": grails transform: @Transactional replaced the body of " + name + " with a call"
+                        + " through a transaction template, and the reader does not read a rewritten method";
                 } else if (!ctor && DYNAMIC_HOOKS.contains(name)) {
                     why = DYNAMIC + ": " + name + " declared: Groovy calls it at run time for names the class does not declare";
                 } else if (ctor && explicitCtor) {
@@ -1089,10 +1317,10 @@ public final class Reader {
         d.put("exported", Modifier.isPublic(cn.getModifiers()));
         List<Object> fields = new ArrayList<>();
         for (FieldNode f : userFields(cn)) {
-            if (!f.isStatic()) {
+            if (!f.isStatic() && !injected.contains(f)) {
                 Map<String, Object> fm = Json.obj();
                 fm.put("name", f.getName());
-                fm.put("t", typeOf(f.getType()));
+                fm.put("t", fieldType(f));
                 fields.add(fm);
             }
         }
@@ -2391,6 +2619,10 @@ public final class Reader {
             throw unsupported("super: inheritance is outside cir/1");
         }
         Variable a = v.getAccessedVariable();
+        if ((a == null || a instanceof DynamicVariable) && GORM_PROPERTIES.contains(v.getName()) && ctx.fn != null
+            && isDomain(ctx.fn.cls)) {
+            throw refuse(GORM, v.getName() + " of " + ctx.fn.cls.getNameWithoutPackage() + ": " + GORM_DETAIL);
+        }
         if (a == null || a instanceof DynamicVariable) {
             throw refuse(DYNAMIC, "name " + v.getName() + " does not resolve: Groovy looks it up at run time");
         }
@@ -2442,8 +2674,15 @@ public final class Reader {
             }
             throw unsupported("static field " + owner.getNameWithoutPackage() + "." + name);
         }
+        if (injected.contains(f)) {
+            throw refuse(SPRING, "use of the injected dependency " + name + ": Spring sets it at run time");
+        }
         if (!structs.containsKey(owner.getName())) {
             throw unsupported("field of " + owner.getName() + ", which is not read");
+        }
+        if (nullable.contains(f)) {
+            throw refuse(TYPE, "property " + name + " of " + owner.getNameWithoutPackage() + " holds null until set: a read or"
+                + " write of it, which Groovy goes on with where the pointer is nil, is outside the reader's subset");
         }
         Map<String, Object> x = recv != null ? recv : thisRef(ctx);
         Map<String, Object> fm = Json.obj();
@@ -2452,6 +2691,12 @@ public final class Reader {
         fm.put("name", name);
         fm.put("t", typeOf(f.getType()));
         return fm;
+    }
+
+    /** An instance field's cir/1 type: a domain property holding null until set is a pointer to its type. */
+    private Map<String, Object> fieldType(FieldNode f) {
+        Map<String, Object> t = typeOf(f.getType());
+        return nullable.contains(f) ? JvmTypes.unassignedField(t) : t;
     }
 
     /** {@code Integer.MAX_VALUE} and the other integer constants of {@code Integer} and {@code Long}. */
@@ -2514,6 +2759,12 @@ public final class Reader {
             throw refuse(DYNAMIC, "a property named at run time");
         }
         Expression obj = pe.getObjectExpression();
+        if (GORM_PROPERTIES.contains(name) && !(obj instanceof ClassExpression)) {
+            ClassNode domain = gormReceiver(obj, false, ctx);
+            if (domain != null && domain.getField(name) == null) {
+                throw refuse(GORM, name + " of " + domain.getNameWithoutPackage() + ": " + GORM_DETAIL);
+            }
+        }
         if (obj instanceof ClassExpression) {
             ClassNode c = obj.getType();
             FieldNode f = c.getField(name);
@@ -2552,6 +2803,49 @@ public final class Reader {
         return null;
     }
 
+    private static final String GORM_DETAIL = "GORM persistence is outside cir/1 until it has a persistence boundary";
+
+    /** The GORM methods by name; the dynamic finders and association methods by prefix. */
+    private static final Set<String> GORM_METHODS = Set.of(
+        "save", "delete", "validate", "refresh", "merge", "attach", "discard", "get", "read", "load", "list", "count",
+        "exists", "find", "findAll", "findWhere", "findAllWhere", "where", "withCriteria", "createCriteria", "executeQuery",
+        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion");
+
+    private static final List<String> GORM_PREFIXES = List.of(
+        "findBy", "findAllBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
+
+    /** The implicit properties of a domain instance. */
+    private static final Set<String> GORM_PROPERTIES = Set.of("id", "version", "errors");
+
+    private static boolean gormMethod(String name) {
+        if (GORM_METHODS.contains(name)) {
+            return true;
+        }
+        for (String p : GORM_PREFIXES) {
+            if (name.length() > p.length() && name.startsWith(p) && Character.isUpperCase(name.charAt(p.length()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The domain class a call or property goes to, or null: a domain class itself ({@code
+     * Tool.findByName}), an instance of one ({@code loan.save()}), or {@code this} in a domain class.
+     */
+    private ClassNode gormReceiver(Expression recv, boolean implicitThis, Ctx ctx) {
+        if (implicitThis || isThis(recv)) {
+            return ctx.fn != null && isDomain(ctx.fn.cls) ? ctx.fn.cls : null;
+        }
+        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, ctx);
+        return isDomain(t) ? t.redirect() : null;
+    }
+
+    /** Whether the type checker resolved a call to a method the domain class declares itself. */
+    private static boolean declaredBy(MethodNode target, ClassNode domain) {
+        return target != null && target.getLineNumber() > 0 && target.getDeclaringClass().redirect() == domain.redirect();
+    }
+
     /** A method call, read by the target the type checker chose. */
     private Map<String, Object> call(MethodCallExpression mce, Ctx ctx) {
         if (metaClass(mce)) {
@@ -2568,6 +2862,15 @@ public final class Reader {
             throw refuse(DYNAMIC, "a method named at run time");
         }
         MethodNode target = mce.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+        Object through = named(mce.getObjectExpression());
+        if (!mce.isImplicitThis() && through instanceof FieldNode && injected.contains(through)) {
+            throw refuse(SPRING, "call through an injected dependency, " + ((FieldNode) through).getName() + "." + name
+                + ": Spring sets it at run time");
+        }
+        ClassNode domain = gormReceiver(mce.getObjectExpression(), mce.isImplicitThis(), ctx);
+        if (domain != null && gormMethod(name) && !declaredBy(target, domain)) {
+            throw refuse(GORM, name + " on " + domain.getNameWithoutPackage() + ": " + GORM_DETAIL);
+        }
         if (target == null) {
             throw refuse(DYNAMIC, "call of " + name + ", which the type checker does not resolve: Groovy looks it up at run time");
         }

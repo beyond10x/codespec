@@ -21,8 +21,73 @@ reports an error, the statement holding it becomes `foreign`; the read goes on.
 `testdata/typed` is a package read with no refusal: an unannotated class, a `@CompileStatic` class
 and an enum. Each directory under `testdata/refuse` holds one construct the reader keeps as
 `foreign` or refuses; its line is marked `// refused <category>`. `testdata/lending` is a small
-Grails application, read in part by this reader; `testdata/lending/EXPECTED.md` is what the Grails
-layer is to read of it.
+Grails application; `testdata/lending/EXPECTED.md` is what the reader reads of it, and
+`testdata/lending.read.cir.json` is that read.
+
+## Grails 2.5.6 applications
+
+A directory holding `application.properties` with `app.grails.version=2.5.6` is read as a legacy
+Grails application, into one module named by its `app.name`. A directory without
+`application.properties` is read as plain Groovy, as above.
+
+- Read: the domain classes (every `.groovy` file under `grails-app/domain`) and the services (every
+  `*Service.groovy` under `grails-app/services`).
+- Resolve-only: every other `.groovy` file under `grails-app` (`utils`, `taglib`, `jobs`, `conf`,
+  `controllers`) and under `src`. They are compiled so that references to them resolve, and yield no
+  struct, function or refusal; a call of one of them is `unsupported`, its target not being read. A
+  resolve-only file whose own imports do not resolve is left out of the compilation. Plugins are not
+  read. `.java` files under `src/java` are not compiled.
+- Positions name a file by its path in the application: `grails-app/services/lending/LoanService.groovy:15`.
+- Two artefacts with the same simple name in different packages are both refused,
+  `unsupported: duplicate simple name`: one module has one namespace.
+- An artefact whose imports do not resolve is refused as a whole at its first unresolved line,
+  `unresolved: <class>`; the others are read.
+
+The compile classpath is the Groovy jar, then the jars `CODESPEC_GROOVY_CLASSPATH` names
+(separated by `:`), so a real application can be read with its dependency jars. Every global AST
+transformation those jars register is disabled, so no GORM method is injected and every GORM call
+is visible as written.
+
+```console
+CODESPEC_GROOVY_CLASSPATH=<jar>:<jar> codespec read --lang groovy <grails app> --out <file> --adapters target/adapters
+```
+
+For a service that imports `grails.transaction.Transactional`, put these jars of the Grails 2.5.6
+distribution on `CODESPEC_GROOVY_CLASSPATH`. The first two hold the annotation, its transformation
+and the Spring enums its members name; the transformation loads classes from the other four as it
+runs.
+
+- `$GRAILS_HOME/dist/grails-core-2.5.6.jar`
+- `$GRAILS_HOME/lib/org.springframework/spring-tx/jars/spring-tx-4.1.9.RELEASE.jar`
+- `$GRAILS_HOME/lib/javax.annotation/jsr250-api/jars/jsr250-api-1.0.jar`
+- `$GRAILS_HOME/lib/org.springframework/spring-beans/jars/spring-beans-4.1.9.RELEASE.jar`
+- `$GRAILS_HOME/lib/org.springframework/spring-core/jars/spring-core-4.1.9.RELEASE.jar`
+- `$GRAILS_HOME/dist/grails-bootstrap-2.5.6.jar`
+
+Without them, such a service is refused as a whole, `unresolved: grails.transaction.Transactional`.
+With them, `@Transactional`'s local transformation, `TransactionalTransform`, runs at
+`CANONICALIZATION` (disabling global transformations does not turn it off) and rewrites each method
+it covers into a call through a transaction template. The reader never reads a rewritten method:
+each is refused, `unsupported: grails transform`, and no identifier the rewrite introduces reaches
+the module.
+
+What the Grails layer reads and refuses:
+
+- GORM calls stay `foreign`, `gorm: <name>`, on a domain class, an instance of one or `this` in one:
+  `save`, `delete`, `validate`, `refresh`, `merge`, `attach`, `discard`, `get`, `read`, `load`,
+  `list`, `count`, `exists`, `find`, `findAll`, `findWhere`, `findAllWhere`, `where`,
+  `withCriteria`, `createCriteria`, `executeQuery`, `executeUpdate`, `withTransaction`,
+  `withNewSession`, `errors`, `hasErrors`, the implicit `id` and `version`, and every `findBy*`,
+  `findAllBy*`, `countBy*`, `findOrCreateBy*`, `findOrSaveBy*`, `addTo*` and `removeFrom*`. The
+  classification wins over `dynamic` and `closure`.
+- Domain metadata (`static constraints`, `mapping`, `hasMany`, `belongsTo`, `hasOne`, `transients`,
+  `embedded`, `namedQueries`) is no field: one refusal at its line, `gorm: mapping metadata <name>`.
+- A domain property of a reference type without an initializer holds `null` until set: it is a
+  `ptr(T)` field, zero value `nil` (`JvmTypes.unassignedField`, shared with the Java reader). A read
+  or write of such a property in a function body is refused, `type`.
+- A service field Spring injects (`def xService`, or a field of a service type without an
+  initializer) is no field: refused at its line, `spring: injected dependency`; a call through it is
+  `spring: call through an injected dependency`.
 
 ## Refusal categories
 
@@ -66,7 +131,8 @@ int half = count / 2      // groovy-semantics: integer / integer is a BigDecimal
 ### `type`
 
 A type outside the reader's table, or a reference field with no initializer, which holds `null`
-until it is assigned.
+until it is assigned. In a Grails domain class such a property is read as a pointer; a read or
+write of it in a function body is refused here.
 
 ```groovy
 def rate = 1.5            // type: type java.math.BigDecimal is outside the reader's types
@@ -84,23 +150,23 @@ import com.example.missing.Gone   // unresolved: com.example.missing.Gone
 
 ### `gorm`
 
-A GORM construct: a domain class's mapping and constraints, dynamic finders, criteria and
-persistence methods. This reader refuses them under the categories above; the Grails layer names
-them `gorm`.
+A GORM construct in a Grails application: a domain class's metadata (mapping, constraints,
+associations), dynamic finders, criteria and persistence methods. Outside a Grails application the
+same text is refused under the categories above.
 
 ```groovy
-static constraints = { title blank: false }
-Loan.findAllByMember(member)
+static constraints = { title blank: false }   // gorm: mapping metadata constraints
+Loan.findAllByMember(member)                  // gorm: findAllByMember on Loan: …
 ```
 
 ### `spring`
 
-A dependency Spring injects into a Grails artefact by its name. This reader refuses it under the
-categories above; the Grails layer names it `spring`.
+A dependency Spring injects into a Grails service by its name, and a call through it.
 
 ```groovy
-def catalogService
-FeeService feeService
+def catalogService                            // spring: injected dependency
+FeeService feeService                         // spring: injected dependency
+feeService.lateFeeCents(days)                 // spring: call through an injected dependency, …
 ```
 
 ### `unsupported`
@@ -127,3 +193,6 @@ them.
   argument's run-time type is a subtype that has its own overload.
 - Every reference parameter of a method is not null.
 - The program runs under `Locale.ROOT`: `sprintf` prints ASCII digits.
+- Transactions: Grails 2 services are transactional by default, and the reader does not model a
+  transaction. A method without a GORM call has no transactional effect to lose; every GORM call is
+  kept `foreign`.
