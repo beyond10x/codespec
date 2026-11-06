@@ -231,7 +231,11 @@ fn a_synthesized_constructor_is_not_counted_and_a_refused_declaration_is_a_refus
     assert_eq!(
         rows,
         vec![
-            ("Cart.groovy", vec![], vec!["Cart(…)", "Cart.methodMissing(…)"]),
+            (
+                "Cart.groovy",
+                vec![],
+                vec!["Cart(…)", "Cart.methodMissing(…)"]
+            ),
             ("Till.groovy", vec!["NewTill"], vec![]),
         ]
     );

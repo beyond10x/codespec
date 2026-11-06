@@ -1,9 +1,9 @@
-package op_div;
+package op_div
 
-/** The Java source of the kit case op-div. */
-public final class Case {
+/** The Groovy source of the kit case op-div: Groovy divides integers with intdiv, since its / on two integers is a BigDecimal division. */
+final class Case {
     /** Divides, truncating toward zero. */
-    public static long div(long a, long b) {
-        return a / b;
+    static long div(long a, long b) {
+        return a.intdiv(b)
     }
 }

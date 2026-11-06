@@ -18,6 +18,18 @@ there rewrites the tree the reader reads. Each expression takes the type the che
 local takes the type inferred for its declaration, and a `def` parameter is `any`. Where the checker
 reports an error, the statement holding it becomes `foreign`; the read goes on.
 
+Integer division is `x.intdiv(y)`: Groovy's `/` on two integers divides as `BigDecimal` and is
+refused. On two `int`s or two `long`s (an `int` literal taking a `long`'s type), `intdiv` is `/` of
+`cir/1` in that type: Groovy's `NumberMath` divides as Java's `/` does, truncating toward zero, the
+minimum divided by -1 wrapping to itself, and division by zero throwing `ArithmeticException` where
+Go panics. The checker types `intdiv` as `Number`; a type-checking extension (`IntdivTyping`) types
+it as Groovy runs it, `int` or `long`, except in `@CompileStatic` or `@TypeChecked` code, where
+groovyc refuses the `Number` and the statement stays `foreign` (`dynamic`). On other operand types
+it is refused (`groovy-semantics`), and as a statement of its own, like `a + b` alone, it is
+`unsupported`.
+Groovy has no compound `intdiv`, so `x = x.intdiv(y)`, with `x` a local or a field read through no
+call, is `x /= y`; any other target is an assignment of the division.
+
 `testdata/typed` is a package read with no refusal: an unannotated class, a `@CompileStatic` class
 and an enum. Each directory under `testdata/refuse` holds one construct the reader keeps as
 `foreign` or refuses; its line is marked `// refused <category>`. `testdata/lending` is a small
@@ -111,18 +123,17 @@ What the Grails layer reads and refuses:
 `codespec-run-groovy` (`codespec.run.groovy.Main`, on `codespec.run.Runner` in
 [`../jvm/src`](../jvm/src/codespec/run/Runner.java)) compiles a Groovy package to classes with the
 same Groovy 2.4.10 and makes a `calls.json` against its static methods. The conformance corpus
-`conformance/reader/groovy` is the kit's `java/Case.java` sources, each as `Case.groovy`: Groovy
-compiles every one unchanged, and step 1 of `codespec conform` requires each to run to its case's
-`expected.txt` under Groovy before the reader reads it.
+`conformance/reader/groovy` is each kit case's `groovy/Case.groovy`, else its `java/Case.java`, as
+`Case.groovy`: Groovy compiles every Java source unchanged, and step 1 of `codespec conform`
+requires each to run to its case's `expected.txt` under Groovy before the reader reads it. The cases
+`op-div`, `assign-div` and `sem-int-wrap` carry a `groovy/Case.groovy` that divides with `intdiv`,
+since their Java `/` is a BigDecimal division in Groovy.
 
 `codespec-read-groovy --describe` claims every feature whose cases in that corpus all pass, and
 `task adapters-check` requires each claimed feature to be used by the reader's output for
-`testdata/typed` or for the corpus. `sem.int.wrap` is not claimed: its case `sem-int-wrap` divides,
-and an integer `/` is a BigDecimal division in Groovy, which the reader refuses (`groovy`); the
-case `sem-int-wrap-no-div`, which adds, subtracts, multiplies and negates across the int64 edges,
-passes. The features whose cases the reader refuses are not claimed either: `expr.errvar`,
-`expr.nil`, `expr.zero` and `type.error` (a thrown exception is not read as an error) and
-`assign.div` and `op.div` (the same division).
+`testdata/typed` or for the corpus. The features whose cases the reader refuses are not claimed:
+`expr.errvar`, `expr.nil`, `expr.zero` and `type.error` (a thrown exception is not read as an
+error).
 
 ## Refusal categories
 
@@ -161,6 +172,7 @@ if (names) {              // groovy-semantics: Groovy truth
     return names[0]
 }
 int half = count / 2      // groovy-semantics: integer / integer is a BigDecimal division
+long share = cents.intdiv(parts)  // groovy-semantics, cents an int and parts a long: divides in the wider type
 ```
 
 ### `type`

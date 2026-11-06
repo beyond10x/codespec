@@ -145,6 +145,9 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  *       the zero value, {@code String.equals}, {@code String.isEmpty}, {@code String.format} with
  *       {@code %s} and {@code %d}.
  *   <li>A non-void method's last statement is returned as Groovy returns it ({@code ReturnAdder}).
+ *   <li>{@code x.intdiv(y)} on two {@code int}s or two {@code long}s as {@code /} in that type, typed
+ *       by {@link IntdivTyping}; {@code x = x.intdiv(y)} as {@code x /= y}. An integer {@code /} is
+ *       a BigDecimal division in Groovy and is refused.
  * </ul>
  *
  * <p>Everything else is kept as a {@code foreign} statement holding its Groovy source, or, for a
@@ -622,6 +625,7 @@ public final class Reader {
             }
             StaticTypeCheckingVisitor v = new StaticTypeCheckingVisitor(unitOf.get(cn).su, cn);
             v.setCompilationUnit(cu);
+            v.addTypeCheckingExtension(new IntdivTyping(v));
             v.initialize();
             try {
                 v.visitClass(cn);
@@ -1688,6 +1692,9 @@ public final class Reader {
                 refuseUnassigned(b.getRightExpression(), "assigned", ESCAPES, ctx);
                 Map<String, Object> lhs = place(b.getLeftExpression(), ctx);
                 Map<String, Object> rhs = coerce(value(b.getRightExpression(), type(lhs), ctx), type(lhs));
+                if (selfIntdiv(b.getRightExpression(), lhs, rhs)) {
+                    return List.of(assign("/=", lhs, sub(rhs, "y"), pos));
+                }
                 return List.of(assign("", lhs, rhs, pos));
             }
             String cop = compoundOp(op);
@@ -1732,9 +1739,15 @@ public final class Reader {
             }
         }
         if (e instanceof MethodCallExpression || e instanceof StaticMethodCallExpression) {
+            // A Groovy call can read as an operator or an intrinsic (intdiv as /, size as len), whose
+            // value a statement cannot discard: only a call or a method call stands alone.
+            Map<String, Object> x = expr(e, ctx);
+            if (!"call".equals(x.get("k")) && !"method".equals(x.get("k"))) {
+                throw unsupported("an expression statement other than an assignment or a call");
+            }
             Map<String, Object> st = Json.obj();
             st.put("k", "expr");
-            st.put("x", expr(e, ctx));
+            st.put("x", x);
             st.put("pos", pos);
             return List.of(st);
         }
@@ -1742,6 +1755,28 @@ public final class Reader {
             throw refuse(CLOSURE, "closure: functions as values are outside cir/1");
         }
         throw unsupported("expression statement " + e.getClass().getSimpleName() + " is outside cir/1");
+    }
+
+    /**
+     * Whether {@code x = x.intdiv(y)} divides its own target: Groovy has no compound form of
+     * {@code intdiv}, so this is how it writes {@code x /= y}. Only for a target read without a
+     * call, a local or a field through locals and {@code this}, which evaluating twice reads alike.
+     */
+    private static boolean selfIntdiv(Expression source, Map<String, Object> lhs, Map<String, Object> rhs) {
+        return source instanceof MethodCallExpression && "intdiv".equals(((MethodCallExpression) source).getMethodAsString())
+            && "binop".equals(rhs.get("k")) && "/".equals(rhs.get("op")) && pure(lhs) && lhs.equals(rhs.get("x"));
+    }
+
+    /** A local, {@code this}, or a field of one, read through no call. */
+    private static boolean pure(Map<String, Object> e) {
+        switch (String.valueOf(e.get("k"))) {
+            case "var":
+                return true;
+            case "field":
+                return pure(sub(e, "x"));
+            default:
+                return false;
+        }
     }
 
     private static String compoundOp(int op) {
@@ -3032,6 +3067,11 @@ public final class Reader {
                 throw refuse(GROOVY, "named arguments to " + name + " are passed as a map");
             }
         }
+        if (target instanceof ExtensionMethodNode && name.equals("intdiv") && as.size() == 1 && !mce.isImplicitThis()
+            && ((ExtensionMethodNode) target).getExtensionMethodNode().getDeclaringClass().getName()
+                .equals("org.codehaus.groovy.runtime.DefaultGroovyMethods")) {
+            return intdiv(mce.getObjectExpression(), as.get(0), ctx);
+        }
         if (target instanceof ExtensionMethodNode) {
             throw unsupported("Groovy extension method " + name + " is outside the reader's library table");
         }
@@ -3372,6 +3412,42 @@ public final class Reader {
             throw unsupported(op + " on a value of type " + describe(t));
         }
         return binop(op, coerce(x, t), coerce(y, t), t);
+    }
+
+    /**
+     * {@code x.intdiv(y)}, Groovy's integer division, as {@code /} of cir/1: on two {@code int}s or
+     * two {@code long}s (an integer literal takes the other's type) Groovy's {@code NumberMath}
+     * divides as Java's {@code /} in that type, as Go does: it truncates toward zero, the minimum
+     * divided by -1 wraps to itself, and division by zero throws {@code ArithmeticException} where Go
+     * panics. On two other integer types it divides in the wider of them or in {@code int}, which
+     * cir/1's division of one type does not say, and is refused.
+     */
+    private Map<String, Object> intdiv(Expression recv, Expression arg, Ctx ctx) {
+        for (Expression o : List.of(recv, arg)) {
+            refuseUnassigned(o, "an operand of intdiv", "Groovy unboxes the null" + STOPS, ctx);
+        }
+        Map<String, Object> x = expr(recv, ctx);
+        Map<String, Object> y = expr(arg, ctx);
+        if (!isInt(type(x)) || !isInt(type(y))) {
+            throw unsupported("intdiv on a value of type " + describe(isInt(type(x)) ? type(y) : type(x)));
+        }
+        if (!type(x).equals(type(y))) {
+            Map<String, Object> wide = tInt("64");
+            if (isIntLit(y) && type(x).equals(wide) && type(y).equals(tInt("32"))) {
+                y = coerce(y, wide);
+            } else if (isIntLit(x) && type(y).equals(wide) && type(x).equals(tInt("32"))) {
+                x = coerce(x, wide);
+            } else {
+                throw refuse(GROOVY, "intdiv of " + describe(type(x)) + " and " + describe(type(y))
+                    + " divides in the wider type, not as cir/1's division of two operands of one type");
+            }
+        }
+        Map<String, Object> t = type(x);
+        String width = String.valueOf(t.get("width"));
+        if (!Boolean.TRUE.equals(t.get("signed")) || !(width.equals("32") || width.equals("64"))) {
+            throw refuse(GROOVY, "intdiv of " + describe(t) + " divides as int, not as " + describe(t));
+        }
+        return binop("/", x, y, t);
     }
 
     /**

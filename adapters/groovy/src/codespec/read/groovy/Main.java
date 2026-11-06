@@ -27,18 +27,18 @@ public final class Main {
      * The reader's claim: every feature whose kit cases in the Groovy corpus {@code
      * conformance/reader/groovy} all pass {@code codespec conform}, each used by the reader's output
      * for {@code adapters/groovy/testdata/typed} or for that corpus ({@code codespec-conformance
-     * manifest --read} checks it). {@code sem.int.wrap} is not claimed: its case {@code
-     * sem-int-wrap} divides, and an integer {@code /} is a BigDecimal division in Groovy, which the
-     * reader refuses; the case {@code sem-int-wrap-no-div} passes.
+     * manifest --read} checks it). An integer {@code /} is a BigDecimal division in Groovy, which
+     * the reader refuses; {@code op.div}, {@code assign.div} and {@code sem.int.wrap} are claimed
+     * through {@code intdiv}, which their cases' {@code groovy/Case.groovy} sources divide with.
      */
     static final String[] CLAIM = {
-        "assign.add", "assign.and", "assign.mul", "assign.or", "assign.rem", "assign.sub",
+        "assign.add", "assign.and", "assign.div", "assign.mul", "assign.or", "assign.rem", "assign.sub",
         "assign.xor", "decl.enum", "decl.struct", "expr.binop", "expr.call", "expr.const",
         "expr.conv", "expr.field", "expr.index", "expr.intrinsic", "expr.lit", "expr.make",
         "expr.method", "expr.struct", "expr.unop", "expr.var", "intrinsic.append", "intrinsic.len",
-        "intrinsic.sorted_keys", "intrinsic.sprintf", "op.add", "op.and", "op.eq", "op.ge", "op.gt",
+        "intrinsic.sorted_keys", "intrinsic.sprintf", "op.add", "op.and", "op.div", "op.eq", "op.ge", "op.gt",
         "op.land", "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem", "op.sub",
-        "op.xor", "sem.continue.post", "sem.map.order", "sem.rem.sign", "stmt.assign", "stmt.break",
+        "op.xor", "sem.continue.post", "sem.int.wrap", "sem.map.order", "sem.rem.sign", "stmt.assign", "stmt.break",
         "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range", "stmt.if",
         "stmt.incr", "stmt.let", "stmt.return", "stmt.switch", "type.bool", "type.int", "type.map",
         "type.named", "type.ptr", "type.slice", "type.string", "type.unit", "unop.complement",

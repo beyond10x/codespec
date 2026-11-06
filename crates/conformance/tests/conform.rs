@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use codespec_conformance::conform::{
     Exec, Process, Program, Ran, Reason, Report, Run, UNKNOWN_KIND, Verdict, claim, conform_reader,
-    conform_writer, conform_writer_within, read_kit, read_report, report_json,
+    conform_writer, conform_writer_within, read_kit, read_report, reader_corpus, report_json,
 };
 use codespec_conformance::load_cases;
 use codespec_model::Module;
@@ -577,4 +577,61 @@ fn a_copy_of_the_rust_writer_whose_addition_saturates_fails_sem_int_wrap_at_its_
     assert_eq!(d.expected, "ok -9223372036854775808");
     assert_eq!(d.got, "ok 9223372036854775807");
     assert_eq!(feature(&report, "op.add").verdict, Verdict::Pass);
+}
+
+/// Every file under `from` copied to `to`, directories made as needed.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        if e.path().is_dir() {
+            copy_tree(&e.path(), &to.join(e.file_name()));
+        } else {
+            std::fs::copy(e.path(), to.join(e.file_name())).unwrap();
+        }
+    }
+}
+
+#[test]
+fn the_groovy_corpus_prefers_a_case_s_groovy_source_and_no_other_corpus_reads_it() {
+    let w = work("groovy-source-dir");
+    for case in ["op-add", "op-div"] {
+        copy_tree(&kit().join("cases").join(case), &w.join("cases").join(case));
+    }
+    let groovy = b"package op_div\n\nfinal class Case {\n    static long div(long a, long b) {\n        return a.intdiv(b)\n    }\n}\n";
+    let gdir = w.join("cases/op-div/groovy");
+    if gdir.exists() {
+        std::fs::remove_dir_all(&gdir).unwrap();
+    }
+    std::fs::create_dir_all(&gdir).unwrap();
+    std::fs::write(gdir.join("Case.groovy"), groovy).unwrap();
+    assert_eq!(load_cases(&w.join("cases")).unwrap().len(), 2);
+    let java =
+        |case: &str| std::fs::read(kit().join("cases").join(case).join("java/Case.java")).unwrap();
+    let file = |files: &[(String, Vec<u8>)], rel: &str| {
+        files
+            .iter()
+            .find(|(f, _)| f == rel)
+            .unwrap_or_else(|| {
+                panic!(
+                    "no {rel} in {:?}",
+                    files.iter().map(|(f, _)| f).collect::<Vec<_>>()
+                )
+            })
+            .1
+            .clone()
+    };
+    let g = reader_corpus(&w, "groovy").unwrap();
+    assert_eq!(file(&g, "op-div/Case.groovy"), groovy.to_vec());
+    assert_eq!(file(&g, "op-add/Case.groovy"), java("op-add"));
+    assert!(!g.iter().any(|(f, _)| f.contains("groovy/")), "{g:?}");
+    let j = reader_corpus(&w, "java").unwrap();
+    assert_eq!(file(&j, "op-div/Case.java"), java("op-div"));
+    for lang in ["go", "rust", "java"] {
+        let files = reader_corpus(&w, lang).unwrap();
+        assert!(
+            !files.iter().any(|(_, bytes)| bytes == groovy),
+            "the {lang} corpus holds the groovy source"
+        );
+    }
 }

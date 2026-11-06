@@ -15,9 +15,11 @@
 //!     expected.txt           what the reference prints for those calls
 //!     features.json          codespec-case-features/1: the features the case exercises
 //!     java/Case.java         optional: the case in Java, package `<case>` with `-` read as `_`
+//!     groovy/Case.groovy     optional: the case in Groovy, where its Java source is not Groovy
+//!                            that means the same (Groovy's `/` on integers divides as BigDecimal)
 //! ```
 //!
-//! A case directory holds exactly these five files, and may hold `java/` and `rust/` directories,
+//! A case directory holds exactly these five files, and may hold `groovy/`, `java/` and `rust/` directories,
 //! which the kit checks here do not read; [`conform::reader_corpus`] builds the reader corpora
 //! from them. The Java reader's tests also run `java/` through `codespec read --lang java`, the
 //! passes, the Go writer and `codespec-run-go` against `expected.txt`
@@ -161,7 +163,7 @@
 //! [`conform`] runs the kit against one reader or writer by its `--describe` manifest and writes a
 //! `codespec-conformance-report/1`; `codespec conform` is its command line. The reader corpus of
 //! the in-repository readers is `conformance/reader/<lang>/<case>/`, built from the case sources
-//! (`rust/`, `java/` and `case.go`) by [`conform::reader_corpus`].
+//! (`rust/`, `java/`, `groovy/` and `case.go`) by [`conform::reader_corpus`].
 
 pub mod conform;
 
@@ -195,7 +197,7 @@ pub const CASE_FILES: &[&str] = &[
 
 /// The directories a case may hold besides [`CASE_FILES`]: the case in another language, read by
 /// that language's reader tests and never by this crate.
-pub const CASE_SOURCE_DIRS: &[&str] = &["java", "rust"];
+pub const CASE_SOURCE_DIRS: &[&str] = &["groovy", "java", "rust"];
 
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;

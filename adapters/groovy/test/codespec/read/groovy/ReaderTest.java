@@ -74,6 +74,20 @@ public final class ReaderTest {
         cases.put("safe_navigation_is_foreign_groovy_semantics", () -> t.foreignAt("safe-navigation"));
         cases.put("the_elvis_operator_is_foreign_groovy_semantics", () -> t.foreignAt("elvis"));
         cases.put("int_divided_by_int_is_foreign_groovy_semantics", () -> t.foreignAt("int-division"));
+        cases.put("intdiv_of_two_longs_or_two_ints_reads_as_op_div_of_their_type", t::intdivReadsAsOpDiv);
+        cases.put("x_assigned_x_intdiv_y_reads_as_assign_div_and_y_assigned_x_intdiv_z_as_an_assignment_of_op_div",
+            t::intdivAssignmentReadsAsAssignDiv);
+        cases.put("intdiv_of_an_int_and_a_long_is_foreign_groovy_semantics", () -> t.foreignAt("intdiv-mixed"));
+        cases.put("intdiv_of_an_int_literal_over_a_long_reads_as_int64_op_div", t::intdivOfALiteralReceiverIsInt64);
+        cases.put("intdiv_of_two_shorts_is_foreign_groovy_semantics", () -> t.foreignAt("intdiv-short"));
+        cases.put("a_field_assigned_its_own_intdiv_through_no_call_reads_as_assign_div_and_through_a_call_as_an_assignment",
+            t::intdivFieldTargets);
+        cases.put("groovy_intdiv_truncates_toward_zero_wraps_and_throws_on_zero_as_go_divides",
+            ReaderTest::groovyIntdivDividesAsGo);
+        cases.put("adversary_intdiv_as_an_expression_statement_is_foreign_unsupported_as_a_plus_b_is",
+            () -> t.foreignAt("intdiv-statement"));
+        cases.put("adversary_intdiv_assigned_to_a_long_in_a_compile_static_class_is_foreign_as_groovyc_refuses_it",
+            () -> t.foreignAt("intdiv-compile-static"));
         cases.put("a_default_parameter_value_is_refused_groovy_semantics", () -> t.declarationRefused("default-param", "Desk.scaled"));
         cases.put("a_big_decimal_literal_is_foreign_type_with_the_shared_text", t::aBigDecimalLiteralIsForeignType);
         cases.put("an_unresolved_import_refuses_its_file_and_the_rest_is_read", t::anUnresolvedImportRefusesItsFile);
@@ -321,6 +335,100 @@ public final class ReaderTest {
         Map<String, Object> doc = Reader.read(testdata.resolve("refuse/big-decimal"));
         String reason = (String) map(list(doc.get("refusals")).get(0)).get("reason");
         check(reason.equals("type: type java.math.BigDecimal is outside the reader's types"), "reason " + reason);
+    }
+
+    // ---- intdiv ----
+
+    private static final String INTDIV = "package intdiv\n\nfinal class Case {\n"
+        + "    static long div(long a, long b) {\n        return a.intdiv(b)\n    }\n\n"
+        + "    static int div32(int a, int b) {\n        return a.intdiv(b)\n    }\n\n"
+        + "    static long divBy(long a, long b) {\n        a = a.intdiv(b)\n        return a\n    }\n\n"
+        + "    static long quotient(long a, long b) {\n        long q = 0\n        q = a.intdiv(b)\n        return q\n    }\n\n"
+        + "    static long seven(long b) {\n        return 7.intdiv(b)\n    }\n}\n\n"
+        + "final class Till {\n    long total = 0\n\n"
+        + "    void halve(long b) {\n        total = total.intdiv(b)\n    }\n\n"
+        + "    void halveOther(Till o, long b) {\n        o.total = o.total.intdiv(b)\n    }\n\n"
+        + "    Till self() {\n        return this\n    }\n\n"
+        + "    void halveThroughCall(long b) {\n        self().total = self().total.intdiv(b)\n    }\n}\n";
+
+    private Map<String, Object> intdiv() throws Exception {
+        Path dir = work.resolve("intdiv");
+        write(dir.resolve("Case.groovy"), INTDIV);
+        Map<String, Object> doc = Reader.read(dir);
+        check(!doc.containsKey("refusals"), "refusals: " + Json.write(doc.getOrDefault("refusals", List.of())));
+        return doc;
+    }
+
+    private static String var(String name, String t) {
+        return "{\"k\":\"var\",\"name\":\"" + name + "\",\"t\":" + t + "}";
+    }
+
+    private void intdivReadsAsOpDiv() throws Exception {
+        Map<String, Object> doc = intdiv();
+        Object div = returned(funcByKey(doc, "div"));
+        check(same(div, "{\"k\":\"binop\",\"op\":\"/\",\"x\":" + var("a", INT64) + ",\"y\":" + var("b", INT64) + ",\"t\":" + INT64 + "}"),
+            "div returns " + Json.write(div));
+        Object div32 = returned(funcByKey(doc, "div32"));
+        check(same(div32, "{\"k\":\"binop\",\"op\":\"/\",\"x\":" + var("a", INT32) + ",\"y\":" + var("b", INT32) + ",\"t\":" + INT32 + "}"),
+            "div32 returns " + Json.write(div32));
+    }
+
+    private void intdivAssignmentReadsAsAssignDiv() throws Exception {
+        Map<String, Object> doc = intdiv();
+        Map<String, Object> divBy = map(list(funcByKey(doc, "divBy").get("body")).get(0));
+        check("assign".equals(divBy.get("k")) && "/=".equals(divBy.get("op")), "divBy's first statement " + Json.write(divBy));
+        check(same(divBy.get("lhs"), "[" + var("a", INT64) + "]") && same(divBy.get("rhs"), "[" + var("b", INT64) + "]"),
+            "divBy's first statement " + Json.write(divBy));
+        Map<String, Object> q = map(list(funcByKey(doc, "quotient").get("body")).get(1));
+        check("assign".equals(q.get("k")) && !q.containsKey("op"), "quotient's second statement " + Json.write(q));
+        check(same(q.get("rhs"), "[{\"k\":\"binop\",\"op\":\"/\",\"x\":" + var("a", INT64) + ",\"y\":" + var("b", INT64)
+            + ",\"t\":" + INT64 + "}]"), "quotient's second statement " + Json.write(q));
+    }
+
+    /** {@code 7.intdiv(b)}, an int literal over a long: Groovy divides in long, so the literal is int64. */
+    private void intdivOfALiteralReceiverIsInt64() throws Exception {
+        Object seven = returned(funcByKey(intdiv(), "seven"));
+        check(same(seven, "{\"k\":\"binop\",\"op\":\"/\",\"x\":{\"k\":\"lit\",\"value\":\"7\",\"t\":" + INT64 + "},\"y\":"
+            + var("b", INT64) + ",\"t\":" + INT64 + "}"), "seven returns " + Json.write(seven));
+    }
+
+    /**
+     * A field target read through no call, {@code this} or a local, is {@code /=}; one read through a
+     * call, evaluated twice by Groovy, is an assignment of the division.
+     */
+    private void intdivFieldTargets() throws Exception {
+        Map<String, Object> doc = intdiv();
+        for (String fn : List.of("Till.halve", "Till.halveOther")) {
+            Map<String, Object> st = map(list(funcByKey(doc, fn).get("body")).get(0));
+            check("assign".equals(st.get("k")) && "/=".equals(st.get("op")), fn + "'s statement " + Json.write(st));
+            check("field".equals(map(list(st.get("lhs")).get(0)).get("k")), fn + "'s target " + Json.write(st));
+            check(same(st.get("rhs"), "[" + var("b", INT64) + "]"), fn + "'s statement " + Json.write(st));
+        }
+        Map<String, Object> st = map(list(funcByKey(doc, "Till.halveThroughCall").get("body")).get(0));
+        check("assign".equals(st.get("k")) && !st.containsKey("op"), "halveThroughCall's statement " + Json.write(st));
+        check("binop".equals(map(list(st.get("rhs")).get(0)).get("k")), "halveThroughCall's statement " + Json.write(st));
+    }
+
+    /**
+     * What Groovy 2.4.10 itself gives for {@code intdiv}, run through {@code GroovyShell}: Go's
+     * integer division of one type, truncating toward zero, the minimum divided by -1 wrapping to
+     * itself, and division by zero throwing where Go panics.
+     */
+    private static void groovyIntdivDividesAsGo() {
+        groovy.lang.GroovyShell sh = new groovy.lang.GroovyShell();
+        check(Long.valueOf(-3).equals(sh.evaluate("(-7L).intdiv(2L)")), "(-7L).intdiv(2L)");
+        check(Long.valueOf(3).equals(sh.evaluate("7L.intdiv(2L)")), "7L.intdiv(2L)");
+        check(Integer.valueOf(-3).equals(sh.evaluate("(-7).intdiv(2)")), "(-7).intdiv(2) is not the int -3");
+        check(Long.valueOf(Long.MIN_VALUE).equals(sh.evaluate("Long.MIN_VALUE.intdiv(-1L)")), "Long.MIN_VALUE.intdiv(-1L)");
+        check(Integer.valueOf(Integer.MIN_VALUE).equals(sh.evaluate("Integer.MIN_VALUE.intdiv(-1)")), "Integer.MIN_VALUE.intdiv(-1)");
+        for (String zero : List.of("7L.intdiv(0L)", "7.intdiv(0)")) {
+            try {
+                sh.evaluate(zero);
+                check(false, zero + " did not throw");
+            } catch (ArithmeticException e) {
+                // Go panics: integer divide by zero
+            }
+        }
     }
 
     private void anUnresolvedImportRefusesItsFile() throws Exception {
