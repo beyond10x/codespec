@@ -228,6 +228,9 @@ fn conform(c: Conform) -> Result<(), String> {
         ));
     }
     let out = c.out.expect("clap requires --out without --check");
+    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
     std::fs::write(&out, report_json(&report)).map_err(|e| format!("{}: {e}", out.display()))?;
     println!("{}: written", out.display());
     if report.conforms {

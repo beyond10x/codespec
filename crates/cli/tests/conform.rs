@@ -103,3 +103,55 @@ fn conform_check_passes_on_a_current_report_and_names_the_feature_after_expected
     assert!(said.contains("op.add"), "{said}");
     assert!(!said.contains("op.sub:"), "{said}");
 }
+
+#[test]
+fn conform_out_creates_the_missing_parent_directory() {
+    let base = root().join("target/conform-cli-test-out");
+    if base.exists() {
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+    let adapters = base.join("adapters");
+    std::fs::create_dir_all(&adapters).unwrap();
+    let built = Command::new("go")
+        .args(["build", "-o"])
+        .arg(format!("{}/", adapters.display()))
+        .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
+        .current_dir(root().join("adapters/go"))
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built));
+    let kit = base.join("kit");
+    let to = kit.join("cases/op-add");
+    std::fs::create_dir_all(&to).unwrap();
+    std::fs::copy(root().join("conformance/kit.json"), kit.join("kit.json")).unwrap();
+    for f in [
+        "calls.json",
+        "case.cir.json",
+        "case.go",
+        "expected.txt",
+        "features.json",
+    ] {
+        std::fs::copy(root().join("conformance/cases/op-add").join(f), to.join(f)).unwrap();
+    }
+
+    let report = base.join("missing/parent/writer-go.json");
+    let run = Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .args(["conform", "--lang", "go", "--role", "writer", "--out"])
+        .arg(&report)
+        .arg("--kit")
+        .arg(&kit)
+        .arg("--adapters")
+        .arg(&adapters)
+        .arg("--work")
+        .arg(base.join("work"))
+        .output()
+        .unwrap();
+    let said = text(&run);
+    assert!(!said.contains("No such file or directory"), "{said}");
+    let written = std::fs::read_to_string(&report).unwrap_or_else(|_| panic!("{said}"));
+    assert!(
+        written.contains("\"format\": \"codespec-conformance-report/1\""),
+        "{written}"
+    );
+    assert!(said.contains("writer-go.json: written"), "{said}");
+}

@@ -6,6 +6,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- Each release ships the conformance kit `codespec-conformance-<version>.tar.gz` (`conformance/` and
+  `schemas/cir-1.features.json`) beside the binaries, listed in `SHA256SUMS`. `task conformance-kit`
+  packs it, unpacks it and runs `codespec conform` on the Go writer against the unpacked copy; it is
+  part of `task check`. The binary archives now also hold the runners `codespec-run-go` and
+  `codespec-run-rust`, so a release has every program `codespec conform` calls for Go and Rust. The
+  guide "Add a reader or writer adapter" shows an outside author how to run `codespec conform`; its
+  sample run is written by `codespec-docs generate` from the Go writer's report.
+- `codespec conform --out` creates a missing parent directory.
 - `codespec measure <module.cir.json>` prints, per artefact (source file), the functions read and
   refused and the refusals by category, then the totals and the share read; `--format json` prints
   `codespec-measure/1`. Works on every reader's output; a reason without one of the Groovy reader's
