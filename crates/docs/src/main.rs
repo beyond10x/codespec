@@ -20,6 +20,7 @@ mod cir;
 mod cli;
 mod crates;
 mod diagram;
+mod routes;
 mod showcase;
 mod status;
 
@@ -63,7 +64,8 @@ enum Action {
         #[arg(long, default_value = ".")]
         root: PathBuf,
     },
-    /// Bind a built site to its source commit: write `.well-known/b10x-site.json` into it.
+    /// Bind a built site to its source commit: write `.well-known/b10x-site.json` and the route
+    /// inventory `.well-known/b10x-routes.json` into it.
     Provenance {
         /// The built site, `website/build`.
         #[arg(long)]
@@ -138,6 +140,8 @@ fn write_provenance(site: &Path, commit: &str) -> Result<()> {
     let io = |e: std::io::Error| format!("writing site provenance: {e}");
     fs::create_dir_all(site.join(".well-known")).map_err(io)?;
     fs::write(site.join(".well-known/b10x-site.json"), manifest).map_err(io)?;
+    let routes = routes::inventory(site, commit)?;
+    fs::write(site.join(".well-known/b10x-routes.json"), routes).map_err(io)?;
     fs::write(site.join(".nojekyll"), "").map_err(io)?;
     Ok(())
 }
@@ -262,6 +266,8 @@ mod tests {
         write_provenance(&site, commit).unwrap();
         let written = fs::read_to_string(site.join(".well-known/b10x-site.json")).unwrap();
         assert_eq!(written, manifest);
+        let routes = fs::read_to_string(site.join(".well-known/b10x-routes.json")).unwrap();
+        assert!(routes.contains("\"path\": \"/codespec/\""));
         assert!(site.join(".nojekyll").is_file());
         fs::remove_dir_all(site).unwrap();
     }
