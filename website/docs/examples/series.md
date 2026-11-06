@@ -3,7 +3,7 @@
 title: "Showcase: an algorithm through codespec"
 sidebar_label: "Showcase: series"
 sidebar_position: 2
-description: "A Go package of loops, switch, slices and overflowing arithmetic read into cir/1 and written as Go and as Rust, byte-equal under the harness."
+description: "A Go package of loops, switch, slices and overflowing arithmetic read into cir/1 and written as Go and as Rust, and the Rust read back and written as Go, byte-equal under the harness."
 custom_edit_url: null
 ---
 
@@ -796,13 +796,113 @@ pub fn residue(v: i64) -> String {
 }
 ```
 
+## Rust → `cir/1` → Go
+
+The other direction: the Rust output above is read back by `codespec-read-rust`, passed and written as Go.
+
+```shell-session
+$ codespec read --lang rust examples/series/out/rust --out series.rust-read.cir.json
+$ codespec pass series.rust-read.cir.json --out series.rust-passed.cir.json
+$ codespec write --lang go series.rust-passed.cir.json --out out/go-from-rust
+```
+
+The read gives one `cir/1` module of 18 functions with 0 refusals, checked in as [`examples/series/series.rust-read.cir.json`](https://github.com/beyond10x/codespec/tree/main/examples/series/series.rust-read.cir.json); the Go is checked in as [`examples/series/out/go-from-rust/series.go`](https://github.com/beyond10x/codespec/tree/main/examples/series/out/go-from-rust/series.go).
+
+### `len() as i64`: a length of another integer type
+
+Rust's `len()` is a `usize`; the reader reads `len() as i64` as one `cir/1` `len` typed `int64`, because `cir/1` has no integer conversion. Go's `len` is an `int`, so the Go writer converts it: `int64(len(s.values))`.
+
+```rust title="out/rust/src/lib.rs"
+    pub fn push(&mut self, v: i64) -> i64 {
+        self.values.push(v);
+        self.values.len() as i64
+    }
+```
+
+```go title="out/go-from-rust/series.go"
+func (s *Series) Push(v int64) int64 {
+	s.values = append(s.values, v)
+	return int64(len(s.values))
+}
+```
+
+### `i64` and a returned struct
+
+The Rust output says `i64` where the Go source said `int`, and `new` returns a `Series` where the Go source returned a `*Series`. The read keeps what the Rust says, so this Go has `int64` and `func New() Series`; its harness driver takes the address.
+
+```rust title="out/rust/src/lib.rs"
+pub fn new() -> Series {
+    Series { values: Vec::new() }
+}
+```
+
+```go title="out/go-from-rust/series.go"
+func New() Series {
+	return Series{values: []int64{}}
+}
+```
+
+### A `while` with its post statement becomes a three-clause `for`
+
+The reader recognises the Rust writer's loop shape, a block with the init, a `while` and the post at the end of the body, and reads it back as a three-clause `for`. The tagless `switch` the Rust writer wrote as an `if` chain stays an `if` chain.
+
+```rust title="out/rust/src/lib.rs"
+    pub fn trend(&self) -> Trend {
+        let mut up = 0i64;
+        let mut down = 0i64;
+        {
+            let mut i = 1i64;
+            while i < self.values.len() as i64 {
+                if self.values[i as usize] > self.values[i.wrapping_sub(1i64) as usize] {
+                    up = up.wrapping_add(1i64);
+                } else if self.values[i as usize]
+                    < self.values[i.wrapping_sub(1i64) as usize]
+                {
+                    down = down.wrapping_add(1i64);
+                }
+                i = i.wrapping_add(1i64);
+            }
+        }
+        if up > 0i64 && down > 0i64 {
+            return Trend::Mixed;
+        } else if up > 0i64 {
+            return Trend::Rising;
+        } else if down > 0i64 {
+            return Trend::Falling;
+        }
+        Trend::Flat
+    }
+```
+
+```go title="out/go-from-rust/series.go"
+func (s *Series) Trend() Trend {
+	up := int64(0)
+	down := int64(0)
+	for i := int64(1); i < int64(len(s.values)); i++ {
+		if s.values[i] > s.values[i-1] {
+			up++
+		} else if s.values[i] < s.values[i-1] {
+			down++
+		}
+	}
+	if up > 0 && down > 0 {
+		return Mixed
+	} else if up > 0 {
+		return Rising
+	} else if down > 0 {
+		return Falling
+	}
+	return Flat
+}
+```
+
 ## Checked by the harness
 
 ```shell-session
 $ codespec harness examples/series --seeds 200 --commands 300
 ```
 
-The [harness](/docs/concepts/harness) runs the original Go, the Go output and the Rust output on the `series` trace: 200 seeded traces of 300 commands that push `int64` extremes, ask for non-positive windows and steps, and call every function. All three must print the same bytes; `task examples-series` runs it in `task check`.
+The [harness](/docs/concepts/harness) runs the original Go, the Go output, the Rust output and the Go written from the Rust output on the `series` trace: 200 seeded traces of 300 commands that push `int64` extremes, ask for non-positive windows and steps, and call every function. All four must print the same bytes; `task examples-series` runs it in `task check`.
 
 <details>
 <summary>The whole Go output</summary>
@@ -1401,7 +1501,259 @@ impl std::error::Error for Error {}
 
 </details>
 
+<details>
+<summary>The whole Go written from the Rust output</summary>
+
+```go title="examples/series/out/go-from-rust/series.go"
+// Code generated by codespec-write-go from cir/1. DO NOT EDIT.
+
+// Package series keeps a list of integer samples and computes statistics over it.
+package series
+
+import (
+	"errors"
+	"fmt"
+)
+
+type Trend string
+
+const (
+	Flat    Trend = "flat"
+	Rising  Trend = "rising"
+	Falling Trend = "falling"
+	Mixed   Trend = "mixed"
+)
+
+const maxSteps int64 = 1000
+
+type Series struct {
+	values []int64
+}
+
+func New() Series {
+	return Series{values: []int64{}}
+}
+
+// Push appends v and returns the new length.
+func (s *Series) Push(v int64) int64 {
+	s.values = append(s.values, v)
+	return int64(len(s.values))
+}
+
+// Sum adds every value; the sum wraps on overflow.
+func (s *Series) Sum() int64 {
+	total := int64(0)
+	for _, v := range s.values {
+		total += v
+	}
+	return total
+}
+
+func (s *Series) Mean() (int64, error) {
+	if int64(len(s.values)) == 0 {
+		return 0, ErrEmpty
+	}
+	return s.Sum() / int64(len(s.values)), nil
+}
+
+// Sorted returns the values in ascending order, by insertion sort; the series is unchanged.
+func (s *Series) Sorted() []int64 {
+	out := []int64{}
+	for _, v := range s.values {
+		out = append(out, v)
+	}
+	for i := int64(1); i < int64(len(out)); i++ {
+		x := out[i]
+		j := i - 1
+		for j >= 0 && out[j] > x {
+			out[j+1] = out[j]
+			j--
+		}
+		out[j+1] = x
+	}
+	return out
+}
+
+func (s *Series) Median() (int64, error) {
+	n := int64(len(s.values))
+	if n == 0 {
+		return 0, ErrEmpty
+	}
+	sorted := s.Sorted()
+	if n%2 == 1 {
+		return sorted[n/2], nil
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2, nil
+}
+
+// Reverse reverses the series in place.
+func (s *Series) Reverse() {
+	for i, j := int64(0), int64(len(s.values))-1; i < j; i, j = i+1, j-1 {
+		s.values[i], s.values[j] = s.values[j], s.values[i]
+	}
+}
+
+func (s *Series) Trend() Trend {
+	up := int64(0)
+	down := int64(0)
+	for i := int64(1); i < int64(len(s.values)); i++ {
+		if s.values[i] > s.values[i-1] {
+			up++
+		} else if s.values[i] < s.values[i-1] {
+			down++
+		}
+	}
+	if up > 0 && down > 0 {
+		return Mixed
+	} else if up > 0 {
+		return Rising
+	} else if down > 0 {
+		return Falling
+	}
+	return Flat
+}
+
+// MaxWindow is the largest sum of w consecutive values.
+func (s *Series) MaxWindow(w int64) (int64, error) {
+	if w <= 0 {
+		return 0, ErrBadWindow
+	}
+	if w > int64(len(s.values)) {
+		return 0, fmt.Errorf("window %d is longer than the series (%d)", w, int64(len(s.values)))
+	}
+	cur := int64(0)
+	for i := int64(0); i < w; i++ {
+		cur += s.values[i]
+	}
+	best := cur
+	for i := w; i < int64(len(s.values)); i++ {
+		cur += s.values[i] - s.values[i-w]
+		if cur > best {
+			best = cur
+		}
+	}
+	return best, nil
+}
+
+// Gcd is the greatest common divisor of every value, 0 for an empty series.
+func (s *Series) Gcd() int64 {
+	g := int64(0)
+	for _, v := range s.values {
+		g = gcd(g, v)
+	}
+	return g
+}
+
+func gcd(a int64, b int64) int64 {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+// EvenSum adds the even values.
+func (s *Series) EvenSum() int64 {
+	total := int64(0)
+	for i := int64(0); i < int64(len(s.values)); i++ {
+		if s.values[i]%2 != 0 {
+			continue
+		}
+		total += s.values[i]
+	}
+	return total
+}
+
+// Drop removes every value equal to v and returns how many it removed.
+func (s *Series) Drop(v int64) int64 {
+	kept := []int64{}
+	removed := int64(0)
+	for _, x := range s.values {
+		if x == v {
+			removed++
+			continue
+		}
+		kept = append(kept, x)
+	}
+	s.values = kept
+	return removed
+}
+
+func (s *Series) Len() int64 {
+	return int64(len(s.values))
+}
+
+// Steps counts the Collatz steps from n to 1, stopping at maxSteps.
+func Steps(n int64) (int64, error) {
+	if n <= 0 {
+		return 0, fmt.Errorf("steps of %d: n must be positive", n)
+	}
+	steps := int64(0)
+	for n != 1 {
+		if n%2 == 0 {
+			n /= 2
+		} else {
+			n = 3*n + 1
+		}
+		steps++
+		if steps == maxSteps {
+			break
+		}
+	}
+	return steps, nil
+}
+
+func IsPrime(n int64) bool {
+	if n < 2 {
+		return false
+	}
+	for d := int64(2); d <= n/d; d++ {
+		if n%d == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Bucket names the size class of v.
+func Bucket(v int64) string {
+	if v < 0 {
+		return "negative"
+	} else if v == 0 {
+		return "zero"
+	} else if v < 10 {
+		return "small"
+	} else if v < 1000 {
+		return "medium"
+	}
+	return "large"
+}
+
+// Residue names v modulo 3, with Go's sign: the remainder takes the sign of v.
+func Residue(v int64) string {
+	switch v % 3 {
+	case 0:
+		return "divisible"
+	case 1, -2:
+		return "one-over"
+	default:
+		return "one-under"
+	}
+}
+
+var ErrEmpty = errors.New("series is empty")
+
+var ErrBadWindow = errors.New("window must be positive")
+```
+
+</details>
+
 ## What this does not show
 
 - Slice expressions (`s[i:j]`), sized `make`, labeled `break` and `continue`, `fallthrough` and `goto` are read as `foreign` statements with a refusal; the package avoids them.
-- `codespec-read-rust` does not read Rust loops yet, so this example runs Go → `cir/1` → Rust only.
+- The Rust read here is the Rust writer's own output. Hand-written Rust is read in [`inventory`](https://github.com/beyond10x/codespec/tree/main/examples/inventory); Rust outside the reader's subset, a closure for one, is kept as `foreign` with a refusal.
