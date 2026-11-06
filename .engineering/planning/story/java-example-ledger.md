@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: story:java-example-ledger
 kind: story
-status: active
+status: implemented
 title: A Java example under the harness
 relations:
 - decomposes: epic:java-reader
 - depends_on: story:java-reader-javac
 scope:
+- confidence: cited
+  path: Taskfile.yml
 - confidence: cited
   path: adapters/go/cmd/codespec-write-go
 - confidence: cited
@@ -18,10 +20,11 @@ scope:
   path: crates/harness/tests/harness.rs
 - confidence: cited
   path: examples/ledger
-revision: 7
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:26Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:26Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T16:37:41Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: A Java example under the harness
 

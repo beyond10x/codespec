@@ -79,7 +79,9 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-rust` | `orders` written as Rust equals `out/rust`, exactly one refusal (`Service.Audit`), builds with `-D warnings`; a module without facts refused |
 | `examples-greeter` | `greeter` passed, written as Go and as Rust, equal to the checked-in copies, no refusal, both build |
 | `examples-inventory` | the Rust `inventory` crate read twice (byte-equal, equal to `inventory.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, all built without warnings, drivers formatted and linted, then `codespec harness examples/inventory --seeds 200 --commands 300` byte-equal |
-| `examples-series` | the Go `series` package read twice (byte-equal, equal to `series.read.cir.json`, no refusal), passed, written as Go (gofmt-clean, vetted) and as Rust (no refusal, built without warnings) equal to the checked-in copies, drivers formatted and linted, then `codespec harness examples/series --seeds 200 --commands 300` byte-equal |
+| `examples-series` | the Go `series` package read twice (byte-equal, equal to `series.read.cir.json`, no refusal), passed, written as Go (gofmt-clean, vetted) and as Rust (no refusal, built without warnings) equal to the checked-in copies, drivers formatted and linted, the Rust output read back (byte-equal, equal to `series.rust-read.cir.json`, no refusal) and written as Go equal to `out/go-from-rust`, then `codespec harness examples/series --seeds 200 --commands 300` byte-equal over 4 implementations |
+| `examples-ledger` | the Java `ledger` package read twice with `codespec-read-java` (byte-equal, equal to `ledger.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/ledger --seeds 200 --commands 300` byte-equal over the original Java, Go and Rust |
+| `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
 | `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, no raw admonition title |
 
@@ -96,6 +98,8 @@ Never edit these by hand; change the generator and regenerate.
 |---|---|---|
 | `schemas/cir-1.schema.json` | `codespec schema`, from `crates/model/src/lib.rs` | `task schema` |
 | `examples/*/*.cir.json`, `examples/*/out/**` | the reader, `codespec pass` and the writers | `task examples` |
+| `conformance/kit.json`, `conformance/cases/*/case.cir.json`, `expected.txt` | `codespec-conformance kit` and `check --write` | `task conformance` |
+| `schemas/cir-1.features.json` | `codespec features`, from `crates/model/src/features.rs` | `task schema` |
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
@@ -167,7 +171,7 @@ to `main` only.
 
 1. Bump `version` in `[workspace.package]` of `Cargo.toml` and `const version` in
    `adapters/go/cmd/codespec-read-go/main.go` (it is written into every document as
-   `reader.version`), then `task examples` and `task docs-generate` (`VERSION` in
+   `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` likewise, a test checks it), then `task examples`, `task conformance` and `task docs-generate` (`VERSION` in
    `crates/docs/src/status.rs` follows the workspace version, a test checks it). Move the
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.

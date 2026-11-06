@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:conformance-cases
 kind: story
-status: active
+status: implemented
 title: Conformance cases with reference outputs
 relations:
 - decomposes: epic:adapter-conformance
@@ -13,15 +13,20 @@ scope:
 - confidence: cited
   path: Cargo.toml
 - confidence: cited
+  path: Taskfile.yml
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go
+- confidence: cited
   path: conformance
 - confidence: cited
   path: crates/conformance
 - confidence: cited
   path: website/docs/reference/crates.md
-revision: 7
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T16:37:41Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":5}}}
 ---
 # Story: Conformance cases with reference outputs
 

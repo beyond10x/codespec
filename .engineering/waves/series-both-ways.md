@@ -73,3 +73,12 @@ Pre-flight: `/` 87G free; one debug build of the workspace is 330M (`du -sh targ
 Wave 1 closed: `task check` on `7d318a8` exit 0; 3 stories implemented; one PR to `main` through the bot.
 Carried to `story:java-example-ledger`: writers render `sorted_keys`, `conv` to `int32` in Rust, and a
 field and a method sharing a name in Go.
+
+## Wave 2
+
+Started on the operator's "just dispatch some more work" (2026-11-06). Units: conformance-cases,
+java-example-ledger, series-rust-to-go, each in its own tree on `034277e`, two adversary passes each
+(series: one, nothing found). Cross-unit: the Go writer's `len` conversion moved from series-rust-to-go
+to java-example-ledger, which owned the writer; conformance-cases took the Go reader.
+Closed: `task check` on `6d0c7a3` exit 0, `task examples` and `task conformance` regenerate nothing.
+Backlog drafts filed: `story:rust-writer-nil-pointer`, `story:rust-writer-error-propagation`.

@@ -14,6 +14,19 @@ Every change a user of `codespec` or of `cir/1` would notice.
   every form whose meaning the document would not keep. Needs a JDK (default path: JDK 21).
 - `codespec-read-rust` reads the Rust writer's loops, switches and multi-assigns back: the `series`
   output reads with 0 refusals.
+- `examples/series` runs a fourth implementation, the Rust output read back and written as Go
+  (`out/go-from-rust`): 4 implementations byte-equal under the harness.
+- `examples/ledger`: a Java package read with `codespec-read-java`, written as Go and Rust, and run
+  byte-equal with the original Java under the harness.
+- The conformance kit's reference cases: `conformance/kit.json` and 100 cases, one subject feature
+  each, checked by `codespec-conformance` (`task conformance-cases`).
+- `codespec-write-go` writes `sorted_keys`, converts a `len` of a non-`int` type, upper-cases the
+  first letter of an exported lower-case name, and renames a name that would clash (a field beside
+  its method, a Go built-in, an import).
+- `codespec-write-rust` writes `conv` to a built-in integer and `sorted_keys`, and refuses a
+  function it cannot write as valid Rust instead of failing the whole module.
+- `codespec-read-go` reads a labeled loop whose label only its own `break` and `continue` use as the
+  plain loop.
 
 ## 0.2.0
 
