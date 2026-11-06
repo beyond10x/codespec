@@ -30,6 +30,7 @@ tasks:
       - task: examples-inventory
       - task: examples-series
       - task: examples-ledger
+      - task: examples-fees
       - task: harness
       - task: conformance-cases
       - task: groovy-fixture-check
@@ -177,6 +178,11 @@ tasks:
       - '{{.CODESPEC}} write --lang go examples/ledger/ledger.read.cir.json --out examples/ledger/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/ledger/ledger.cir.json --out examples/ledger/out/rust --adapters {{.ADAPTERS}}'
       - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out adapters/groovy/testdata/lending.read.cir.json --adapters {{.ADAPTERS}}'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy examples/fees/source --out examples/fees/fees.read.cir.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} measure examples/fees/fees.read.cir.json > examples/fees/fees.measure.txt'
+      - '{{.CODESPEC}} pass examples/fees/fees.read.cir.json --out examples/fees/fees.cir.json'
+      - '{{.CODESPEC}} write --lang go examples/fees/fees.read.cir.json --out examples/fees/out/go --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} write --lang rust examples/fees/fees.cir.json --out examples/fees/out/rust --adapters {{.ADAPTERS}}'
 
   examples-ledger:
     desc: Read the Java ledger package twice, pass it, write it as Go and as Rust, require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then build the Java driver with javac and run the original Java, the Go output and the Rust output on 200 seeded traces of 300 commands byte-equal.
@@ -208,6 +214,40 @@ tasks:
       - cargo fmt --manifest-path examples/ledger/drivers/rust/Cargo.toml --check
       - cargo clippy --manifest-path examples/ledger/drivers/rust/Cargo.toml --locked --target-dir target/harness-ledger/rust-target -- -D warnings
       - 'PATH="{{.JDK}}/bin:$PATH" {{.CODESPEC}} harness examples/ledger --seeds 200 --commands 300 --build-dir target/harness-ledger'
+
+  examples-fees:
+    desc: Read the Grails fees application twice with codespec-read-groovy, pass it, write it as Go and as Rust, require every document, the codespec measure report and every output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then compile the original and its driver with groovyc 2.4.10 and run the original Groovy, the Go output and the Rust output on 200 seeded traces of 300 commands byte-equal. GROOVY_HOME defaults to the sdkman groovy/2.4.10 candidate.
+    deps: [build]
+    cmds:
+      - rm -rf target/examples-fees
+      - mkdir -p target/examples-fees
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy examples/fees/source --out target/examples-fees/read.1.json --adapters {{.ADAPTERS}}'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy examples/fees/source --out target/examples-fees/read.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/examples-fees/read.1.json target/examples-fees/read.2.json
+      - cmp target/examples-fees/read.1.json examples/fees/fees.read.cir.json
+      - '{{.CODESPEC}} validate --canonical examples/fees/fees.read.cir.json'
+      - '! grep -q ''"refusals"'' examples/fees/fees.read.cir.json'
+      - '{{.CODESPEC}} measure examples/fees/fees.read.cir.json > target/examples-fees/measure.txt'
+      - cmp target/examples-fees/measure.txt examples/fees/fees.measure.txt
+      - '{{.CODESPEC}} pass examples/fees/fees.read.cir.json --out target/examples-fees/pass.1.json'
+      - '{{.CODESPEC}} pass target/examples-fees/pass.1.json --out target/examples-fees/pass.2.json'
+      - cmp target/examples-fees/pass.1.json examples/fees/fees.cir.json
+      - cmp target/examples-fees/pass.1.json target/examples-fees/pass.2.json
+      - '{{.CODESPEC}} write --lang go examples/fees/fees.read.cir.json --out target/examples-fees/go --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-fees/go examples/fees/out/go
+      - test -z "$(gofmt -l target/examples-fees/go)"
+      - go vet ./target/examples-fees/go/fees.go
+      - '{{.CODESPEC}} write --lang go examples/fees/fees.cir.json --out target/examples-fees/go-pass --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-fees/go-pass examples/fees/out/go
+      - '{{.CODESPEC}} write --lang rust examples/fees/fees.cir.json --out target/examples-fees/rust --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-fees/rust examples/fees/out/rust
+      - 'test "$(cat target/examples-fees/rust/refusals.json)" = "[]"'
+      - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-fees/rust/Cargo.toml --target-dir target/examples-fees/build
+      - test -z "$(gofmt -l examples/fees/drivers/go)"
+      - cargo fmt --manifest-path examples/fees/drivers/rust/Cargo.toml --check
+      - cargo clippy --manifest-path examples/fees/drivers/rust/Cargo.toml --locked --target-dir target/harness-fees/rust-target -- -D warnings
+      - 'GROOVY_HOME="${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}"; JAVA_HOME="{{.JDK}}" "$GROOVY_HOME/bin/groovyc" -v 2>&1 | grep -q "Groovy compiler version 2.4.10"'
+      - 'GROOVY_HOME="${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}"; JAVA_HOME="{{.JDK}}" PATH="{{.JDK}}/bin:$GROOVY_HOME/bin:$PATH" {{.CODESPEC}} harness examples/fees --seeds 200 --commands 300 --build-dir target/harness-fees'
 
   examples-go:
     desc: Write the orders example as Go, before and after the passes, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.

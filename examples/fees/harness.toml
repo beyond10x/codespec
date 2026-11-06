@@ -1,0 +1,16 @@
+trace = "fees"
+
+[[implementation]]
+name = "original"
+build = ["groovyc", "-d", "{build}/groovy", "source/grails-app/domain/fees/Rate.groovy", "source/grails-app/services/fees/LateFeeService.groovy", "drivers/groovy/driver/Main.groovy"]
+run = ["groovy", "-cp", "{build}/groovy", "-e", "driver.Main.main(args)"]
+
+[[implementation]]
+name = "go"
+build = ["go", "build", "-C", "drivers/go", "-overlay", "overlay-go.json", "-o", "{build}/go", "."]
+run = ["{build}/go"]
+
+[[implementation]]
+name = "rust"
+build = ["cargo", "build", "--locked", "--quiet", "--manifest-path", "drivers/rust/Cargo.toml", "--target-dir", "{build}/rust-target"]
+run = ["{build}/rust-target/debug/fees-driver"]

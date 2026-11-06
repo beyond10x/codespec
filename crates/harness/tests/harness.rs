@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use codespec_harness::{
-    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, ledger_trace, run_driver,
-    series_trace, trace,
+    Manifest, Options, SplitMix64, TraceKind, build, fees_trace, inventory_trace, ledger_trace,
+    run_driver, series_trace, trace,
 };
 
 fn root() -> PathBuf {
@@ -415,4 +415,179 @@ post bob fee 926
 open ｚ
 reach zoë 1661
 post ｚ withdrawal 139
+";
+
+#[test]
+fn the_manifest_selects_the_fees_trace() {
+    let ok =
+        "trace = \"fees\"\n[[implementation]]\nname = \"a\"\nbuild = [\"true\"]\nrun = [\"cat\"]\n";
+    assert_eq!(Manifest::parse(ok).unwrap().trace, TraceKind::Fees);
+}
+
+/// What one fees trace reaches, counted by a model of the example's `LateFeeService`: each branch
+/// of `assess`, each `ItemKind`, and each integer edge crossed.
+#[derive(Default, Debug)]
+struct FeesReach {
+    waived: u32,
+    graced: u32,
+    capped: u32,
+    clamped: u32,
+    charged: u32,
+    book: u32,
+    disc: u32,
+    tool: u32,
+    long_past_max: u32,
+    long_past_min: u32,
+    int_past_max: u32,
+    int_past_min: u32,
+}
+
+/// Runs the trace against a model of `examples/fees/source`: `assess` spends a waiver first, then
+/// charges nothing within the grace period, then adds the kind's daily rate (10 when unset or 0) once
+/// per day, at most 365 days, stopping at a positive cap. Rates and fees are `long`, days and waivers
+/// `int`; both wrap.
+fn fees_reach(t: &str, r: &mut FeesReach) {
+    #[derive(Default)]
+    struct Model {
+        rates: std::collections::BTreeMap<String, i64>,
+        grace: i32,
+        cap: i64,
+        waivers: i32,
+        collected: i64,
+    }
+    let mut m = Model::default();
+    let past = |r: &mut FeesReach, int: bool, up: bool| match (int, up) {
+        (false, true) => r.long_past_max += 1,
+        (false, false) => r.long_past_min += 1,
+        (true, true) => r.int_past_max += 1,
+        (true, false) => r.int_past_min += 1,
+    };
+    for l in t.lines() {
+        let f: Vec<&str> = l.split(' ').collect();
+        match f[0] {
+            "new" => m = Model::default(),
+            "rate" => {
+                m.rates.insert(f[1].to_string(), f[2].parse().unwrap());
+            }
+            "grace" => m.grace = f[1].parse().unwrap(),
+            "cap" => m.cap = f[1].parse().unwrap(),
+            "waive" => {
+                let n: i32 = f[1].parse().unwrap();
+                if m.waivers.checked_add(n).is_none() {
+                    past(r, true, n > 0);
+                }
+                m.waivers = m.waivers.wrapping_add(n);
+            }
+            "assess" => {
+                match f[1] {
+                    "book" => r.book += 1,
+                    "disc" => r.disc += 1,
+                    "tool" => r.tool += 1,
+                    k => panic!("kind {k}"),
+                }
+                if m.waivers > 0 {
+                    m.waivers -= 1;
+                    r.waived += 1;
+                    continue;
+                }
+                let late: i32 = f[2].parse().unwrap();
+                if late.checked_sub(m.grace).is_none() {
+                    past(r, true, m.grace < 0);
+                }
+                let mut days = late.wrapping_sub(m.grace);
+                if days <= 0 {
+                    r.graced += 1;
+                    continue;
+                }
+                if days > 365 {
+                    r.clamped += 1;
+                    days = 365;
+                }
+                let rate = match m.rates.get(f[1]).copied().unwrap_or(0) {
+                    0 => 10,
+                    v => v,
+                };
+                let mut fee = 0i64;
+                let mut capped = false;
+                for _ in 0..days {
+                    if fee.checked_add(rate).is_none() {
+                        past(r, false, rate > 0);
+                    }
+                    fee = fee.wrapping_add(rate);
+                    if m.cap > 0 && fee >= m.cap {
+                        fee = m.cap;
+                        capped = true;
+                        break;
+                    }
+                }
+                if capped {
+                    r.capped += 1;
+                } else {
+                    r.charged += 1;
+                }
+                if m.collected.checked_add(fee).is_none() {
+                    past(r, false, fee > 0);
+                }
+                m.collected = m.collected.wrapping_add(fee);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn fees_traces_reach_every_command_each_branch_and_both_edges_of_int_and_long() {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut r = FeesReach::default();
+    for seed in 0..200 {
+        let t = fees_trace(seed, 300);
+        assert_eq!(t, fees_trace(seed, 300));
+        assert_eq!(t.lines().count(), 300);
+        assert!(t.starts_with("new\n"), "seed {seed}");
+        for l in t.lines() {
+            let f: Vec<&str> = l.split(' ').collect();
+            assert!(f.iter().all(|x| !x.is_empty()), "empty field in {l:?}");
+            seen.insert(f[0].to_string());
+        }
+        fees_reach(&t, &mut r);
+    }
+    let want: Vec<String> = [
+        "assess", "cap", "grace", "new", "rate", "rates", "stats", "waive",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), want);
+    for (what, n) in [
+        ("waived", r.waived),
+        ("within grace", r.graced),
+        ("capped", r.capped),
+        ("clamped to 365 days", r.clamped),
+        ("charged below the cap", r.charged),
+        ("BOOK", r.book),
+        ("DISC", r.disc),
+        ("TOOL", r.tool),
+        ("long past its maximum", r.long_past_max),
+        ("long past its minimum", r.long_past_min),
+        ("int past its maximum", r.int_past_max),
+        ("int past its minimum", r.int_past_min),
+    ] {
+        assert!(n >= 50, "{what}: {n} times over seeds 0-199; {r:?}");
+    }
+}
+
+#[test]
+fn a_fees_trace_is_pinned_across_platforms() {
+    let first: String = fees_trace(0, 300)
+        .lines()
+        .take(5)
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert_eq!(first, PINNED_FEES_SEED_0);
+}
+
+const PINNED_FEES_SEED_0: &str = "new
+new
+assess disc 43
+grace 14
+rates
 ";
