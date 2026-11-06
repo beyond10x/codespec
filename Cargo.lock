@@ -61,6 +61,8 @@ dependencies = [
  "b10x-codespec-model",
  "b10x-codespec-passes",
  "clap",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

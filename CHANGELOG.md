@@ -6,6 +6,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec measure <module.cir.json>` prints, per artefact (source file), the functions read and
+  refused and the refusals by category, then the totals and the share read; `--format json` prints
+  `codespec-measure/1`. Works on every reader's output; a reason without one of the Groovy reader's
+  eight categories counts as `uncategorised`. The lending fixture's report is checked in as
+  `adapters/groovy/testdata/lending.measure.txt`.
 - `codespec features` prints the `cir/1` feature vocabulary (`codespec-features/1`, 105 ids), checked
   in as `schemas/cir-1.features.json`; `features_from_json` reads it strictly.
 - `cir/1` intrinsic `sorted_keys`: the keys of a map in ascending order (integers numerically, strings
