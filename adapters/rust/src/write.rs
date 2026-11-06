@@ -9,20 +9,37 @@
 //! | `(T, bool)`, function in `comma_ok` | `Option<T>` | `comma_ok` |
 //! | an `error` result not in `fallible` | refused | `fallible` |
 //! | method in `read_only` | `&self`, else `&mut self` (a value receiver not read-only is refused) | `read_only` |
-//! | type in `displays` | `impl fmt::Display`: `Error()` / `String()`, the enum's value, the newtype's inner value | `displays` |
+//! | type in `displays` | `impl fmt::Display`, padded so a width applies: its `Error()` / `String()` on a value receiver, else the enum's value or the newtype's inner value; a struct with only a pointer-receiver method has none, and printing it is refused | `displays` |
 //! | `chan<- any` | `std::sync::mpsc::Sender<Message>`, `enum Message` over the `messages` types | `messages` |
 //! | sentinel errors, structs with `Error() string`, `errorf` | one closed `enum Error`: a unit variant per sentinel, a tuple variant per error struct, `Msg(String)` for `errorf` | — |
 //! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map | `unordered_iteration` |
 //! | `for … range` over a map not listed | refused | `unordered_iteration` |
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
+//! | `for … range` over a slice | the length read once, each element read when its iteration starts | — |
 //! | `foreign` | refused | — |
+//! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
+//! | a constant that cannot be written | left out and listed; each function reading it refused | — |
 //!
 //! A send on `Sender<Message>` takes `&self`, which is what `read_only` says of a method that only
 //! sends; the caller holds the `Receiver` and drains it after each call, so the sequence of messages
-//! is observable and deterministic in one thread. Values are cloned where Go copies them; slices and
-//! maps are cloned too, so binding one to a second name or passing it to a call (where Go would
-//! share it) is refused.
+//! is observable and deterministic in one thread.
+//!
+//! Values are cloned where Go copies them. A copy of a slice or map, or of a struct holding one,
+//! shares storage in Go and not here, so it is refused. A read through a shared value that a
+//! mutable borrow of the same statement would overlap is bound first; a call through a shared
+//! receiver whose arguments hold shared values is refused, since the callee could borrow them
+//! while the receiver is borrowed.
+//!
+//! Names: every item is named before anything is written, exported items first, and a name
+//! already held (by an earlier item, by the writer's own `Error` and `Message`, or by a trait
+//! method such as `clone`) gets a suffix. Bindings the writer introduces start with `__` and are
+//! lengthened until no local holds them.
+//!
+//! The crate starts with `#![allow(dead_code, unused_assignments, unused_mut)]`: Go compiles an
+//! unexported function nobody calls (or whose only caller is refused), a `var` assigned on every
+//! path before it is read, and a name rebound in an inner block without a warning, and the
+//! written code keeps those shapes rather than reasoning about them.
 
 use std::collections::BTreeSet;
 
@@ -67,10 +84,54 @@ pub fn write(m: &Module) -> Result<Written, String> {
             m.name
         ));
     };
-    let w = Writer { m, facts };
+    let mut w = Writer {
+        m,
+        facts,
+        names: Names::new(m),
+        bad_consts: BTreeSet::new(),
+    };
     w.check_types()?;
 
     let mut refused: Vec<Refusal> = Vec::new();
+    let mut consts = std::collections::BTreeMap::new();
+    for c in &m.consts {
+        match w.const_decl(&c.name) {
+            Ok(ts) => {
+                consts.insert(c.name.clone(), ts);
+            }
+            Err(reason) => {
+                w.bad_consts.insert(c.name.clone());
+                refused.push(Refusal {
+                    name: c.name.clone(),
+                    pos: c.pos.clone(),
+                    reason,
+                });
+            }
+        }
+    }
+    if let Some(init) = m
+        .funcs
+        .iter()
+        .find(|f| f.recv.is_none() && f.name == "init")
+    {
+        for f in &m.funcs {
+            let reason = if f.recv.is_none() && f.name == "init" {
+                "init: package initialization, which runs before every other function, is not written"
+            } else {
+                "the package's init must run first, and it is not written"
+            };
+            refused.push(Refusal {
+                name: f.key(),
+                pos: if f.name == "init" && f.recv.is_none() {
+                    f.pos.clone()
+                } else {
+                    init.pos.clone()
+                },
+                reason: reason.into(),
+            });
+        }
+    }
+    let w = w;
     let funcs = loop {
         let names: BTreeSet<String> = refused.iter().map(|r| r.name.clone()).collect();
         let mut emitted = Vec::new();
@@ -107,7 +168,9 @@ pub fn write(m: &Module) -> Result<Written, String> {
                 .ok_or_else(|| format!("layout names type {name}, which is not declared"))?;
             items.extend(w.type_decl(decl, &refused_names)?);
         } else if let Some(name) = entry.strip_prefix("const:") {
-            items.push(w.const_decl(name)?);
+            if let Some(ts) = consts.get(name) {
+                items.push(ts.clone());
+            }
         } else if let Some(key) = entry.strip_prefix("func:") {
             match key.split_once('.') {
                 None => {
@@ -127,7 +190,7 @@ pub fn write(m: &Module) -> Result<Written, String> {
                         i += 1;
                     }
                     if !methods.is_empty() {
-                        let t = type_ident(recv);
+                        let t = w.names.ty(recv);
                         items.push(quote! { impl #t { #(#methods)* } });
                     }
                     continue;
@@ -159,7 +222,12 @@ pub fn write(m: &Module) -> Result<Written, String> {
         }
     }
     let doc = inner_doc(&m.doc);
-    let file = quote! { #doc #(#uses)* #body };
+    let file = quote! {
+        #doc
+        #![allow(dead_code, unused_assignments, unused_mut)]
+        #(#uses)*
+        #body
+    };
     let parsed: syn::File = syn::parse2(file).map_err(|e| format!("internal: {e}"))?;
     let lib_rs = format!(
         "// Code generated by codespec-write-rust from cir/1. DO NOT EDIT.\n{}",
@@ -290,8 +358,211 @@ fn type_ident(name: &str) -> Ident {
     ident(&upper_camel(name))
 }
 
-fn const_ident(name: &str) -> Ident {
-    ident(&snake(name).to_uppercase())
+/// Method names the written code calls through traits it derives or implements on every type
+/// (`clone`, `fmt`, `eq`, …) or emits itself (`value` on an enum). A method of the module with one
+/// of these names is renamed, so `x.clone()` is always the derived copy.
+const METHODS_TAKEN: &[&str] = &[
+    "clone",
+    "clone_from",
+    "value",
+    "fmt",
+    "to_string",
+    "eq",
+    "ne",
+    "cmp",
+    "partial_cmp",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "hash",
+];
+
+/// Give `want` to the next item, or `want` with a suffix (`_` for snake and screaming names, a
+/// number for camel names) when an earlier item or the writer holds it.
+fn claim(taken: &mut BTreeSet<String>, want: String, camel: bool) -> String {
+    let mut name = want.clone();
+    let mut n = 2;
+    while taken.contains(&name) {
+        name = if camel {
+            format!("{want}{n}")
+        } else {
+            format!("{name}_")
+        };
+        n += 1;
+    }
+    taken.insert(name.clone());
+    name
+}
+
+fn exported(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_uppercase())
+}
+
+/// The Rust name of every module item, fixed before anything is written. Items are named in
+/// declaration order, exported items first, so an exported name keeps its plain spelling: `Run`
+/// is `run` and an unexported `run` beside it is `run_`.
+#[derive(Default)]
+struct Names {
+    types: std::collections::BTreeMap<String, String>,
+    funcs: std::collections::BTreeMap<String, String>,
+    fields: std::collections::BTreeMap<(String, String), String>,
+    variants: std::collections::BTreeMap<String, String>,
+    errors: std::collections::BTreeMap<String, String>,
+    consts: std::collections::BTreeMap<String, String>,
+    msg: String,
+    /// Free functions and constants: a local of the same Rust name is renamed.
+    values: BTreeSet<String>,
+}
+
+impl Names {
+    fn new(m: &Module) -> Names {
+        let mut n = Names::default();
+        let by_export = |names: Vec<String>| {
+            let (mut a, b): (Vec<String>, Vec<String>) =
+                names.into_iter().partition(|s| exported(s));
+            a.extend(b);
+            a
+        };
+
+        let mut taken: BTreeSet<String> = NAMES_TAKEN.iter().map(|s| s.to_string()).collect();
+        for t in by_export(m.types.iter().map(|d| d.name().to_string()).collect()) {
+            let r = claim(&mut taken, upper_camel(&t), true);
+            n.types.insert(t, r);
+        }
+
+        let mut taken = BTreeSet::new();
+        let free: Vec<String> = m
+            .funcs
+            .iter()
+            .filter(|f| f.recv.is_none())
+            .map(|f| f.name.clone())
+            .collect();
+        for f in by_export(free) {
+            if n.funcs.contains_key(&f) {
+                continue;
+            }
+            let r = claim(&mut taken, snake(&f), false);
+            n.values.insert(r.clone());
+            n.funcs.insert(f, r);
+        }
+        let mut recvs: Vec<String> = Vec::new();
+        for f in &m.funcs {
+            if let Some(r) = &f.recv {
+                let t = receiver_type_name(&r.t).to_string();
+                if !recvs.contains(&t) {
+                    recvs.push(t);
+                }
+            }
+        }
+        for t in recvs {
+            let mut taken: BTreeSet<String> = METHODS_TAKEN.iter().map(|s| s.to_string()).collect();
+            let names: Vec<String> = m
+                .funcs
+                .iter()
+                .filter(|f| {
+                    f.recv
+                        .as_ref()
+                        .is_some_and(|r| receiver_type_name(&r.t) == t)
+                })
+                .map(|f| f.name.clone())
+                .collect();
+            for f in by_export(names) {
+                let key = format!("{t}.{f}");
+                if n.funcs.contains_key(&key) {
+                    continue;
+                }
+                let r = claim(&mut taken, snake(&f), false);
+                n.funcs.insert(key, r);
+            }
+        }
+
+        for d in &m.types {
+            match d {
+                TypeDecl::Struct { name, fields, .. } => {
+                    let mut taken = BTreeSet::new();
+                    for f in by_export(fields.iter().map(|f| f.name.clone()).collect()) {
+                        let r = claim(&mut taken, snake(&f), false);
+                        n.fields.insert((name.clone(), f), r);
+                    }
+                }
+                TypeDecl::Enum { variants, .. } => {
+                    let mut taken = BTreeSet::new();
+                    for v in by_export(variants.iter().map(|v| v.name.clone()).collect()) {
+                        let r = claim(&mut taken, upper_camel(&v), true);
+                        n.variants.insert(v, r);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut taken = BTreeSet::new();
+        for e in &m.errors {
+            let r = claim(&mut taken, upper_camel(&e.name), true);
+            n.errors.insert(e.name.clone(), r);
+        }
+        for d in &m.types {
+            let r = claim(&mut taken, n.ty(d.name()).to_string(), true);
+            n.errors.entry(d.name().to_string()).or_insert(r);
+        }
+        n.msg = claim(&mut taken, "Msg".into(), true);
+
+        let mut taken = BTreeSet::new();
+        for c in by_export(m.consts.iter().map(|c| c.name.clone()).collect()) {
+            let r = claim(&mut taken, snake(&c).to_uppercase(), false);
+            n.values.insert(r.clone());
+            n.consts.insert(c, r);
+        }
+        n
+    }
+
+    fn ty(&self, name: &str) -> Ident {
+        ident(self.types.get(name).map_or(name, |s| s))
+    }
+
+    fn func(&self, key: &str) -> Ident {
+        ident(self.funcs.get(key).map_or(key, |s| s))
+    }
+
+    fn field(&self, ty: &str, name: &str) -> Ident {
+        match self.fields.get(&(ty.to_string(), name.to_string())) {
+            Some(s) => ident(s),
+            None => value_ident(name),
+        }
+    }
+
+    fn variant(&self, name: &str) -> Ident {
+        ident(self.variants.get(name).map_or(name, |s| s))
+    }
+
+    fn error(&self, name: &str) -> Ident {
+        ident(self.errors.get(name).map_or(name, |s| s))
+    }
+
+    fn msg(&self) -> Ident {
+        ident(&self.msg)
+    }
+
+    fn konst(&self, name: &str) -> Ident {
+        ident(self.consts.get(name).map_or(name, |s| s))
+    }
+
+    /// A parameter or local: snake case, renamed when a free function or constant holds the name.
+    fn local(&self, name: &str) -> Ident {
+        if name == "_" {
+            return Ident::new("_", Span::call_site());
+        }
+        let mut s = snake(name);
+        while self.values.contains(&s) {
+            s.push('_');
+        }
+        ident(&s)
+    }
+
+    fn local_str(&self, name: &str) -> String {
+        self.local(name).to_string()
+    }
 }
 
 fn outer_doc(doc: &str) -> TokenStream {
@@ -357,6 +628,9 @@ impl Rx {
 struct Writer<'a> {
     m: &'a Module,
     facts: &'a Facts,
+    names: Names,
+    /// Constants that cannot be written: left out, and every function reading one refused.
+    bad_consts: BTreeSet<String>,
 }
 
 enum Shape {
@@ -366,6 +640,18 @@ enum Shape {
     Fallible,
     /// `Option<T>` over the first result.
     CommaOk,
+}
+
+/// How a type with a text rendering prints.
+enum Render {
+    /// Its `Error()` or `String()` method on a value receiver, by key.
+    Method(String),
+    /// A string enum's value.
+    StrValue,
+    /// An integer enum's value.
+    Value,
+    /// A newtype's inner value.
+    Inner,
 }
 
 impl<'a> Writer<'a> {
@@ -381,6 +667,68 @@ impl<'a> Writer<'a> {
             },
             _ => false,
         }
+    }
+
+    /// Whether a value of `t` holds a shared pointer, directly or inside it.
+    fn holds_shared(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            Type::Ptr { elem } => self.shared(t) || self.holds_shared(elem, seen),
+            Type::Slice { elem } | Type::Chan { elem, .. } => self.holds_shared(elem, seen),
+            Type::Map { key, elem } => {
+                self.holds_shared(key, seen) || self.holds_shared(elem, seen)
+            }
+            Type::Tuple { elems } => elems.iter().any(|e| self.holds_shared(e, seen)),
+            Type::Named { name } => {
+                if !seen.insert(name.clone()) {
+                    return false;
+                }
+                self.decl(name).is_some_and(|d| match d {
+                    TypeDecl::Struct { fields, .. } => {
+                        fields.iter().any(|f| self.holds_shared(&f.t, seen))
+                    }
+                    TypeDecl::Newtype { under, .. } => self.holds_shared(under, seen),
+                    TypeDecl::Union { variants, .. } => variants
+                        .iter()
+                        .any(|v| v.fields.iter().any(|f| self.holds_shared(&f.t, seen))),
+                    TypeDecl::Enum { .. } => false,
+                })
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether a copy of a `t` shares storage with the original in Go: a slice or a map, or a
+    /// struct or newtype holding one. Rust clones it, so such a copy is refused.
+    fn shares_storage(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            Type::Slice { .. } | Type::Map { .. } => true,
+            Type::Named { name } => {
+                if !seen.insert(name.clone()) {
+                    return false;
+                }
+                self.decl(name).is_some_and(|d| match d {
+                    TypeDecl::Struct { fields, .. } => {
+                        fields.iter().any(|f| self.shares_storage(&f.t, seen))
+                    }
+                    TypeDecl::Newtype { under, .. } => self.shares_storage(under, seen),
+                    TypeDecl::Union { variants, .. } => variants
+                        .iter()
+                        .any(|v| v.fields.iter().any(|f| self.shares_storage(&f.t, seen))),
+                    TypeDecl::Enum { .. } => false,
+                })
+            }
+            _ => false,
+        }
+    }
+
+    fn copy_ok(&self, t: &Type) -> R<()> {
+        if self.shares_storage(t, &mut BTreeSet::new()) {
+            return Err(format!(
+                "a copy of a {}, which shares a slice or map with the original in Go",
+                type_name(t)
+            ));
+        }
+        Ok(())
     }
 
     fn method(&self, key: &str) -> Option<&'a Func> {
@@ -402,15 +750,6 @@ impl<'a> Writer<'a> {
     }
 
     fn check_types(&self) -> R<()> {
-        for d in &self.m.types {
-            let name = upper_camel(d.name());
-            if NAMES_TAKEN.contains(&name.as_str()) {
-                return Err(format!(
-                    "type {} collides with a name the Rust writer emits or uses",
-                    d.name()
-                ));
-            }
-        }
         for name in &self.facts.messages {
             if self.decl(name).is_none() {
                 return Err(format!(
@@ -448,7 +787,7 @@ impl<'a> Writer<'a> {
                 if self.decl(name).is_none() {
                     return Err(format!("type {name} is not declared"));
                 }
-                let n = type_ident(name);
+                let n = self.names.ty(name);
                 quote! { #n }
             }
             Type::Ptr { elem } => {
@@ -575,8 +914,9 @@ impl<'a> Writer<'a> {
     fn type_decl(&self, d: &TypeDecl, refused: &BTreeSet<String>) -> R<Vec<TokenStream>> {
         let mut out = Vec::new();
         let name = d.name();
-        let n = type_ident(name);
+        let n = self.names.ty(name);
         let at = |e: String| format!("type {name}: {e}");
+        let display = self.display_impl(d, refused);
         match d {
             TypeDecl::Struct {
                 exported,
@@ -591,31 +931,11 @@ impl<'a> Writer<'a> {
                 });
                 let fs = fields
                     .iter()
-                    .map(|f| self.field_decl(f))
+                    .map(|f| self.field_decl(name, f))
                     .collect::<R<Vec<_>>>()
                     .map_err(at)?;
                 out.push(quote! { #doc #derives #v struct #n { #(#fs),* } });
-                if self.displays(name) {
-                    let via = if self.method(&format!("{name}.Error")).is_some() {
-                        "Error"
-                    } else {
-                        "String"
-                    };
-                    let key = format!("{name}.{via}");
-                    if self.method(&key).is_none() || refused.contains(&key) {
-                        return Err(format!(
-                            "{name} is in `displays`, but its method {via}() is not written"
-                        ));
-                    }
-                    let m = value_ident(via);
-                    out.push(quote! {
-                        impl fmt::Display for #n {
-                            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                                f.write_str(&self.#m())
-                            }
-                        }
-                    });
-                }
+                out.extend(display);
             }
             TypeDecl::Newtype {
                 exported,
@@ -636,15 +956,7 @@ impl<'a> Writer<'a> {
                     self.derives(under)
                 };
                 out.push(quote! { #doc #derives #v struct #n(pub #u); });
-                if self.displays(name) {
-                    out.push(quote! {
-                        impl fmt::Display for #n {
-                            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                                write!(f, "{}", self.0)
-                            }
-                        }
-                    });
-                }
+                out.extend(display);
             }
             TypeDecl::Enum {
                 exported,
@@ -655,7 +967,10 @@ impl<'a> Writer<'a> {
             } => {
                 let doc = outer_doc(doc);
                 let v = vis(*exported);
-                let names: Vec<Ident> = variants.iter().map(|v| type_ident(&v.name)).collect();
+                let names: Vec<Ident> = variants
+                    .iter()
+                    .map(|v| self.names.variant(&v.name))
+                    .collect();
                 let (value_ty, values) = match under {
                     Type::String => (
                         quote! { &'static str },
@@ -693,15 +1008,7 @@ impl<'a> Writer<'a> {
                         }
                     }
                 });
-                if self.displays(name) {
-                    out.push(quote! {
-                        impl fmt::Display for #n {
-                            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                                write!(f, "{}", self.value())
-                            }
-                        }
-                    });
-                }
+                out.extend(display);
             }
             TypeDecl::Union {
                 exported,
@@ -737,8 +1044,64 @@ impl<'a> Writer<'a> {
         Ok(out)
     }
 
-    fn field_decl(&self, f: &Field) -> R<TokenStream> {
-        let name = value_ident(&f.name);
+    /// How `%v` and `%s` print a value of the declared type `name`, when `displays` lists it: its
+    /// own `Error()` or `String()` method on a value receiver; otherwise an enum's value or a
+    /// newtype's inner value. A pointer-receiver method is not what Go calls for a value, so a
+    /// struct with only that has no rendering, and printing one is refused.
+    fn render(&self, name: &str, refused: &BTreeSet<String>) -> Option<Render> {
+        if !self.displays(name) {
+            return None;
+        }
+        for via in ["Error", "String"] {
+            let key = format!("{name}.{via}");
+            if let Some(f) = self.method(&key)
+                && f.params.is_empty()
+                && matches!(f.results.as_slice(), [Type::String])
+                && f.recv
+                    .as_ref()
+                    .is_some_and(|r| !matches!(r.t, Type::Ptr { .. }))
+            {
+                return if refused.contains(&key) {
+                    None
+                } else {
+                    Some(Render::Method(key))
+                };
+            }
+        }
+        match self.decl(name) {
+            Some(TypeDecl::Enum { under, .. }) => Some(if matches!(under, Type::String) {
+                Render::StrValue
+            } else {
+                Render::Value
+            }),
+            Some(TypeDecl::Newtype { .. }) => Some(Render::Inner),
+            _ => None,
+        }
+    }
+
+    /// `impl fmt::Display` for a type with a rendering. It pads, so a width in a format applies.
+    fn display_impl(&self, d: &TypeDecl, refused: &BTreeSet<String>) -> Option<TokenStream> {
+        let n = self.names.ty(d.name());
+        let body = match self.render(d.name(), refused)? {
+            Render::Method(key) => {
+                let m = self.names.func(&key);
+                quote! { f.pad(&self.#m()) }
+            }
+            Render::StrValue => quote! { f.pad(self.value()) },
+            Render::Value => quote! { fmt::Display::fmt(&self.value(), f) },
+            Render::Inner => quote! { fmt::Display::fmt(&self.0, f) },
+        };
+        Some(quote! {
+            impl fmt::Display for #n {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    #body
+                }
+            }
+        })
+    }
+
+    fn field_decl(&self, owner: &str, f: &Field) -> R<TokenStream> {
+        let name = self.names.field(owner, &f.name);
         let t = self.ty(&f.t)?;
         let v = vis(f.name.chars().next().is_some_and(|c| c.is_uppercase()));
         Ok(quote! { #v #name: #t })
@@ -752,7 +1115,7 @@ impl<'a> Writer<'a> {
             .find(|c| c.name == name)
             .ok_or_else(|| format!("layout names const {name}, which is not declared"))?;
         let at = |e: String| format!("const {name}: {e}");
-        let n = const_ident(name);
+        let n = self.names.konst(name);
         let v = vis(name.chars().next().is_some_and(|c| c.is_uppercase()));
         let Expr::Lit { value, .. } = &c.value else {
             return Err(at("a value that is not a literal".into()));
@@ -776,7 +1139,12 @@ impl<'a> Writer<'a> {
     }
 
     fn message_enum(&self) -> R<TokenStream> {
-        let names: Vec<Ident> = self.facts.messages.iter().map(|n| type_ident(n)).collect();
+        let names: Vec<Ident> = self
+            .facts
+            .messages
+            .iter()
+            .map(|n| self.names.ty(n))
+            .collect();
         let derives = self.derives(&Type::Any);
         Ok(quote! {
             /// Every value sent on a channel of `any`.
@@ -810,10 +1178,10 @@ impl<'a> Writer<'a> {
         let mut variants = Vec::new();
         let mut arms = Vec::new();
         for e in &self.m.errors {
-            let v = type_ident(&e.name);
+            let v = self.names.error(&e.name);
             let text = &e.message;
             variants.push(quote! { #v });
-            arms.push(quote! { Error::#v => f.write_str(#text) });
+            arms.push(quote! { Error::#v => f.pad(#text) });
         }
         for s in &structs {
             if refused.contains(&format!("{s}.Error")) {
@@ -821,13 +1189,16 @@ impl<'a> Writer<'a> {
                     "{s}.Error is refused, so enum Error cannot render {s}"
                 ));
             }
-            let v = type_ident(s);
-            variants.push(quote! { #v(#v) });
-            arms.push(quote! { Error::#v(e) => write!(f, "{}", e) });
+            let v = self.names.error(s);
+            let t = self.names.ty(s);
+            let m = self.names.func(&format!("{s}.Error"));
+            variants.push(quote! { #v(#t) });
+            arms.push(quote! { Error::#v(e) => f.pad(&e.#m()) });
         }
         if msg {
-            variants.push(quote! { Msg(String) });
-            arms.push(quote! { Error::Msg(s) => f.write_str(s) });
+            let msg = self.names.msg();
+            variants.push(quote! { #msg(String) });
+            arms.push(quote! { Error::#msg(s) => f.pad(s) });
         }
         let derives = if self.error_eq(&mut BTreeSet::new()) {
             quote! { #[derive(Debug, Clone, PartialEq)] }
@@ -946,7 +1317,7 @@ impl<'a> Writer<'a> {
             let n = if p.name == "_" || !used.contains(&p.name) {
                 Ident::new(&format!("_{}", snake(&p.name)), Span::call_site())
             } else {
-                value_ident(&p.name)
+                self.names.local(&p.name)
             };
             if mutated.contains(&p.name) {
                 params.push(quote! { mut #n: #t });
@@ -954,6 +1325,27 @@ impl<'a> Writer<'a> {
                 params.push(quote! { #n: #t });
             }
         }
+        let mut locals: BTreeSet<String> = f
+            .params
+            .iter()
+            .map(|p| self.names.local_str(&p.name))
+            .collect();
+        walk_stmts(&f.body, &mut |s| {
+            let names: Vec<&String> = match s {
+                Stmt::Let { names, .. } => names.iter().collect(),
+                Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => vec![name],
+                Stmt::ForRange { key, val, .. } => vec![key, val],
+                _ => vec![],
+            };
+            for n in names {
+                locals.insert(self.names.local_str(n));
+            }
+        });
+        walk_exprs(&f.body, &mut |e| {
+            if let Expr::Var { name, .. } = e {
+                locals.insert(self.names.local_str(name));
+            }
+        });
         let cx = Fx {
             w: self,
             f,
@@ -961,9 +1353,10 @@ impl<'a> Writer<'a> {
             recv,
             mutated,
             refused,
+            locals,
         };
         let body = cx.body(&f.body)?;
-        let name = value_ident(&f.name);
+        let name = self.names.func(&f.key());
         let doc = outer_doc(&f.doc);
         let v = vis(f.exported);
         Ok(quote! { #doc #v fn #name(#(#params),*) #ret { #(#body)* } })
@@ -986,7 +1379,7 @@ impl<'a> Writer<'a> {
             Type::Named { name } => match self.decl(name) {
                 Some(TypeDecl::Newtype { under, .. }) => {
                     let inner = self.lit(value, under)?.ts;
-                    let n = type_ident(name);
+                    let n = self.names.ty(name);
                     Ok(Rx::atom(quote! { #n(#inner) }))
                 }
                 _ => Err(format!("a literal of type {name}")),
@@ -998,6 +1391,10 @@ impl<'a> Writer<'a> {
     fn int_lit(&self, value: &str, t: &Type) -> R<Rx> {
         let Type::Int { width, signed } = t else {
             return Err(format!("integer literal of type {}", type_name(t)));
+        };
+        let (negative, value) = match value.strip_prefix('-') {
+            Some(rest) if *signed => (true, rest),
+            _ => (false, value),
         };
         let digits = value.replace('_', "");
         let lower = digits.to_ascii_lowercase();
@@ -1024,8 +1421,21 @@ impl<'a> Writer<'a> {
         } else {
             (1u128 << bits) - 1
         };
-        if v > max {
+        if v > max + u128::from(negative) {
             return Err(format!("integer literal {value} overflows its type"));
+        }
+        if negative {
+            let ty = Self::int_ty(*width, true);
+            if v == max + 1 {
+                return Ok(Rx::atom(quote! { #ty::MIN }));
+            }
+            let l = match bits {
+                8 => Literal::i8_suffixed(v as i8),
+                16 => Literal::i16_suffixed(v as i16),
+                32 => Literal::i32_suffixed(v as i32),
+                _ => Literal::i64_suffixed(v as i64),
+            };
+            return Ok(Rx::with(quote! { -#l }, UNARY));
         }
         let l = match (bits, signed) {
             (8, true) => Literal::i8_suffixed(v as i8),
@@ -1049,13 +1459,13 @@ impl<'a> Writer<'a> {
             Type::Slice { .. } => quote! { Vec::new() },
             Type::Map { .. } => quote! { BTreeMap::new() },
             Type::Named { name } => {
-                let n = type_ident(name);
+                let n = self.names.ty(name);
                 match self.decl(name) {
                     Some(TypeDecl::Struct { fields, .. }) => {
                         let fs = fields
                             .iter()
                             .map(|f| {
-                                let fname = value_ident(&f.name);
+                                let fname = self.names.field(name, &f.name);
                                 let z = self.zero(&f.t)?.ts;
                                 Ok(quote! { #fname: #z })
                             })
@@ -1312,9 +1722,13 @@ fn mutated_names(w: &Writer, body: &[Stmt], out: &mut BTreeSet<String>) {
     });
 }
 
+/// Whether evaluating `e` can borrow a shared value: some part of it has a type that holds a
+/// shared pointer, directly or through struct fields, slices and maps.
 fn touches_shared(w: &Writer, e: &Expr) -> bool {
     let mut found = false;
-    walk_expr(e, &mut |x| found |= w.shared(x.t()));
+    walk_expr(e, &mut |x| {
+        found |= w.holds_shared(x.t(), &mut BTreeSet::new())
+    });
     found
 }
 
@@ -1328,6 +1742,8 @@ struct Fx<'a, 'f> {
     recv: Option<String>,
     mutated: BTreeSet<String>,
     refused: &'f BTreeSet<String>,
+    /// The Rust names of every parameter and local, so a name the writer introduces is fresh.
+    locals: BTreeSet<String>,
 }
 
 impl Fx<'_, '_> {
@@ -1335,8 +1751,25 @@ impl Fx<'_, '_> {
         matches!(e, Expr::Var { name, .. } if Some(name) == self.recv.as_ref())
     }
 
+    /// A binding the writer introduces: `__<base>`, lengthened until no local holds it.
+    fn fresh(&self, base: &str) -> Ident {
+        let mut s = format!("__{base}");
+        while self.locals.contains(&s) {
+            s.push('_');
+        }
+        Ident::new(&s, Span::call_site())
+    }
+
+    /// Whether the receiver is a value (Go `func (c Color)`), which `self` borrows.
+    fn value_recv(&self) -> bool {
+        self.f
+            .recv
+            .as_ref()
+            .is_some_and(|r| !matches!(r.t, Type::Ptr { .. }))
+    }
+
     fn binding(&self, name: &str) -> TokenStream {
-        let n = value_ident(name);
+        let n = self.w.names.local(name);
         if name != "_" && self.mutated.contains(name) {
             quote! { mut #n }
         } else {
@@ -1409,11 +1842,9 @@ impl Fx<'_, '_> {
                 body,
                 pos,
             } => {
-                let head = self
-                    .range_head(key, val, over, pos)
-                    .map_err(|e| at(pos, e))?;
                 let b = self.block(body)?;
-                Ok(vec![quote! { #head { #(#b)* } }])
+                let r = self.range(key, val, over, pos, b).map_err(|e| at(pos, e))?;
+                Ok(vec![r])
             }
             Stmt::Switch { tag, cases, .. } => self.switch(tag.as_ref(), cases, pos),
             Stmt::Return { results, .. } => {
@@ -1440,9 +1871,10 @@ impl Fx<'_, '_> {
                 ..
             } => {
                 let r = (|| {
-                    if !matches!(map.t(), Type::Map { .. }) {
+                    let Type::Map { elem, .. } = map.t() else {
                         return Err("a lookup in something other than a map".to_string());
-                    }
+                    };
+                    self.w.copy_ok(elem)?;
                     Ok((self.place(map)?.recv(), self.place(index)?.ts))
                 })();
                 let (m, k) = r.map_err(|e| at(pos, e))?;
@@ -1470,7 +1902,6 @@ impl Fx<'_, '_> {
             ));
         }
         for e in rhs {
-            self.no_alias(e)?;
             if let Type::Ptr { .. } = e.t()
                 && !self.w.shared(e.t())
             {
@@ -1486,19 +1917,6 @@ impl Fx<'_, '_> {
             return Ok(quote! { let #b = #v; });
         }
         Ok(quote! { let (#(#bs),*) = (#(#vs),*); })
-    }
-
-    /// A slice or map read from a variable is shared in Go and copied here.
-    fn no_alias(&self, e: &Expr) -> R<()> {
-        if matches!(e.t(), Type::Slice { .. } | Type::Map { .. })
-            && matches!(
-                e,
-                Expr::Var { .. } | Expr::Field { .. } | Expr::Index { .. }
-            )
-        {
-            return Err("a slice or map bound to a second name, which Go shares".into());
-        }
-        Ok(())
     }
 
     fn assign(&self, op: &str, lhs: &[Expr], rhs: &[Expr]) -> R<TokenStream> {
@@ -1521,26 +1939,45 @@ impl Fx<'_, '_> {
             if first != l {
                 return Err("append to a slice other than the one assigned".into());
             }
-            let p = self.place_mut(l)?.recv();
-            let pushes = rest
-                .iter()
-                .map(|a| {
-                    let v = self.val(a)?.ts;
-                    Ok(quote! { #p.push(#v); })
-                })
-                .collect::<R<Vec<_>>>()?;
-            return Ok(quote! { #(#pushes)* });
+            let through = self.writes_through_shared(l);
+            let mut pre = Vec::new();
+            let mut vals = Vec::new();
+            for a in rest {
+                let v = self.val(a)?.ts;
+                if through && touches_shared(self.w, a) {
+                    let b = self.fresh(&format!("value{}", pre.len()));
+                    pre.push(quote! { let #b = #v; });
+                    vals.push(quote! { #b });
+                } else {
+                    vals.push(v);
+                }
+            }
+            let mut tail = Vec::new();
+            let p = self.place_mut_pre(l, &mut pre)?.recv();
+            for v in vals {
+                tail.push(quote! { #p.push(#v); });
+            }
+            if pre.is_empty() {
+                return Ok(quote! { #(#tail)* });
+            }
+            return Ok(quote! { { #(#pre)* #(#tail)* } });
         }
-        self.no_alias(r)?;
         if let Expr::Index { x, index, .. } = l
             && let Type::Map { .. } = x.t()
         {
             if !op.is_empty() {
                 return Err("a compound assignment to a map entry".into());
             }
-            let m = self.place_mut(x)?.recv();
             let k = self.val(index)?.ts;
             let v = self.val(r)?.ts;
+            let mut pre = Vec::new();
+            if self.writes_through_shared(x) {
+                let (kb, vb) = (self.fresh("key"), self.fresh("value"));
+                pre.push(quote! { let #kb = #k; let #vb = #v; });
+                let m = self.place_mut_pre(x, &mut pre)?.recv();
+                return Ok(quote! { { #(#pre)* #m.insert(#kb, #vb); } });
+            }
+            let m = self.place_mut(x)?.recv();
             return Ok(quote! { #m.insert(#k, #v); });
         }
         let value = if op.is_empty() {
@@ -1551,14 +1988,20 @@ impl Fx<'_, '_> {
         self.store(l, value, touches_shared(self.w, r) || !op.is_empty())
     }
 
-    /// `lhs = value`; when the target borrows a shared value mutably and the value borrows too,
-    /// the value is bound first so its borrow ends before the write.
+    /// `lhs = value`; when the target borrows a shared value mutably and the value or an index
+    /// in the target borrows too, those are bound first so their borrows end before the write.
     fn store(&self, l: &Expr, value: Rx, value_borrows: bool) -> R<TokenStream> {
-        let target = self.place_mut(l)?.ts;
         let v = value.ts;
-        if value_borrows && self.writes_through_shared(l) {
-            return Ok(quote! { { let value = #v; #target = value; } });
+        if self.writes_through_shared(l) {
+            let mut pre = Vec::new();
+            let target = self.place_mut_pre(l, &mut pre)?.ts;
+            if value_borrows || !pre.is_empty() {
+                let b = self.fresh("value");
+                return Ok(quote! { { #(#pre)* let #b = #v; #target = #b; } });
+            }
+            return Ok(quote! { #target = #v; });
         }
+        let target = self.place_mut(l)?.ts;
         Ok(quote! { #target = #v; })
     }
 
@@ -1587,26 +2030,70 @@ impl Fx<'_, '_> {
         self.store(x, Rx::atom(quote! { #cur.#method(#one) }), true)
     }
 
-    fn range_head(&self, key: &str, val: &str, over: &Expr, pos: &str) -> R<TokenStream> {
+    /// A `for … range`. Over a map: a snapshot in key order. Over a slice: as Go does it, the
+    /// length fixed when the loop starts and each element read when its iteration starts.
+    fn range(
+        &self,
+        key: &str,
+        val: &str,
+        over: &Expr,
+        pos: &str,
+        body: Vec<TokenStream>,
+    ) -> R<TokenStream> {
         let src = self.place(over)?.recv();
         let k = self.binding(key);
         let v = self.binding(val);
         match over.t() {
-            Type::Map { .. } => {
+            Type::Map { elem, .. } => {
                 if !self.w.facts.unordered_iteration.iter().any(|p| p == pos) {
                     return Err("a loop over a map that `unordered_iteration` does not list".into());
                 }
-                if key == "_" && val == "_" {
-                    return Ok(quote! { for _ in #src.clone() });
+                if val != "_" {
+                    self.w.copy_ok(elem)?;
                 }
-                Ok(quote! { for (#k, #v) in #src.clone() })
+                if key == "_" && val == "_" {
+                    return Ok(quote! { for _ in #src.clone() { #(#body)* } });
+                }
+                Ok(quote! { for (#k, #v) in #src.clone() { #(#body)* } })
             }
-            Type::Slice { .. } => match (key, val) {
-                ("_", "_") => Ok(quote! { for _ in #src.clone() }),
-                (_, "_") => Ok(quote! { for #k in 0i64..(#src.len() as i64) }),
-                ("_", _) => Ok(quote! { for #v in #src.clone() }),
-                _ => Ok(quote! { for (#k, #v) in (0i64..).zip(#src.clone()) }),
-            },
+            Type::Slice { elem } => {
+                if !matches!(over, Expr::Var { .. } | Expr::Field { .. }) {
+                    return Err("a loop over a slice that is not a variable or a field".into());
+                }
+                let len = self.fresh("len");
+                let i = if key == "_" {
+                    let i = self.fresh("i");
+                    quote! { #i }
+                } else {
+                    k
+                };
+                let index = if key == "_" {
+                    i.clone()
+                } else {
+                    let n = self.w.names.local(key);
+                    quote! { #n }
+                };
+                let read = if val == "_" {
+                    quote! {}
+                } else {
+                    self.w.copy_ok(elem)?;
+                    let e = if self.w.is_copy(elem) {
+                        quote! { #src[#index as usize] }
+                    } else {
+                        quote! { #src[#index as usize].clone() }
+                    };
+                    quote! { let #v = #e; }
+                };
+                Ok(quote! {
+                    {
+                        let #len = #src.len() as i64;
+                        for #i in 0i64..#len {
+                            #read
+                            #(#body)*
+                        }
+                    }
+                })
+            }
             t => Err(format!("a loop over {}", type_name(t))),
         }
     }
@@ -1625,9 +2112,10 @@ impl Fx<'_, '_> {
             }
             Some(t) => {
                 let v = self.val(t).map_err(err)?.ts;
+                let b = self.fresh("tag");
                 (
-                    Some(quote! { let tag = #v; }),
-                    Some((Rx::atom(quote! { tag }), t)),
+                    Some(quote! { let #b = #v; }),
+                    Some((Rx::atom(quote! { #b }), t)),
                 )
             }
         };
@@ -1730,7 +2218,7 @@ impl Fx<'_, '_> {
         if let Expr::Var { name, .. } = e
             && !self.is_recv(e)
         {
-            let n = value_ident(name);
+            let n = self.w.names.local(name);
             return Ok(quote! { #n });
         }
         Ok(self.val(e)?.ts)
@@ -1742,12 +2230,12 @@ impl Fx<'_, '_> {
                 if !self.w.m.errors.iter().any(|x| x.name == *name) {
                     return Err(format!("sentinel error {name} is not declared"));
                 }
-                let v = type_ident(name);
+                let v = self.w.names.error(name);
                 Ok(quote! { Error::#v })
             }
             Expr::ToError { x, .. } => match x.t() {
                 Type::Named { name } if self.w.is_error_struct(name) => {
-                    let v = type_ident(name);
+                    let v = self.w.names.error(name);
                     let x = self.val(x)?.ts;
                     Ok(quote! { Error::#v(#x) })
                 }
@@ -1755,7 +2243,8 @@ impl Fx<'_, '_> {
             },
             Expr::Intrinsic { name, args, .. } if name == "errorf" => {
                 let f = self.format(args)?.ts;
-                Ok(quote! { Error::Msg(#f) })
+                let msg = self.w.names.msg();
+                Ok(quote! { Error::#msg(#f) })
             }
             _ => Err("an error that is not a sentinel, an error type or errorf".into()),
         }
@@ -1776,7 +2265,7 @@ impl Fx<'_, '_> {
                     "{name} sent on a channel of `any`, but not in `messages`"
                 ));
             }
-            let n = type_ident(name);
+            let n = self.w.names.ty(name);
             quote! { Message::#n(#v) }
         } else {
             v
@@ -1793,6 +2282,7 @@ impl Fx<'_, '_> {
                 if self.is_recv(e) && matches!(e.t(), Type::Ptr { .. }) {
                     return Err("the receiver used as a value".into());
                 }
+                self.w.copy_ok(e.t())?;
                 let p = self.place(e)?;
                 if self.w.is_copy(e.t()) {
                     Ok(p)
@@ -1811,14 +2301,17 @@ impl Fx<'_, '_> {
                     && let Some(TypeDecl::Enum { variants, .. }) = self.w.decl(tn)
                     && variants.iter().any(|v| v.name == *name)
                 {
-                    let tn = type_ident(tn);
-                    let v = type_ident(name);
+                    let tn = self.w.names.ty(tn);
+                    let v = self.w.names.variant(name);
                     return Ok(Rx::atom(quote! { #tn::#v }));
                 }
                 if !self.w.m.consts.iter().any(|c| c.name == *name) {
                     return Err(format!("constant {name} is not declared"));
                 }
-                let c = const_ident(name);
+                if self.w.bad_consts.contains(name) {
+                    return Err(format!("constant {name}, which is refused"));
+                }
+                let c = self.w.names.konst(name);
                 Ok(Rx::atom(match t {
                     Type::String => quote! { String::from(#c) },
                     _ => quote! { #c },
@@ -1836,7 +2329,7 @@ impl Fx<'_, '_> {
                     .find(|f| f.recv.is_none() && f.name == *name)
                     .ok_or_else(|| format!("a call of {name}, which is not declared"))?;
                 self.callable(callee)?;
-                let n = value_ident(name);
+                let n = self.w.names.func(name);
                 let a = self.args(args)?;
                 Ok(Rx::atom(quote! { #n(#(#a),*) }))
             }
@@ -1848,8 +2341,9 @@ impl Fx<'_, '_> {
                     .ok_or_else(|| format!("a call of {key}, which is not declared"))?;
                 self.callable(callee)?;
                 let read_only = self.w.facts.read_only.contains(&key);
-                let n = value_ident(name);
+                let n = self.w.names.func(&key);
                 let a = self.args(args)?;
+                let shared_args = args.iter().any(|a| touches_shared(self.w, a));
                 let r = if self.is_recv(x) {
                     if !read_only && self.facts_read_only() {
                         return Err(format!(
@@ -1858,20 +2352,32 @@ impl Fx<'_, '_> {
                     }
                     quote! { self }
                 } else if self.w.shared(x.t()) {
+                    if shared_args {
+                        return Err(format!(
+                            "a call of {key} on a shared value with arguments that hold shared \
+                             values, which the callee could borrow while the receiver is borrowed"
+                        ));
+                    }
                     let o = self.place(x)?.recv();
                     if read_only {
                         quote! { #o.borrow() }
                     } else {
-                        if args.iter().any(|a| touches_shared(self.w, a)) {
-                            return Err(
-                                "a mutating call on a shared value with shared arguments".into()
-                            );
-                        }
                         quote! { #o.borrow_mut() }
                     }
                 } else if read_only {
                     self.place(x)?.recv()
                 } else {
+                    if shared_args && self.writes_through_shared(x) {
+                        let mut pre = Vec::new();
+                        let mut names = Vec::new();
+                        for (i, v) in a.iter().enumerate() {
+                            let b = self.fresh(&format!("arg{i}"));
+                            pre.push(quote! { let #b = #v; });
+                            names.push(quote! { #b });
+                        }
+                        let r = self.place_mut_pre(x, &mut pre)?.recv();
+                        return Ok(Rx::atom(quote! { { #(#pre)* #r.#n(#(#names),*) } }));
+                    }
                     self.place_mut(x)?.recv()
                 };
                 Ok(Rx::atom(quote! { #r.#n(#(#a),*) }))
@@ -1892,6 +2398,7 @@ impl Fx<'_, '_> {
                     Ok(Rx::with(quote! { !#v }, UNARY))
                 }
                 "*" if self.w.shared(x.t()) => {
+                    self.w.copy_ok(e.t())?;
                     let v = self.place(x)?.recv();
                     Ok(Rx::atom(quote! { #v.borrow().clone() }))
                 }
@@ -1907,18 +2414,18 @@ impl Fx<'_, '_> {
                 };
                 let mut fs = Vec::new();
                 for fi in fields {
-                    let n = value_ident(&fi.name);
+                    let n = self.w.names.field(name, &fi.name);
                     let v = self.val(&fi.value)?.ts;
                     fs.push(quote! { #n: #v });
                 }
                 for d in decl {
                     if !fields.iter().any(|fi| fi.name == d.name) {
-                        let n = value_ident(&d.name);
+                        let n = self.w.names.field(name, &d.name);
                         let z = self.w.zero(&d.t)?.ts;
                         fs.push(quote! { #n: #z });
                     }
                 }
-                let n = type_ident(name);
+                let n = self.w.names.ty(name);
                 Ok(Rx::atom(quote! { #n { #(#fs),* } }))
             }
             Expr::Conv { name, x, .. } => {
@@ -1929,7 +2436,7 @@ impl Fx<'_, '_> {
                 }
                 match self.w.decl(name) {
                     Some(TypeDecl::Newtype { .. }) => {
-                        let n = type_ident(name);
+                        let n = self.w.names.ty(name);
                         let v = self.val(x)?.ts;
                         Ok(Rx::atom(quote! { #n(#v) }))
                     }
@@ -1982,7 +2489,6 @@ impl Fx<'_, '_> {
                 if self.is_recv(a) {
                     return Err("the receiver passed as an argument".into());
                 }
-                self.no_alias(a)?;
                 Ok(self.val(a)?.ts)
             })
             .collect()
@@ -2060,16 +2566,19 @@ impl Fx<'_, '_> {
         match e {
             Expr::Var { name, .. } => {
                 if self.is_recv(e) {
+                    if self.value_recv() {
+                        return Ok(Rx::with(quote! { *self }, UNARY));
+                    }
                     return Ok(Rx::atom(quote! { self }));
                 }
                 if name == "_" {
                     return Err("a read of `_`".into());
                 }
-                let n = value_ident(name);
+                let n = self.w.names.local(name);
                 Ok(Rx::atom(quote! { #n }))
             }
             Expr::Field { x, name, .. } => {
-                let n = value_ident(name);
+                let n = self.field_name(x, name);
                 if self.is_recv(x) {
                     return Ok(Rx::atom(quote! { self.#n }));
                 }
@@ -2102,12 +2611,28 @@ impl Fx<'_, '_> {
         }
     }
 
+    /// The Rust name of field `name` of the struct `x` is.
+    fn field_name(&self, x: &Expr, name: &str) -> Ident {
+        self.w.names.field(receiver_type_name(x.t()), name)
+    }
+
     /// `e` as the target of a write.
     fn place_mut(&self, e: &Expr) -> R<Rx> {
+        let mut pre = Vec::new();
+        let p = self.place_mut_pre(e, &mut pre)?;
+        if !pre.is_empty() {
+            return Err("a write whose index borrows a shared value".into());
+        }
+        Ok(p)
+    }
+
+    /// `e` as the target of a write. An index that borrows a shared value while the target
+    /// borrows one mutably is bound in `pre` first.
+    fn place_mut_pre(&self, e: &Expr, pre: &mut Vec<TokenStream>) -> R<Rx> {
         match e {
             Expr::Var { .. } => self.place(e),
             Expr::Field { x, name, .. } => {
-                let n = value_ident(name);
+                let n = self.field_name(x, name);
                 if self.is_recv(x) {
                     return Ok(Rx::atom(quote! { self.#n }));
                 }
@@ -2115,14 +2640,22 @@ impl Fx<'_, '_> {
                     let b = self.place(x)?.recv();
                     Ok(Rx::atom(quote! { #b.borrow_mut().#n }))
                 } else {
-                    let b = self.place_mut(x)?.recv();
+                    let b = self.place_mut_pre(x, pre)?.recv();
                     Ok(Rx::atom(quote! { #b.#n }))
                 }
             }
             Expr::Index { x, index, .. } => match x.t() {
                 Type::Slice { .. } => {
-                    let s = self.place_mut(x)?.recv();
-                    let i = self.val(index)?.at(CAST);
+                    let iv = self.val(index)?;
+                    let i = if self.writes_through_shared(e) && touches_shared(self.w, index) {
+                        let b = self.fresh(&format!("index{}", pre.len()));
+                        let v = iv.ts;
+                        pre.push(quote! { let #b = #v; });
+                        quote! { #b }
+                    } else {
+                        iv.at(CAST)
+                    };
+                    let s = self.place_mut_pre(x, pre)?.recv();
                     Ok(Rx::atom(quote! { #s[#i as usize] }))
                 }
                 Type::Map { elem, .. } if self.w.shared(elem) => self.place(e),
@@ -2169,8 +2702,8 @@ impl Fx<'_, '_> {
                     let arg = next
                         .next()
                         .ok_or("a format with more verbs than arguments")?;
-                    self.verb_fits(verb, arg.t())?;
-                    fmt.push_str(&spec(&flags, verb)?);
+                    let kind = self.verb_fits(verb, arg.t())?;
+                    fmt.push_str(&spec(&flags, verb, kind)?);
                     vals.push(self.place(arg)?.ts);
                 }
                 c => fmt.push(c),
@@ -2194,21 +2727,23 @@ impl Fx<'_, '_> {
         Ok((Literal::string(&fmt), vals))
     }
 
-    /// Whether `verb` prints a `t` the way `{}` does.
-    fn verb_fits(&self, verb: char, t: &Type) -> R<()> {
+    /// Whether `verb` prints a `t` the way `{}` does, and the verb `t` is printed by.
+    fn verb_fits(&self, verb: char, t: &Type) -> R<char> {
         let kind = match t {
             Type::Int { .. } => 'd',
             Type::Bool => 't',
             Type::String => 's',
             Type::Error => 's',
-            Type::Named { name } if self.w.displays(name) => 's',
+            Type::Named { name } if self.w.render(name, self.refused).is_some() => 's',
             Type::Named { name } => {
-                return Err(format!("{name} formatted, but `displays` does not list it"));
+                return Err(format!(
+                    "{name} formatted, but it has no rendering: `displays` does not list it, or only a pointer receiver renders it"
+                ));
             }
             t => return Err(format!("{} formatted", type_name(t))),
         };
         if verb == 'v' || verb == kind {
-            Ok(())
+            Ok(kind)
         } else {
             Err(format!("%{verb} on {}", type_name(t)))
         }
@@ -2216,7 +2751,7 @@ impl Fx<'_, '_> {
 }
 
 /// The Rust format spec for a Go verb's flags and width.
-fn spec(flags: &str, verb: char) -> R<String> {
+fn spec(flags: &str, verb: char, kind: char) -> R<String> {
     if !matches!(verb, 'v' | 'd' | 's' | 't') {
         return Err(format!("format verb %{verb}"));
     }
@@ -2226,6 +2761,11 @@ fn spec(flags: &str, verb: char) -> R<String> {
     let left = flags.starts_with('-');
     let rest = flags.trim_start_matches('-');
     let zero = rest.starts_with('0') && !left;
+    if zero && kind != 'd' {
+        return Err(format!(
+            "the 0 flag on a value that is not an integer, %{flags}{verb}"
+        ));
+    }
     let width = rest.trim_start_matches('0');
     if width.is_empty() || !width.chars().all(|c| c.is_ascii_digit()) {
         return Err(format!("format flags %{flags}{verb}"));
@@ -2287,10 +2827,11 @@ mod tests {
 
     #[test]
     fn format_specs_follow_go_alignment() {
-        assert_eq!(spec("", 's').unwrap(), "{}");
-        assert_eq!(spec("5", 's').unwrap(), "{:>5}");
-        assert_eq!(spec("-5", 'd').unwrap(), "{:<5}");
-        assert_eq!(spec("05", 'd').unwrap(), "{:05}");
-        assert!(spec("", 'q').is_err());
+        assert_eq!(spec("", 's', 's').unwrap(), "{}");
+        assert_eq!(spec("5", 's', 's').unwrap(), "{:>5}");
+        assert_eq!(spec("-5", 'd', 'd').unwrap(), "{:<5}");
+        assert_eq!(spec("05", 'd', 'd').unwrap(), "{:05}");
+        assert!(spec("", 'q', 's').is_err());
+        assert!(spec("05", 's', 's').is_err());
     }
 }

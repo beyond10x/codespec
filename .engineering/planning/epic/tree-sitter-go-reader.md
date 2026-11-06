@@ -5,47 +5,37 @@ kind: epic
 status: draft
 title: A tree-sitter Go reader, measured against the go/types reader
 summary: A Go reader on tree-sitter with its own name resolution and type inference; it must produce byte-identical cir/1 to codespec-read-go on every example, or the gap is recorded by construct.
-revision: 1
+revision: 2
 ---
-<!-- Starting point for an `epic` artifact, seeded by `aep artifact new epic <name>`.
-     No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
-     and relations you gave it, and a second copy in this file would be the one that went stale.
-     Delete the italic guidance as you fill each section. -->
-
-# Epic: <name>
+# Epic: A tree-sitter Go reader, measured against the go/types reader
 
 ## Outcome
 
-*The change in the world this delivers, for whom, and how anybody would know it had happened.*
+A Go reader on tree-sitter, with its own name resolution and type inference, run on every example
+and compared byte for byte with `codespec-read-go`. The result is either byte-identical `cir/1` or
+a table of the gap by construct. It decides how far route C reaches for languages with no typed
+tooling.
 
-## Why Now
+## Decision (2026-11-06)
 
-*What makes this the right thing to start — a commitment, a constraint, a cost that is growing. An
-epic with no answer here is a backlog entry.*
+Route C (a shared tree-sitter layer) is for languages that have no typed tooling of their own
+(JavaScript, Java, …); Rust uses typed tooling (`epic:rust-reader`). Tree-sitter gives syntax only.
+Operator, 2026-11-06: "it's clear that we can't use tree sitter for the actual code content, the
+body." So the expected outcome is: declarations and signatures read from tree-sitter, and function
+bodies kept as `foreign` statements with a refusal wherever an expression's type cannot be derived.
+This epic measures that on Go, where the `go/types` reader is the reference.
 
 ## Scope
 
-*The shape of the work: the surfaces it touches and the capabilities it adds. Not a task list — the
-stories underneath carry that, through `decomposes`.*
+- `adapters/tree-sitter` (Rust, `tree-sitter` + `tree-sitter-go`): `codespec-read-go-ts`.
+- A comparison over every example: identical, or the differing constructs counted.
+- `codegate` pins the same grammars (`tree-sitter` 0.25.10, `tree-sitter-go` 0.25.0) for line
+  classification; whether the two share a crate is decided when this epic starts.
 
 ## Out of Scope
 
-*What is deliberately left out, and where it goes instead. This is the section that gets read in
-three months when somebody asks why the thing they wanted is missing.*
-
-## Risks
-
-*What could make this take twice as long or land wrong, and what would show it early.*
-
-## Ambiguities
-
-*Each gap this epic leaves for the stories under it, classified. `inferable` — the answer is
-already written down, so give the `path:line` or the artifact id that settles it.
-`requires-stakeholder-input` — nobody here can decide it, so name who does, and raise that entry as
-a `decision-blocker` with a `blocks` edge to this epic, or it is a sentence somebody improvises
-later.*
+- Readers for JavaScript or Java: they follow only if the measurement shows the route is worth it.
 
 ## Done When
 
-*The condition under which this epic moves to `implemented` — stated once, here, so it is not
-renegotiated story by story.*
+The comparison runs in `task check` and its result is recorded in `docs/design.md`.
