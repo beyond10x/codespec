@@ -20,6 +20,7 @@ tasks:
       - cargo test --workspace --locked
       - task: adapters-check
       - task: examples-check
+      - task: examples-go
 
   build:
     desc: Build the codespec CLI and every adapter into target/.
@@ -45,10 +46,24 @@ tasks:
       - cargo run --locked -q -p b10x-codespec-cli -- schema > schemas/cir-1.schema.json
 
   examples:
-    desc: Re-read every example's source into its checked-in cir/1 document.
+    desc: Re-read every example's source into its checked-in cir/1 document and rewrite its checked-in Go output.
     deps: [build]
     cmds:
       - '{{.CODESPEC}} read --lang go examples/orders/source --out examples/orders/orders.read.cir.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} write --lang go examples/orders/orders.read.cir.json --out examples/orders/out/go --adapters {{.ADAPTERS}}'
+
+  examples-go:
+    desc: Write the orders example as Go, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.
+    deps: [build]
+    cmds:
+      - rm -rf target/examples-go
+      - mkdir -p target/examples-go
+      - '{{.CODESPEC}} write --lang go examples/orders/orders.read.cir.json --out target/examples-go --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-go examples/orders/out/go
+      - cmp target/examples-go/orders.go examples/orders/out/go/orders.go
+      - test -z "$(gofmt -l target/examples-go)"
+      - go vet ./target/examples-go/orders.go
+      - cd adapters/go && go test -count=1 ./cmd/codespec-write-go
 
   examples-check:
     desc: Fail when reading an example twice gives different bytes, or bytes other than the checked-in document.
