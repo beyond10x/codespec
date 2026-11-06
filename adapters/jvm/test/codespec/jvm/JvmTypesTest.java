@@ -39,6 +39,7 @@ public final class JvmTypesTest {
         cases.put("a_refused_type_argument_is_named_in_the_reason", JvmTypesTest::refusedArgument);
         cases.put("a_class_of_the_readers_own_goes_to_the_callback_whatever_its_package", JvmTypesTest::ownClass);
         cases.put("the_integer_boxes_are_the_four_boxes", JvmTypesTest::integerBoxes);
+        cases.put("a_reference_field_left_unassigned_is_a_pointer_unless_its_type_already_holds_nil", JvmTypesTest::unassignedField);
         int passed = 0;
         int failed = 0;
         for (Map.Entry<String, Case> c : cases.entrySet()) {
@@ -139,6 +140,44 @@ public final class JvmTypesTest {
         for (String q : List.of("java.lang.Boolean", "java.lang.String", "java.lang.Double", "int")) {
             check(!JvmTypes.isIntegerBox(q), q + " is a box");
         }
+    }
+
+    /**
+     * A reference field some constructor leaves unassigned holds null: a String, a box, a list, a map
+     * or an enum is a pointer to its mapped type; a class the reader maps to a pointer, and an error,
+     * already hold nil and stay as they are.
+     */
+    private static void unassignedField() {
+        Function<Type, Map<String, Object>> own = t -> {
+            Map<String, Object> named = new LinkedHashMap<>();
+            named.put("k", "named");
+            named.put("name", t.className().substring(t.className().lastIndexOf('.') + 1));
+            if (t.className().endsWith(".Shade")) {
+                return named;
+            }
+            Map<String, Object> ptr = new LinkedHashMap<>();
+            ptr.put("k", "ptr");
+            ptr.put("elem", named);
+            return ptr;
+        };
+        Map<String, String> want = new LinkedHashMap<>();
+        want.put("java.lang.String", "{k=ptr, elem=" + STRING + "}");
+        want.put("java.lang.Integer", "{k=ptr, elem=" + I32 + "}");
+        want.put("java.lang.Boolean", "{k=ptr, elem=" + BOOL + "}");
+        want.put("library.Shade", "{k=ptr, elem={k=named, name=Shade}}");
+        want.put("library.Book", "{k=ptr, elem={k=named, name=Book}}");
+        for (Map.Entry<String, String> w : want.entrySet()) {
+            String got = JvmTypes.unassignedField(JvmTypes.map(cls(w.getKey()), own)).toString();
+            check(got.equals(w.getValue()), w.getKey() + ": got " + got + ", want " + w.getValue());
+        }
+        String list = JvmTypes.unassignedField(JvmTypes.map(cls("java.util.List", cls("java.lang.Long")), own)).toString();
+        check(list.equals("{k=ptr, elem={k=slice, elem=" + I64 + "}}"), "List<Long>: got " + list);
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("k", "error");
+        check(JvmTypes.unassignedField(error).toString().equals("{k=error}"), "error: got " + JvmTypes.unassignedField(error));
+        Map<String, Object> string = JvmTypes.map(cls("java.lang.String"), JvmTypesTest::never);
+        JvmTypes.unassignedField(string);
+        check(string.toString().equals(STRING), "the mapped type was changed: " + string);
     }
 
     // ---- helpers ----

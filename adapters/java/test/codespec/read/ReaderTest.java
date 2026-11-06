@@ -60,6 +60,8 @@ public final class ReaderTest {
         m.put("expr-intrinsic", "the case takes len of a string; String.length() counts UTF-16 units, len bytes, and is not read");
         m.put("stmt-expr", "the case prints with fmt.Println; System.out is not in the reader's library table");
         m.put("stmt-return", "the case returns two values; a Java method returns one");
+        m.put("expr-zero", "the case's error message carries the value (errorf); a Java error is a sentinel with a literal message, and a Java \"\" is read as a literal");
+        m.put("type-unit", "the case prints with fmt.Println; System.out is not in the reader's library table");
         return Collections.unmodifiableMap(m);
     }
 
@@ -88,6 +90,10 @@ public final class ReaderTest {
         cases.add(t::aListSizeIsAPlatformLenConvertedToInt32);
         names.add("the_reader_version_is_the_workspace_version");
         cases.add(t::theReaderVersionIsTheWorkspaceVersion);
+        names.add("a_reference_field_some_constructor_leaves_unassigned_reads_as_a_nil_pointer");
+        cases.add(t::aReferenceFieldSomeConstructorLeavesUnassignedReadsAsANilPointer);
+        names.add("a_use_of_an_unassigned_field_where_java_prints_computes_with_or_hands_on_null_is_refused");
+        cases.add(t::aUseOfAnUnassignedFieldWhereJavaHandsOnNullIsRefused);
         names.add("integer_max_value_plus_one_is_int32");
         cases.add(t::integerMaxValuePlusOneIsInt32);
         names.add("a_lambda_is_foreign_with_a_refusal_at_its_line");
@@ -274,6 +280,80 @@ public final class ReaderTest {
         Object wide = returned(funcByKey(doc, "wide"));
         check(same(wide, "{\"k\":\"binop\",\"op\":\"+\",\"x\":{\"k\":\"lit\",\"value\":\"9223372036854775807\",\"t\":" + int64
             + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int64 + "},\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
+    }
+
+    // ---- fields that hold null until assigned ----
+
+    private static final String PTR_STRING = "{\"k\":\"ptr\",\"elem\":{\"k\":\"string\"}}";
+    private static final String PTR_INT32 = "{\"k\":\"ptr\",\"elem\":{\"k\":\"int\",\"width\":\"32\",\"signed\":true}}";
+    private static final String THIS_NOTE = "{\"k\":\"var\",\"name\":\"this\",\"t\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}}";
+
+    /**
+     * {@code testdata/nullable}: a String and an Integer field without an initializer, which no
+     * constructor assigns, read as {@code ptr(string)} and {@code ptr(int32)} with no refusal; a Note
+     * field stays {@code ptr(Note)}; {@code text != null} a comparison of the field itself with
+     * {@code nil}; a read a dereference; an assignment a pointer to a fresh local holding the value,
+     * {@code null} a {@code nil}, another such field that field's pointer.
+     */
+    private void aReferenceFieldSomeConstructorLeavesUnassignedReadsAsANilPointer() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("nullable"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        List<Object> fields = list(byName(list(doc.get("types")), "Note").get("fields"));
+        check(same(byName(fields, "text").get("t"), PTR_STRING), "text is " + Json.write(byName(fields, "text").get("t")));
+        check(same(byName(fields, "count").get("t"), PTR_INT32), "count is " + Json.write(byName(fields, "count").get("t")));
+        check(same(byName(fields, "next").get("t"), "{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}"),
+            "next, a class of the package, is " + Json.write(byName(fields, "next").get("t")));
+        String text = "{\"k\":\"field\",\"x\":" + THIS_NOTE + ",\"name\":\"text\",\"t\":" + PTR_STRING + "}";
+        String count = "{\"k\":\"field\",\"x\":" + THIS_NOTE + ",\"name\":\"count\",\"t\":" + PTR_INT32 + "}";
+        Object hasText = returned(funcByKey(doc, "Note.hasText"));
+        check(same(hasText, "{\"k\":\"binop\",\"op\":\"!=\",\"x\":" + text + ",\"y\":{\"k\":\"nil\",\"t\":" + PTR_STRING
+            + "},\"t\":{\"k\":\"bool\"}}"), "hasText returns " + Json.write(hasText));
+        Object hasCount = returned(funcByKey(doc, "Note.hasCount"));
+        check(same(hasCount, "{\"k\":\"binop\",\"op\":\"!=\",\"x\":" + count + ",\"y\":{\"k\":\"nil\",\"t\":" + PTR_INT32
+            + "},\"t\":{\"k\":\"bool\"}}"), "hasCount returns " + Json.write(hasCount));
+        Object read = returned(funcByKey(doc, "Note.read"));
+        check(same(read, "{\"k\":\"unop\",\"op\":\"*\",\"x\":" + text + ",\"t\":{\"k\":\"string\"}}"), "read returns " + Json.write(read));
+        List<Object> write = list(funcByKey(doc, "Note.write").get("body"));
+        String pos = "Note.java:" + lineOf(testdata.resolve("nullable/Note.java"), "this.text = t;");
+        check(same(write, "[{\"k\":\"let\",\"names\":[\"text\"],\"rhs\":[{\"k\":\"var\",\"name\":\"t\",\"t\":{\"k\":\"string\"}}],"
+            + "\"pos\":\"" + pos + "\"},{\"k\":\"assign\",\"lhs\":[" + text + "],\"rhs\":[{\"k\":\"unop\",\"op\":\"&\",\"x\":{\"k\":\"var\","
+            + "\"name\":\"text\",\"t\":{\"k\":\"string\"}},\"t\":" + PTR_STRING + "}],\"pos\":\"" + pos + "\"}]"),
+            "write is " + Json.write(write));
+        List<Object> clear = list(funcByKey(doc, "Note.clear").get("body"));
+        check(same(map(clear.get(0)).get("rhs"), "[{\"k\":\"nil\",\"t\":" + PTR_STRING + "}]"), "clear is " + Json.write(clear));
+        List<Object> copy = list(funcByKey(doc, "copyText").get("body"));
+        check(same(map(copy.get(0)).get("rhs"), "[{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"from\",\"t\":{\"k\":\"ptr\","
+            + "\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}},\"name\":\"text\",\"t\":" + PTR_STRING + "}]"), "copyText is " + Json.write(copy));
+    }
+
+    /**
+     * A field that holds null until assigned, printed by concatenation or {@code String.format}, an
+     * operand of an operator, the target of {@code +=} or {@code ++}, an argument of a library method
+     * or the receiver of a collection write: refused at the use. Its receiver use {@code
+     * text.equals(..)}, which throws in Java where the written program stops, is read.
+     */
+    private void aUseOfAnUnassignedFieldWhereJavaHandsOnNullIsRefused() throws Exception {
+        Path dir = testdata.resolve("refuse/null-use");
+        Map<String, Object> doc = Reader.read(dir);
+        Path tag = dir.resolve("Tag.java");
+        List<String> at = refusalPositions(doc);
+        List<String> missing = new ArrayList<>();
+        for (String use : new String[] {
+            "String.format(\"%s\", text)", "count * 2", "count == 3", "count += 1", "count++", "-count",
+            "other.equals(text)", "shade == Shade.DARK", "words.add(w)",
+        }) {
+            String pos = "Tag.java:" + lineOf(tag, use);
+            if (!at.contains(pos)) {
+                missing.add(use + " at " + pos);
+            }
+        }
+        check(missing.isEmpty(), "not refused: " + missing + "; refusals " + at);
+        for (String field : new String[] {"private String text;", "private Integer count;", "private Shade shade;", "private List<String> words;"}) {
+            String pos = "Tag.java:" + lineOf(tag, field);
+            check(!at.contains(pos), "the field itself refused at " + pos);
+        }
+        String hello = "Tag.java:" + lineOf(tag, "text.equals(\"hello\")");
+        check(!at.contains(hello), "the receiver use refused at " + hello);
     }
 
     // ---- refusals ----
