@@ -10,17 +10,16 @@
 //! no `src/lib.rs`, is an error: exit 1, nothing printed.
 //!
 //! `codespec-read-rust --describe` prints the reader's `codespec-adapter/1` manifest
-//! (`codespec_model::manifest`): the features it was seen to read, outside a `foreign` statement,
-//! from the Rust writer's output of their conformance cases. No fact is claimed (facts are
-//! computed by `codespec pass`), nor `foreign`, which is what a reader writes for what it cannot
-//! read.
+//! (`codespec_model::manifest`): the features it reads, outside a `foreign` statement, from the
+//! hand-written Rust source of their conformance cases (`conformance/cases/<case>/rust/case.rs`).
+//! What it does not claim, and why, is in the crate doc of the library.
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use codespec_model::{ADAPTER_FORMAT, AdapterManifest};
 
-/// The claim: what `adapters/rust-run/tests/manifests.rs` shows the reader reading.
+/// The claim: what `tests/cases.rs` holds against each case's `rust/case.rs`.
 fn manifest() -> AdapterManifest {
     let list = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect();
     AdapterManifest {
@@ -41,40 +40,16 @@ fn manifest() -> AdapterManifest {
             "unop.*",
         ]),
         not: list(&[
-            "assign.and",
-            "assign.and_not",
-            "assign.or",
-            "assign.shl",
-            "assign.shr",
-            "assign.xor",
             "decl.union",
-            "expr.index",
-            "expr.make",
             "expr.nil",
             "expr.zero",
-            "intrinsic.len",
             "intrinsic.sorted_keys",
-            "op.and_not",
-            "op.shl",
-            "op.shr",
-            "sem.map.order",
-            "sem.switch.break",
-            "stmt.continue",
-            "stmt.for_range",
             "stmt.foreign",
-            "stmt.lookup_else",
-            "stmt.send",
-            "stmt.switch",
             "type.any",
-            "type.chan",
-            "type.map",
-            "type.ptr",
             "type.tuple",
             "type.unit",
-            "unop.deref",
             "unop.plus",
             "unop.recv",
-            "unop.ref",
         ]),
     }
 }

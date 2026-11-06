@@ -35,12 +35,13 @@
 //! | `bool`, `String`, `&str` | `bool`, `string` |
 //! | `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>` | `slice`, `map` |
 //! | `Rc<RefCell<T>>` | `ptr` to `T` |
+//! | a local bound to `&mut x`, `x` a local | `ptr` to the type of `x` |
 //! | `Sender<T>` | `chan<- T`; `chan<- any` for an absorbed message enum |
 //! | `&T` | `T`: a shared reference is read as the value it refers to, which Rust's borrow rules keep unchanged while it lives |
 //! | result `Result<T, Error>` | `(T, error)`; `Result<(), Error>` is `error`, `Result<(A, B), Error>` `(A, B, error)` |
 //! | result `Option<T>` | `(T, bool)` |
 //! | result `(A, B)` | `(A, B)` |
-//! | `dyn`/`impl` traits, generics, `&mut T`, `Box`, floats, other paths | refused |
+//! | `dyn`/`impl` traits, generics, `&mut T` elsewhere, `Box`, floats, other paths | refused |
 //!
 //! # Statements
 //!
@@ -50,19 +51,24 @@
 //! | `let mut x: T = <zero of T>;` (`0`, `false`, `String::new()`, `Vec::new()`) | `var x T` |
 //! | `let Some(x) = m.get(&k)[.cloned()/.copied()] else { …; return … };` | `lookup_else` |
 //! | `let Some(x) = f(…) else { … };`, `f` returning `Option` | `x, ok := f(…)`, `if !ok { … }` |
-//! | `x = e;`, `x op= e;` | `assign`, `op` kept |
+//! | `let p = &mut x;`, `x` a local | `p := &x`; `*p` is then `*p`, read and assigned through |
+//! | `x = e;`, `x op= e;` | `assign`, `op` kept; `x &= !y` on integers is `x &^= y` |
+//! | `(a, b) = (x, y);` | one `assign` of every value to every target (Rust evaluates the values first, as Go does), under the conditions of the Rust writer's value block |
 //! | `x = x.wrapping_add(1)`, `x = x.wrapping_sub(1)` | `incr`, `decr` |
 //! | `x = x.wrapping_<op>(e)` | `assign` with `<op>=` |
 //! | `m.insert(k, v);`, `v.push(x);`, `s.push_str(t);` | `m[k] = v`, `v = append(v, x)`, `s += t` |
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
 //! | `if`, `else if`, `else` | `if` |
 //! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice |
+//! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
+//! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
+//! | an arm `v if v == e => …`, `v` read by neither `e` nor the body | a `case e:` of that `switch`; any other guard is refused |
 //! | `return …`, a block's tail expression | `return`, with `Ok(x)` → `x, nil`, `Err(e)` → zero values and `e`, `Some(x)` → `x, true`, `None` → `zero, false` |
 //! | `println!("{} {}", a, b)` (only `{}` separated by single spaces) | `println` |
 //!
-//! Anything else (`while`, `loop`, ranges, closures, `unsafe`, `?`, nested items, blocks, macros
-//! other than those named) is `foreign`.
+//! Anything else (`while let`, labels, ranges, closures, `unsafe`, `?`, nested items, blocks other
+//! than the Rust writer's, macros other than those named) is `foreign`.
 //!
 //! # Expressions
 //!
@@ -81,7 +87,9 @@
 //! | `Rc::new(RefCell::new(x))` | `&x` |
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
 //! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction) |
+//! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
 //! | `x.clone()` of a value without a slice or map inside | `x` (Go copies) |
+//! | `*p`, `p` bound to `&mut x` | `*p` |
 //! | `&x`, `*x` of a non-pointer | `x` |
 //!
 //! ## Standard methods
@@ -108,6 +116,24 @@
 //! | integers | `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_div`, `wrapping_rem` | `+ - * / %` |
 //! | integers, `bool` | `clone()` | the value |
 //! | a type with `Display`, integers | `to_string()` | `sprintf("%s", x)`, `sprintf("%d", x)` |
+//!
+//! # What the reader claims, and what it does not
+//!
+//! `codespec-read-rust --describe` claims each reader feature (the vocabulary without `fact.*`)
+//! whose conformance case has a hand-written Rust source, `conformance/cases/<case>/rust/case.rs`.
+//! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
+//! refusal and with its subject, and passed and written as Go runs as the reference does. These
+//! stay unclaimed:
+//!
+//! | feature | why |
+//! |---|---|
+//! | `fact.*` | facts are computed by `codespec pass`, never read |
+//! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
+//! | `unop.plus` | Rust has no unary `+` |
+//! | `unop.recv` | `std::sync::mpsc` splits a channel into a `Sender` and a `Receiver`; Go's `chan T` that one function both sends on and receives from has no std Rust value, and the reader maps only `Sender<T>` |
+//! | `type.any` | Rust's dynamic value is `Box<dyn Any>`, a trait object, which the reader does not type; it neither prints nor compares without naming its concrete type again |
+//! | `expr.nil` | the case's subject is a nil slice, and Rust has none: `Vec::new()` is an empty vector and reads as `make`. (`Ok(())` reads as a nil `error`, but that is not the case's subject) |
+//! | `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.tuple`, `type.unit` | no conformance case has the feature as its subject, so nothing holds a claim |
 
 mod body;
 mod names;

@@ -147,6 +147,10 @@ pub const CASE_FILES: &[&str] = &[
     "features.json",
 ];
 
+/// Subdirectories a case may hold beside [`CASE_FILES`]: an adapter language's hand-written
+/// source of the case, held by that adapter's own tests.
+pub const CASE_SOURCE_DIRS: &[&str] = &["rust"];
+
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;
 
@@ -270,6 +274,7 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
         .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
         .collect::<Result<_, _>>()
         .map_err(|e| format!("{}: {e}", dir.display()))?;
+    files.retain(|f| !(CASE_SOURCE_DIRS.contains(&f.as_str()) && dir.join(f).is_dir()));
     files.sort();
     if files != CASE_FILES {
         return Err(format!(

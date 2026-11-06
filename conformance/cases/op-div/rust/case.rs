@@ -1,0 +1,4 @@
+/// Divides, truncating toward zero.
+pub fn div(a: i64, b: i64) -> i64 {
+    a / b
+}
