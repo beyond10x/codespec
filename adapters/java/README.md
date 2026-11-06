@@ -68,9 +68,13 @@ them.
   until assigned. It is a nil pointer, not a refusal: a pointer to its type (`ptr(string)`,
   `ptr(int32)`; a class of the package is a pointer already), whose zero value is `nil`, compared
   with `nil` where Java compares it with `null`. A use that would print `null` (concatenation,
-  `String.format`), unbox or compare it (an operator, `+=`, `++`), hand it to a library method or
+  `String.format`), unbox or compare it (an operator, `+=`, `++`), hand it on (return it, pass it
+  to a method or constructor, bind it to a local, assign it anywhere but to another such field) or
   write the collection it holds is refused at the use, since the written program stops at the nil
-  pointer where Java goes on. Every other read of such a field takes it to hold an object, as a
-  parameter does.
+  pointer where Java goes on. What is left is a use as a receiver or a loop's collection
+  (`text.equals(s)`, `size()`, a for-each), where Java throws on null and the written program
+  stops: the document assumes the field holds an object there. An assignment to such a field
+  through a receiver that is not a name (`s.pick().f = v`) is refused, since its value is bound
+  before the receiver is evaluated.
 - The program runs under `Locale.ROOT`. `String.format("%d", n)` is read as `sprintf`, which prints
   ASCII digits; under a default locale whose digits are not ASCII, Java prints others.

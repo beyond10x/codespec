@@ -18,27 +18,28 @@
       ]
     },
     {
-      "func": "ReadAfterWrite",
+      "func": "HoldsAfterWrite",
       "args": [
+        "\"hello\"",
         "\"hello\""
       ]
     },
     {
-      "func": "ReadAfterWriteThenChange",
+      "func": "HoldsAfterWrite",
+      "args": [
+        "\"hello\"",
+        "\"other\""
+      ]
+    },
+    {
+      "func": "HoldsAfterWriteThenChange",
       "args": [
         "\"kept\""
       ]
     },
     {
-      "func": "FallbackWhenFresh",
+      "func": "HoldsOrNoneWhenFresh",
       "args": [
-        "\"none\""
-      ]
-    },
-    {
-      "func": "FallbackAfterWrite",
-      "args": [
-        "\"written\"",
         "\"none\""
       ]
     },
@@ -66,7 +67,7 @@
       "args": []
     },
     {
-      "func": "NextTextAfterLink",
+      "func": "NextHoldsAfterLink",
       "args": [
         "\"linked\""
       ]
@@ -76,7 +77,7 @@
       "args": []
     },
     {
-      "func": "CountAfterTally",
+      "func": "HasCountAfterTally",
       "args": [
         "-7"
       ]
