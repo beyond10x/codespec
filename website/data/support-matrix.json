@@ -1187,10 +1187,7 @@
         "intrinsic.errorf": "refused",
         "intrinsic.len": "verified",
         "intrinsic.println": "refused",
-        "intrinsic.sorted_keys": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "intrinsic.sorted_keys": "verified",
         "intrinsic.sprintf": "verified",
         "op.add": "verified",
         "op.and": "verified",
@@ -1455,10 +1452,7 @@
         "intrinsic.errorf": "refused",
         "intrinsic.len": "verified",
         "intrinsic.println": "refused",
-        "intrinsic.sorted_keys": {
-          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "intrinsic.sorted_keys": "verified",
         "intrinsic.sprintf": "verified",
         "op.add": "verified",
         "op.and": {

@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "a919c97defcd8453678927afef94ded0f5d79e1cb33c92a79912d5e50b2c8214"
+    "sha256": "c75e7c45751c9137776949d2f79f8ce0fb1e93cdb4ebfcee74a6d76b4167fb81"
   },
   "corpus": {
-    "sha256": "82c9491c06209189193230c26e3d3b20fe9dd04ed54ba0bf3b4742e52a1665de"
+    "sha256": "acbfa3f1348048913f30cabc0081adda7d2f8df60e053df695fd8a9ab311db31"
   },
   "codespec": "0.2.0",
   "features": [
@@ -334,9 +334,10 @@
     {
       "id": "intrinsic.sorted_keys",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-sorted-keys"
+      ]
     },
     {
       "id": "intrinsic.sprintf",
@@ -809,8 +810,8 @@
   "boundary": [],
   "summary": {
     "claimed": 42,
-    "pass": 37,
-    "fail": 5,
+    "pass": 38,
+    "fail": 4,
     "refused_unclaimed": 4,
     "pass_unclaimed": 26,
     "untested": 33,
