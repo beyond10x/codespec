@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-codespec-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-conformance",
  "b10x-codespec-harness",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-codespec-conformance"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-model",
  "b10x-codespec-passes",
@@ -79,7 +79,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-codespec-harness"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "toml",
@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-codespec-model"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "schemars",
  "serde",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-codespec-passes"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-model",
 ]
@@ -158,7 +158,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "codespec-docs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-cli",
  "b10x-codespec-conformance",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "codespec-read-rust"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-conformance",
  "b10x-codespec-model",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "codespec-run-rust"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-conformance",
  "b10x-codespec-model",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "codespec-write-rust"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "b10x-codespec-model",
  "prettyplease",

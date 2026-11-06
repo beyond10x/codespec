@@ -2,7 +2,7 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
@@ -54,6 +54,20 @@ Every change a user of `codespec` or of `cir/1` would notice.
   function it cannot write as valid Rust instead of failing the whole module.
 - `codespec-read-go` reads a labeled loop whose label only its own `break` and `continue` use as the
   plain loop.
+- `codespec conform --lang <lang> --role reader|writer`: runs an adapter against the conformance
+  kit and writes a per-feature report (pass, fail, refused, untested) with the boundary checks.
+- The kit holds a case for every `cir/1` feature, with Java and Rust sources beside the Go one where
+  the language can express the subject, and Groovy sources where Groovy needs its own (`intdiv`).
+  A subject may have several cases; a feature passes only when every one passes.
+- Every reader and writer conforms: the Go reader claims 92 features, the Rust reader 88, the Java
+  reader 76, the Groovy reader 72, the Go and Rust writers 104 each. The support matrix on the
+  documentation site shows each cell's verdict.
+- `codespec-write-rust` writes shifts with Go's semantics, newtype arithmetic, channels, `any`,
+  pointers and dereference; it refuses only `stmt.foreign`.
+- `codespec-read-groovy` reads Grails services and domain classes, keeping GORM calls foreign, and
+  reads `a.intdiv(b)` as integer division. `examples/fees` runs a Grails service as Groovy, Go and
+  Rust byte-equal.
+- A JVM reference field with no initializer reads as a nil pointer.
 
 ## 0.2.0
 

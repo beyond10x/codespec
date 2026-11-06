@@ -193,5 +193,5 @@
     }
   ],
   "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

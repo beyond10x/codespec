@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "go",
-    "version": "0.2.0",
-    "manifest_sha256": "f0548077d5aef85bf7b5fde3f06196b4448d96eb7b838049c08b97d51526d425"
+    "version": "0.3.0",
+    "manifest_sha256": "eb1eb2e7f33221f6fb365a4a1e66d9962d2438b733bca4058f81b8a0d12b1fd6"
   },
   "kit": {
-    "version": "0.2.0",
-    "sha256": "9db5a64834237999a39107c9f7905b9bd7bbbe82c73f464f6d643cd8deef72d1"
+    "version": "0.3.0",
+    "sha256": "a1b739cd5eebf420b816974a9d4a03d1e53a5c9652f49ae5e70fad61beb622d2"
   },
   "corpus": {
     "sha256": "1c1de71d1b41f50ecded865ef85662762854e1ccc87753ebe427b197df47c14f"
   },
-  "codespec": "0.2.0",
+  "codespec": "0.3.0",
   "features": [
     {
       "id": "assign.add",
