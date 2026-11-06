@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-writer
 kind: story
-status: proposed
+status: active
 title: Rust writer
 summary: codespec-write-rust emits a building Rust crate from cir/1 and its facts; a function holding foreign code is listed as a refusal
 relations:
@@ -17,9 +17,10 @@ scope:
   path: adapters/rust
 - confidence: cited
   path: examples/orders/out/rust
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T00:09:10Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-11-06T00:47:45Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":4}}}
 ---
 # Story: Rust writer
 
