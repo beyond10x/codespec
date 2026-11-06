@@ -319,7 +319,6 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     files.retain(|f| !(CASE_SOURCE_DIRS.contains(&f.as_str()) && dir.join(f).is_dir()));
     files.sort();
-    files.retain(|f| !(CASE_SOURCE_DIRS.contains(&f.as_str()) && dir.join(f).is_dir()));
     if files != CASE_FILES {
         return Err(format!(
             "{name}: holds {files:?}, a case holds exactly {CASE_FILES:?}"

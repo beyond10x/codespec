@@ -1159,6 +1159,8 @@ fn a_send_on_a_full_channel_fails_as_in_go() {
         rust.status,
         String::from_utf8_lossy(&rust.stdout).lines().count()
     );
+}
+
 // ----- evaluation order -----------------------------------------------------------------------
 
 /// `s.pick().label = s.stamp()`: Go calls `pick`, the target's receiver, before `stamp`, the
