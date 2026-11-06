@@ -9,7 +9,7 @@
 //! | `&n` of a local or parameter `n` | `n` held in `Rc<RefCell<T>>` from its binding on, every read and write of `n` through it, `&n` `Rc::clone(&n)`; refused for the receiver and for a name bound by a loop, a lookup, several names or more than once | — |
 //! | `*T` that holds `nil` somewhere in the module (a `nil` or `zero` of it, a `var` of it, a struct made without its `*T` field) | `Option<Rc<RefCell<T>>>`: `nil` `None`, `p == nil` `p.is_none()`, a dereference `p.as_ref().expect(…)` panicking as Go's does, a missing map key `None` | — |
 //! | `any` | `Rc<dyn std::any::Any>`; a value assigned, passed, returned or stored where `any` is expected is boxed `Rc::new(v) as Rc<dyn Any>`; a `nil` or zero `any`, and comparing or formatting one, are refused | — |
-//! | `chan T`, `<-chan T` in a module that receives | `Rc<(Sender<T>, Receiver<T>)>`: `ch <- v` `ch.0.send(v)`, `<-ch` `ch.1.try_recv()`, which panics on an empty channel where Go's single goroutine deadlocks; passed as `chan<- T`, its `ch.0` | — |
+//! | `chan T`, `<-chan T` in a module that receives | `Rc<(SyncSender<T>, Receiver<T>)>`, which the caller makes with `sync_channel(64)`: `ch <- v` `ch.0.try_send(v)`, which panics on a full channel, `<-ch` `ch.1.try_recv()`, which panics on an empty one, where Go's single goroutine deadlocks; passing it as `chan<- T` is refused | — |
 //! | `chan T`, `chan<- T` otherwise | `Sender<T>` | — |
 //! | `<<`, `>>`, `<<=`, `>>=` on integers | `checked_shl(n).unwrap_or(0)`; `>>` `wrapping_shr(n.min(width - 1))` signed, `checked_shr(n).unwrap_or(0)` unsigned: a count at or above the width gives 0, or -1 for a negative value shifted right; a negative count panics, as in Go | — |
 //! | arithmetic, bitwise and shift operators and `++`, `--` on a newtype over an integer | through its inner value: `Celsius(c.0.wrapping_add(1))` | — |
@@ -38,10 +38,11 @@
 //! sends; the caller holds the `Receiver` and drains it after each call, so the sequence of messages
 //! is observable and deterministic in one thread.
 //!
-//! Channels are `std::sync::mpsc` channels without a bound. The kit's channels have room for 64
-//! values and every case sends fewer, so a case runs the same; a Go send on a full channel blocks
-//! its only goroutine forever (a deadlock), where the Rust send succeeds. `make` of a channel is
-//! refused.
+//! A channel with both ends is bounded at 64 values, the room the kit's runners give every channel:
+//! the 65th send without a receive panics, and the process exits non-zero, as Go's deadlocked
+//! goroutine does. A send-only `Sender<T>` (a module that never receives, such as `orders`) has no
+//! bound, so there the 65th send succeeds where Go deadlocks; the kit's cases send fewer. `make` of
+//! a channel is refused.
 //!
 //! Values are cloned where Go copies them. A copy of a slice or map, or of a struct holding one,
 //! shares storage in Go and not here, so it is refused. A read through a shared value that a
@@ -330,10 +331,31 @@ fn nullable_pointers(w: &Writer) -> BTreeSet<String> {
                     }
                 }
             }
+            // A read of a missing key of a `map[K]*T` is a nil `*T`.
+            Expr::Index { x, .. } => {
+                if let Type::Map { elem, .. } = x.t()
+                    && matches!(**elem, Type::Ptr { .. })
+                {
+                    zero_of(w, elem, &mut out, &mut BTreeSet::new());
+                }
+            }
             _ => {}
         };
         walk_stmts(&f.body, &mut |s| match s {
             Stmt::Var { t, .. } => visit(&Expr::Zero { t: t.clone() }),
+            // `m[k] = v` writes the entry and reads no missing key.
+            Stmt::Assign { lhs, rhs, .. } => {
+                for l in lhs {
+                    match l {
+                        Expr::Index { x, index, .. } if matches!(x.t(), Type::Map { .. }) => {
+                            walk_expr(x, &mut visit);
+                            walk_expr(index, &mut visit);
+                        }
+                        _ => walk_expr(l, &mut visit),
+                    }
+                }
+                rhs.iter().for_each(|e| walk_expr(e, &mut visit));
+            }
             // `return nil, false` (or a zero) of a comma-ok function is `None`: never a value.
             Stmt::Return { results, .. }
                 if comma_ok
@@ -795,10 +817,30 @@ impl<'a> Writer<'a> {
         }
     }
 
-    /// Whether a channel type is written as both of its ends, `Rc<(Sender<T>, Receiver<T>)>`:
+    /// Whether a channel type is written as both of its ends, `Rc<(SyncSender<T>, Receiver<T>)>`:
     /// one that is not send-only, in a module that receives.
     fn both_ends(&self, t: &Type) -> bool {
         matches!(t, Type::Chan { dir, .. } if *dir != ChanDir::Send) && self.receives
+    }
+
+    /// Whether a struct `t` has a pointer field, directly or in a struct or newtype field.
+    fn pointer_field(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            Type::Ptr { .. } => true,
+            Type::Named { name } => {
+                if !seen.insert(name.clone()) {
+                    return false;
+                }
+                match self.decl(name) {
+                    Some(TypeDecl::Struct { fields, .. }) => {
+                        fields.iter().any(|f| self.pointer_field(&f.t, seen))
+                    }
+                    Some(TypeDecl::Newtype { under, .. }) => self.pointer_field(under, seen),
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
     }
 
     /// Whether a value of `t` holds a shared pointer, directly or inside it.
@@ -958,7 +1000,7 @@ impl<'a> Writer<'a> {
                     self.ty(elem)?
                 };
                 if self.both_ends(t) {
-                    quote! { Rc<(Sender<#e>, std::sync::mpsc::Receiver<#e>)> }
+                    quote! { Rc<(std::sync::mpsc::SyncSender<#e>, std::sync::mpsc::Receiver<#e>)> }
                 } else {
                     quote! { Sender<#e> }
                 }
@@ -2262,14 +2304,39 @@ impl Fx<'_, '_> {
                 body,
                 ..
             } => {
-                let init = match init {
+                // Go 1.22: a variable the init binds is a new variable in each iteration, made
+                // before the post statement from the previous one's value. Only a variable whose
+                // address is taken can tell; its cell is replaced by a copy there.
+                let fresh_cell = match init.as_deref() {
+                    Some(Stmt::Let { names, rhs, .. }) if names.len() == 1 && rhs.len() == 1 => {
+                        Some(&names[0]).filter(|n| self.cells.contains(*n))
+                    }
+                    _ => None,
+                };
+                let init = match (init, fresh_cell) {
+                    (Some(s), Some(n)) => {
+                        let Stmt::Let { rhs, .. } = &**s else {
+                            unreachable!("matched above")
+                        };
+                        let v = self.val(&rhs[0]).map_err(|e| at(pos, e))?.ts;
+                        let n = self.w.names.local(n);
+                        vec![quote! { let mut #n = Rc::new(RefCell::new(#v)); }]
+                    }
+                    (Some(s), None) => self.stmt(s)?,
+                    (None, _) => Vec::new(),
+                };
+                let mut post = match post {
                     Some(s) => self.stmt(s)?,
                     None => Vec::new(),
                 };
-                let post = match post {
-                    Some(s) => self.stmt(s)?,
-                    None => Vec::new(),
-                };
+                if let Some(n) = fresh_cell {
+                    let n = self.w.names.local(n);
+                    let b = self.fresh("value");
+                    post.insert(
+                        0,
+                        quote! { { let #b = #n.borrow().clone(); #n = Rc::new(RefCell::new(#b)); } },
+                    );
+                }
                 let b = self.looped(post.clone(), body)?;
                 let head = match cond {
                     Some(c) => {
@@ -2841,8 +2908,10 @@ impl Fx<'_, '_> {
         ) = (t, e.t())
             && self.w.both_ends(e.t())
         {
-            let c = self.place(e)?.recv();
-            return Ok(Rx::atom(quote! { #c.0.clone() }));
+            return Err(
+                "a channel with both ends passed as send-only: its bounded sender is not a `Sender`"
+                    .into(),
+            );
         }
         self.val(e)
     }
@@ -2893,11 +2962,11 @@ impl Fx<'_, '_> {
         } else {
             v
         };
-        let c = if self.w.both_ends(chan.t()) {
-            quote! { #c.0 }
-        } else {
-            c
-        };
+        if self.w.both_ends(chan.t()) {
+            return Ok(quote! {
+                #c.0.try_send(#msg).expect("all goroutines are asleep: a send on a full channel");
+            });
+        }
         Ok(quote! { #c.send(#msg).expect("send on a channel whose receiver is gone"); })
     }
 
@@ -2980,6 +3049,11 @@ impl Fx<'_, '_> {
                         ));
                     }
                     quote! { self }
+                } else if self.is_cell(x) && shared_args {
+                    return Err(format!(
+                        "a call of {key} on a local held in a cell with arguments that hold \
+                         shared values, which the callee could borrow while the receiver is borrowed"
+                    ));
                 } else if self.w.rc(x.t()) {
                     if shared_args {
                         return Err(format!(
@@ -3017,7 +3091,19 @@ impl Fx<'_, '_> {
                     let v = self.val(x)?.at(UNARY);
                     Ok(Rx::with(quote! { !#v }, UNARY))
                 }
-                "-" if matches!(x.t(), Type::Int { .. }) => {
+                // A negated constant is a constant of the expression's own type, which the
+                // reader may give the negation and not its operand (`c == -5`, `c` a newtype).
+                "-" if matches!(&**x, Expr::Lit { value, .. } if !value.starts_with('-')) => {
+                    let Expr::Lit { value, .. } = &**x else {
+                        unreachable!("matched above")
+                    };
+                    if matches!(e.t(), Type::Int { .. }) {
+                        let v = self.w.lit(value, e.t())?.recv();
+                        return Ok(Rx::atom(quote! { #v.wrapping_neg() }));
+                    }
+                    self.w.lit(&format!("-{value}"), e.t())
+                }
+                "-" if matches!(x.t(), Type::Int { .. }) && e.t() == x.t() => {
                     let v = self.val(x)?.recv();
                     Ok(Rx::atom(quote! { #v.wrapping_neg() }))
                 }
@@ -3213,6 +3299,12 @@ impl Fx<'_, '_> {
             Type::Int { .. } | Type::Bool | Type::String => Ok(()),
             Type::Named { name } => match self.w.decl(name) {
                 Some(TypeDecl::Enum { .. } | TypeDecl::Newtype { .. }) => Ok(()),
+                Some(TypeDecl::Struct { .. }) if self.w.pointer_field(t, &mut BTreeSet::new()) => {
+                    Err(format!(
+                        "a comparison of {name}, which holds a pointer: Go compares it by address, \
+                         the derived PartialEq by the value it points to"
+                    ))
+                }
                 Some(TypeDecl::Struct { .. }) if self.w.eq(t, &mut BTreeSet::new()) => Ok(()),
                 _ => Err(format!("a comparison of {name}")),
             },
@@ -3263,6 +3355,12 @@ impl Fx<'_, '_> {
         match op {
             "==" | "!=" if matches!(x, Expr::Nil { .. }) || matches!(y, Expr::Nil { .. }) => {
                 let other = if matches!(x, Expr::Nil { .. }) { y } else { x };
+                if self.is_recv(other) {
+                    return Err(
+                        "the receiver compared with nil: a method's receiver is `self`, never nil"
+                            .into(),
+                    );
+                }
                 if !self.w.nullable(other.t()) {
                     return Err(format!("a comparison of {} with nil", type_name(other.t())));
                 }
