@@ -115,11 +115,13 @@ import javax.tools.ToolProvider;
  *       nil}; a class of the package is a pointer already. Such a field compared with {@code null}
  *       is its pointer compared with {@code nil}; assigned {@code null}, {@code nil}; assigned
  *       another such field, that field's pointer; assigned any other value, a pointer to a fresh
- *       local holding it. Every other read dereferences the pointer. A read Java would print
- *       (concatenation), unbox or compare (an operator, {@code +=}, {@code ++}) or hand to a library
- *       method as an argument, and a collection write to such a field, are refused at the use,
- *       since the written program stops at the nil pointer where Java goes on with null. Any other
- *       read assumes an object is there (README.md, Assumptions).
+ *       local holding it, refused through a receiver that is not a name, whose call Java makes
+ *       before the value. Every other read dereferences the pointer. A read Java would print
+ *       (concatenation), unbox or compare (an operator, {@code +=}, {@code ++}) or hand on (a
+ *       return, an argument, a local's initializer, an assignment), and a collection write to
+ *       such a field, are refused at the use, since the written program stops at the nil pointer
+ *       where Java goes on with null. A read as a receiver, where Java throws on null, assumes an
+ *       object is there (README.md, Assumptions).
  *   <li>{@code ==} between two objects other than enum values is refused (identity); against
  *       {@code null} it is a nil check. A static member reached through an expression is refused,
  *       since Java evaluates and drops that expression.
@@ -1310,6 +1312,7 @@ public final class Reader {
                 }
                 return propagate(call, name, callee, ctx, pos);
             }
+            refuseUnassigned(ip, "the initializer of local " + name, ESCAPES);
             Map<String, Object> init = expr(ip, ctx);
             Map<String, Object> t = typeOf(trees.getElement(p).asType());
             if ("nil".equals(init.get("k"))) {
@@ -1358,6 +1361,7 @@ public final class Reader {
                 if (target != null) {
                     return assignUnassigned(target, new TreePath(ep, at.getVariable()), new TreePath(ep, at.getExpression()), ctx, pos);
                 }
+                refuseUnassigned(new TreePath(ep, at.getExpression()), "assigned", ESCAPES);
                 Map<String, Object> lhs = place(new TreePath(ep, at.getVariable()), ctx);
                 Map<String, Object> rhs = coerce(expr(new TreePath(ep, at.getExpression()), ctx), type(lhs));
                 return List.of(assign("", lhs, rhs, pos));
@@ -1459,6 +1463,13 @@ public final class Reader {
         VariableElement source = unassignedRead(rp);
         if (source != null && fieldType(source).equals(pt)) {
             return List.of(assign("", lhs, unassignedPointer(rp, ctx), pos));
+        }
+        refuseUnassigned(rp, "assigned to field " + target.getSimpleName() + " of another type", ESCAPES);
+        TreePath recv = unparen(lp).getLeaf() instanceof MemberSelectTree
+            ? unparen(new TreePath(unparen(lp), ((MemberSelectTree) unparen(lp).getLeaf()).getExpression())) : null;
+        if (recv != null && !(recv.getLeaf() instanceof IdentifierTree)) {
+            throw new Unsupported("an assignment to field " + target.getSimpleName() + ", null until assigned, through a receiver"
+                + " that is not a name: Java evaluates the receiver before the value, which the value bound first would not");
         }
         Map<String, Object> elem = typeOf(target.asType());
         Map<String, Object> value = coerce(expr(rp, ctx), elem);
@@ -1953,6 +1964,7 @@ public final class Reader {
             return List.of(ret(successResults(ctx, null), pos));
         }
         TreePath ep = new TreePath(p, rt.getExpression());
+        refuseUnassigned(ep, "returned", ESCAPES);
         if (fn.optional) {
             ExpressionTree e = rt.getExpression();
             if (e instanceof MethodInvocationTree) {
@@ -1963,6 +1975,7 @@ public final class Reader {
                     return List.of(ret(List.of(zero(fn.values.get(0)), lit("false", tBool())), pos));
                 }
                 if (owner.equals("java.util.Optional") && m.getSimpleName().contentEquals("of") && args.size() == 1) {
+                    refuseUnassigned(new TreePath(ep, args.get(0)), "returned in an Optional", ESCAPES);
                     Map<String, Object> x = coerce(expr(new TreePath(ep, args.get(0)), ctx), fn.values.get(0));
                     return List.of(ret(List.of(x, lit("true", tBool())), pos));
                 }
@@ -2296,6 +2309,9 @@ public final class Reader {
     /** How the written program differs where Java takes a null: it dereferences the nil pointer and panics. */
     private static final String STOPS = ", where the written program stops at the nil pointer";
 
+    /** Why a read that hands the null on (returned, passed, bound, assigned) is refused. */
+    private static final String ESCAPES = "Java hands the null on" + STOPS;
+
     /**
      * Refuse {@code p} when it reads a field that holds null until assigned: {@code use} is what the
      * expression does with it, {@code why} why that is not read.
@@ -2518,6 +2534,12 @@ public final class Reader {
         String qn = te.getQualifiedName().toString();
         if (structs.contains(te)) {
             Fn fn = ctors.get(te);
+            Element called = trees.getElement(p);
+            boolean synthesized = fns.get(called) == null && called != null && generated(called) && fn.params.isEmpty();
+            if (fns.get(called) != fn && !synthesized || nc.getArguments().size() != fn.params.size()) {
+                throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read: the class"
+                    + " reads one constructor");
+            }
             if (fn.throwsErr && !mayThrow) {
                 throw new Unsupported("a constructor that throws, inside an expression");
             }
@@ -2547,6 +2569,7 @@ public final class Reader {
     private List<Object> args(TreePath p, List<? extends ExpressionTree> as, List<Map<String, Object>> params, Ctx ctx) {
         List<Object> out = new ArrayList<>();
         for (int i = 0; i < as.size(); i++) {
+            refuseUnassigned(new TreePath(p, as.get(i)), "an argument of a call", ESCAPES);
             out.add(coerce(expr(new TreePath(p, as.get(i)), ctx), params.get(i)));
         }
         return out;

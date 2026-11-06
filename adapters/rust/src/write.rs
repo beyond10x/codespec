@@ -32,6 +32,7 @@
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
+//! | an assignment with a call in its target (`s.pick().f = g()`, `xs[next()] = g()`) and a call in its value | refused: Go calls the target's first, and the value is bound first here | — |
 //! | a constant that cannot be written | left out and listed; each function reading it refused | — |
 //!
 //! A send on `Sender<Message>` takes `&self`, which is what `read_only` says of a method that only
@@ -1831,6 +1832,15 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
     }
 }
 
+/// Whether `e` calls a function or method anywhere inside it.
+fn calls(e: &Expr) -> bool {
+    let mut found = false;
+    walk_expr(e, &mut |x| {
+        found |= matches!(x, Expr::Call { .. } | Expr::Method { .. });
+    });
+    found
+}
+
 fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     f(e);
     match e {
@@ -2427,6 +2437,13 @@ impl Fx<'_, '_> {
         let ([l], [r]) = (lhs, rhs) else {
             return Err("an assignment of more than one value".into());
         };
+        // Go evaluates a call in the target (`s.pick().label`, `xs[next()]`) before the value; the
+        // value is bound first here, so a call on both sides could run in the other order.
+        if calls(l) && calls(r) {
+            return Err(
+                "an assignment whose target goes through a call and whose value calls: Go calls the target's first".into(),
+            );
+        }
         if let Expr::Var { name, .. } = l
             && name == "_"
         {

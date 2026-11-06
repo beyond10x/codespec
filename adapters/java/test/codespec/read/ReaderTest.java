@@ -140,6 +140,12 @@ public final class ReaderTest {
         cases.add(t::aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed);
         names.add("adversary3_a_package_under_javax_reads_its_own_classes_as_before");
         cases.add(t::adversary3_a_package_under_javax_reads_its_own_classes_as_before);
+        names.add("adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value");
+        cases.add(t::adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value);
+        names.add("adversary_null_a_read_where_java_goes_on_with_the_null_is_refused");
+        cases.add(t::adversary_null_a_read_where_java_goes_on_with_the_null_is_refused);
+        names.add("adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash");
+        cases.add(t::adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash);
         names.add("every_kit_case_with_a_java_source_reads_without_refusal_and_prints_its_expected_txt_through_the_go_writer");
         cases.add(t::everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter);
         names.add("every_claimed_subject_of_a_kit_case_has_a_java_source_or_is_ledger_only");
@@ -292,8 +298,8 @@ public final class ReaderTest {
      * {@code testdata/nullable}: a String and an Integer field without an initializer, which no
      * constructor assigns, read as {@code ptr(string)} and {@code ptr(int32)} with no refusal; a Note
      * field stays {@code ptr(Note)}; {@code text != null} a comparison of the field itself with
-     * {@code nil}; a read a dereference; an assignment a pointer to a fresh local holding the value,
-     * {@code null} a {@code nil}, another such field that field's pointer.
+     * {@code nil}; a read as a receiver a dereference; an assignment a pointer to a fresh local
+     * holding the value, {@code null} a {@code nil}, another such field that field's pointer.
      */
     private void aReferenceFieldSomeConstructorLeavesUnassignedReadsAsANilPointer() throws Exception {
         Map<String, Object> doc = Reader.read(testdata.resolve("nullable"));
@@ -311,8 +317,10 @@ public final class ReaderTest {
         Object hasCount = returned(funcByKey(doc, "Note.hasCount"));
         check(same(hasCount, "{\"k\":\"binop\",\"op\":\"!=\",\"x\":" + count + ",\"y\":{\"k\":\"nil\",\"t\":" + PTR_INT32
             + "},\"t\":{\"k\":\"bool\"}}"), "hasCount returns " + Json.write(hasCount));
-        Object read = returned(funcByKey(doc, "Note.read"));
-        check(same(read, "{\"k\":\"unop\",\"op\":\"*\",\"x\":" + text + ",\"t\":{\"k\":\"string\"}}"), "read returns " + Json.write(read));
+        Object holds = returned(funcByKey(doc, "Note.holds"));
+        check(same(holds, "{\"k\":\"binop\",\"op\":\"==\",\"x\":{\"k\":\"unop\",\"op\":\"*\",\"x\":" + text
+            + ",\"t\":{\"k\":\"string\"}},\"y\":{\"k\":\"var\",\"name\":\"s\",\"t\":{\"k\":\"string\"}},\"t\":{\"k\":\"bool\"}}"),
+            "holds returns " + Json.write(holds));
         List<Object> write = list(funcByKey(doc, "Note.write").get("body"));
         String pos = "Note.java:" + lineOf(testdata.resolve("nullable/Note.java"), "this.text = t;");
         check(same(write, "[{\"k\":\"let\",\"names\":[\"text\"],\"rhs\":[{\"k\":\"var\",\"name\":\"t\",\"t\":{\"k\":\"string\"}}],"
@@ -597,6 +605,60 @@ public final class ReaderTest {
         }
         check("{\"k\":\"slice\",\"elem\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Book\"}}}".equals(books),
             "Library.books is " + books);
+    }
+
+    // ---- adversary: fields that hold null until assigned ----
+
+    private String adversary3Pos(String fixture, String file, String text) throws IOException {
+        return file + ":" + lineOf(testdata.resolve("adversary3/" + fixture + "/" + file), text);
+    }
+
+    /**
+     * Evaluation order: {@code s.pick().label = s.stamp()} calls pick before stamp in Java. Read as
+     * {@code let label = s.stamp(); s.pick().label = &label}, the written program calls stamp first
+     * and returns "value first" where Java returns "receiver first" (Go and Rust both, measured). A
+     * field every constructor assigns keeps Java's order in Go. Refusing the line also passes.
+     */
+    private void adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/null-field-order"));
+        String pos = adversary3Pos("null-field-order", "Shelf.java", "s.pick().label = s.stamp();");
+        if (refusalPositions(doc).contains(pos)) {
+            return;
+        }
+        String body = Json.write(funcByKey(doc, "labelAfterPick").get("body")).replaceAll("\\s+", "");
+        int pick = body.indexOf("\"name\":\"pick\"");
+        int stamp = body.indexOf("\"name\":\"stamp\"");
+        check(pick >= 0 && stamp >= 0, "no call of pick or stamp in " + body);
+        check(pick < stamp, "the value s.stamp() is evaluated before the receiver s.pick() at " + pos + ": " + body);
+    }
+
+    /**
+     * A getter returning the field, a package method's argument and a local's initializer: on a fresh
+     * object Java returns null, "shelved" and "kept"; the written Go and Rust dereference the nil
+     * pointer and panic (measured), with no refusal. Each such read is refused.
+     */
+    private void adversary_null_a_read_where_java_goes_on_with_the_null_is_refused() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/null-field-escape"));
+        List<String> at = refusalPositions(doc);
+        List<String> missing = new ArrayList<>();
+        for (String use : new String[] {"return title;", "return shelved(new Card().title);", "String t = c.title;"}) {
+            String pos = adversary3Pos("null-field-escape", "Card.java", use);
+            if (!at.contains(pos)) {
+                missing.add(use + " at " + pos);
+            }
+        }
+        check(missing.isEmpty(), "read where Java goes on with null and the written program panics: " + missing + "; refusals " + at);
+    }
+
+    /**
+     * A field assigned in only one of two constructors: the class now reads (the field is a
+     * pointer), the second constructor is refused, and {@code new Card(t)} was read against the first
+     * constructor's empty parameter list, an IndexOutOfBoundsException out of the reader.
+     */
+    private void adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/two-constructors"));
+        String use = adversary3Pos("two-constructors", "Card.java", "return new Card(t).title != null;");
+        check(refusalPositions(doc).contains(use), "no refusal at " + use + "; refusals " + refusalPositions(doc));
     }
 
     // ---- the conformance kit ----

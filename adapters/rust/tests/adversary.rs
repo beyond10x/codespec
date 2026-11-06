@@ -875,3 +875,48 @@ func Run() {
 "#,
     );
 }
+
+// ----- evaluation order -----------------------------------------------------------------------
+
+/// `s.pick().label = s.stamp()`: Go calls `pick`, the target's receiver, before `stamp`, the
+/// value. Binding the value first would print "value first"; the writer refuses `Run` instead.
+#[test]
+fn an_assignment_through_a_call_receiver_with_a_call_in_its_value_is_refused() {
+    let src = r#"package probe
+
+import "fmt"
+
+type Shelf struct {
+	label string
+	picks int
+	next  *Shelf
+}
+
+func (s *Shelf) pick() *Shelf {
+	s.picks++
+	return s.next
+}
+
+func (s *Shelf) stamp() string {
+	if s.picks == 0 {
+		return "value first"
+	}
+	return "receiver first"
+}
+
+func Run() {
+	s := &Shelf{}
+	s.next = &Shelf{}
+	s.pick().label = s.stamp()
+	fmt.Println(s.next.label)
+}
+"#;
+    let p = probe("call-receiver-order", src);
+    assert!(
+        p.refused("Run") && p.refusals.contains("goes through a call"),
+        "Run not refused for its evaluation order; refusals: {}\n{}",
+        p.refusals,
+        p.lib()
+    );
+    same_as_go("call-receiver-order-run", src);
+}
