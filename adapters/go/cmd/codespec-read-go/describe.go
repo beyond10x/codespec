@@ -3,16 +3,17 @@ package main
 import "strings"
 
 // The reader's claim: the features it was seen to read, outside a `foreign` statement, from the
-// Go source of their conformance cases. No fact (facts are computed by `codespec pass`), no
-// `lookup_else` (written by the lookup-guard pass), no `foreign` (what a reader writes for what it
-// cannot read), and nothing no case exercises.
+// Go source of their conformance cases, plus `foreign`, which the stmt-foreign case reads to (a
+// `defer` kept verbatim). No fact (facts are computed by `codespec pass`), no `lookup_else`
+// (written by the lookup-guard pass, and a reader's claim covers only what the reader prints:
+// docs/conformance.md § 5), and nothing no case exercises.
 var (
 	claimFeatures = []string{
 		"assign.*", "decl.*", "expr.*", "intrinsic.*", "op.*", "sem.*", "stmt.*", "type.*", "unop.*",
 	}
 	claimNot = []string{
-		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.foreign", "stmt.lookup_else",
-		"type.tuple", "type.unit",
+		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.tuple",
+		"type.unit",
 	}
 )
 
