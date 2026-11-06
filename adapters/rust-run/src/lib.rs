@@ -25,7 +25,7 @@
 //! | `bool` | `true`, `false` |
 //! | `String`, `&str` | `String::from("…")`, `"…"` |
 //! | `Sender<T>`, `T` printable | `chan`: a fresh `std::sync::mpsc::channel()`, its sender passed and every value left in its receiver printed `sent <v>` after the call |
-//! | `Rc<(Sender<T>, Receiver<T>)>`, `T` printable | `chan`: a fresh `Rc::new(std::sync::mpsc::channel())`, a clone passed and every value left in its receiver printed `sent <v>` after the call |
+//! | `Rc<(SyncSender<T>, Receiver<T>)>`, `T` printable | `chan`: a fresh `Rc::new(std::sync::mpsc::sync_channel(64))`, room for 64 values as the Go driver gives, a clone passed and every value left in its receiver printed `sent <v>` after the call |
 //!
 //! | result | line |
 //! |---|---|
@@ -288,20 +288,23 @@ impl<'a> Crate<'a> {
                 (last.ident == "Any" && last.arguments.is_none()).then_some(Ty::Any)
             }
             syn::Type::Tuple(tu) if tu.elems.len() == 2 => {
-                let Ty::Sender(a) = self.ty(&tu.elems[0]) else {
-                    return None;
-                };
-                let syn::Type::Path(p) = &tu.elems[1] else {
-                    return None;
-                };
-                let last = p.path.segments.last()?;
-                let syn::PathArguments::AngleBracketed(g) = &last.arguments else {
-                    return None;
-                };
-                let [syn::GenericArgument::Type(e)] = g.args.iter().collect::<Vec<_>>()[..] else {
-                    return None;
-                };
-                (last.ident == "Receiver" && self.ty(e) == *a).then_some(Ty::Chan(a))
+                // The element type of `Name<T>`, if the last path segment is `Name`.
+                fn elem<'t>(t: &'t syn::Type, name: &str) -> Option<&'t syn::Type> {
+                    let syn::Type::Path(p) = t else {
+                        return None;
+                    };
+                    let last = p.path.segments.last()?;
+                    let syn::PathArguments::AngleBracketed(g) = &last.arguments else {
+                        return None;
+                    };
+                    match g.args.iter().collect::<Vec<_>>()[..] {
+                        [syn::GenericArgument::Type(e)] if last.ident == name => Some(e),
+                        _ => None,
+                    }
+                }
+                let tx = self.ty(elem(&tu.elems[0], "SyncSender")?);
+                let rx = self.ty(elem(&tu.elems[1], "Receiver")?);
+                (tx == rx).then_some(Ty::Chan(Box::new(tx)))
             }
             _ => None,
         }
@@ -613,7 +616,7 @@ pub fn main_rs(lib_rs: &str, calls: &Calls) -> Result<String, Error> {
                     printable(&elem).map_err(at)?;
                     writeln!(
                         s,
-                        "        let ch{i} = std::rc::Rc::new(std::sync::mpsc::channel());"
+                        "        let ch{i} = std::rc::Rc::new(std::sync::mpsc::sync_channel(64));"
                     )
                     .expect("writing to a String");
                     args.push(format!("std::rc::Rc::clone(&ch{i})"));
