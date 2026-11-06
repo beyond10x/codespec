@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-06T22:30:00Z",
+  "actor": "human:timo",
+  "artifact": "story:grails-artefacts",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "GRAILS_HOME=$HOME/.sdkman/candidates/grails/2.5.6 task adapters-check (46 passed, 0 failed, 0 skipped, EXIT=0, unit commit before merge 58e14e0)"
+  }
+}

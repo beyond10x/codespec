@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:support-matrix
 kind: story
-status: active
+status: implemented
 title: The language support matrix on the documentation site
 relations:
 - decomposes: epic:adapter-conformance
@@ -21,10 +21,11 @@ scope:
   path: website/docusaurus.config.ts
 - confidence: cited
   path: website/src/components/SupportMatrix
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:26Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:26Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T21:54:57Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":4}}}
 ---
 # Story: The language support matrix on the documentation site
 

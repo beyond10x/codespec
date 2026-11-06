@@ -7,7 +7,7 @@ title: A Groovy and Grails 2.5.6 reader
 summary: Read Grails 2.5.6 services and domain classes with the Groovy 2.4 compiler's inferred types; dynamic code is refused and counted.
 relations:
 - depends_on: epic:java-reader
-revision: 1
+revision: 2
 ---
 # Epic: A Groovy and Grails 2.5.6 reader
 
@@ -43,6 +43,14 @@ against the real compiler.
 
 ## Done When
 
-To be written when the epic is decomposed, after `epic:java-reader` is implemented. A first measure:
-the reader runs over one Grails 2.5.6 application and prints, per artefact, functions read and
-refused, with the reasons counted.
+- Reading the fixture application `adapters/groovy/testdata/lending` gives functions read and
+  refused and refusal categories, per artefact, that match its `EXPECTED.md`
+  (`story:grails-artefacts`).
+- `codespec measure` over `adapters/groovy/testdata/lending.read.cir.json` prints output equal to
+  the checked-in `adapters/groovy/testdata/lending.measure.txt` (`story:measure-report`).
+- `examples/fees` runs byte-equal across the original Groovy, the Go output and the Rust output
+  under `codespec harness` (`story:groovy-example-fees`).
+- `codespec-read-groovy --describe` prints a manifest `codespec` validates strictly
+  (`story:groovy-reader-core`).
+- The JVM type mapping exists once, in `adapters/jvm/`, used by the Java and the Groovy reader
+  (`story:jvm-type-mapping-shared`).

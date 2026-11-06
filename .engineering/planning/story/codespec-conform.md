@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:codespec-conform
 kind: story
-status: active
+status: implemented
 title: codespec conform
 relations:
 - decomposes: epic:adapter-conformance
@@ -25,10 +25,11 @@ scope:
   path: website/data/conformance
 - confidence: cited
   path: website/docs/reference/cli.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T21:54:54Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: codespec conform
 

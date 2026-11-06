@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-06T21:54:56Z",
+  "actor": "human:timo",
+  "artifact": "story:nullable-reference-fields",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "commit ce18ad5 (wave/series-both-ways)"
+  }
+}
