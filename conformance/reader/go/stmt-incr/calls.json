@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Next",
+      "args": [
+        "0"
+      ]
+    },
+    {
+      "func": "Next",
+      "args": [
+        "-1"
+      ]
+    }
+  ]
+}

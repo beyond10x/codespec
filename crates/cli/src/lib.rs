@@ -69,6 +69,48 @@ pub enum Cmd {
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
     },
+    /// Run the conformance kit against the adapter codespec-ROLE-LANG, by the claim its --describe
+    /// manifest prints, and write a codespec-conformance-report/1 to OUT; exit 1 when it does not
+    /// conform. With --check REPORT, run again for the report's adapter and exit 1 naming every
+    /// feature whose entry differs.
+    Conform {
+        /// The adapter's language; selects codespec-ROLE-LANG and the runner codespec-run-LANG.
+        #[arg(long, required_unless_present = "check", conflicts_with = "check")]
+        lang: Option<String>,
+        /// reader or writer.
+        #[arg(
+            long,
+            value_parser = ["reader", "writer"],
+            required_unless_present = "check",
+            conflicts_with = "check"
+        )]
+        role: Option<String>,
+        /// Where the report is written.
+        #[arg(long, required_unless_present = "check", conflicts_with = "check")]
+        out: Option<PathBuf>,
+        /// A report to check: run again and compare.
+        #[arg(long)]
+        check: Option<PathBuf>,
+        /// The kit directory: kit.json and cases/.
+        #[arg(long, default_value = "conformance")]
+        kit: PathBuf,
+        /// A reader's corpus: one directory per kit case, its source and calls.json. Defaults to
+        /// KIT/reader/LANG.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        /// Directory holding the adapter, its runner and, for a reader, codespec-write-go and
+        /// codespec-run-go.
+        #[arg(long, env = "CODESPEC_ADAPTERS")]
+        adapters: PathBuf,
+        /// Where each case is written, read and built; emptied first. Defaults to
+        /// target/conform/ROLE-LANG.
+        #[arg(long)]
+        work: Option<PathBuf>,
+        /// Seconds one program (adapter, runner) may run before it is killed and the case
+        /// recorded as `timeout`.
+        #[arg(long, default_value_t = 300)]
+        timeout: u64,
+    },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
     /// differing line otherwise.

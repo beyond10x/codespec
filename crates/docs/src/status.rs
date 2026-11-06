@@ -1,7 +1,9 @@
 //! The status data, `website/data/status.json` (`b10x-status/1`), from [`CAPABILITIES`].
 //!
 //! A shipped capability names the check that holds it, as `file::name`: a Rust test
-//! (`fn name(`), a Go test (`func name(`) or a `Taskfile.yml` task the gate runs (`  name:`).
+//! (`fn name(`), a Go test (`func name(`), a `Taskfile.yml` task the gate runs (`  name:`), or a
+//! conformance report under `website/data/conformance/` as `file::conforms`, which holds while the
+//! report, read strictly, says `conforms: true`.
 //! Generation fails when that file has no such function or task, so a claim cannot outlive the
 //! check it rests on. A capability that is not shipped names none.
 
@@ -218,24 +220,78 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         area: "Interfaces",
         label: "codespec command line",
-        detail: "validate, schema, read, pass, write and harness.",
+        detail: "validate, schema, features, read, pass, write, conform and harness.",
         status: "shipped",
         evidence: Some(
             "crates/cli/tests/harness.rs::the_three_implementations_agree_on_a_few_seeds",
         ),
         href: "/docs/reference/cli",
     },
+    Capability {
+        area: "Conformance",
+        label: "Go reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-go over its corpus, one Go source per claimed feature: each runs to the case's expected output, reads twice to the same bytes, uses its feature outside a foreign statement, and written as Go runs to the expected output again.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-go.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Rust reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-rust over its corpus, one Rust crate per claimed feature, through the same four steps as the Go reader.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-rust.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Go writer conforms to the kit",
+        detail: "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-go.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Rust writer conforms to the kit",
+        detail: "codespec conform writes every case of the kit with codespec-write-rust and runs it with codespec-run-rust, as for the Go writer; a module without facts is refused naming codespec pass.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-rust.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
 ];
 
 /// Whether `source`, the text of `file`, defines the check `name`.
 fn defines(file: &str, source: &str, name: &str) -> bool {
-    if file.ends_with("Taskfile.yml") {
+    if file.ends_with(".json") {
+        // Checked by `report_conforms` before this is reached.
+        name == "conforms"
+    } else if file.ends_with("Taskfile.yml") {
         source.lines().any(|line| line == format!("  {name}:"))
     } else if file.ends_with(".go") {
         source.contains(&format!("func {name}("))
     } else {
         source.contains(&format!("fn {name}("))
     }
+}
+
+/// A report as evidence: `file::conforms`, a `codespec-conformance-report/1` read strictly that
+/// says `conforms: true`.
+fn report_conforms(file: &str, source: &str, name: &str) -> Result<()> {
+    if name != "conforms" {
+        return Err(format!(
+            "{file}::{name}: a report is evidence as `{file}::conforms`"
+        ));
+    }
+    let report = codespec_conformance::conform::read_report(source.as_bytes())
+        .map_err(|e| format!("{file}: {e}"))?;
+    if !report.conforms {
+        return Err(format!(
+            "{file}: {} {} does not conform",
+            report.adapter.role, report.adapter.lang
+        ));
+    }
+    Ok(())
 }
 
 /// The status document for the repository at `root`.
@@ -260,6 +316,9 @@ fn document_for(root: &Path, capabilities: &[Capability]) -> Result<String> {
                     .ok_or_else(|| format!("{evidence}: not `path::name`"))?;
                 let source = fs::read_to_string(root.join(file))
                     .map_err(|e| format!("{label}: reading {file}: {e}"))?;
+                if file.ends_with(".json") {
+                    report_conforms(file, &source, name).map_err(|e| format!("{label}: {e}"))?;
+                }
                 if !defines(file, &source, name) {
                     return Err(format!("{label}: {file} has no test {name}"));
                 }
@@ -336,6 +395,38 @@ mod tests {
         );
         assert!(document_for(root(), &[capability("released", None)]).is_err());
         assert!(document_for(root(), &[capability("planned", None)]).is_ok());
+    }
+
+    #[test]
+    fn a_conformance_report_is_evidence_only_while_it_says_the_adapter_conforms() {
+        let dir = root().join("target/codespec-docs-test/report-evidence");
+        fs::create_dir_all(&dir).unwrap();
+        let current = fs::read(root().join("website/data/conformance/writer-go.json")).unwrap();
+        let mut report = codespec_conformance::conform::read_report(&current).unwrap();
+        assert!(report.conforms);
+        report.conforms = false;
+        fs::write(
+            dir.join("failing.json"),
+            codespec_conformance::conform::report_json(&report),
+        )
+        .unwrap();
+        let failing = capability(
+            "shipped",
+            Some("target/codespec-docs-test/report-evidence/failing.json::conforms"),
+        );
+        let error = document_for(root(), &[failing]).unwrap_err();
+        assert!(error.contains("does not conform"), "{error}");
+        let passing = capability(
+            "shipped",
+            Some("website/data/conformance/writer-go.json::conforms"),
+        );
+        assert!(document_for(root(), &[passing]).is_ok());
+        let other_field = capability(
+            "shipped",
+            Some("website/data/conformance/writer-go.json::summary"),
+        );
+        assert!(document_for(root(), &[other_field]).is_err());
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

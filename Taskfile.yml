@@ -33,12 +33,14 @@ tasks:
       - task: docs-check
 
   docs-generate:
-    desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram and website/data/status.json.
+    desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram, the conformance reports of the Go and Rust readers and writers (website/data/conformance) and website/data/status.json.
+    deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate
 
   docs-check:
-    desc: Fail when a generated documentation file is missing, stale or hand-edited, or a page has a raw admonition title.
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, a conformance report differs from codespec conform run again on the Go and Rust readers and writers, or a page has a raw admonition title.
+    deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
 

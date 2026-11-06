@@ -1,0 +1,18 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Swap",
+      "args": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "func": "Fib",
+      "args": [
+        "10"
+      ]
+    }
+  ]
+}
