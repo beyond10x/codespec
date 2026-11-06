@@ -16,6 +16,42 @@ task adapters-check  # compiles src/ and test/, runs codespec.read.ReaderTest, r
 refusal; `testdata/refuse`, `testdata/adversary` and `testdata/adversary2` hold one package per
 construct the reader keeps as `foreign` or refuses.
 
+## The claim and the conformance kit
+
+`codespec-read-java --describe` claims the features its `examples/ledger` output uses and the
+subject of every kit case under `../../conformance/cases` that holds `java/Case.java`: the case in
+Java, package `<case>` with `-` read as `_`, `long` for Go's `int`. `ReaderTest` reads each through
+`codespec read --lang java` with no refusal and no `foreign`, passes it, writes it as Go and runs it
+with `codespec-run-go` on the case's `calls.json`, and requires the case's `expected.txt`; `task
+adapters-check` then requires each module to use its case's subject and every claimed feature to be
+used by the ledger or a kit module.
+
+The kit cases without a Java source, and why:
+
+| case | subject | why |
+|---|---|---|
+| `assign-and-not`, `op-and-not` | `assign.and_not`, `op.and_not` | Java has no `&^`; `a & ~b` is `op.and` and `unop.complement` |
+| `assign-shl`, `assign-shr`, `op-shl`, `op-shr` | `assign.shl`, `assign.shr`, `op.shl`, `op.shr` | refused by design: Java masks the shift count, cir/1 does not say so |
+| `decl-enum` | `decl.enum` (claimed through the ledger) | an enum is read over `string`, its constants' names; the case prints an enum over `int` |
+| `decl-newtype` | `decl.newtype` | Java has no defined type over a primitive or `String`; a class is a struct |
+| `expr-intrinsic` | `expr.intrinsic` (claimed through the ledger) | the case takes `len` of a string; `String.length()` counts UTF-16 units, `len` bytes, and is not read |
+| `expr-nil` | `expr.nil` (claimed through the ledger) | the case returns a nil slice; `null` where a `List` is expected is refused, since a null `List` is no empty one |
+| `expr-to-error`, `intrinsic-errorf` | `expr.to_error`, `intrinsic.errorf` | refused by design: an error is a sentinel, an exception leaf with a literal message and no fields |
+| `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
+| `intrinsic-println`, `stmt-expr` | `intrinsic.println`, `stmt.expr` (claimed through the ledger) | the case prints; `System.out` is not in the reader's library table |
+| `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
+| `sem-switch-break` | `sem.switch.break` | refused by design: a `break` inside a `switch` is read only at the end of a case, where it leaves the switch; a labeled `break` is refused |
+| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
+| `stmt-lookup-else` | `stmt.lookup_else` | the reader never produces it: `Map.get` of a value that is not a reference is refused (an absent key gives null), and `containsKey` is not read |
+| `stmt-return` | `stmt.return` (claimed through the ledger) | the case returns two values; a Java method returns one |
+| `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
+| `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |
+| `type-any` | `type.any` | `Object` is outside the JVM type table |
+| `unop-deref` | `unop.deref` | Java has no pointer to a local; an object reference is dereferenced implicitly |
+
+The ledger-only rows are `ReaderTest.LEDGER_ONLY`, which the test holds against the kit: a claimed
+case subject needs a Java source or a row there.
+
 ## Assumptions
 
 The document describes the Java program only under these assumptions; the reader does not check

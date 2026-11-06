@@ -16,19 +16,26 @@ public final class Main {
     public static final String VERSION = "0.2.0";
 
     /**
-     * The reader's claim: the features its output for {@code examples/ledger} uses, the only Java
-     * the repository reads end to end ({@code codespec-conformance manifest --read} checks it).
+     * The reader's claim: the features its output for {@code examples/ledger} uses and the subject
+     * of every conformance kit case with a {@code java/Case.java}, which the reader reads, the passes
+     * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}
+     * ({@code ReaderTest}; {@code codespec-conformance manifest --read} over the ledger and the kit
+     * modules checks every claimed feature is used).
      */
     static final String[] CLAIM = {
-        "assign.add", "assign.sub", "decl.enum", "decl.struct", "expr.binop", "expr.call",
+        "assign.add", "assign.and", "assign.div", "assign.mul", "assign.or", "assign.rem",
+        "assign.sub", "assign.xor", "decl.enum", "decl.struct", "expr.binop", "expr.call",
         "expr.const", "expr.conv", "expr.errvar", "expr.field", "expr.index", "expr.intrinsic",
         "expr.lit", "expr.make", "expr.method", "expr.nil", "expr.struct", "expr.unop", "expr.var",
         "expr.zero", "intrinsic.append", "intrinsic.len", "intrinsic.sorted_keys",
-        "intrinsic.sprintf", "op.add", "op.eq", "op.ge", "op.gt", "op.land", "op.le", "op.lt",
-        "op.ne", "op.sub", "sem.int.wrap", "sem.map.order", "stmt.assign", "stmt.break",
-        "stmt.expr", "stmt.for", "stmt.for_range", "stmt.if", "stmt.incr", "stmt.let",
-        "stmt.return", "stmt.switch", "type.bool", "type.error", "type.int", "type.map",
-        "type.named", "type.ptr", "type.slice", "type.string", "type.unit", "unop.ref",
+        "intrinsic.sprintf", "op.add", "op.and", "op.div", "op.eq", "op.ge", "op.gt", "op.land",
+        "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem", "op.sub", "op.xor",
+        "sem.continue.post", "sem.int.wrap", "sem.map.order", "sem.rem.sign", "stmt.assign",
+        "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range",
+        "stmt.if", "stmt.incr", "stmt.let", "stmt.return", "stmt.switch", "type.bool",
+        "type.error", "type.int", "type.map", "type.named", "type.ptr", "type.slice",
+        "type.string", "type.unit", "unop.complement", "unop.neg", "unop.not", "unop.plus",
+        "unop.ref",
     };
 
     private Main() {}
