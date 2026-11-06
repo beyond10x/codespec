@@ -41,7 +41,7 @@ jobs:
       - name: Build the Rust binaries
         run: |
           export RUSTFLAGS="--remap-path-prefix=$HOME=/build-home --remap-path-prefix=$GITHUB_WORKSPACE=/codespec"
-          cargo build --release --locked -p b10x-codespec-cli -p codespec-write-rust
+          cargo build --release --locked -p b10x-codespec-cli -p codespec-write-rust -p codespec-read-rust
 
       - name: Build the Go adapters
         run: |
@@ -55,7 +55,7 @@ jobs:
           bin="$RUNNER_TEMP/bin"
           work="$RUNNER_TEMP/smoke"
           mkdir -p "$bin" "$work"
-          cp target/release/codespec target/release/codespec-write-rust target/release-go/codespec-read-go target/release-go/codespec-write-go "$bin/"
+          cp target/release/codespec target/release/codespec-write-rust target/release/codespec-read-rust target/release-go/codespec-read-go target/release-go/codespec-write-go "$bin/"
           test "$("$bin/codespec" --version)" = "codespec $GITHUB_REF_NAME"
           "$bin/codespec" read --lang go examples/orders/source --out "$work/orders.read.cir.json" --adapters "$bin"
           cmp "$work/orders.read.cir.json" examples/orders/orders.read.cir.json
@@ -64,6 +64,8 @@ jobs:
           "$bin/codespec" write --lang go "$work/orders.cir.json" --out "$work/go" --adapters "$bin"
           "$bin/codespec" write --lang rust "$work/orders.cir.json" --out "$work/rust" --adapters "$bin"
           cmp "$work/rust/src/lib.rs" examples/orders/out/rust/src/lib.rs
+          "$bin/codespec" read --lang rust examples/inventory/source --out "$work/inventory.read.cir.json" --adapters "$bin"
+          cmp "$work/inventory.read.cir.json" examples/inventory/inventory.read.cir.json
 
       - name: Package the binaries
         env:
@@ -71,8 +73,8 @@ jobs:
         run: |
           package="codespec-$GITHUB_REF_NAME-$TARGET"
           mkdir -p "dist/$package"
-          cp target/release/codespec target/release/codespec-write-rust target/release-go/codespec-read-go target/release-go/codespec-write-go README.md LICENSE "dist/$package/"
-          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-write-rust codespec-read-go codespec-write-go README.md LICENSE
+          cp target/release/codespec target/release/codespec-write-rust target/release/codespec-read-rust target/release-go/codespec-read-go target/release-go/codespec-write-go README.md LICENSE "dist/$package/"
+          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-write-rust codespec-read-rust codespec-read-go codespec-write-go README.md LICENSE
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

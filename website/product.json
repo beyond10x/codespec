@@ -3,7 +3,7 @@
   "product": {
     "name": "codespec",
     "mark": "cs",
-    "eyebrow": "Code intermediate representation · 0.1.1",
+    "eyebrow": "Code intermediate representation · 0.1.2",
     "promise": [
       "Code as typed data.",
       "Every translation runs against the original."
@@ -117,7 +117,7 @@
     {
       "kind": "status",
       "eyebrow": "Status",
-      "title": "0.1.1. Here is exactly what exists.",
+      "title": "0.1.2. Here is exactly what exists.",
       "lede": "Shipped means code in the release, held by a named test or gate task.",
       "items": "data/status.json"
     },

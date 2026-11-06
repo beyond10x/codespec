@@ -2,6 +2,13 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## 0.1.2
+
+### Fixed
+
+- The release archives now hold `codespec-read-rust`; the `0.1.1` archives left it out. The release
+  smoke test reads `examples/inventory` with it and compares the document with the checked-in one.
+
 ## 0.1.1
 
 The first published binaries. The `0.1.0` tag exists, but its release build failed and it has no
