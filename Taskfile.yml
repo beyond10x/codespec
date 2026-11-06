@@ -69,7 +69,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-java
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language; read the Java ledger twice through codespec read, byte-equal and canonical; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger output.
+    desc: Format, vet and test every adapter in its own language; read the Java ledger twice through codespec read, byte-equal and canonical; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -78,7 +78,7 @@ tasks:
       - mkdir -p target/java/test-classes target/java-check
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test adapters/jvm/src adapters/jvm/test -name "*.java" | sort)'
       - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.jvm.JvmTypesTest'
-      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work'
+      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
       - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json
@@ -88,7 +88,8 @@ tasks:
       - mkdir -p target/manifests
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust codespec-read-java; do {{.ADAPTERS}}/$a --describe > target/manifests/$a.json || exit 1; done
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust; do cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/$a.json > /dev/null || exit 1; done
-      - cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json > /dev/null
+      - 'for d in target/java/test-work/kit/*/; do cargo run --locked -q -p b10x-codespec-conformance -- features "$d/read.cir.json" | grep -qxF "$(cat "$d/subject")" || { echo "$d does not use its subject $(cat "$d/subject")"; exit 1; }; done'
+      - 'cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json $(for m in target/java/test-work/kit/*/read.cir.json; do echo --read "$m"; done) > /dev/null'
 
   groovy-fixture-check:
     desc: Compile the Grails lending fixture's domain classes, services and utils with groovyc 2.4.10 on the JDK, all but TransactionalAuditService.groovy, which needs the Grails jars. GROOVY_HOME defaults to the sdkman groovy/2.4.10 candidate.

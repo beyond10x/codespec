@@ -14,9 +14,13 @@
 //!     calls.json             codespec-calls/1: the calls to make, in order
 //!     expected.txt           what the reference prints for those calls
 //!     features.json          codespec-case-features/1: the features the case exercises
+//!     java/Case.java         optional: the case in Java, package `<case>` with `-` read as `_`
 //! ```
 //!
-//! A case directory holds exactly these five files. `case.cir.json` and `expected.txt` are
+//! A case directory holds exactly these five files, and may hold a `java/` directory, which
+//! this crate does not read: the Java reader's tests run it through `codespec read --lang java`,
+//! the passes, the Go writer and `codespec-run-go` against `expected.txt`
+//! (`adapters/java/test/codespec/read/ReaderTest.java`). `case.cir.json` and `expected.txt` are
 //! generated (`codespec-conformance check --write`), never edited by hand; the other three are
 //! written by hand.
 //!
@@ -138,7 +142,7 @@ pub const KIT_FORMAT: &str = "codespec-conformance-kit/1";
 pub const CASE_FEATURES_FORMAT: &str = "codespec-case-features/1";
 /// The format of a case's `calls.json`.
 pub const CALLS_FORMAT: &str = "codespec-calls/1";
-/// The files a case directory holds, and no others.
+/// The files a case directory holds, and no others but the optional [`CASE_SOURCE_DIRS`].
 pub const CASE_FILES: &[&str] = &[
     "calls.json",
     "case.cir.json",
@@ -146,6 +150,10 @@ pub const CASE_FILES: &[&str] = &[
     "expected.txt",
     "features.json",
 ];
+
+/// The directories a case may hold besides [`CASE_FILES`]: the case in another language, read by
+/// that language's reader tests and never by this crate.
+pub const CASE_SOURCE_DIRS: &[&str] = &["java"];
 
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;
@@ -271,6 +279,7 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
         .collect::<Result<_, _>>()
         .map_err(|e| format!("{}: {e}", dir.display()))?;
     files.sort();
+    files.retain(|f| !(CASE_SOURCE_DIRS.contains(&f.as_str()) && dir.join(f).is_dir()));
     if files != CASE_FILES {
         return Err(format!(
             "{name}: holds {files:?}, a case holds exactly {CASE_FILES:?}"

@@ -5,28 +5,39 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 /**
  * The reader's tests, run as a plain program:
  *
- * <pre>java -cp &lt;classes&gt; codespec.read.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt;</pre>
+ * <pre>java -cp &lt;classes&gt; codespec.read.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt; &lt;adapters dir&gt;</pre>
  *
- * It prints one line per case and a summary {@code N passed, M failed}, and exits 1 when any case
- * fails.
+ * The adapters directory holds {@code codespec-read-java}, {@code codespec-write-go} and {@code
+ * codespec-run-go}, as {@code task adapters} builds them. It prints one line per case and a summary
+ * {@code N passed, M failed}, and exits 1 when any case fails.
  */
 public final class ReaderTest {
     private final Path root;
     private final Path codespec;
     private final Path work;
+    private final Path adapters;
     private final Path testdata;
 
-    private ReaderTest(Path root, Path codespec, Path work) {
+    private ReaderTest(Path root, Path codespec, Path work, Path adapters) {
         this.root = root;
         this.codespec = codespec;
         this.work = work;
+        this.adapters = adapters;
         this.testdata = root.resolve("adapters/java/testdata");
     }
 
@@ -34,12 +45,30 @@ public final class ReaderTest {
         void run() throws Exception;
     }
 
+    /**
+     * The claimed features that are the subject of a kit case without a Java source, by case, each
+     * with why Java cannot express that case: the ledger alone holds these claims
+     * ({@code codespec-conformance manifest --read}). Any other claimed subject of a kit case has
+     * {@code java/Case.java} in it.
+     */
+    static final Map<String, String> LEDGER_ONLY = ledgerOnly();
+
+    private static Map<String, String> ledgerOnly() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("decl-enum", "an enum is read over string, its constants' names; the case prints an enum over int");
+        m.put("expr-nil", "the case returns a nil slice; null where a List is expected is refused, since a null List is no empty one");
+        m.put("expr-intrinsic", "the case takes len of a string; String.length() counts UTF-16 units, len bytes, and is not read");
+        m.put("stmt-expr", "the case prints with fmt.Println; System.out is not in the reader's library table");
+        m.put("stmt-return", "the case returns two values; a Java method returns one");
+        return Collections.unmodifiableMap(m);
+    }
+
     public static void main(String[] args) throws Exception {
-        if (args.length != 3) {
-            System.err.println("usage: ReaderTest <repo root> <codespec binary> <work dir>");
+        if (args.length != 4) {
+            System.err.println("usage: ReaderTest <repo root> <codespec binary> <work dir> <adapters dir>");
             System.exit(2);
         }
-        ReaderTest t = new ReaderTest(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]));
+        ReaderTest t = new ReaderTest(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Path.of(args[3]));
         Files.createDirectories(t.work);
         List<String> names = new ArrayList<>();
         List<Case> cases = new ArrayList<>();
@@ -105,6 +134,10 @@ public final class ReaderTest {
         cases.add(t::aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed);
         names.add("adversary3_a_package_under_javax_reads_its_own_classes_as_before");
         cases.add(t::adversary3_a_package_under_javax_reads_its_own_classes_as_before);
+        names.add("every_kit_case_with_a_java_source_reads_without_refusal_and_prints_its_expected_txt_through_the_go_writer");
+        cases.add(t::everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter);
+        names.add("every_claimed_subject_of_a_kit_case_has_a_java_source_or_is_ledger_only");
+        cases.add(t::everyClaimedSubjectOfAKitCaseHasAJavaSourceOrIsLedgerOnly);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -484,6 +517,139 @@ public final class ReaderTest {
         }
         check("{\"k\":\"slice\",\"elem\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Book\"}}}".equals(books),
             "Library.books is " + books);
+    }
+
+    // ---- the conformance kit ----
+
+    private Path kit() {
+        return root.resolve("conformance/cases");
+    }
+
+    /** The kit cases holding {@code java/Case.java}, by name, in name order. */
+    private List<String> javaCases() throws IOException {
+        List<String> out = new ArrayList<>();
+        try (Stream<Path> dirs = Files.list(kit())) {
+            for (Path d : dirs.sorted().toList()) {
+                if (Files.isDirectory(d.resolve("java"))) {
+                    check(Files.isRegularFile(d.resolve("java/Case.java")), d.getFileName() + "/java holds no Case.java");
+                    out.add(d.getFileName().toString());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The subject of a kit case: the first feature its {@code features.json} lists. */
+    private String subject(String kase) throws IOException {
+        Map<String, Object> f = map(Json.parse(Files.readString(kit().resolve(kase).resolve("features.json"))));
+        return (String) list(f.get("features")).get(0);
+    }
+
+    /**
+     * Runs a program to completion with its stdout to {@code out}; a non-zero exit fails, naming
+     * the step and quoting stderr.
+     */
+    private static void run(String step, Path out, Path err, String... cmd) throws Exception {
+        Process p = new ProcessBuilder(cmd).redirectOutput(out.toFile()).redirectError(err.toFile()).start();
+        int code = p.waitFor();
+        if (code != 0) {
+            throw new AssertionError(step + " exited " + code + ": " + Files.readString(err).strip());
+        }
+    }
+
+    /**
+     * One kit case's {@code java/}, as {@code docs/conformance.md} § 6 checks a reader: read through
+     * {@code codespec read --lang java} with no refusal and no foreign statement, its module named as
+     * the case's package, passed, written as Go and run by {@code codespec-run-go} on the case's
+     * {@code calls.json}, printing its {@code expected.txt}. Its subject is claimed. The module and
+     * the subject are left in {@code <work>/kit/<case>/} for {@code task adapters-check}, which
+     * checks the module uses the subject ({@code codespec-conformance features}).
+     */
+    private void kitCase(String kase) throws Exception {
+        Path dir = kit().resolve(kase);
+        Path w = work.resolve("kit").resolve(kase);
+        Files.createDirectories(w);
+        Path read = w.resolve("read.cir.json");
+        Path passed = w.resolve("passed.cir.json");
+        Path log = w.resolve("stdout.txt");
+        Path err = w.resolve("stderr.txt");
+        run("codespec read", log, err, codespec.toString(), "read", "--lang", "java", dir.resolve("java").toString(),
+            "--out", read.toString(), "--adapters", adapters.toString());
+        Map<String, Object> doc = map(Json.parse(Files.readString(read)));
+        if (doc.containsKey("refusals")) {
+            throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
+        }
+        check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
+        String pkg = kase.replace('-', '_');
+        check(pkg.equals(doc.get("name")), "module " + doc.get("name") + ", the case's package is " + pkg);
+        String subject = subject(kase);
+        check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
+        Files.writeString(w.resolve("subject"), subject + "\n", StandardCharsets.UTF_8);
+        run("codespec pass", log, err, codespec.toString(), "pass", read.toString(), "--out", passed.toString());
+        run("codespec write --lang go", log, err, codespec.toString(), "write", "--lang", "go", passed.toString(),
+            "--out", w.resolve("go").toString(), "--adapters", adapters.toString());
+        Path got = w.resolve("output.txt");
+        run("codespec-run-go", got, err, adapters.resolve("codespec-run-go").toString(), "-build",
+            w.resolve("build").toString(), w.resolve("go").toString(), dir.resolve("calls.json").toString());
+        String want = Files.readString(dir.resolve("expected.txt"));
+        String have = Files.readString(got);
+        check(want.equals(have), "printed\n" + have + "expected.txt\n" + want);
+    }
+
+    private void everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter() throws Exception {
+        List<String> kases = javaCases();
+        check(!kases.isEmpty(), "no kit case has a java/ source");
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(8, Runtime.getRuntime().availableProcessors()));
+        List<Future<?>> runs = new ArrayList<>();
+        try {
+            for (String k : kases) {
+                runs.add(pool.submit(() -> {
+                    kitCase(k);
+                    return null;
+                }));
+            }
+            List<String> failures = new ArrayList<>();
+            for (int i = 0; i < kases.size(); i++) {
+                try {
+                    runs.get(i).get();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    failures.add(kases.get(i) + ": " + e.getCause().getMessage());
+                }
+            }
+            System.out.println("     " + (kases.size() - failures.size()) + " of " + kases.size() + " kit cases with a Java source pass");
+            check(failures.isEmpty(), failures.size() + " kit case(s) failed:\n" + String.join("\n", failures));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Every claimed feature that is the subject of some kit case is held by that case's Java
+     * source, or is in {@link #LEDGER_ONLY}, whose cases have none; a claim no case has as its
+     * subject is held by the ledger alone.
+     */
+    private void everyClaimedSubjectOfAKitCaseHasAJavaSourceOrIsLedgerOnly() throws Exception {
+        Set<String> withJava = new TreeSet<>(javaCases());
+        List<String> missing = new ArrayList<>();
+        try (Stream<Path> dirs = Files.list(kit())) {
+            for (Path d : dirs.sorted().toList()) {
+                String kase = d.getFileName().toString();
+                if (!Files.isRegularFile(d.resolve("features.json"))) {
+                    continue;
+                }
+                boolean claimed = Arrays.asList(Main.CLAIM).contains(subject(kase));
+                boolean ledgerOnly = LEDGER_ONLY.containsKey(kase);
+                check(!(ledgerOnly && withJava.contains(kase)), kase + " is ledger-only and has a Java source");
+                check(!(ledgerOnly && !claimed), kase + " is ledger-only and its subject " + subject(kase) + " is not claimed");
+                if (claimed && !ledgerOnly && !withJava.contains(kase)) {
+                    missing.add(kase + " (" + subject(kase) + ")");
+                }
+            }
+        }
+        for (String k : LEDGER_ONLY.keySet()) {
+            check(Files.isDirectory(kit().resolve(k)), "ledger-only case " + k + " does not exist");
+        }
+        check(missing.isEmpty(), "claimed subjects whose kit case has no java/Case.java: " + missing);
     }
 
     // ---- helpers ----
