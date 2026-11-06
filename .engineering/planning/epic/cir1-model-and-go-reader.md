@@ -2,10 +2,14 @@
 format: aep.planning-md/3
 id: epic:cir1-model-and-go-reader
 kind: epic
-status: draft
+status: implemented
 title: cir/1 model, schema, CLI and the Go reader
 summary: The Rust definition of cir/1 with strict reading and its schema, codespec validate/schema/read/write, and a go/types reader that reads examples/orders twice into the same bytes.
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 <!-- Starting point for an `epic` artifact, seeded by `aep artifact new epic <name>`.
      No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
