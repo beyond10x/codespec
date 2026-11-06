@@ -1100,7 +1100,7 @@
           ]
         },
         {
-          "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent.",
+          "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent.\n`name` is not bound inside `then`.",
           "type": "object",
           "properties": {
             "index": {
