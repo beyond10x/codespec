@@ -12,6 +12,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
   by UTF-16 code unit). No writer renders it yet.
 - `codespec-read-java` (`adapters/java`): reads a Java 17 package through javac into `cir/1`, refusing
   every form whose meaning the document would not keep. Needs a JDK (default path: JDK 21).
+- `codespec-read-groovy` (`adapters/groovy`): reads a directory of Groovy 2.4 files into `cir/1`,
+  typed by the Groovy static type checker whether a class is annotated or not. Dynamic code is kept
+  as `foreign` with a refusal in one of eight categories (`adapters/groovy/README.md`). Needs a JDK
+  and Groovy 2.4.10 (`GROOVY_HOME`, default: the sdkman `groovy/2.4.10` candidate).
 - `codespec-read-rust` reads the Rust writer's loops, switches and multi-assigns back: the `series`
   output reads with 0 refusals.
 - `examples/series` runs a fourth implementation, the Rust output read back and written as Go
