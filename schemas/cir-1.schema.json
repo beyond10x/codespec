@@ -374,6 +374,7 @@
           ]
         },
         {
+          "description": "`+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`,\n`<`, `<=`, `>` or `>=`.",
           "type": "object",
           "properties": {
             "k": {
@@ -846,7 +847,7 @@
           ]
         },
         {
-          "description": "`lhs = rhs`, or `lhs <op> rhs` for a compound operator such as `+=`.",
+          "description": "`lhs = rhs`, or `lhs <op> rhs` for a compound operator: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`,\n`|=`, `^=`, `&^=`, `<<=` or `>>=`.",
           "type": "object",
           "properties": {
             "k": {

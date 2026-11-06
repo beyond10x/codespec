@@ -1,5 +1,6 @@
-//! `codespec`: validate `cir/1` documents, print the schema, apply passes, run reader and writer
-//! adapters, and compare implementations of an example on seeded traces (`harness`).
+//! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
+//! passes, run reader and writer adapters, and compare implementations of an example on seeded
+//! traces (`harness`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -11,7 +12,7 @@ use std::process::{Command, ExitCode, Stdio};
 
 use clap::Parser as _;
 use codespec_cli::{Cli, Cmd};
-use codespec_model::{Module, schema_json};
+use codespec_model::{Module, features_json, schema_json};
 
 fn main() -> ExitCode {
     match run(Cli::parse().command) {
@@ -51,6 +52,10 @@ fn run(cmd: Cmd) -> Result<(), String> {
         }
         Cmd::Schema => {
             print!("{}", schema_json());
+            Ok(())
+        }
+        Cmd::Features => {
+            print!("{}", features_json());
             Ok(())
         }
         Cmd::Read {

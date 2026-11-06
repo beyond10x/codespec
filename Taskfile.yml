@@ -66,9 +66,10 @@ tasks:
       - cd adapters/go && go vet ./...
 
   schema:
-    desc: Regenerate schemas/cir-1.schema.json from the model.
+    desc: Regenerate schemas/cir-1.schema.json and schemas/cir-1.features.json from the model.
     cmds:
       - cargo run --locked -q -p b10x-codespec-cli -- schema > schemas/cir-1.schema.json
+      - cargo run --locked -q -p b10x-codespec-cli -- features > schemas/cir-1.features.json
 
   examples:
     desc: Re-read every example's source into its checked-in cir/1 document and rewrite its checked-in Go and Rust output.

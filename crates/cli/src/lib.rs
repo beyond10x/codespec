@@ -30,6 +30,9 @@ pub enum Cmd {
     },
     /// Print the JSON Schema of cir/1.
     Schema,
+    /// Print the cir/1 feature vocabulary (codespec-features/1): every feature id an adapter can
+    /// support, sorted by id.
+    Features,
     /// Run the reader adapter for LANG over SOURCE and write the validated cir/1 module to OUT.
     Read {
         /// The source language; selects the adapter `codespec-read-<lang>`.
