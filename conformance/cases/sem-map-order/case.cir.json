@@ -1,0 +1,287 @@
+{
+  "format": "cir/1",
+  "name": "sem_map_order",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Squares",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "m"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "map",
+                "key": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "case.go:6"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "case.go:6"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "m",
+                    "t": {
+                      "k": "map",
+                      "key": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      },
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "*",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "case.go:7"
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "let",
+          "names": [
+            "s"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "var",
+            "name": "m",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              },
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "case.go:11"
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "doc": "Squares sums the squares of 0 up to n-1 through a map; the sum is the same in any order.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Squares"
+  ],
+  "facts": {
+    "shared": [],
+    "unordered_iteration": [
+      "case.go:10"
+    ]
+  }
+}

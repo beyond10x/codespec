@@ -17,6 +17,9 @@
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
 //! | `for … range` over a slice | the length read once, each element read when its iteration starts | — |
+//! | `sorted_keys(m)` | a new `Vec` of the keys: integers in the `BTreeMap`'s order, strings sorted by UTF-16 code unit (`encode_utf16`), as cir/1 defines; other keys refused; a `for … range` over it binds it once | — |
+//! | `conv` to a built-in integer type (`int32(len(xs))`) | `as`, which truncates and sign-extends as a Go conversion does | — |
+//! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
 //! | a constant that cannot be written | left out and listed; each function reading it refused | — |
@@ -1356,12 +1359,21 @@ impl<'a> Writer<'a> {
             locals,
             posts: std::cell::RefCell::new(Vec::new()),
             moves: moves(f),
+            owned: owned_locals(self, f),
         };
         let body = cx.body(&f.body)?;
         let name = self.names.func(&f.key());
         let doc = outer_doc(&f.doc);
         let v = vis(f.exported);
-        Ok(quote! { #doc #v fn #name(#(#params),*) #ret { #(#body)* } })
+        let item = quote! { #doc #v fn #name(#(#params),*) #ret { #(#body)* } };
+        // A function whose tokens are not Rust is the writer's own defect; it is refused here, so
+        // the module is still written, rather than failing the whole crate at the final parse.
+        syn::parse2::<syn::ImplItemFn>(item.clone()).map_err(|e| {
+            at(format!(
+                "internal: the written function does not parse: {e}"
+            ))
+        })?;
+        Ok(item)
     }
 
     // ----- literals ------------------------------------------------------------------------
@@ -1680,6 +1692,89 @@ fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     }
 }
 
+/// Locals a constructor builds its value through, as the Java reader writes one: `this := &T{…}`
+/// for a `T` that `shared` does not list, bound by exactly one statement of the function and
+/// used only as the base of a field, the receiver of a method or a returned value whose result
+/// type is `*T`. No second name ever holds the pointer, so the Rust local can be the value itself
+/// and the return moves it out. Any other use, which could alias in Go, leaves the local out, and
+/// the function is refused as before.
+fn owned_locals(w: &Writer, f: &Func) -> BTreeSet<String> {
+    let mut binds: std::collections::BTreeMap<String, u32> = Default::default();
+    let mut cands = BTreeSet::new();
+    for p in f.params.iter().chain(f.recv.iter()) {
+        *binds.entry(p.name.clone()).or_default() += 2;
+    }
+    walk_stmts(&f.body, &mut |s| match s {
+        Stmt::Let { names, rhs, .. } => {
+            for n in names {
+                *binds.entry(n.clone()).or_default() += 1;
+            }
+            if let ([n], [Expr::Unop { op, x, t }]) = (names.as_slice(), rhs.as_slice())
+                && op == "&"
+                && matches!(**x, Expr::Struct { .. })
+                && matches!(t, Type::Ptr { .. })
+                && !w.shared(t)
+            {
+                cands.insert(n.clone());
+            }
+        }
+        Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => {
+            *binds.entry(name.clone()).or_default() += 2;
+        }
+        Stmt::ForRange { key, val, .. } => {
+            *binds.entry(key.clone()).or_default() += 2;
+            *binds.entry(val.clone()).or_default() += 2;
+        }
+        _ => {}
+    });
+    cands.retain(|n| binds.get(n) == Some(&1));
+    cands.retain(|n| {
+        let mut ok = true;
+        walk_stmts(&f.body, &mut |s| match s {
+            Stmt::Return { results, .. } => {
+                for (r, t) in results.iter().zip(&f.results) {
+                    let returned = matches!(r, Expr::Var { name, .. } if name == n)
+                        && matches!(t, Type::Ptr { .. })
+                        && !w.shared(t);
+                    ok &= returned || only_through(r, n);
+                }
+            }
+            Stmt::Foreign { .. } => ok = false,
+            _ => {
+                for e in stmt_exprs(s) {
+                    ok &= only_through(e, n);
+                }
+            }
+        });
+        ok
+    });
+    cands
+}
+
+/// Whether `e` uses the local `n` only as the base of a field or the receiver of a method.
+fn only_through(e: &Expr, n: &str) -> bool {
+    let is_n = |x: &Expr| matches!(x, Expr::Var { name, .. } if name == n);
+    match e {
+        Expr::Var { name, .. } => name != n,
+        Expr::Field { x, .. } if is_n(x) => true,
+        Expr::Method { x, args, .. } if is_n(x) => args.iter().all(|a| only_through(a, n)),
+        Expr::Field { x, .. }
+        | Expr::Unop { x, .. }
+        | Expr::Conv { x, .. }
+        | Expr::ToError { x, .. } => only_through(x, n),
+        Expr::Index { x, index, .. } => only_through(x, n) && only_through(index, n),
+        Expr::Binop { x, y, .. } => only_through(x, n) && only_through(y, n),
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+            args.iter().all(|a| only_through(a, n))
+        }
+        Expr::Method { x, args, .. } => {
+            only_through(x, n) && args.iter().all(|a| only_through(a, n))
+        }
+        Expr::Struct { fields, .. } => fields.iter().all(|fi| only_through(&fi.value, n)),
+        _ => true,
+    }
+}
+
 /// Positions of `x = v` statements, in the function's own block, that assign a local slice or
 /// map `v` no later statement of that block reads. Go would share `v`'s storage with `x`; since
 /// nothing reads `v` again, moving it is the same. Statements inside loops are never listed: a
@@ -1805,6 +1900,9 @@ struct Fx<'a, 'f> {
     locals: BTreeSet<String>,
     /// Positions of assignments that move a local slice or map instead of copying it.
     moves: BTreeSet<String>,
+    /// Locals bound once to `&T{…}` of a type `shared` does not list and used only as a field
+    /// base, a receiver or the returned value: the value itself, as a constructor builds it.
+    owned: BTreeSet<String>,
     /// For each enclosing loop, innermost last, the `post` statement a `continue` runs first.
     posts: std::cell::RefCell<Vec<Vec<TokenStream>>>,
 }
@@ -2022,6 +2120,13 @@ impl Fx<'_, '_> {
                 rhs.len()
             ));
         }
+        if let ([n], [Expr::Unop { x, .. }]) = (names, rhs)
+            && self.owned.contains(n)
+        {
+            let b = self.binding(n);
+            let v = self.val(x)?.ts;
+            return Ok(quote! { let #b = #v; });
+        }
         for e in rhs {
             if let Type::Ptr { .. } = e.t()
                 && !self.w.shared(e.t())
@@ -2229,9 +2334,18 @@ impl Fx<'_, '_> {
                 Ok(quote! { for (#k, #v) in #src.clone() { #(#body)* } })
             }
             Type::Slice { elem } => {
-                if !matches!(over, Expr::Var { .. } | Expr::Field { .. }) {
-                    return Err("a loop over a slice that is not a variable or a field".into());
-                }
+                // sorted_keys gives a new slice nothing else holds: bound once, as Go evaluates
+                // a range expression once.
+                let (bind, src) = match over {
+                    Expr::Var { .. } | Expr::Field { .. } => (quote! {}, src),
+                    Expr::Intrinsic { name, .. } if name == "sorted_keys" => {
+                        let b = self.fresh("over");
+                        (quote! { let #b = #src; }, quote! { #b })
+                    }
+                    _ => {
+                        return Err("a loop over a slice that is not a variable or a field".into());
+                    }
+                };
                 let len = self.fresh("len");
                 let i = if key == "_" {
                     let i = self.fresh("i");
@@ -2258,6 +2372,7 @@ impl Fx<'_, '_> {
                 };
                 Ok(quote! {
                     {
+                        #bind
                         let #len = #src.len() as i64;
                         for #i in 0i64..#len {
                             #read
@@ -2384,6 +2499,10 @@ impl Fx<'_, '_> {
         {
             return match e {
                 Expr::Unop { op, x, .. } if op == "&" => Ok(self.val(x)?.ts),
+                Expr::Var { name, .. } if self.owned.contains(name) => {
+                    let n = self.w.names.local(name);
+                    Ok(quote! { #n })
+                }
                 _ => Err("a returned pointer to a type `shared` does not list".into()),
             };
         }
@@ -2612,7 +2731,17 @@ impl Fx<'_, '_> {
                         let v = self.val(x)?.ts;
                         Ok(Rx::atom(quote! { #n(#v) }))
                     }
-                    _ => Err(format!("a conversion to {name}, which is not a newtype")),
+                    None if matches!(x.t(), Type::Int { .. }) => match e.t() {
+                        Type::Int { width, signed } if type_name(e.t()) == *name => {
+                            let ty = Writer::int_ty(*width, *signed);
+                            let v = self.val(x)?.at(CAST);
+                            Ok(Rx::with(quote! { #v as #ty }, CAST))
+                        }
+                        t => Err(format!("a conversion to {name} typed {}", type_name(t))),
+                    },
+                    _ => Err(format!(
+                        "a conversion to {name}, which is not a newtype or an integer type"
+                    )),
                 }
             }
             Expr::Make { t } => match t {
@@ -2632,8 +2761,42 @@ impl Fx<'_, '_> {
                     let v = self.place(x)?.recv();
                     Ok(Rx::with(quote! { #v.len() as i64 }, CAST))
                 }
+                "sorted_keys" => self.sorted_keys(args),
                 _ => Err(format!("{name} outside the statement it belongs to")),
             },
+        }
+    }
+
+    /// `sorted_keys(m)`: a new `Vec` of the map's keys in cir/1's order. Integers come out of the
+    /// `BTreeMap` in that order already; strings are sorted by UTF-16 code unit, as Java's
+    /// `String.compareTo` orders them, which a `BTreeMap<String, _>`'s byte order does not always
+    /// match. Other key types are refused.
+    fn sorted_keys(&self, args: &[Expr]) -> R<Rx> {
+        let [m] = args else {
+            return Err("sorted_keys of other than one argument".into());
+        };
+        let Type::Map { key, .. } = m.t() else {
+            return Err(format!("sorted_keys of {}", type_name(m.t())));
+        };
+        let src = self.place(m)?.recv();
+        match &**key {
+            Type::Int { .. } => Ok(Rx::atom(
+                quote! { #src.keys().copied().collect::<Vec<_>>() },
+            )),
+            Type::String => {
+                let k = self.fresh("keys");
+                Ok(Rx::atom(quote! {
+                    {
+                        let mut #k: Vec<String> = #src.keys().cloned().collect();
+                        #k.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+                        #k
+                    }
+                }))
+            }
+            t => Err(format!(
+                "sorted_keys of a map keyed by {}: only integers and strings are ordered",
+                type_name(t)
+            )),
         }
     }
 
@@ -2686,7 +2849,16 @@ impl Fx<'_, '_> {
             Ok(Rx::atom(quote! { #a.#m(#b) }))
         };
         let infix = |o: TokenStream, p: u8, cmp: bool| -> R<Rx> {
-            let a = self.place(x)?.at(if cmp { p + 1 } else { p });
+            let a = self.place(x)?;
+            // `x as T < y` and `x as T << y` parse `<` as the start of T's generic arguments, and a
+            // cast can end any operand built from binary operators (`m & x as T < y`): the left
+            // operand of an operator starting with `<` is parenthesised unless it binds as tightly
+            // as a unary operator, which no cast can end.
+            let a = if a.prec < UNARY && o.to_string().starts_with('<') {
+                a.at(POSTFIX)
+            } else {
+                a.at(if cmp { p + 1 } else { p })
+            };
             let b = self.place(y)?.at(p + 1);
             Ok(Rx::with(quote! { #a #o #b }, p))
         };
@@ -3010,3 +3182,6 @@ mod tests {
         assert!(spec("05", 's', 's').is_err());
     }
 }
+
+#[cfg(test)]
+mod java_forms;

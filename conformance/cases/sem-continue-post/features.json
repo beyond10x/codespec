@@ -1,0 +1,25 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.continue.post",
+    "assign.add",
+    "expr.binop",
+    "expr.lit",
+    "expr.var",
+    "op.eq",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.continue",
+    "stmt.for",
+    "stmt.if",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int"
+  ],
+  "edges": [
+    "continue in a three-clause for"
+  ]
+}

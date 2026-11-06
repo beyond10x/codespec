@@ -1,0 +1,134 @@
+{
+  "format": "cir/1",
+  "name": "stmt_switch",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Name",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "var",
+            "name": "n",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"one\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "case.go:7"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "2",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "3",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"few\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "case.go:9"
+                }
+              ]
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"many\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        }
+      ],
+      "doc": "Name names a count.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Name"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

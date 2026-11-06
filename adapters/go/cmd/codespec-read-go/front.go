@@ -27,6 +27,14 @@ type front struct {
 	// breaks holds the enclosing statements an unlabeled `break` would leave, innermost last:
 	// "loop" or "switch". cir/1 `break` leaves a loop only.
 	breaks []string
+	// loops holds the label of each enclosing loop, innermost last; "" for an unlabeled loop.
+	loops []string
+	// label is the label of the loop statement being read, consumed when its body is entered.
+	label string
+	// unlabeled holds every labeled branch read as an unlabeled cir/1 break or continue.
+	unlabeled map[*ast.BranchStmt]bool
+	// fnBody is the body of the function being read: the scope of its labels.
+	fnBody *ast.BlockStmt
 }
 
 func load(dir string) (*Module, error) {
@@ -61,7 +69,7 @@ func load(dir string) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &front{fset: fset, info: info, pkg: pkg, conv: map[string]bool{},
+	f := &front{fset: fset, info: info, pkg: pkg, conv: map[string]bool{}, unlabeled: map[*ast.BranchStmt]bool{},
 		mod: &Module{Name: name}}
 	for _, file := range files {
 		if file.Doc != nil {
@@ -322,6 +330,7 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	if hasNamedResults(d.Type) {
 		fn.Body = []Stmt{f.namedResultsBody(d)}
 	} else {
+		f.fnBody = d.Body
 		fn.Body = f.stmts(d.Body.List, fn.Results)
 	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
@@ -339,7 +348,16 @@ func recvName(t Type) string {
 	return t.Name
 }
 
+// foreign keeps s verbatim as a foreign statement with a refusal. A labeled branch inside s
+// that was already read as an unlabeled break or continue is unmarked: its source survives in
+// the foreign text, so the loop it names must keep its label.
 func (f *front) foreign(s ast.Stmt, reason string) Stmt {
+	ast.Inspect(s, func(n ast.Node) bool {
+		if b, ok := n.(*ast.BranchStmt); ok {
+			delete(f.unlabeled, b)
+		}
+		return true
+	})
 	f.refuse(s, firstLine(f.src(s)), reason)
 	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos())}
 }
@@ -386,9 +404,117 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 // unlabeled break.
 func (f *front) inside(target string, list []ast.Stmt, results []Type) []Stmt {
 	f.breaks = append(f.breaks, target)
+	if target == "loop" {
+		f.loops = append(f.loops, f.label)
+		f.label = ""
+	}
 	out := f.stmts(list, results)
+	if target == "loop" {
+		f.loops = f.loops[:len(f.loops)-1]
+	}
 	f.breaks = f.breaks[:len(f.breaks)-1]
 	return out
+}
+
+// branchesTo returns every branch naming label in a function body, outside function literals
+// (a label is not visible inside one).
+func branchesTo(label string, fnBody *ast.BlockStmt) []*ast.BranchStmt {
+	var found []*ast.BranchStmt
+	if fnBody == nil {
+		return found
+	}
+	ast.Inspect(fnBody, func(c ast.Node) bool {
+		switch c := c.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.BranchStmt:
+			if c.Label != nil && c.Label.Name == label {
+				found = append(found, c)
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// ownBranches returns every branch to label inside body, and whether every branch naming label
+// anywhere in the function is one of them and a break or continue outside any loop nested in
+// body: one that leaves or continues the labeled loop itself, which is what an unlabeled cir/1
+// break or continue in that loop does. A `goto L`, or any branch to L outside the loop, keeps
+// the labeled statement foreign.
+func ownBranches(label string, fnBody, body *ast.BlockStmt) ([]*ast.BranchStmt, bool) {
+	var found []*ast.BranchStmt
+	ok := true
+	var walk func(n ast.Node, nested bool)
+	walk = func(n ast.Node, nested bool) {
+		ast.Inspect(n, func(c ast.Node) bool {
+			switch c := c.(type) {
+			case *ast.ForStmt:
+				walk(c.Body, true)
+				return false
+			case *ast.RangeStmt:
+				walk(c.Body, true)
+				return false
+			case *ast.FuncLit:
+				return false
+			case *ast.BranchStmt:
+				if c.Label != nil && c.Label.Name == label {
+					found = append(found, c)
+					if nested || (c.Tok != token.BREAK && c.Tok != token.CONTINUE) {
+						ok = false
+					}
+				}
+			}
+			return true
+		})
+	}
+	walk(body, false)
+	inside := map[*ast.BranchStmt]bool{}
+	for _, b := range found {
+		inside[b] = true
+	}
+	for _, b := range branchesTo(label, fnBody) {
+		if !inside[b] {
+			ok = false
+		}
+	}
+	return found, ok
+}
+
+// labeled reads a loop whose label only its own break and continue name as that loop, each of
+// those branches as an unlabeled cir/1 break or continue. When the label names anything else,
+// or a branch to it ends up inside a foreign statement (whose source would name a label the
+// output no longer has), the whole labeled statement is foreign.
+func (f *front) labeled(s *ast.LabeledStmt, results []Type) Stmt {
+	reason := "labeled statement other than a loop whose label only its own break or continue names"
+	var body *ast.BlockStmt
+	switch l := s.Stmt.(type) {
+	case *ast.ForStmt:
+		body = l.Body
+	case *ast.RangeStmt:
+		body = l.Body
+	}
+	if body == nil {
+		return f.foreign(s, reason)
+	}
+	branches, ok := ownBranches(s.Label.Name, f.fnBody, body)
+	if !ok {
+		return f.foreign(s, reason)
+	}
+	refused := len(f.mod.Refusals)
+	f.label = s.Label.Name
+	st := f.stmt(s.Stmt, results)
+	f.label = ""
+	for _, b := range branches {
+		if !f.unlabeled[b] {
+			st.K = "foreign"
+		}
+	}
+	if st.K == "foreign" {
+		f.mod.Refusals = f.mod.Refusals[:refused]
+		return f.foreign(s, reason)
+	}
+	return st
 }
 
 func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
@@ -496,7 +622,15 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 		return st
 	case *ast.BranchStmt:
 		if s.Label != nil {
-			return f.foreign(s, "labeled branch is outside cir/1")
+			inner := len(f.loops) > 0 && f.loops[len(f.loops)-1] == s.Label.Name
+			if !inner || (s.Tok != token.BREAK && s.Tok != token.CONTINUE) {
+				return f.foreign(s, "labeled branch other than a break or continue of the innermost loop")
+			}
+			f.unlabeled[s] = true
+			if s.Tok == token.BREAK {
+				return Stmt{K: "break", Pos: pos}
+			}
+			return Stmt{K: "continue", Pos: pos}
 		}
 		switch s.Tok {
 		case token.BREAK:
@@ -557,6 +691,8 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 			return f.foreign(s, "expression outside cir/1")
 		}
 		return Stmt{K: "send", Chan: &ch, X: &x, Pos: pos}
+	case *ast.LabeledStmt:
+		return f.labeled(s, results)
 	case *ast.GoStmt:
 		return f.foreign(s, "goroutine: concurrency is outside cir/1")
 	case *ast.DeferStmt:

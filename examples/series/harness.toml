@@ -14,3 +14,8 @@ run = ["{build}/go"]
 name = "rust"
 build = ["cargo", "build", "--locked", "--quiet", "--manifest-path", "drivers/rust/Cargo.toml", "--target-dir", "{build}/rust-target"]
 run = ["{build}/rust-target/debug/series-driver"]
+
+[[implementation]]
+name = "go-from-rust"
+build = ["go", "build", "-C", "drivers/go", "-overlay", "overlay-go-from-rust.json", "-o", "{build}/go-from-rust", "./fromrust"]
+run = ["{build}/go-from-rust"]

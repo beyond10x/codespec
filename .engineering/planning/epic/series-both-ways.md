@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: epic:series-both-ways
 kind: epic
-status: active
+status: implemented
 title: 'series both ways: Rust to cir/1 to Go'
 summary: The Rust reader reads the Rust writer's series output; the Go written from it joins the harness.
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:42:35Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-06T14:42:35Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-06T16:37:46Z", actor: "human:timo", revision: 4}
 ---
 # Epic: series both ways
 

@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Eq",
+      "args": [
+        "\"a\"",
+        "\"a\""
+      ]
+    },
+    {
+      "func": "Eq",
+      "args": [
+        "\"a\"",
+        "\"b\""
+      ]
+    }
+  ]
+}

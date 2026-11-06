@@ -1,0 +1,49 @@
+{
+  "format": "cir/1",
+  "name": "expr_lit",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Five",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "5",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Five is a literal.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Five"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Rem",
+      "args": [
+        "-7",
+        "3"
+      ]
+    },
+    {
+      "func": "Rem",
+      "args": [
+        "7",
+        "-3"
+      ]
+    },
+    {
+      "func": "Rem",
+      "args": [
+        "-7",
+        "-3"
+      ]
+    }
+  ]
+}

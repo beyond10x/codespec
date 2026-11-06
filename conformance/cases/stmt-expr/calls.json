@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Say",
+      "args": [
+        "\"hello\""
+      ]
+    },
+    {
+      "func": "Say",
+      "args": [
+        "\"a b\""
+      ]
+    }
+  ]
+}

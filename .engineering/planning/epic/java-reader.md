@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: epic:java-reader
 kind: epic
-status: active
+status: implemented
 title: A Java reader
 summary: codespec-read-java on javac's attributed trees, and a Java example translated to Go and Rust under the harness.
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-06T16:37:46Z", actor: "human:timo", revision: 4}
 ---
 # Epic: A Java reader
 

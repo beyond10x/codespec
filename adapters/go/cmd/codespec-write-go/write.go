@@ -27,6 +27,10 @@ type writer struct {
 	imports map[string]bool
 	used    map[string]bool
 	untyped map[string]Type
+	names   *goNames
+	// aliases names each package the writer's own helpers import, by path; fn is the function being written.
+	aliases map[string]string
+	fn      *Func
 	pos     string
 	err     error
 	// breaks holds the enclosing loops and switches, innermost last; a cir/1 `break` inside a
@@ -63,7 +67,7 @@ var stdPackages = map[string]string{
 }
 
 func write(m *Module) ([]byte, error) {
-	w := &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}}
+	w := &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
 	for i := range m.Types {
 		w.types[m.Types[i].Name] = &m.Types[i]
 	}
@@ -136,15 +140,36 @@ func (w *writer) render(pieces []piece) ([]byte, error) {
 		b.WriteString(comment(m.Doc))
 	}
 	fmt.Fprintf(&b, "package %s\n\n", m.Name)
-	if len(w.imports) > 0 {
+	if len(w.imports)+len(w.aliases) > 0 {
 		var paths []string
+		plain := map[string]bool{}
 		for p := range w.imports {
+			plain[p] = true
+		}
+		for p, a := range w.aliases {
+			if a == p[lastSlash(p)+1:] {
+				plain[p] = true
+			}
+		}
+		for p := range plain {
 			paths = append(paths, p)
 		}
 		sort.Strings(paths)
 		imp := &ast.GenDecl{Tok: token.IMPORT}
 		for _, p := range paths {
 			imp.Specs = append(imp.Specs, &ast.ImportSpec{Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(p)}})
+		}
+		// Packages the code the writer adds uses, renamed because a name of the module holds the
+		// package name (see alias).
+		paths = nil
+		for p, a := range w.aliases {
+			if a != p[lastSlash(p)+1:] {
+				paths = append(paths, p)
+			}
+		}
+		sort.Strings(paths)
+		for _, p := range paths {
+			imp.Specs = append(imp.Specs, &ast.ImportSpec{Name: ident(w.aliases[p]), Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(p)}})
 		}
 		pieces = append([]piece{{node: imp}}, pieces...)
 	}
@@ -245,7 +270,7 @@ func (w *writer) typ(t Type) ast.Expr {
 	case "unit":
 		return &ast.StructType{Fields: &ast.FieldList{}}
 	case "named":
-		return ident(t.Name)
+		return ident(w.names.decl(t.Name))
 	case "ptr":
 		return &ast.StarExpr{X: w.typ(*t.Elem)}
 	case "slice":
@@ -265,13 +290,13 @@ func (w *writer) typ(t Type) ast.Expr {
 
 func (w *writer) typeDecl(td *TypeDecl) []piece {
 	w.pos = td.Pos
-	spec := &ast.TypeSpec{Name: ident(td.Name)}
+	spec := &ast.TypeSpec{Name: ident(w.names.decl(td.Name))}
 	decl := &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{spec}}
 	switch td.K {
 	case "struct":
 		fl := &ast.FieldList{}
 		for _, f := range td.Fields {
-			fl.List = append(fl.List, &ast.Field{Names: []*ast.Ident{ident(f.Name)}, Type: w.typ(f.T)})
+			fl.List = append(fl.List, &ast.Field{Names: []*ast.Ident{ident(w.names.field(td.Name, f.Name))}, Type: w.typ(f.T)})
 		}
 		spec.Type = &ast.StructType{Fields: fl}
 	case "newtype":
@@ -286,7 +311,7 @@ func (w *writer) typeDecl(td *TypeDecl) []piece {
 		consts := &ast.GenDecl{Tok: token.CONST}
 		for _, v := range vs {
 			consts.Specs = append(consts.Specs, &ast.ValueSpec{
-				Names: []*ast.Ident{ident(v.Name)}, Type: ident(td.Name), Values: []ast.Expr{w.expr(v.Value)},
+				Names: []*ast.Ident{ident(w.names.decl(v.Name))}, Type: ident(w.names.decl(td.Name)), Values: []ast.Expr{w.expr(v.Value)},
 			})
 		}
 		return []piece{{doc: td.Doc, node: decl}, {node: consts}}
@@ -302,7 +327,7 @@ func (w *writer) typeDecl(td *TypeDecl) []piece {
 
 func (w *writer) constDecl(c *Const) ast.Decl {
 	w.pos = c.Pos
-	spec := &ast.ValueSpec{Names: []*ast.Ident{ident(c.Name)}, Values: []ast.Expr{w.expr(c.Value)}}
+	spec := &ast.ValueSpec{Names: []*ast.Ident{ident(w.names.decl(c.Name))}, Values: []ast.Expr{w.expr(c.Value)}}
 	if _, ok := w.untyped[c.Name]; !ok {
 		spec.Type = w.typ(c.T)
 	}
@@ -435,17 +460,17 @@ func (w *writer) bind(e Expr, x ast.Expr) (ast.Expr, bool) {
 }
 
 func (w *writer) errorDecl(e *ErrorVar) ast.Decl {
-	w.imports["errors"] = true
 	call := &ast.CallExpr{
-		Fun:  &ast.SelectorExpr{X: ident("errors"), Sel: ident("New")},
+		Fun:  &ast.SelectorExpr{X: ident(w.alias("errors")), Sel: ident("New")},
 		Args: []ast.Expr{&ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(e.Message)}},
 	}
 	return &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{
-		Names: []*ast.Ident{ident(e.Name)}, Values: []ast.Expr{call},
+		Names: []*ast.Ident{ident(w.names.decl(e.Name))}, Values: []ast.Expr{call},
 	}}}
 }
 
 func (w *writer) funcDecl(f *Func) ast.Decl {
+	w.fn = f
 	w.pos = f.Pos
 	w.used = map[string]bool{}
 	params := &ast.FieldList{}
@@ -460,7 +485,7 @@ func (w *writer) funcDecl(f *Func) ast.Decl {
 			results.List = append(results.List, &ast.Field{Type: w.typ(t)})
 		}
 	}
-	d := &ast.FuncDecl{Name: ident(f.Name), Type: &ast.FuncType{Params: params, Results: results}}
+	d := &ast.FuncDecl{Name: ident(w.names.funcOf(f)), Type: &ast.FuncType{Params: params, Results: results}}
 	if f.Recv != nil {
 		w.used[f.Recv.Name] = true
 		d.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ident(f.Recv.Name)}, Type: w.typ(f.Recv.T)}}}
@@ -478,32 +503,39 @@ func (w *writer) moduleNames() []string {
 	m := w.m
 	var out []string
 	for _, td := range m.Types {
-		out = append(out, td.Name)
+		out = append(out, w.names.decl(td.Name))
 		if td.K == "enum" {
 			var vs []Variant
 			if json.Unmarshal(td.Variants, &vs) == nil {
 				for _, v := range vs {
-					out = append(out, v.Name)
+					out = append(out, w.names.decl(v.Name))
 				}
 			}
 		}
 	}
 	for _, c := range m.Consts {
-		out = append(out, c.Name)
+		out = append(out, w.names.decl(c.Name))
 	}
 	for _, e := range m.Errors {
-		out = append(out, e.Name)
+		out = append(out, w.names.decl(e.Name))
 	}
 	for _, f := range m.Funcs {
 		if f.Recv == nil {
-			out = append(out, f.Name)
+			out = append(out, w.names.free(f.Name))
 		}
 	}
 	return out
 }
 
 // collectNames records every name a body binds or reads, so a name the writer invents is fresh.
-func collectNames(body []Stmt, used map[string]bool) {
+func collectNames(body []Stmt, used map[string]bool) { collect(body, used, true, false) }
+
+// boundNames records every name a body binds or reads in cir/1 itself, a for loop's init and post
+// included, leaving out the identifiers of foreign statements: a foreign Go statement names the
+// standard packages it uses (fmt.Println), and those are the packages, not names that hide them.
+func boundNames(body []Stmt, used map[string]bool) { collect(body, used, false, true) }
+
+func collect(body []Stmt, used map[string]bool, foreign, clauses bool) {
 	var ex func(e *Expr)
 	ex = func(e *Expr) {
 		if e == nil {
@@ -528,7 +560,7 @@ func collectNames(body []Stmt, used map[string]bool) {
 			used[n] = true
 		}
 		used[s.Name], used[s.Key], used[s.Val] = true, true, true
-		if s.K == "foreign" {
+		if foreign && s.K == "foreign" {
 			for _, n := range foreignNames(s.Src) {
 				used[n] = true
 			}
@@ -541,11 +573,18 @@ func collectNames(body []Stmt, used map[string]bool) {
 				ex(&l[j])
 			}
 		}
-		collectNames(s.Then, used)
-		collectNames(s.Else, used)
-		collectNames(s.Body, used)
+		collect(s.Then, used, foreign, clauses)
+		collect(s.Else, used, foreign, clauses)
+		collect(s.Body, used, foreign, clauses)
 		for _, c := range s.Cases {
-			collectNames(c.Body, used)
+			collect(c.Body, used, foreign, clauses)
+		}
+		if clauses {
+			for _, cl := range []*Stmt{s.Init, s.Post} {
+				if cl != nil {
+					collect([]Stmt{*cl}, used, foreign, clauses)
+				}
+			}
 		}
 	}
 }
@@ -875,16 +914,18 @@ func (w *writer) expr(e Expr) ast.Expr {
 		return x
 	case "nil":
 		return ident("nil")
-	case "var", "const", "errvar":
+	case "var":
 		return ident(e.Name)
+	case "const", "errvar":
+		return ident(w.names.decl(e.Name))
 	case "field":
-		return &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(e.Name)}
+		return &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.field(typeNameOf(e.X), e.Name))}
 	case "index":
 		return &ast.IndexExpr{X: primary(w.expr(*e.X)), Index: w.expr(*e.Index)}
 	case "call":
-		return &ast.CallExpr{Fun: ident(e.Name), Args: w.exprs(e.Args)}
+		return &ast.CallExpr{Fun: ident(w.names.free(e.Name)), Args: w.exprs(e.Args)}
 	case "method":
-		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(e.Name)}, Args: w.exprs(e.Args)}
+		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.method(typeNameOf(e.X), e.Name))}, Args: w.exprs(e.Args)}
 	case "binop":
 		op, ok := tokens[e.Op]
 		if !ok || op.Precedence() == token.LowestPrec {
@@ -905,13 +946,13 @@ func (w *writer) expr(e Expr) ast.Expr {
 		}
 		return &ast.UnaryExpr{Op: op, X: x}
 	case "struct":
-		lit := &ast.CompositeLit{Type: ident(e.Name)}
+		lit := &ast.CompositeLit{Type: ident(w.names.decl(e.Name))}
 		for _, f := range e.Fields {
-			lit.Elts = append(lit.Elts, &ast.KeyValueExpr{Key: ident(f.Name), Value: w.expr(f.Value)})
+			lit.Elts = append(lit.Elts, &ast.KeyValueExpr{Key: ident(w.names.field(e.Name, f.Name)), Value: w.expr(f.Value)})
 		}
 		return lit
 	case "conv":
-		return &ast.CallExpr{Fun: ident(e.Name), Args: []ast.Expr{w.expr(*e.X)}}
+		return &ast.CallExpr{Fun: ident(w.names.decl(e.Name)), Args: []ast.Expr{w.expr(*e.X)}}
 	case "make":
 		if e.T.K != "map" && e.T.K != "slice" {
 			w.refuse("make of a %s has no Go form", e.T.K)
@@ -921,6 +962,9 @@ func (w *writer) expr(e Expr) ast.Expr {
 	case "zero":
 		return w.zero(*e.T)
 	case "intrinsic":
+		if e.Name == "sorted_keys" {
+			return w.sortedKeys(e)
+		}
 		in, ok := intrinsics[e.Name]
 		if !ok {
 			w.refuse("intrinsic %q has no Go form", e.Name)
@@ -928,10 +972,15 @@ func (w *writer) expr(e Expr) ast.Expr {
 		}
 		var fun ast.Expr = ident(in[1])
 		if in[0] != "" {
-			w.imports[in[0]] = true
-			fun = &ast.SelectorExpr{X: ident(in[0]), Sel: ident(in[1])}
+			fun = &ast.SelectorExpr{X: ident(w.alias(in[0])), Sel: ident(in[1])}
 		}
-		return &ast.CallExpr{Fun: fun, Args: w.exprs(e.Args)}
+		call := &ast.CallExpr{Fun: fun, Args: w.exprs(e.Args)}
+		// Go's len is an int; a len of another integer type (a Rust reader's `len() as i64`)
+		// is converted to that type.
+		if e.Name == "len" && e.T != nil && !(e.T.K == "int" && e.T.Width == "platform" && e.T.Signed) {
+			return &ast.CallExpr{Fun: w.typ(*e.T), Args: []ast.Expr{call}}
+		}
+		return call
 	case "to_error":
 		return w.expr(*e.X)
 	}
@@ -956,11 +1005,11 @@ func (w *writer) zero(t Type) ast.Expr {
 		switch {
 		case td == nil:
 		case td.K == "struct":
-			return &ast.CompositeLit{Type: ident(t.Name)}
+			return &ast.CompositeLit{Type: ident(w.names.decl(t.Name))}
 		case td.K == "newtype" || td.K == "enum":
-			return &ast.CallExpr{Fun: ident(t.Name), Args: []ast.Expr{w.zero(*td.Under)}}
+			return &ast.CallExpr{Fun: ident(w.names.decl(t.Name)), Args: []ast.Expr{w.zero(*td.Under)}}
 		}
-		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{ident(t.Name)}}}
+		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{ident(w.names.decl(t.Name))}}}
 	}
 	w.refuse("the zero value of a %s has no Go form", t.K)
 	return ident("nil")

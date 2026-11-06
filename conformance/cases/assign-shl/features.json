@@ -1,0 +1,11 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "assign.shl",
+    "expr.var",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.return",
+    "type.int"
+  ]
+}

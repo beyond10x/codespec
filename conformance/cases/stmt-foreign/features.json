@@ -1,0 +1,14 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.foreign",
+    "assign.add",
+    "expr.lit",
+    "expr.var",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.let",
+    "stmt.return",
+    "type.int"
+  ]
+}

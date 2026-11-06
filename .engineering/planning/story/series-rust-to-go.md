@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:series-rust-to-go
 kind: story
-status: active
+status: implemented
 title: series Rust to cir/1 to Go under the harness
 relations:
 - decomposes: epic:series-both-ways
@@ -17,11 +17,14 @@ scope:
 - confidence: cited
   path: examples/series
 - confidence: cited
+  path: examples/series/drivers/go/fromrust
+- confidence: cited
   path: website/docs/examples/series.md
-revision: 4
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:42:35Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:42:35Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T16:37:41Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: series Rust → cir/1 → Go under the harness
 

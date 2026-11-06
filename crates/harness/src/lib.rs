@@ -18,7 +18,8 @@
 //! refused.
 //!
 //! `trace = "inventory"` at the top selects the inventory trace generator, `trace = "series"` the
-//! series one; without it, or with `trace = "orders"`, the orders one. Another name is refused.
+//! series one, `trace = "ledger"` the ledger one; without it, or with `trace = "orders"`, the orders
+//! one. Another name is refused.
 //!
 //! # Trace
 //!
@@ -101,6 +102,28 @@
 //! | `prime <n>` | `IsPrime` | `prime <true\|false>` |
 //! | `bucket <v>` | `Bucket` | `bucket <name>` |
 //! | `residue <v>` | `Residue` | `residue <name>` |
+//!
+//! # Ledger trace and output
+//!
+//! [`ledger_trace`] draws on the same generator. Ids are seven names, some of whose UTF-16 and
+//! UTF-8 orders differ, and `nobody`, which no `open` uses; `open` repeats ids, so every error path
+//! (`unknown account`, `duplicate account`, `non-positive amount`, `insufficient funds`) is
+//! reached. A quarter of amounts are zero, negative or near a `long` edge, so deposits cross the
+//! `long` maximum and fees, which may overdraw, its minimum; a third of points are near an `int`
+//! edge, so awards cross both `int` edges. Each command prints one line; `<n>` is decimal.
+//!
+//! | line | call | output |
+//! |---|---|---|
+//! | `new` | `new Ledger()` | `new` |
+//! | `open <id>` | `open` | `open ok <n>` or `open err <error>` |
+//! | `post <id> <kind> <amount>` | `post`; `kind` `deposit`, `withdrawal` or `fee` | `post ok` or `post err <error>` |
+//! | `award <id> <points>` | `award`; `points` an `int` | `award ok <n>` or `award err <error>` |
+//! | `find <id>` | `find`, then the account's `describe` | `find found <text>` or `find missing` |
+//! | `largest <id>` | `find`, then `largest` | `largest <n>` or `largest missing` |
+//! | `reach <id> <target>` | `find`, then `reach` | `reach <n>` or `reach missing` |
+//! | `balances` | `balances` | `balances <text>` |
+//! | `tallied` | `tallied` | `tallied <n>` |
+//! | `count` | `count` | `count <n>` |
 //!
 //! # Comparison
 //!
@@ -349,6 +372,87 @@ fn value(r: &mut SplitMix64) -> i64 {
     }
 }
 
+/// Account ids. `Ω` (U+03A9), `𝄞` (U+1D11E, a surrogate pair in UTF-16) and `ｚ` (U+FF5A)
+/// sort differently by UTF-16 code unit, as Java orders them, than by UTF-8 byte.
+const LEDGER_IDS: &[&str] = &["alice", "bob", "B", "zoë", "Ω", "𝄞", "ｚ"];
+/// An id no `open` uses.
+const LEDGER_UNKNOWN_ID: &str = "nobody";
+const LEDGER_KINDS: &[&str] = &["deposit", "withdrawal", "fee"];
+/// Amounts that are not positive, or whose sum or difference with a balance leaves `long`.
+const EDGE_AMOUNTS: &[i64] = &[
+    0,
+    -1,
+    i64::MIN,
+    i64::MAX,
+    i64::MAX,
+    1 << 62,
+    (1 << 62) + 1,
+    i64::MAX - 1,
+];
+/// Points whose sum with a total leaves `int`.
+const EDGE_POINTS: &[i32] = &[i32::MAX, i32::MIN, i32::MIN + 1, 1 << 30, -(1 << 30), -1, 1];
+const EDGE_TARGETS: &[i64] = &[0, -1, i64::MAX, i64::MIN];
+
+/// The `ledger` trace of `commands` commands for `seed` (manifest `trace = "ledger"`).
+pub fn ledger_trace(seed: u64, commands: usize) -> String {
+    let mut r = SplitMix64(seed);
+    let mut out = String::new();
+    for i in 0..commands {
+        let roll = r.below(100);
+        if i == 0 || roll < 2 {
+            out.push_str("new\n");
+            continue;
+        }
+        let line = match roll {
+            2..=13 => format!("open {}", r.pick(LEDGER_IDS)),
+            14..=49 => {
+                let id = ledger_id(&mut r);
+                let kind = r.pick(LEDGER_KINDS);
+                let amount = if r.below(4) == 0 {
+                    EDGE_AMOUNTS[r.below(EDGE_AMOUNTS.len() as u64) as usize]
+                } else {
+                    1 + r.below(1000) as i64
+                };
+                format!("post {id} {kind} {amount}")
+            }
+            50..=66 => {
+                let id = ledger_id(&mut r);
+                let points = if r.below(3) == 0 {
+                    EDGE_POINTS[r.below(EDGE_POINTS.len() as u64) as usize]
+                } else {
+                    r.below(201) as i32 - 100
+                };
+                format!("award {id} {points}")
+            }
+            67..=73 => format!("find {}", ledger_id(&mut r)),
+            74..=79 => format!("largest {}", ledger_id(&mut r)),
+            80..=85 => {
+                let id = ledger_id(&mut r);
+                let target = if r.below(4) == 0 {
+                    EDGE_TARGETS[r.below(EDGE_TARGETS.len() as u64) as usize]
+                } else {
+                    1 + r.below(3000) as i64
+                };
+                format!("reach {id} {target}")
+            }
+            86..=91 => "balances".to_string(),
+            92..=95 => "tallied".to_string(),
+            _ => "count".to_string(),
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+fn ledger_id(r: &mut SplitMix64) -> &'static str {
+    if r.below(8) == 0 {
+        LEDGER_UNKNOWN_ID
+    } else {
+        r.pick(LEDGER_IDS)
+    }
+}
+
 /// `harness.toml`: the implementations of one example, the first the reference.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -370,6 +474,8 @@ pub enum TraceKind {
     Inventory,
     /// [`series_trace`]: the `series` package.
     Series,
+    /// [`ledger_trace`]: the Java `ledger` package.
+    Ledger,
 }
 
 impl TraceKind {
@@ -379,6 +485,7 @@ impl TraceKind {
             TraceKind::Orders => trace(seed, commands),
             TraceKind::Inventory => inventory_trace(seed, commands),
             TraceKind::Series => series_trace(seed, commands),
+            TraceKind::Ledger => ledger_trace(seed, commands),
         }
     }
 }

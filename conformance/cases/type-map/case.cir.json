@@ -1,0 +1,156 @@
+{
+  "format": "cir/1",
+  "name": "type_map",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Stored",
+      "exported": true,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "m"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "map",
+                "key": {
+                  "k": "string"
+                },
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "m",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "m",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:7"
+        }
+      ],
+      "doc": "Stored puts the length of a string under it and reads it back.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Stored"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "format": "cir/1",
+  "name": "unop_plus",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Plus",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "+",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Plus is unary plus.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Plus"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

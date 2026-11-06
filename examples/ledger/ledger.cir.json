@@ -1,0 +1,3543 @@
+{
+  "format": "cir/1",
+  "name": "ledger",
+  "reader": {
+    "language": "java",
+    "name": "codespec-read-java",
+    "version": "0.2.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Account",
+      "exported": true,
+      "fields": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "balance",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "points",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "postings",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "amounts",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        }
+      ],
+      "doc": "One account: its balance, its points, how many postings it took and their amounts.",
+      "pos": "Account.java:7"
+    },
+    {
+      "k": "enum",
+      "name": "Kind",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "DEPOSIT",
+          "value": {
+            "k": "lit",
+            "value": "\"DEPOSIT\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "WITHDRAWAL",
+          "value": {
+            "k": "lit",
+            "value": "\"WITHDRAWAL\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "FEE",
+          "value": {
+            "k": "lit",
+            "value": "\"FEE\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "doc": "What a posting records.",
+      "pos": "Kind.java:4"
+    },
+    {
+      "k": "struct",
+      "name": "Ledger",
+      "exported": true,
+      "fields": [
+        {
+          "name": "numbers",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "int",
+              "width": "32",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "accounts",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Account"
+              }
+            }
+          }
+        },
+        {
+          "name": "tally",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "named",
+              "name": "Kind"
+            },
+            "elem": {
+              "k": "int",
+              "width": "32",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "count",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Accounts by id, numbered from 1 in the order they were opened, and a tally of postings per kind.",
+      "pos": "Ledger.java:10"
+    }
+  ],
+  "errors": [
+    {
+      "name": "DuplicateAccount",
+      "message": "duplicate account",
+      "pos": "DuplicateAccount.java:4"
+    },
+    {
+      "name": "InsufficientFunds",
+      "message": "insufficient funds",
+      "pos": "InsufficientFunds.java:4"
+    },
+    {
+      "name": "NonPositiveAmount",
+      "message": "non-positive amount",
+      "pos": "NonPositiveAmount.java:4"
+    },
+    {
+      "name": "UnknownAccount",
+      "message": "unknown account",
+      "pos": "UnknownAccount.java:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "NewAccount",
+      "exported": true,
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Account",
+                "fields": [
+                  {
+                    "name": "amounts",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            }
+          ],
+          "pos": "Account.java:14"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "id",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "id",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Account.java:15"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            }
+          ],
+          "pos": "Account.java:14"
+        }
+      ],
+      "pos": "Account.java:14"
+    },
+    {
+      "name": "id",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "id",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Account.java:19"
+        }
+      ],
+      "pos": "Account.java:18"
+    },
+    {
+      "name": "balance",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "balance",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:23"
+        }
+      ],
+      "pos": "Account.java:22"
+    },
+    {
+      "name": "points",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "points",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:27"
+        }
+      ],
+      "pos": "Account.java:26"
+    },
+    {
+      "name": "postings",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "postings",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:31"
+        }
+      ],
+      "pos": "Account.java:30"
+    },
+    {
+      "name": "post",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "kind",
+          "t": {
+            "k": "named",
+            "name": "Kind"
+          }
+        },
+        {
+          "name": "amount",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "var",
+            "name": "kind",
+            "t": {
+              "k": "named",
+              "name": "Kind"
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "DEPOSIT",
+                  "t": {
+                    "k": "named",
+                    "name": "Kind"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "assign",
+                  "op": "+=",
+                  "lhs": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "this",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Account"
+                          }
+                        }
+                      },
+                      "name": "balance",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "var",
+                      "name": "amount",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "Account.java:38"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "WITHDRAWAL",
+                  "t": {
+                    "k": "named",
+                    "name": "Kind"
+                  }
+                },
+                {
+                  "k": "const",
+                  "name": "FEE",
+                  "t": {
+                    "k": "named",
+                    "name": "Kind"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "assign",
+                  "op": "-=",
+                  "lhs": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "this",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Account"
+                          }
+                        }
+                      },
+                      "name": "balance",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "var",
+                      "name": "amount",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "Account.java:42"
+                }
+              ]
+            },
+            {
+              "values": [],
+              "body": []
+            }
+          ],
+          "pos": "Account.java:36"
+        },
+        {
+          "k": "incr",
+          "x": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            },
+            "name": "postings",
+            "t": {
+              "k": "int",
+              "width": "32",
+              "signed": true
+            }
+          },
+          "pos": "Account.java:47"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "amounts",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  },
+                  "name": "amounts",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "amount",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "Account.java:48"
+        }
+      ],
+      "doc": "Records one amount: a deposit adds it, a withdrawal or a fee takes it; the balance wraps as a long does.",
+      "pos": "Account.java:35"
+    },
+    {
+      "name": "award",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "op": "+=",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "points",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:53"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "points",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:54"
+        }
+      ],
+      "doc": "Adds n points, which may be negative; the total wraps as an int does.",
+      "pos": "Account.java:52"
+    },
+    {
+      "name": "largest",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "max"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:59"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "Account.java:60"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Account"
+                        }
+                      }
+                    },
+                    "name": "amounts",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "pos": "Account.java:60"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Account"
+                        }
+                      }
+                    },
+                    "name": "amounts",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "max",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "max",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "this",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "Account"
+                            }
+                          }
+                        },
+                        "name": "amounts",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "i",
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "Account.java:62"
+                }
+              ],
+              "pos": "Account.java:61"
+            }
+          ],
+          "pos": "Account.java:60"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "max",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:65"
+        }
+      ],
+      "doc": "The largest single amount, or 0.",
+      "pos": "Account.java:58"
+    },
+    {
+      "name": "reach",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "target",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:70"
+        },
+        {
+          "k": "let",
+          "names": [
+            "sum"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:71"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Account"
+                        }
+                      }
+                    },
+                    "name": "amounts",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "sum",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Account"
+                        }
+                      }
+                    },
+                    "name": "amounts",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "Account.java:73"
+            },
+            {
+              "k": "incr",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "pos": "Account.java:74"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">=",
+                "x": {
+                  "k": "var",
+                  "name": "sum",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "target",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "break",
+                  "pos": "Account.java:76"
+                }
+              ],
+              "pos": "Account.java:75"
+            }
+          ],
+          "pos": "Account.java:72"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "sum",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "target",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "-1",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "Account.java:80"
+            }
+          ],
+          "pos": "Account.java:79"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Account.java:82"
+        }
+      ],
+      "doc": "How many leading amounts it takes to reach target, or -1.",
+      "pos": "Account.java:69"
+    },
+    {
+      "name": "describe",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"%s: %d after %d postings, %d points\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  },
+                  "name": "id",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  },
+                  "name": "balance",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  },
+                  "name": "postings",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  },
+                  "name": "points",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Account.java:86"
+        }
+      ],
+      "pos": "Account.java:85"
+    },
+    {
+      "name": "NewLedger",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Ledger",
+                "fields": [
+                  {
+                    "name": "numbers",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "map",
+                        "key": {
+                          "k": "string"
+                        },
+                        "elem": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "accounts",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Account"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "tally",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "map",
+                        "key": {
+                          "k": "named",
+                          "name": "Kind"
+                        },
+                        "elem": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Ledger"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Ledger"
+                }
+              }
+            }
+          ],
+          "pos": "Ledger.java:10"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Ledger"
+                }
+              }
+            }
+          ],
+          "pos": "Ledger.java:10"
+        }
+      ],
+      "pos": "Ledger.java:10"
+    },
+    {
+      "name": "open",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "known"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:18"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "known",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "DuplicateAccount",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:20"
+            }
+          ],
+          "pos": "Ledger.java:19"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Ledger"
+                  }
+                }
+              },
+              "name": "accounts",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Ledger"
+                      }
+                    }
+                  },
+                  "name": "accounts",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  }
+                },
+                {
+                  "k": "call",
+                  "name": "NewAccount",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              }
+            }
+          ],
+          "pos": "Ledger.java:22"
+        },
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Ledger"
+                        }
+                      }
+                    },
+                    "name": "accounts",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Account"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:23"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:24"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "Ledger.java:25"
+        }
+      ],
+      "doc": "Opens an account and returns its number.",
+      "pos": "Ledger.java:17"
+    },
+    {
+      "name": "find",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Account"
+          }
+        },
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:29"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "false",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:31"
+            }
+          ],
+          "pos": "Ledger.java:30"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "accounts",
+                "t": {
+                  "k": "slice",
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            },
+            {
+              "k": "lit",
+              "value": "true",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "Ledger.java:33"
+        }
+      ],
+      "pos": "Ledger.java:28"
+    },
+    {
+      "name": "post",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "t": {
+            "k": "named",
+            "name": "Kind"
+          }
+        },
+        {
+          "name": "amount",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "amount",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "NonPositiveAmount",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:39"
+            }
+          ],
+          "pos": "Ledger.java:38"
+        },
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:41"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "UnknownAccount",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:43"
+            }
+          ],
+          "pos": "Ledger.java:42"
+        },
+        {
+          "k": "let",
+          "names": [
+            "a"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "accounts",
+                "t": {
+                  "k": "slice",
+                  "elem": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                }
+              },
+              "index": {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            }
+          ],
+          "pos": "Ledger.java:45"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "&&",
+            "x": {
+              "k": "binop",
+              "op": "==",
+              "x": {
+                "k": "var",
+                "name": "kind",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              "y": {
+                "k": "const",
+                "name": "WITHDRAWAL",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": "<",
+              "x": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                },
+                "name": "balance",
+                "args": [],
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "amount",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "InsufficientFunds",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:47"
+            }
+          ],
+          "pos": "Ledger.java:46"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "method",
+            "x": {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Account"
+                }
+              }
+            },
+            "name": "post",
+            "args": [
+              {
+                "k": "var",
+                "name": "kind",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              {
+                "k": "var",
+                "name": "amount",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "Ledger.java:49"
+        },
+        {
+          "k": "incr",
+          "x": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Ledger"
+                }
+              }
+            },
+            "name": "count",
+            "t": {
+              "k": "int",
+              "width": "32",
+              "signed": true
+            }
+          },
+          "pos": "Ledger.java:50"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "tally",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "named",
+                    "name": "Kind"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "kind",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Ledger"
+                      }
+                    }
+                  },
+                  "name": "tally",
+                  "t": {
+                    "k": "map",
+                    "key": {
+                      "k": "named",
+                      "name": "Kind"
+                    },
+                    "elem": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  }
+                },
+                "index": {
+                  "k": "var",
+                  "name": "kind",
+                  "t": {
+                    "k": "named",
+                    "name": "Kind"
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:51"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "Ledger.java:37"
+        }
+      ],
+      "doc": "Posts a positive amount; a withdrawal may not overdraw, a fee may.",
+      "pos": "Ledger.java:37"
+    },
+    {
+      "name": "award",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "points",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "id",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:56"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "UnknownAccount",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:58"
+            }
+          ],
+          "pos": "Ledger.java:57"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "method",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Ledger"
+                      }
+                    }
+                  },
+                  "name": "accounts",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Account"
+                      }
+                    }
+                  }
+                },
+                "index": {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "award",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "points",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "Ledger.java:60"
+        }
+      ],
+      "doc": "Awards points to an account and returns its new total.",
+      "pos": "Ledger.java:55"
+    },
+    {
+      "name": "balances",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "out"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "\"\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Ledger.java:65"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "id",
+          "over": {
+            "k": "intrinsic",
+            "name": "sorted_keys",
+            "args": [
+              {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Ledger"
+                    }
+                  }
+                },
+                "name": "numbers",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "string"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "sprintf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"%s=%d;\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "id",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "method",
+                      "x": {
+                        "k": "index",
+                        "x": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "this",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Ledger"
+                              }
+                            }
+                          },
+                          "name": "accounts",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Account"
+                              }
+                            }
+                          }
+                        },
+                        "index": {
+                          "k": "binop",
+                          "op": "-",
+                          "x": {
+                            "k": "index",
+                            "x": {
+                              "k": "field",
+                              "x": {
+                                "k": "var",
+                                "name": "this",
+                                "t": {
+                                  "k": "ptr",
+                                  "elem": {
+                                    "k": "named",
+                                    "name": "Ledger"
+                                  }
+                                }
+                              },
+                              "name": "numbers",
+                              "t": {
+                                "k": "map",
+                                "key": {
+                                  "k": "string"
+                                },
+                                "elem": {
+                                  "k": "int",
+                                  "width": "32",
+                                  "signed": true
+                                }
+                              }
+                            },
+                            "index": {
+                              "k": "var",
+                              "name": "id",
+                              "t": {
+                                "k": "string"
+                              }
+                            },
+                            "t": {
+                              "k": "int",
+                              "width": "32",
+                              "signed": true
+                            }
+                          },
+                          "y": {
+                            "k": "lit",
+                            "value": "1",
+                            "t": {
+                              "k": "int",
+                              "width": "32",
+                              "signed": true
+                            }
+                          },
+                          "t": {
+                            "k": "int",
+                            "width": "32",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Account"
+                          }
+                        }
+                      },
+                      "name": "balance",
+                      "args": [],
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "pos": "Ledger.java:67"
+            }
+          ],
+          "pos": "Ledger.java:66"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Ledger.java:69"
+        }
+      ],
+      "doc": "Every balance, in id order.",
+      "pos": "Ledger.java:64"
+    },
+    {
+      "name": "tallied",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:74"
+        },
+        {
+          "k": "for_range",
+          "key": "k",
+          "val": "_",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Ledger"
+                }
+              }
+            },
+            "name": "tally",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "named",
+                "name": "Kind"
+              },
+              "elem": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Ledger"
+                        }
+                      }
+                    },
+                    "name": "tally",
+                    "t": {
+                      "k": "map",
+                      "key": {
+                        "k": "named",
+                        "name": "Kind"
+                      },
+                      "elem": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "k",
+                    "t": {
+                      "k": "named",
+                      "name": "Kind"
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "Ledger.java:76"
+            }
+          ],
+          "pos": "Ledger.java:75"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:78"
+        }
+      ],
+      "doc": "The postings tallied over every kind; the order of the kinds does not change a sum.",
+      "pos": "Ledger.java:73"
+    },
+    {
+      "name": "count",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Ledger"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Ledger"
+                  }
+                }
+              },
+              "name": "count",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Ledger.java:82"
+        }
+      ],
+      "pos": "Ledger.java:81"
+    }
+  ],
+  "layout": [
+    "type:Account",
+    "func:NewAccount",
+    "func:Account.id",
+    "func:Account.balance",
+    "func:Account.points",
+    "func:Account.postings",
+    "func:Account.post",
+    "func:Account.award",
+    "func:Account.largest",
+    "func:Account.reach",
+    "func:Account.describe",
+    "error:DuplicateAccount",
+    "error:InsufficientFunds",
+    "type:Kind",
+    "type:Ledger",
+    "func:NewLedger",
+    "func:Ledger.open",
+    "func:Ledger.find",
+    "func:Ledger.post",
+    "func:Ledger.award",
+    "func:Ledger.balances",
+    "func:Ledger.tallied",
+    "func:Ledger.count",
+    "error:NonPositiveAmount",
+    "error:UnknownAccount"
+  ],
+  "facts": {
+    "shared": [
+      "Account"
+    ],
+    "comma_ok": [
+      "Ledger.find"
+    ],
+    "fallible": [
+      "Ledger.open",
+      "Ledger.post",
+      "Ledger.award"
+    ],
+    "read_only": [
+      "Account.id",
+      "Account.balance",
+      "Account.points",
+      "Account.postings",
+      "Account.largest",
+      "Account.reach",
+      "Account.describe",
+      "Ledger.find",
+      "Ledger.balances",
+      "Ledger.tallied",
+      "Ledger.count"
+    ],
+    "displays": [
+      "Kind"
+    ],
+    "unordered_iteration": [
+      "Ledger.java:75"
+    ]
+  }
+}

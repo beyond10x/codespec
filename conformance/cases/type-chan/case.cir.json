@@ -1,0 +1,131 @@
+{
+  "format": "cir/1",
+  "name": "type_chan",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Pipe",
+      "exported": true,
+      "params": [
+        {
+          "name": "ch",
+          "t": {
+            "k": "chan",
+            "elem": {
+              "k": "string"
+            },
+            "dir": "both"
+          }
+        },
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "case.go:5"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "case.go:5"
+          },
+          "body": [
+            {
+              "k": "send",
+              "chan": {
+                "k": "var",
+                "name": "ch",
+                "t": {
+                  "k": "chan",
+                  "elem": {
+                    "k": "string"
+                  },
+                  "dir": "both"
+                }
+              },
+              "x": {
+                "k": "lit",
+                "value": "\"v\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "pos": "case.go:6"
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Pipe sends n values on a channel.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Pipe"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

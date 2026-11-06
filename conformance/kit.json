@@ -1,0 +1,568 @@
+{
+  "format": "codespec-conformance-kit/1",
+  "cir": "cir/1",
+  "features": [
+    {
+      "id": "assign.add",
+      "family": "operator",
+      "op": "+=",
+      "description": "`+=`: addition, or string concatenation, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.and",
+      "family": "operator",
+      "op": "&=",
+      "description": "`&=`: bitwise and, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.and_not",
+      "family": "operator",
+      "op": "&^=",
+      "description": "`&^=`: bit clear: x and not y, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.div",
+      "family": "operator",
+      "op": "/=",
+      "description": "`/=`: division, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.mul",
+      "family": "operator",
+      "op": "*=",
+      "description": "`*=`: multiplication, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.or",
+      "family": "operator",
+      "op": "|=",
+      "description": "`|=`: bitwise or, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.rem",
+      "family": "operator",
+      "op": "%=",
+      "description": "`%=`: remainder, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.shl",
+      "family": "operator",
+      "op": "<<=",
+      "description": "`<<=`: left shift, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.shr",
+      "family": "operator",
+      "op": ">>=",
+      "description": "`>>=`: right shift, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.sub",
+      "family": "operator",
+      "op": "-=",
+      "description": "`-=`: subtraction, assigned to the left-hand side"
+    },
+    {
+      "id": "assign.xor",
+      "family": "operator",
+      "op": "^=",
+      "description": "`^=`: bitwise exclusive or, assigned to the left-hand side"
+    },
+    {
+      "id": "decl.enum",
+      "family": "type",
+      "description": "A newtype whose values are exactly the declared variants."
+    },
+    {
+      "id": "decl.newtype",
+      "family": "type",
+      "description": "A basic type given a name."
+    },
+    {
+      "id": "decl.struct",
+      "family": "type",
+      "description": "the `struct` type declaration"
+    },
+    {
+      "id": "decl.union",
+      "family": "type",
+      "description": "Tagged variants, each carrying its own fields."
+    },
+    {
+      "id": "expr.binop",
+      "family": "expression",
+      "description": "`+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`, `<`, `<=`, `>` or `>=`."
+    },
+    {
+      "id": "expr.call",
+      "family": "expression",
+      "description": "A call of a module function."
+    },
+    {
+      "id": "expr.const",
+      "family": "expression",
+      "description": "A declared constant or enum variant."
+    },
+    {
+      "id": "expr.conv",
+      "family": "expression",
+      "description": "A conversion to the named type `name`."
+    },
+    {
+      "id": "expr.errvar",
+      "family": "expression",
+      "description": "A sentinel error."
+    },
+    {
+      "id": "expr.field",
+      "family": "expression",
+      "description": "the `field` expression"
+    },
+    {
+      "id": "expr.index",
+      "family": "expression",
+      "description": "the `index` expression"
+    },
+    {
+      "id": "expr.intrinsic",
+      "family": "expression",
+      "description": "`sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match."
+    },
+    {
+      "id": "expr.lit",
+      "family": "expression",
+      "description": "A literal in the source language's spelling."
+    },
+    {
+      "id": "expr.make",
+      "family": "expression",
+      "description": "An empty map or slice."
+    },
+    {
+      "id": "expr.method",
+      "family": "expression",
+      "description": "the `method` expression"
+    },
+    {
+      "id": "expr.nil",
+      "family": "expression",
+      "description": "the `nil` expression"
+    },
+    {
+      "id": "expr.struct",
+      "family": "expression",
+      "description": "the `struct` expression"
+    },
+    {
+      "id": "expr.to_error",
+      "family": "expression",
+      "description": "A value of an error struct used where an error is expected."
+    },
+    {
+      "id": "expr.unop",
+      "family": "expression",
+      "description": "`!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&` (reference)."
+    },
+    {
+      "id": "expr.var",
+      "family": "expression",
+      "description": "A local, parameter or receiver."
+    },
+    {
+      "id": "expr.zero",
+      "family": "expression",
+      "description": "the `zero` expression"
+    },
+    {
+      "id": "fact.comma_ok",
+      "family": "fact",
+      "description": "Functions whose `(T, bool)` result is always `(zero, false)` or `(x, true)`."
+    },
+    {
+      "id": "fact.displays",
+      "family": "fact",
+      "description": "Types with a text rendering: an `Error()`/`String()` method, or a string enum or newtype."
+    },
+    {
+      "id": "fact.fallible",
+      "family": "fact",
+      "description": "Functions whose last result is an error, every error path returning zero values."
+    },
+    {
+      "id": "fact.messages",
+      "family": "fact",
+      "description": "For channels of `any`: every type sent on one."
+    },
+    {
+      "id": "fact.read_only",
+      "family": "fact",
+      "description": "Methods that write nothing rooted at their receiver."
+    },
+    {
+      "id": "fact.shared",
+      "family": "fact",
+      "description": "Struct types a reference to which is stored in a container or a struct field."
+    },
+    {
+      "id": "fact.unordered_iteration",
+      "family": "fact",
+      "description": "Positions of loops over a map, whose order the source language leaves unspecified."
+    },
+    {
+      "id": "intrinsic.append",
+      "family": "intrinsic",
+      "description": "append values to a slice"
+    },
+    {
+      "id": "intrinsic.errorf",
+      "family": "intrinsic",
+      "description": "format values into a new error"
+    },
+    {
+      "id": "intrinsic.len",
+      "family": "intrinsic",
+      "description": "length of a string, slice or map"
+    },
+    {
+      "id": "intrinsic.println",
+      "family": "intrinsic",
+      "description": "print values and a newline on standard output"
+    },
+    {
+      "id": "intrinsic.sorted_keys",
+      "family": "intrinsic",
+      "description": "the keys of a map as a slice, ascending: integers numerically, strings by UTF-16 code unit"
+    },
+    {
+      "id": "intrinsic.sprintf",
+      "family": "intrinsic",
+      "description": "format values into a string"
+    },
+    {
+      "id": "op.add",
+      "family": "operator",
+      "op": "+",
+      "description": "`+`: addition, or string concatenation"
+    },
+    {
+      "id": "op.and",
+      "family": "operator",
+      "op": "&",
+      "description": "`&`: bitwise and"
+    },
+    {
+      "id": "op.and_not",
+      "family": "operator",
+      "op": "&^",
+      "description": "`&^`: bit clear: x and not y"
+    },
+    {
+      "id": "op.div",
+      "family": "operator",
+      "op": "/",
+      "description": "`/`: division"
+    },
+    {
+      "id": "op.eq",
+      "family": "operator",
+      "op": "==",
+      "description": "`==`: equality"
+    },
+    {
+      "id": "op.ge",
+      "family": "operator",
+      "op": ">=",
+      "description": "`>=`: greater than or equal"
+    },
+    {
+      "id": "op.gt",
+      "family": "operator",
+      "op": ">",
+      "description": "`>`: greater than"
+    },
+    {
+      "id": "op.land",
+      "family": "operator",
+      "op": "&&",
+      "description": "`&&`: logical and, short-circuit"
+    },
+    {
+      "id": "op.le",
+      "family": "operator",
+      "op": "<=",
+      "description": "`<=`: less than or equal"
+    },
+    {
+      "id": "op.lor",
+      "family": "operator",
+      "op": "||",
+      "description": "`||`: logical or, short-circuit"
+    },
+    {
+      "id": "op.lt",
+      "family": "operator",
+      "op": "<",
+      "description": "`<`: less than"
+    },
+    {
+      "id": "op.mul",
+      "family": "operator",
+      "op": "*",
+      "description": "`*`: multiplication"
+    },
+    {
+      "id": "op.ne",
+      "family": "operator",
+      "op": "!=",
+      "description": "`!=`: inequality"
+    },
+    {
+      "id": "op.or",
+      "family": "operator",
+      "op": "|",
+      "description": "`|`: bitwise or"
+    },
+    {
+      "id": "op.rem",
+      "family": "operator",
+      "op": "%",
+      "description": "`%`: remainder"
+    },
+    {
+      "id": "op.shl",
+      "family": "operator",
+      "op": "<<",
+      "description": "`<<`: left shift"
+    },
+    {
+      "id": "op.shr",
+      "family": "operator",
+      "op": ">>",
+      "description": "`>>`: right shift"
+    },
+    {
+      "id": "op.sub",
+      "family": "operator",
+      "op": "-",
+      "description": "`-`: subtraction"
+    },
+    {
+      "id": "op.xor",
+      "family": "operator",
+      "op": "^",
+      "description": "`^`: bitwise exclusive or"
+    },
+    {
+      "id": "sem.continue.post",
+      "family": "semantic",
+      "description": "`continue` in a three-clause `for` runs its `post` statement first"
+    },
+    {
+      "id": "sem.int.wrap",
+      "family": "semantic",
+      "description": "integer arithmetic wraps on overflow, as Go's does"
+    },
+    {
+      "id": "sem.map.order",
+      "family": "semantic",
+      "description": "iteration over a map has no specified order"
+    },
+    {
+      "id": "sem.multi_assign.order",
+      "family": "semantic",
+      "description": "a multi-value assignment reads every value before it writes any target"
+    },
+    {
+      "id": "sem.rem.sign",
+      "family": "semantic",
+      "description": "the remainder takes the sign of the dividend"
+    },
+    {
+      "id": "sem.switch.break",
+      "family": "semantic",
+      "description": "a `break` inside a `switch` leaves the enclosing loop"
+    },
+    {
+      "id": "stmt.assign",
+      "family": "statement",
+      "description": "`lhs = rhs`, or `lhs <op> rhs` for a compound operator: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `&^=`, `<<=` or `>>=`."
+    },
+    {
+      "id": "stmt.break",
+      "family": "statement",
+      "description": "Leaves the innermost enclosing `for` or `for_range`."
+    },
+    {
+      "id": "stmt.continue",
+      "family": "statement",
+      "description": "Ends the current iteration of the innermost enclosing `for` or `for_range`."
+    },
+    {
+      "id": "stmt.decr",
+      "family": "statement",
+      "description": "the `decr` statement"
+    },
+    {
+      "id": "stmt.expr",
+      "family": "statement",
+      "description": "the `expr` statement"
+    },
+    {
+      "id": "stmt.for",
+      "family": "statement",
+      "description": "`for init; cond; post { body }`: `init` runs once, `cond` is checked before each iteration (absent: always true), `post` runs after each iteration, including one a `continue` ends. `init` is a `let` or an `assign`; `post` an `assign`, `incr` or `decr`."
+    },
+    {
+      "id": "stmt.for_range",
+      "family": "statement",
+      "description": "`for key, val := range over { body }`; `_` for an unused name."
+    },
+    {
+      "id": "stmt.foreign",
+      "family": "statement",
+      "description": "Source the reader kept verbatim, in `lang`, because cir/1 cannot express it."
+    },
+    {
+      "id": "stmt.if",
+      "family": "statement",
+      "description": "the `if` statement"
+    },
+    {
+      "id": "stmt.incr",
+      "family": "statement",
+      "description": "the `incr` statement"
+    },
+    {
+      "id": "stmt.let",
+      "family": "statement",
+      "description": "`names := rhs`; a name `_` discards."
+    },
+    {
+      "id": "stmt.lookup_else",
+      "family": "statement",
+      "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`."
+    },
+    {
+      "id": "stmt.return",
+      "family": "statement",
+      "description": "the `return` statement"
+    },
+    {
+      "id": "stmt.send",
+      "family": "statement",
+      "description": "`chan <- x`."
+    },
+    {
+      "id": "stmt.switch",
+      "family": "statement",
+      "description": "A `switch` on `tag`, or on `true` when `tag` is absent."
+    },
+    {
+      "id": "stmt.var",
+      "family": "statement",
+      "description": "`var name t`, the zero value."
+    },
+    {
+      "id": "type.any",
+      "family": "type",
+      "description": "The top type (Go `any`)."
+    },
+    {
+      "id": "type.bool",
+      "family": "type",
+      "description": "the `bool` type"
+    },
+    {
+      "id": "type.chan",
+      "family": "type",
+      "description": "the `chan` type"
+    },
+    {
+      "id": "type.error",
+      "family": "type",
+      "description": "The source language's error type (Go `error`)."
+    },
+    {
+      "id": "type.int",
+      "family": "type",
+      "description": "the `int` type"
+    },
+    {
+      "id": "type.map",
+      "family": "type",
+      "description": "the `map` type"
+    },
+    {
+      "id": "type.named",
+      "family": "type",
+      "description": "A type the module declares."
+    },
+    {
+      "id": "type.ptr",
+      "family": "type",
+      "description": "A reference to `elem`."
+    },
+    {
+      "id": "type.slice",
+      "family": "type",
+      "description": "the `slice` type"
+    },
+    {
+      "id": "type.string",
+      "family": "type",
+      "description": "the `string` type"
+    },
+    {
+      "id": "type.tuple",
+      "family": "type",
+      "description": "the `tuple` type"
+    },
+    {
+      "id": "type.unit",
+      "family": "type",
+      "description": "the `unit` type"
+    },
+    {
+      "id": "unop.complement",
+      "family": "operator",
+      "op": "^",
+      "description": "`^`: bitwise complement"
+    },
+    {
+      "id": "unop.deref",
+      "family": "operator",
+      "op": "*",
+      "description": "`*`: dereference"
+    },
+    {
+      "id": "unop.neg",
+      "family": "operator",
+      "op": "-",
+      "description": "`-`: negation"
+    },
+    {
+      "id": "unop.not",
+      "family": "operator",
+      "op": "!",
+      "description": "`!`: logical not"
+    },
+    {
+      "id": "unop.plus",
+      "family": "operator",
+      "op": "+",
+      "description": "`+`: unary plus"
+    },
+    {
+      "id": "unop.recv",
+      "family": "operator",
+      "op": "<-",
+      "description": "`<-`: channel receive"
+    },
+    {
+      "id": "unop.ref",
+      "family": "operator",
+      "op": "&",
+      "description": "`&`: reference"
+    }
+  ]
+}

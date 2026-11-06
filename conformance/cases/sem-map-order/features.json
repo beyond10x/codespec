@@ -1,0 +1,28 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.map.order",
+    "assign.add",
+    "expr.binop",
+    "expr.index",
+    "expr.lit",
+    "expr.make",
+    "expr.var",
+    "fact.unordered_iteration",
+    "op.lt",
+    "op.mul",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.for",
+    "stmt.for_range",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.map"
+  ],
+  "edges": [
+    "map loop whose output does not depend on order"
+  ]
+}

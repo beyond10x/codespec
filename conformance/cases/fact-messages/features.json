@@ -1,0 +1,22 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "fact.messages",
+    "decl.newtype",
+    "expr.binop",
+    "expr.conv",
+    "expr.lit",
+    "expr.var",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.send",
+    "type.any",
+    "type.bool",
+    "type.chan",
+    "type.int",
+    "type.named"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.rem.sign",
+    "expr.binop",
+    "expr.var",
+    "op.rem",
+    "stmt.return",
+    "type.int"
+  ],
+  "edges": [
+    "-7 % 3",
+    "7 % -3"
+  ]
+}

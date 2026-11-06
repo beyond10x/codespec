@@ -21,6 +21,9 @@ const PASSED: &str = "examples/series/series.cir.json";
 const GO: &str = "examples/series/out/go/series.go";
 const RUST: &str = "examples/series/out/rust/src/lib.rs";
 const REFUSALS: &str = "examples/series/out/rust/refusals.json";
+const RUST_CRATE: &str = "examples/series/out/rust";
+const RUST_READ: &str = "examples/series/series.rust-read.cir.json";
+const GO_FROM_RUST: &str = "examples/series/out/go-from-rust/series.go";
 
 /// The functions the page walks through and the diagram draws.
 const SHOWN: [&str; 4] = ["Steps", "EvenSum", "Reverse", "Residue"];
@@ -69,6 +72,35 @@ const PAIRS: [Pair; 4] = [
     },
 ];
 
+/// Where the Rust output, read back by `codespec-read-rust`, differs in the Go written from it.
+const BACK_PAIRS: [Pair; 3] = [
+    Pair {
+        heading: "`len() as i64`: a length of another integer type",
+        why: "Rust's `len()` is a `usize`; the reader reads `len() as i64` as one `cir/1` `len` \
+              typed `int64`, because `cir/1` has no integer conversion. Go's `len` is an `int`, so \
+              the Go writer converts it: `int64(len(s.values))`.",
+        go: ("func (s *Series) Push", "}"),
+        rust: ("    pub fn push", "    }"),
+    },
+    Pair {
+        heading: "`i64` and a returned struct",
+        why: "The Rust output says `i64` where the Go source said `int`, and `new` returns a \
+              `Series` where the Go source returned a `*Series`. The read keeps what the Rust says, \
+              so this Go has `int64` and `func New() Series`; its harness driver takes the address.",
+        go: ("func New", "}"),
+        rust: ("pub fn new", "}"),
+    },
+    Pair {
+        heading: "A `while` with its post statement becomes a three-clause `for`",
+        why: "The reader recognises the Rust writer's loop shape, a block with the init, a \
+              `while` and the post at the end of the body, and reads it back as a three-clause \
+              `for`. The tagless `switch` the Rust writer wrote as an `if` chain stays an `if` \
+              chain.",
+        go: ("func (s *Series) Trend", "}"),
+        rust: ("    pub fn trend", "    }"),
+    },
+];
+
 /// The passed module with only the functions in [`SHOWN`], so the diagram stays readable.
 fn shown(passed: &Module) -> Module {
     let mut m = passed.clone();
@@ -83,10 +115,12 @@ fn page(root: &Path) -> Result<String> {
     let go = read(root, GO)?;
     let rust = read(root, RUST)?;
     let refusals = read(root, REFUSALS)?;
+    let rust_read = module(root, RUST_READ)?;
+    let go_from_rust = read(root, GO_FROM_RUST)?;
     let mut out = front_matter(
         "Showcase: an algorithm through codespec",
         "Showcase: series",
-        "A Go package of loops, switch, slices and overflowing arithmetic read into cir/1 and written as Go and as Rust, byte-equal under the harness.",
+        "A Go package of loops, switch, slices and overflowing arithmetic read into cir/1 and written as Go and as Rust, and the Rust read back and written as Go, byte-equal under the harness.",
         2,
     );
     out.push_str(&format!(
@@ -136,22 +170,58 @@ fn page(root: &Path) -> Result<String> {
         ));
     }
     out.push_str(&format!(
+        "## Rust → `cir/1` → Go\n\n\
+         The other direction: the Rust output above is read back by `codespec-read-rust`, passed \
+         and written as Go.\n\n\
+         ```shell-session\n\
+         $ codespec read --lang rust {RUST_CRATE} --out series.rust-read.cir.json\n\
+         $ codespec pass series.rust-read.cir.json --out series.rust-passed.cir.json\n\
+         $ codespec write --lang go series.rust-passed.cir.json --out out/go-from-rust\n\
+         ```\n\n\
+         The read gives one `cir/1` module of {} functions with {} refusals, checked in as \
+         [`{RUST_READ}`]({TREE}/{RUST_READ}); the Go is checked in as \
+         [`{GO_FROM_RUST}`]({TREE}/{GO_FROM_RUST}).\n\n",
+        rust_read.funcs.len(),
+        rust_read.refusals.len(),
+    ));
+    for pair in &BACK_PAIRS {
+        out.push_str(&format!(
+            "### {}\n\n{}\n\n{}\n{}\n",
+            pair.heading,
+            pair.why,
+            fence(
+                "rust",
+                "out/rust/src/lib.rs",
+                &excerpt(&rust, pair.rust.0, Some(pair.rust.1))?
+            ),
+            fence(
+                "go",
+                "out/go-from-rust/series.go",
+                &excerpt(&go_from_rust, pair.go.0, Some(pair.go.1))?
+            ),
+        ));
+    }
+    out.push_str(&format!(
         "## Checked by the harness\n\n\
          ```shell-session\n$ codespec harness {EXAMPLE} --seeds 200 --commands 300\n```\n\n\
-         The [harness](/docs/concepts/harness) runs the original Go, the Go output and the Rust \
-         output on the `series` trace: 200 seeded traces of 300 commands that push `int64` \
-         extremes, ask for non-positive windows and steps, and call every function. All three \
-         must print the same bytes; `task examples-series` runs it in `task check`.\n\n\
+         The [harness](/docs/concepts/harness) runs the original Go, the Go output, the Rust \
+         output and the Go written from the Rust output on the `series` trace: 200 seeded traces \
+         of 300 commands that push `int64` extremes, ask for non-positive windows and steps, and \
+         call every function. All four must print the same bytes; `task examples-series` runs it \
+         in `task check`.\n\n\
          <details>\n<summary>The whole Go output</summary>\n\n{}\n</details>\n\n\
          <details>\n<summary>The whole Rust output</summary>\n\n{}\n</details>\n\n\
+         <details>\n<summary>The whole Go written from the Rust output</summary>\n\n{}\n</details>\n\n\
          ## What this does not show\n\n\
          - Slice expressions (`s[i:j]`), sized `make`, labeled `break` and `continue`, \
          `fallthrough` and `goto` are read as `foreign` statements with a refusal; the package \
          avoids them.\n\
-         - `codespec-read-rust` does not read Rust loops yet, so this example runs Go → `cir/1` → \
-         Rust only.\n",
+         - The Rust read here is the Rust writer's own output. Hand-written Rust is read in \
+         [`inventory`]({TREE}/examples/inventory); Rust outside the reader's subset, a closure \
+         for one, is kept as `foreign` with a refusal.\n",
         fence("go", GO, &go),
         fence("rust", RUST, &rust),
+        fence("go", GO_FROM_RUST, &go_from_rust),
     ));
     Ok(out)
 }
@@ -206,5 +276,27 @@ mod tests {
             "the diagram draws only the four"
         );
         assert_eq!(svg, &outputs(&root()).unwrap()[1].1);
+    }
+
+    #[test]
+    fn the_series_page_shows_the_rust_output_read_back_and_written_as_go() {
+        let page = page(&root()).unwrap();
+        for want in [
+            "## Rust → `cir/1` → Go",
+            "codespec read --lang rust examples/series/out/rust",
+            "```rust title=\"out/rust/src/lib.rs\"\n    pub fn push(&mut self, v: i64) -> i64 {",
+            "```go title=\"out/go-from-rust/series.go\"\nfunc (s *Series) Push(v int64) int64 {",
+            "return int64(len(s.values))",
+            "func New() Series {",
+            "examples/series/series.rust-read.cir.json",
+            "the original Go, the Go output, the Rust output and the Go written from the Rust \
+             output",
+        ] {
+            assert!(page.contains(want), "missing {want:?}");
+        }
+        assert!(
+            !page.contains("this example runs Go → `cir/1` → Rust only"),
+            "the page still says the Rust output is not read back"
+        );
     }
 }

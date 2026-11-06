@@ -1,0 +1,11 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "unop.neg",
+    "expr.unop",
+    "expr.var",
+    "sem.int.wrap",
+    "stmt.return",
+    "type.int"
+  ]
+}

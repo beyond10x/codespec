@@ -1,0 +1,124 @@
+{
+  "format": "cir/1",
+  "name": "fact_comma_ok",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Positive",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": ">",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "true",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "case.go:6"
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "lit",
+              "value": "false",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:8"
+        }
+      ],
+      "doc": "Positive gives n and true for a positive n.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Positive"
+  ],
+  "facts": {
+    "shared": [],
+    "comma_ok": [
+      "Positive"
+    ]
+  }
+}

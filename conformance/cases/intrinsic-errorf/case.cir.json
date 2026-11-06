@@ -1,0 +1,118 @@
+{
+  "format": "cir/1",
+  "name": "intrinsic_errorf",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Validate",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"negative: %d\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:8"
+            }
+          ],
+          "pos": "case.go:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        }
+      ],
+      "doc": "Validate refuses a negative.",
+      "pos": "case.go:6"
+    }
+  ],
+  "layout": [
+    "func:Validate"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Validate"
+    ]
+  }
+}
