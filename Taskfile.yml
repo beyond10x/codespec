@@ -7,6 +7,7 @@ env:
 vars:
   ADAPTERS: '{{.ROOT_DIR}}/target/adapters'
   CODESPEC: '{{.ROOT_DIR}}/target/debug/codespec'
+  JDK: '{{.JDK | default "/usr/lib/jvm/java-21-openjdk"}}'
 
 tasks:
   default:
@@ -58,12 +59,27 @@ tasks:
       - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
       - cargo build --locked -p codespec-write-rust -p codespec-read-rust
       - cp target/debug/codespec-write-rust target/debug/codespec-read-rust {{.ADAPTERS}}/
+      - rm -rf target/java/classes
+      - mkdir -p target/java/classes
+      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src -name "*.java" | sort)'
+      - printf '#!/bin/sh\nexec %s -cp %s codespec.read.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-read-java
+      - chmod +x {{.ADAPTERS}}/codespec-read-java
 
   adapters-check:
-    desc: Format and vet every adapter in its own language.
+    desc: Format, vet and test every adapter in its own language; read the Java ledger twice through codespec read, byte-equal and canonical.
+    deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
       - cd adapters/go && go vet ./...
+      - rm -rf target/java/test-classes target/java/test-work target/java-check
+      - mkdir -p target/java/test-classes target/java-check
+      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test -name "*.java" | sort)'
+      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work'
+      - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json
+      - '{{.CODESPEC}} validate --canonical target/java-check/ledger.1.json'
+      - '! grep -q ''"refusals"'' target/java-check/ledger.1.json'
 
   schema:
     desc: Regenerate schemas/cir-1.schema.json from the model.
