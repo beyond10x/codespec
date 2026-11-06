@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SupportMatrix",
+  "description": "codespec-support-matrix/1: per cir/1 feature and per language, whether reading and writing it is supported. Written by codespec-docs to website/data/support-matrix.json from schemas/cir-1.features.json, each adapter's --describe manifest and the conformance reports; read by the SupportMatrix component of the site. Every language's read and write map holds one cell for every feature id in features.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "cir", "features", "languages"],
+  "properties": {
+    "format": {
+      "const": "codespec-support-matrix/1"
+    },
+    "cir": {
+      "description": "The model version the feature list belongs to.",
+      "const": "cir/1"
+    },
+    "features": {
+      "description": "One row per feature, in the order of schemas/cir-1.features.json.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feature"
+      }
+    },
+    "languages": {
+      "description": "One read and one write column per language, in display order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/language"
+      }
+    }
+  },
+  "$defs": {
+    "featureId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "family", "case"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/featureId"
+        },
+        "family": {
+          "enum": ["statement", "expression", "operator", "intrinsic", "type", "fact", "semantic"]
+        },
+        "op": {
+          "description": "The operator string, for a feature of family operator only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "description": "The feature's description, copied from schemas/cir-1.features.json; backticks mark code.",
+          "type": "string",
+          "minLength": 1
+        },
+        "case": {
+          "description": "The directory under conformance/cases whose subject is this feature, or null where no case exists.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "language": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "read", "write"],
+      "properties": {
+        "name": {
+          "description": "The language as shown in the column header.",
+          "type": "string",
+          "minLength": 1
+        },
+        "read": {
+          "$ref": "#/$defs/cells"
+        },
+        "write": {
+          "$ref": "#/$defs/cells"
+        }
+      }
+    },
+    "cells": {
+      "description": "One state per feature id.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/featureId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/cell"
+      }
+    },
+    "cell": {
+      "description": "A cell is its state as a bare string. Only a cell that carries a note is an object, {\"state\", \"note\"}; a writer never emits an object without a note.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/state"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "note"],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/state"
+            },
+            "note": {
+              "description": "Why the cell has its state, in one sentence: what a refusal leaves out, or the first difference a failing report found.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "state": {
+      "description": "verified: claimed in the manifest and the conformance report passes. claimed: in the manifest, no report. failing: claimed, and the report fails. refused: not claimed. n/a: not applicable to this role, so never claimable and left out of coverage (every reader cell of a fact feature, which is writer-only). none: no adapter for that role.",
+      "enum": ["verified", "claimed", "failing", "refused", "n/a", "none"]
+    }
+  }
+}
