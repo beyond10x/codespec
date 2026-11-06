@@ -1,5 +1,8 @@
-//! The command line of `codespec`, as a clap definition. The binary (`src/main.rs`) runs it; the
-//! documentation generator (`codespec-docs`) walks it for the CLI reference.
+//! The command line of `codespec`, as a clap definition, and the `measure` report. The binary
+//! (`src/main.rs`) runs it; the documentation generator (`codespec-docs`) walks it for the CLI
+//! reference.
+
+pub mod measure;
 
 use std::path::PathBuf;
 
@@ -110,6 +113,26 @@ pub enum Cmd {
         /// recorded as `timeout`.
         #[arg(long, default_value_t = 300)]
         timeout: u64,
+    },
+    /// Measure a reader's output: counts read and refused functions per artefact by refusal
+    /// category, then the totals and the share read.
+    ///
+    /// An artefact is a source file, the part of a position before its last `:`. A function is
+    /// read when its body holds no `foreign` statement and refused when it holds one; a refusal
+    /// outside every function counts under its file and category, and is a refused function too
+    /// when it refuses a method's declaration (a call shape `T(…)` or a Groovy hook such as
+    /// `T.methodMissing`). A constructor `New<T>` a JVM reader made at its class's position is not
+    /// counted. The category is the text of the refusal's reason before the first `: ` when it is
+    /// one of the Groovy reader's eight (dynamic, closure, groovy-semantics, type, unresolved,
+    /// gorm, spring, unsupported), and uncategorised otherwise. Files and categories are in byte
+    /// order; the same document gives the same bytes.
+    Measure {
+        /// The module to measure: a cir/1 document.
+        module: PathBuf,
+        /// text, a table with one row per artefact; or json, codespec-measure/1 in canonical
+        /// encoding.
+        #[arg(long, value_parser = ["text", "json"], default_value = "text")]
+        format: String,
     },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first

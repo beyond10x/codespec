@@ -78,7 +78,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
+    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -108,6 +108,10 @@ tasks:
       - cmp target/groovy-check/lending.1.json target/groovy-check/lending.2.json
       - '{{.CODESPEC}} validate --canonical target/groovy-check/lending.1.json'
       - cmp target/groovy-check/lending.1.json adapters/groovy/testdata/lending.read.cir.json
+      - '{{.CODESPEC}} measure target/groovy-check/lending.1.json > target/groovy-check/lending.measure.1.txt'
+      - '{{.CODESPEC}} measure target/groovy-check/lending.1.json > target/groovy-check/lending.measure.2.txt'
+      - cmp target/groovy-check/lending.measure.1.txt target/groovy-check/lending.measure.2.txt
+      - cmp target/groovy-check/lending.measure.1.txt adapters/groovy/testdata/lending.measure.txt
       - rm -rf target/manifests
       - mkdir -p target/manifests
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust codespec-read-java codespec-read-groovy; do {{.ADAPTERS}}/$a --describe > target/manifests/$a.json || exit 1; done

@@ -1,6 +1,7 @@
 //! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
 //! passes, run reader and writer adapters, compare implementations of an example on seeded traces
-//! (`harness`) and run the conformance kit against an adapter (`conform`).
+//! (`harness`), run the conformance kit against an adapter (`conform`) and measure how much of a
+//! module a reader read (`measure`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -138,6 +139,17 @@ fn run(cmd: Cmd) -> Result<(), String> {
             work,
             timeout,
         }),
+        Cmd::Measure { module, format } => {
+            let bytes = std::fs::read(&module).map_err(|e| format!("{}: {e}", module.display()))?;
+            let m = read_module(&bytes, &module.display().to_string())?;
+            let report = codespec_cli::measure::measure(&m);
+            if format == "json" {
+                print!("{}", codespec_cli::measure::json(&report));
+            } else {
+                print!("{}", codespec_cli::measure::text(&report));
+            }
+            Ok(())
+        }
         Cmd::Harness {
             example,
             seeds,
