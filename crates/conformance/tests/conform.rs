@@ -304,6 +304,9 @@ fn an_unclaimed_feature_refused_passes_as_refused_and_written_wrong_fails() {
     let report = conform_writer(&run(&m, &w), &writer, &runner).unwrap();
     let sub = feature(&report, "op.sub");
     assert_eq!((sub.claimed, sub.verdict), (false, Verdict::Refused));
+    assert_eq!(sub.case.as_deref(), Some("op-sub"));
+    assert_eq!(sub.reason, Some(Reason::Refused));
+    assert_eq!(sub.detail.as_deref(), Some("refused"));
     let add = feature(&report, "op.add");
     assert_eq!((add.claimed, add.verdict), (false, Verdict::Fail));
     assert_eq!(add.reason, Some(Reason::WrongOutput));
@@ -316,6 +319,38 @@ fn an_unclaimed_feature_refused_passes_as_refused_and_written_wrong_fails() {
     assert!(!report.conforms);
     assert_eq!(report.summary.fail, 1);
     assert_eq!(report.summary.refused_unclaimed, 1);
+}
+
+#[test]
+fn a_refusal_listed_in_refusals_json_is_named_by_function_position_and_reason() {
+    let w = work("stub-refusals-json");
+    let m = manifest("writer", &subjects_except(&["op.sub"]));
+    let writer = move |args: &[OsString], stdin: Option<&[u8]>| {
+        let out = PathBuf::from(&args[0]);
+        let bytes = stdin.expect("a writer reads stdin");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("module.json"), bytes).unwrap();
+        let name = serde_json::from_slice::<serde_json::Value>(bytes).unwrap()["name"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        if name == "op_sub" {
+            std::fs::write(
+                out.join("refusals.json"),
+                "[\n  {\n    \"name\": \"Sub\",\n    \"pos\": \"case.go:3\",\n    \"reason\": \"no subtraction\"\n  },\n  {\n    \"name\": \"Neg\",\n    \"reason\": \"no negation\"\n  }\n]\n",
+            )
+            .unwrap();
+        }
+        exec(0, "", "")
+    };
+    let report = conform_writer(&run(&m, &w), &writer, &stub_runner(|_| None)).unwrap();
+    let sub = feature(&report, "op.sub");
+    assert_eq!((sub.claimed, sub.verdict), (false, Verdict::Refused));
+    assert_eq!(sub.reason, Some(Reason::Refused));
+    assert_eq!(
+        sub.detail.as_deref(),
+        Some("Sub (case.go:3): no subtraction; Neg: no negation")
+    );
 }
 
 #[test]

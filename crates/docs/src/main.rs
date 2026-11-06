@@ -13,11 +13,17 @@
 //!   (`website/static/img/greeter-cir.svg`), from the checked-in files of `examples/greeter`;
 //! - the algorithmic showcase (`examples/series.md`) and its diagram
 //!   (`website/static/img/series-cir.svg`), from the checked-in files of `examples/series`;
-//! - the conformance reports of the Go and Rust readers and writers
-//!   (`website/data/conformance/<role>-<lang>.json`), by running `codespec conform`'s engine
-//!   (`codespec_conformance::conform`) with the programs built into `--adapters`
-//!   (`target/adapters`, `task build`). These are generated first, since the status data takes
-//!   them as evidence; the unit test of current files covers the others, which need no build.
+//! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
+//!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
+//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go
+//!   and Rust writers (`website/data/conformance/<role>-<lang>.json`), by running `codespec
+//!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
+//!   (`target/adapters`, `task build`);
+//! - the support matrix (`website/data/support-matrix.json`, [`support`]), from the feature list,
+//!   each adapter's `--describe` manifest and those reports.
+//!
+//! The corpora, the reports and the matrix are generated first, since the status data takes the
+//! reports as evidence; the unit test of current files covers the others, which need no build.
 //!
 //! `generate --check` also refuses an admonition whose title is not in brackets anywhere under
 //! `website/docs`.
@@ -31,6 +37,7 @@ mod routes;
 mod series;
 mod showcase;
 mod status;
+mod support;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,7 +45,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use codespec_conformance::conform::{
-    Target, conform_adapter, differences, read_report, report_json, summary_line,
+    CORPUS_LANGS, Process, Report, Target, conform_adapter, differences, read_report,
+    reader_corpus, report_json, summary_line,
 };
 
 /// The first line of every generated page's front matter.
@@ -198,13 +206,24 @@ fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
     Ok(all)
 }
 
-/// The conformance reports of the in-repository adapters, by path: role and language.
+/// The conformance reports of the in-repository adapters, by path: role and language. Every
+/// adapter this repository ships has one.
 const REPORTS: &[(&str, &str, &str)] = &[
     ("website/data/conformance/reader-go.json", "reader", "go"),
     (
         "website/data/conformance/reader-rust.json",
         "reader",
         "rust",
+    ),
+    (
+        "website/data/conformance/reader-java.json",
+        "reader",
+        "java",
+    ),
+    (
+        "website/data/conformance/reader-groovy.json",
+        "reader",
+        "groovy",
     ),
     ("website/data/conformance/writer-go.json", "writer", "go"),
     (
@@ -214,10 +233,109 @@ const REPORTS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// One generated directory: its path relative to the root and every file under it, by path
+/// relative to the directory.
+type Tree = (String, Vec<(String, Vec<u8>)>);
+
+/// The reader corpora `conformance/reader/<lang>`, built from the kit's case sources by
+/// [`reader_corpus`].
+fn corpora(root: &Path) -> Result<Vec<Tree>> {
+    CORPUS_LANGS
+        .iter()
+        .map(|lang| {
+            Ok((
+                format!("conformance/reader/{lang}"),
+                reader_corpus(&root.join("conformance"), lang)?,
+            ))
+        })
+        .collect()
+}
+
+/// Every file of `dir`, by `/`-separated path relative to it, sorted.
+fn files_in(dir: &Path, rel: &str, out: &mut Vec<String>) -> Result<()> {
+    let here = dir.join(rel);
+    let mut entries: Vec<_> = fs::read_dir(&here)
+        .map_err(|e| format!("{}: {e}", here.display()))?
+        .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e| format!("{}: {e}", here.display()))?;
+    entries.sort();
+    for name in entries {
+        let path = if rel.is_empty() {
+            name
+        } else {
+            format!("{rel}/{name}")
+        };
+        if dir.join(&path).is_dir() {
+            files_in(dir, &path, out)?;
+        } else {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// How the files under `dir` differ from `files`: each one that differs, is missing, or is extra.
+fn tree_drift(dir: &Path, files: &[(String, Vec<u8>)]) -> Result<Vec<String>> {
+    let mut found = Vec::new();
+    if dir.is_dir() {
+        files_in(dir, "", &mut found)?;
+    }
+    let mut out = Vec::new();
+    for (rel, content) in files {
+        match fs::read(dir.join(rel)) {
+            Ok(have) if &have == content => {}
+            Ok(_) => out.push(format!("{rel} differs")),
+            Err(_) => out.push(format!("{rel} is missing")),
+        }
+    }
+    for rel in found {
+        if !files.iter().any(|(f, _)| *f == rel) {
+            out.push(format!("{rel} is not built from any case source"));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// Replace `dir` with exactly `files`.
+fn write_tree(dir: &Path, files: &[(String, Vec<u8>)]) -> Result<()> {
+    if dir.exists() {
+        fs::remove_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    for (rel, content) in files {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        fs::write(&path, content).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// Write one generated directory, or with `check` fail naming every file that drifted.
+fn settle_tree(root: &Path, (relative, files): &Tree, check: bool) -> Result<()> {
+    let dir = root.join(relative);
+    if check {
+        let drift = tree_drift(&dir, files)?;
+        if !drift.is_empty() {
+            return Err(format!(
+                "{relative} is not what the kit's case sources build ({}); run `task docs-generate`",
+                drift.join(", ")
+            ));
+        }
+        println!("{relative}: current, {} files", files.len());
+    } else {
+        write_tree(&dir, files)?;
+        println!("{relative}: written, {} files", files.len());
+    }
+    Ok(())
+}
+
 /// Each report of [`REPORTS`], run now with the kit `conformance/`, the readers' corpus
 /// `conformance/reader/<lang>` and the programs in `adapters`, working under
 /// `target/codespec-docs-conform/`.
-fn reports(root: &Path, adapters: &Path) -> Result<Vec<(&'static str, String)>> {
+fn reports(root: &Path, adapters: &Path) -> Result<Vec<(&'static str, Report)>> {
     let mut out = Vec::new();
     for (path, role, lang) in REPORTS {
         let report = conform_adapter(&Target {
@@ -230,9 +348,47 @@ fn reports(root: &Path, adapters: &Path) -> Result<Vec<(&'static str, String)>> 
         })
         .map_err(|e| format!("{path}: {e}"))?;
         println!("{path}: {}", summary_line(&report));
-        out.push((*path, report_json(&report)));
+        out.push((*path, report));
     }
     Ok(out)
+}
+
+/// The support matrix from the feature list, the manifest each adapter of [`REPORTS`] in
+/// `adapters` prints for `--describe`, and `reports`, the reports just run.
+fn support_matrix(
+    root: &Path,
+    adapters: &Path,
+    reports: &[(&'static str, Report)],
+) -> Result<String> {
+    let mut list = Vec::new();
+    for ((path, role, lang), (_, report)) in REPORTS.iter().zip(reports) {
+        let program = Process(
+            std::path::absolute(root.join(adapters).join(format!(
+                "codespec-{}-{lang}",
+                if *role == "reader" { "read" } else { "write" }
+            )))
+            .map_err(|e| e.to_string())?,
+        );
+        let manifest = program.describe().map_err(|e| format!("{path}: {e}"))?;
+        list.push(support::Adapter {
+            role,
+            lang,
+            manifest,
+            report: Some(report.clone()),
+        });
+    }
+    let features = fs::read(root.join("schemas/cir-1.features.json"))
+        .map_err(|e| format!("schemas/cir-1.features.json: {e}"))?;
+    let doc = support::document(&features, &root.join("conformance"), &list)?;
+    for (column, counts) in support::totals(&doc)? {
+        let shown: Vec<String> = counts
+            .iter()
+            .filter(|(_, n)| *n > 0)
+            .map(|(s, n)| format!("{n} {s}"))
+            .collect();
+        println!("{}: {column}: {}", support::DATA, shown.join(", "));
+    }
+    Ok(doc)
 }
 
 /// Write one generated file, or with `check` compare it with what is there; a stale report names
@@ -267,12 +423,22 @@ fn settle(root: &Path, relative: &str, content: &str, check: bool) -> Result<()>
 }
 
 fn generate(root: &Path, adapters: &Path, check: bool) -> Result<()> {
-    // The reports first: the status data reads them as evidence.
-    let mut all = reports(root, adapters)?;
-    for (relative, content) in &all {
-        settle(root, relative, content, check)?;
+    // The reader corpora first, which the reports run on; then the reports, which the support
+    // matrix and the status data read.
+    for tree in corpora(root)? {
+        settle_tree(root, &tree, check)?;
     }
-    all = outputs(root)?;
+    let ran = reports(root, adapters)?;
+    for (relative, report) in &ran {
+        settle(root, relative, &report_json(report), check)?;
+    }
+    settle(
+        root,
+        support::DATA,
+        &support_matrix(root, adapters, &ran)?,
+        check,
+    )?;
+    let all = outputs(root)?;
     for (relative, content) in &all {
         settle(root, relative, content, check)?;
     }
@@ -370,6 +536,44 @@ mod tests {
         let found = raw_admonitions(&dir).unwrap();
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with("concepts/a.md:2"), "{found:?}");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn every_reader_corpus_is_built_from_the_kit_case_sources() {
+        let root = root();
+        for (dir, files) in corpora(&root).unwrap() {
+            assert_eq!(
+                tree_drift(&root.join(&dir), &files).unwrap(),
+                Vec::<String>::new(),
+                "{dir} differs from the kit's case sources; run `task docs-generate`"
+            );
+        }
+    }
+
+    #[test]
+    fn a_corpus_entry_that_differs_from_its_case_source_is_named() {
+        let dir = scratch("corpus-drift");
+        let files = vec![
+            ("a/Case.java".to_string(), b"class A {}\n".to_vec()),
+            ("a/calls.json".to_string(), b"{}\n".to_vec()),
+            ("b/case.go".to_string(), b"package b\n".to_vec()),
+        ];
+        write_tree(&dir, &files).unwrap();
+        assert!(tree_drift(&dir, &files).unwrap().is_empty());
+        fs::write(dir.join("a/Case.java"), "class A { }\n").unwrap();
+        fs::write(dir.join("c.txt"), "extra").unwrap();
+        fs::remove_file(dir.join("b/case.go")).unwrap();
+        assert_eq!(
+            tree_drift(&dir, &files).unwrap(),
+            vec![
+                "a/Case.java differs".to_string(),
+                "b/case.go is missing".to_string(),
+                "c.txt is not built from any case source".to_string(),
+            ]
+        );
+        write_tree(&dir, &files).unwrap();
+        assert!(tree_drift(&dir, &files).unwrap().is_empty());
         fs::remove_dir_all(dir).unwrap();
     }
 

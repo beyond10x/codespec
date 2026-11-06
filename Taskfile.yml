@@ -36,13 +36,13 @@ tasks:
       - task: docs-check
 
   docs-generate:
-    desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram, the conformance reports of the Go and Rust readers and writers (website/data/conformance) and website/data/status.json.
+    desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram, the reader corpora (conformance/reader) from the kit's case sources, the conformance reports of every adapter (website/data/conformance), the support matrix and website/data/status.json.
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate
 
   docs-check:
-    desc: Fail when a generated documentation file is missing, stale or hand-edited, a conformance report differs from codespec conform run again on the Go and Rust readers and writers, or a page has a raw admonition title.
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go and Rust writers, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
@@ -60,7 +60,7 @@ tasks:
       - task: adapters
 
   adapters:
-    desc: Build every adapter program and runner into target/adapters.
+    desc: Build every adapter program and runner, the JVM runners codespec-run-java and codespec-run-groovy among them, into target/adapters.
     cmds:
       - mkdir -p {{.ADAPTERS}}
       - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
@@ -71,11 +71,15 @@ tasks:
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src adapters/jvm/src -name "*.java" | sort)'
       - printf '#!/bin/sh\nexec %s -cp %s codespec.read.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-read-java
       - chmod +x {{.ADAPTERS}}/codespec-read-java
+      - printf '#!/bin/sh\nexec %s -cp %s codespec.run.java.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-run-java
+      - chmod +x {{.ADAPTERS}}/codespec-run-java
       - rm -rf target/groovy/classes
       - mkdir -p target/groovy/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -cp {{.GROOVY_JAR}} -d target/groovy/classes $(find adapters/groovy/src adapters/jvm/src -name "*.java" | sort)'
       - printf '#!/bin/sh\nexec %s -cp %s:%s codespec.read.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-read-groovy
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
+      - printf '#!/bin/sh\nexec %s -cp %s:%s codespec.run.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-run-groovy
+      - chmod +x {{.ADAPTERS}}/codespec-run-groovy
 
   adapters-check:
     desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.

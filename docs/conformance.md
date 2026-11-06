@@ -77,7 +77,9 @@ To run a written program the kit needs one more program from the adapter's autho
 
 The runner replaces the per-example drivers the harness uses today: one runner per language serves
 every case. This repository ships `codespec-run-go` and `codespec-run-rust`, which also serve as the
-worked examples. A runner cannot pass a case on its own: the module it runs comes from the writer
+worked examples, and `codespec-run-java` and `codespec-run-groovy` (`adapters/jvm/src/codespec/run`),
+which compile a package with javac or groovyc and call its static methods by reflection; the JVM
+runners serve step 1 of the Java and Groovy readers' runs. A runner cannot pass a case on its own: the module it runs comes from the writer
 under test, and the output is compared with the reference's.
 
 ## 5. The claim: a manifest the adapter prints

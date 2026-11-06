@@ -1,0 +1,1696 @@
+{
+  "cir": "cir/1",
+  "features": [
+    {
+      "case": "assign-add",
+      "description": "`+=`: addition, or string concatenation, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.add",
+      "op": "+="
+    },
+    {
+      "case": "assign-and",
+      "description": "`&=`: bitwise and, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.and",
+      "op": "&="
+    },
+    {
+      "case": "assign-and-not",
+      "description": "`&^=`: bit clear: x and not y, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.and_not",
+      "op": "&^="
+    },
+    {
+      "case": "assign-div",
+      "description": "`/=`: division, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.div",
+      "op": "/="
+    },
+    {
+      "case": "assign-mul",
+      "description": "`*=`: multiplication, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.mul",
+      "op": "*="
+    },
+    {
+      "case": "assign-or",
+      "description": "`|=`: bitwise or, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.or",
+      "op": "|="
+    },
+    {
+      "case": "assign-rem",
+      "description": "`%=`: remainder, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.rem",
+      "op": "%="
+    },
+    {
+      "case": "assign-shl",
+      "description": "`<<=`: left shift, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.shl",
+      "op": "<<="
+    },
+    {
+      "case": "assign-shr",
+      "description": "`>>=`: right shift, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.shr",
+      "op": ">>="
+    },
+    {
+      "case": "assign-sub",
+      "description": "`-=`: subtraction, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.sub",
+      "op": "-="
+    },
+    {
+      "case": "assign-xor",
+      "description": "`^=`: bitwise exclusive or, assigned to the left-hand side",
+      "family": "operator",
+      "id": "assign.xor",
+      "op": "^="
+    },
+    {
+      "case": "decl-enum",
+      "description": "A newtype whose values are exactly the declared variants.",
+      "family": "type",
+      "id": "decl.enum"
+    },
+    {
+      "case": "decl-newtype",
+      "description": "A basic type given a name.",
+      "family": "type",
+      "id": "decl.newtype"
+    },
+    {
+      "case": "decl-struct",
+      "description": "the `struct` type declaration",
+      "family": "type",
+      "id": "decl.struct"
+    },
+    {
+      "case": "decl-union",
+      "description": "Tagged variants, each carrying its own fields.",
+      "family": "type",
+      "id": "decl.union"
+    },
+    {
+      "case": "expr-binop",
+      "description": "`+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`, `<`, `<=`, `>` or `>=`.",
+      "family": "expression",
+      "id": "expr.binop"
+    },
+    {
+      "case": "expr-call",
+      "description": "A call of a module function.",
+      "family": "expression",
+      "id": "expr.call"
+    },
+    {
+      "case": "expr-const",
+      "description": "A declared constant or enum variant.",
+      "family": "expression",
+      "id": "expr.const"
+    },
+    {
+      "case": "expr-conv",
+      "description": "A conversion to the named type `name`.",
+      "family": "expression",
+      "id": "expr.conv"
+    },
+    {
+      "case": "expr-errvar",
+      "description": "A sentinel error.",
+      "family": "expression",
+      "id": "expr.errvar"
+    },
+    {
+      "case": "expr-field",
+      "description": "the `field` expression",
+      "family": "expression",
+      "id": "expr.field"
+    },
+    {
+      "case": "expr-index",
+      "description": "the `index` expression",
+      "family": "expression",
+      "id": "expr.index"
+    },
+    {
+      "case": "expr-intrinsic",
+      "description": "`sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match.",
+      "family": "expression",
+      "id": "expr.intrinsic"
+    },
+    {
+      "case": "expr-lit",
+      "description": "A literal in the source language's spelling.",
+      "family": "expression",
+      "id": "expr.lit"
+    },
+    {
+      "case": "expr-make",
+      "description": "An empty map or slice.",
+      "family": "expression",
+      "id": "expr.make"
+    },
+    {
+      "case": "expr-method",
+      "description": "the `method` expression",
+      "family": "expression",
+      "id": "expr.method"
+    },
+    {
+      "case": "expr-nil",
+      "description": "the `nil` expression",
+      "family": "expression",
+      "id": "expr.nil"
+    },
+    {
+      "case": "expr-struct",
+      "description": "the `struct` expression",
+      "family": "expression",
+      "id": "expr.struct"
+    },
+    {
+      "case": "expr-to-error",
+      "description": "A value of an error struct used where an error is expected.",
+      "family": "expression",
+      "id": "expr.to_error"
+    },
+    {
+      "case": "expr-unop",
+      "description": "`!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&` (reference).",
+      "family": "expression",
+      "id": "expr.unop"
+    },
+    {
+      "case": "expr-var",
+      "description": "A local, parameter or receiver.",
+      "family": "expression",
+      "id": "expr.var"
+    },
+    {
+      "case": "expr-zero",
+      "description": "the `zero` expression",
+      "family": "expression",
+      "id": "expr.zero"
+    },
+    {
+      "case": "fact-comma-ok",
+      "description": "Functions whose `(T, bool)` result is always `(zero, false)` or `(x, true)`.",
+      "family": "fact",
+      "id": "fact.comma_ok"
+    },
+    {
+      "case": "fact-displays",
+      "description": "Types with a text rendering: an `Error()`/`String()` method, or a string enum or newtype.",
+      "family": "fact",
+      "id": "fact.displays"
+    },
+    {
+      "case": "fact-fallible",
+      "description": "Functions whose last result is an error, every error path returning zero values.",
+      "family": "fact",
+      "id": "fact.fallible"
+    },
+    {
+      "case": "fact-messages",
+      "description": "For channels of `any`: every type sent on one.",
+      "family": "fact",
+      "id": "fact.messages"
+    },
+    {
+      "case": "fact-read-only",
+      "description": "Methods that write nothing rooted at their receiver.",
+      "family": "fact",
+      "id": "fact.read_only"
+    },
+    {
+      "case": "fact-shared",
+      "description": "Struct types a reference to which is stored in a container or a struct field.",
+      "family": "fact",
+      "id": "fact.shared"
+    },
+    {
+      "case": "fact-unordered-iteration",
+      "description": "Positions of loops over a map, whose order the source language leaves unspecified.",
+      "family": "fact",
+      "id": "fact.unordered_iteration"
+    },
+    {
+      "case": "intrinsic-append",
+      "description": "append values to a slice",
+      "family": "intrinsic",
+      "id": "intrinsic.append"
+    },
+    {
+      "case": "intrinsic-errorf",
+      "description": "format values into a new error",
+      "family": "intrinsic",
+      "id": "intrinsic.errorf"
+    },
+    {
+      "case": "intrinsic-len",
+      "description": "length of a string, slice or map",
+      "family": "intrinsic",
+      "id": "intrinsic.len"
+    },
+    {
+      "case": "intrinsic-println",
+      "description": "print values and a newline on standard output",
+      "family": "intrinsic",
+      "id": "intrinsic.println"
+    },
+    {
+      "case": "intrinsic-sorted-keys",
+      "description": "the keys of a map as a slice, ascending: integers numerically, strings by UTF-16 code unit",
+      "family": "intrinsic",
+      "id": "intrinsic.sorted_keys"
+    },
+    {
+      "case": "intrinsic-sprintf",
+      "description": "format values into a string",
+      "family": "intrinsic",
+      "id": "intrinsic.sprintf"
+    },
+    {
+      "case": "op-add",
+      "description": "`+`: addition, or string concatenation",
+      "family": "operator",
+      "id": "op.add",
+      "op": "+"
+    },
+    {
+      "case": "op-and",
+      "description": "`&`: bitwise and",
+      "family": "operator",
+      "id": "op.and",
+      "op": "&"
+    },
+    {
+      "case": "op-and-not",
+      "description": "`&^`: bit clear: x and not y",
+      "family": "operator",
+      "id": "op.and_not",
+      "op": "&^"
+    },
+    {
+      "case": "op-div",
+      "description": "`/`: division",
+      "family": "operator",
+      "id": "op.div",
+      "op": "/"
+    },
+    {
+      "case": "op-eq",
+      "description": "`==`: equality",
+      "family": "operator",
+      "id": "op.eq",
+      "op": "=="
+    },
+    {
+      "case": "op-ge",
+      "description": "`>=`: greater than or equal",
+      "family": "operator",
+      "id": "op.ge",
+      "op": ">="
+    },
+    {
+      "case": "op-gt",
+      "description": "`>`: greater than",
+      "family": "operator",
+      "id": "op.gt",
+      "op": ">"
+    },
+    {
+      "case": "op-land",
+      "description": "`&&`: logical and, short-circuit",
+      "family": "operator",
+      "id": "op.land",
+      "op": "&&"
+    },
+    {
+      "case": "op-le",
+      "description": "`<=`: less than or equal",
+      "family": "operator",
+      "id": "op.le",
+      "op": "<="
+    },
+    {
+      "case": "op-lor",
+      "description": "`||`: logical or, short-circuit",
+      "family": "operator",
+      "id": "op.lor",
+      "op": "||"
+    },
+    {
+      "case": "op-lt",
+      "description": "`<`: less than",
+      "family": "operator",
+      "id": "op.lt",
+      "op": "<"
+    },
+    {
+      "case": "op-mul",
+      "description": "`*`: multiplication",
+      "family": "operator",
+      "id": "op.mul",
+      "op": "*"
+    },
+    {
+      "case": "op-ne",
+      "description": "`!=`: inequality",
+      "family": "operator",
+      "id": "op.ne",
+      "op": "!="
+    },
+    {
+      "case": "op-or",
+      "description": "`|`: bitwise or",
+      "family": "operator",
+      "id": "op.or",
+      "op": "|"
+    },
+    {
+      "case": "op-rem",
+      "description": "`%`: remainder",
+      "family": "operator",
+      "id": "op.rem",
+      "op": "%"
+    },
+    {
+      "case": "op-shl",
+      "description": "`<<`: left shift",
+      "family": "operator",
+      "id": "op.shl",
+      "op": "<<"
+    },
+    {
+      "case": "op-shr",
+      "description": "`>>`: right shift",
+      "family": "operator",
+      "id": "op.shr",
+      "op": ">>"
+    },
+    {
+      "case": "op-sub",
+      "description": "`-`: subtraction",
+      "family": "operator",
+      "id": "op.sub",
+      "op": "-"
+    },
+    {
+      "case": "op-xor",
+      "description": "`^`: bitwise exclusive or",
+      "family": "operator",
+      "id": "op.xor",
+      "op": "^"
+    },
+    {
+      "case": "sem-continue-post",
+      "description": "`continue` in a three-clause `for` runs its `post` statement first",
+      "family": "semantic",
+      "id": "sem.continue.post"
+    },
+    {
+      "case": "sem-int-wrap",
+      "description": "integer arithmetic wraps on overflow, as Go's does",
+      "family": "semantic",
+      "id": "sem.int.wrap"
+    },
+    {
+      "case": "sem-map-order",
+      "description": "iteration over a map has no specified order",
+      "family": "semantic",
+      "id": "sem.map.order"
+    },
+    {
+      "case": "sem-multi-assign-order",
+      "description": "a multi-value assignment reads every value before it writes any target",
+      "family": "semantic",
+      "id": "sem.multi_assign.order"
+    },
+    {
+      "case": "sem-rem-sign",
+      "description": "the remainder takes the sign of the dividend",
+      "family": "semantic",
+      "id": "sem.rem.sign"
+    },
+    {
+      "case": "sem-switch-break",
+      "description": "a `break` inside a `switch` leaves the enclosing loop",
+      "family": "semantic",
+      "id": "sem.switch.break"
+    },
+    {
+      "case": "stmt-assign",
+      "description": "`lhs = rhs`, or `lhs <op> rhs` for a compound operator: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `&^=`, `<<=` or `>>=`.",
+      "family": "statement",
+      "id": "stmt.assign"
+    },
+    {
+      "case": "stmt-break",
+      "description": "Leaves the innermost enclosing `for` or `for_range`.",
+      "family": "statement",
+      "id": "stmt.break"
+    },
+    {
+      "case": "stmt-continue",
+      "description": "Ends the current iteration of the innermost enclosing `for` or `for_range`.",
+      "family": "statement",
+      "id": "stmt.continue"
+    },
+    {
+      "case": "stmt-decr",
+      "description": "the `decr` statement",
+      "family": "statement",
+      "id": "stmt.decr"
+    },
+    {
+      "case": "stmt-expr",
+      "description": "the `expr` statement",
+      "family": "statement",
+      "id": "stmt.expr"
+    },
+    {
+      "case": "stmt-for",
+      "description": "`for init; cond; post { body }`: `init` runs once, `cond` is checked before each iteration (absent: always true), `post` runs after each iteration, including one a `continue` ends. `init` is a `let` or an `assign`; `post` an `assign`, `incr` or `decr`.",
+      "family": "statement",
+      "id": "stmt.for"
+    },
+    {
+      "case": "stmt-for-range",
+      "description": "`for key, val := range over { body }`; `_` for an unused name.",
+      "family": "statement",
+      "id": "stmt.for_range"
+    },
+    {
+      "case": "stmt-foreign",
+      "description": "Source the reader kept verbatim, in `lang`, because cir/1 cannot express it.",
+      "family": "statement",
+      "id": "stmt.foreign"
+    },
+    {
+      "case": "stmt-if",
+      "description": "the `if` statement",
+      "family": "statement",
+      "id": "stmt.if"
+    },
+    {
+      "case": "stmt-incr",
+      "description": "the `incr` statement",
+      "family": "statement",
+      "id": "stmt.incr"
+    },
+    {
+      "case": "stmt-let",
+      "description": "`names := rhs`; a name `_` discards.",
+      "family": "statement",
+      "id": "stmt.let"
+    },
+    {
+      "case": "stmt-lookup-else",
+      "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`.",
+      "family": "statement",
+      "id": "stmt.lookup_else"
+    },
+    {
+      "case": "stmt-return",
+      "description": "the `return` statement",
+      "family": "statement",
+      "id": "stmt.return"
+    },
+    {
+      "case": "stmt-send",
+      "description": "`chan <- x`.",
+      "family": "statement",
+      "id": "stmt.send"
+    },
+    {
+      "case": "stmt-switch",
+      "description": "A `switch` on `tag`, or on `true` when `tag` is absent.",
+      "family": "statement",
+      "id": "stmt.switch"
+    },
+    {
+      "case": "stmt-var",
+      "description": "`var name t`, the zero value.",
+      "family": "statement",
+      "id": "stmt.var"
+    },
+    {
+      "case": "type-any",
+      "description": "The top type (Go `any`).",
+      "family": "type",
+      "id": "type.any"
+    },
+    {
+      "case": "type-bool",
+      "description": "the `bool` type",
+      "family": "type",
+      "id": "type.bool"
+    },
+    {
+      "case": "type-chan",
+      "description": "the `chan` type",
+      "family": "type",
+      "id": "type.chan"
+    },
+    {
+      "case": "type-error",
+      "description": "The source language's error type (Go `error`).",
+      "family": "type",
+      "id": "type.error"
+    },
+    {
+      "case": "type-int",
+      "description": "the `int` type",
+      "family": "type",
+      "id": "type.int"
+    },
+    {
+      "case": "type-map",
+      "description": "the `map` type",
+      "family": "type",
+      "id": "type.map"
+    },
+    {
+      "case": "type-named",
+      "description": "A type the module declares.",
+      "family": "type",
+      "id": "type.named"
+    },
+    {
+      "case": "type-ptr",
+      "description": "A reference to `elem`.",
+      "family": "type",
+      "id": "type.ptr"
+    },
+    {
+      "case": "type-slice",
+      "description": "the `slice` type",
+      "family": "type",
+      "id": "type.slice"
+    },
+    {
+      "case": "type-string",
+      "description": "the `string` type",
+      "family": "type",
+      "id": "type.string"
+    },
+    {
+      "case": "type-tuple",
+      "description": "the `tuple` type",
+      "family": "type",
+      "id": "type.tuple"
+    },
+    {
+      "case": "type-unit",
+      "description": "the `unit` type",
+      "family": "type",
+      "id": "type.unit"
+    },
+    {
+      "case": "unop-complement",
+      "description": "`^`: bitwise complement",
+      "family": "operator",
+      "id": "unop.complement",
+      "op": "^"
+    },
+    {
+      "case": "unop-deref",
+      "description": "`*`: dereference",
+      "family": "operator",
+      "id": "unop.deref",
+      "op": "*"
+    },
+    {
+      "case": "unop-neg",
+      "description": "`-`: negation",
+      "family": "operator",
+      "id": "unop.neg",
+      "op": "-"
+    },
+    {
+      "case": "unop-not",
+      "description": "`!`: logical not",
+      "family": "operator",
+      "id": "unop.not",
+      "op": "!"
+    },
+    {
+      "case": "unop-plus",
+      "description": "`+`: unary plus",
+      "family": "operator",
+      "id": "unop.plus",
+      "op": "+"
+    },
+    {
+      "case": "unop-recv",
+      "description": "`<-`: channel receive",
+      "family": "operator",
+      "id": "unop.recv",
+      "op": "<-"
+    },
+    {
+      "case": "unop-ref",
+      "description": "`&`: reference",
+      "family": "operator",
+      "id": "unop.ref",
+      "op": "&"
+    }
+  ],
+  "format": "codespec-support-matrix/1",
+  "languages": [
+    {
+      "name": "Go",
+      "read": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": "verified",
+        "decl.newtype": "verified",
+        "decl.struct": "verified",
+        "decl.union": {
+          "note": "Case decl-union: its module does not use the feature.",
+          "state": "refused"
+        },
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": "verified",
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": "verified",
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": "verified",
+        "expr.nil": "verified",
+        "expr.struct": "verified",
+        "expr.to_error": "verified",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": {
+          "note": "Case expr-zero: its module does not use the feature.",
+          "state": "refused"
+        },
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "verified",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "verified",
+        "intrinsic.sorted_keys": {
+          "note": "Case intrinsic-sorted-keys: its module does not use the feature.",
+          "state": "refused"
+        },
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "verified",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "verified",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": "verified",
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": "verified",
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: its module does not use the feature.",
+          "state": "refused"
+        },
+        "stmt.return": "verified",
+        "stmt.send": "verified",
+        "stmt.switch": "verified",
+        "stmt.var": "verified",
+        "type.any": "verified",
+        "type.bool": "verified",
+        "type.chan": "verified",
+        "type.error": "verified",
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": {
+          "note": "Not claimed, though its case type-tuple passes.",
+          "state": "refused"
+        },
+        "type.unit": {
+          "note": "Case type-unit: its module does not use the feature.",
+          "state": "refused"
+        },
+        "unop.complement": "verified",
+        "unop.deref": "verified",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "verified",
+        "unop.ref": "verified"
+      },
+      "write": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": "verified",
+        "decl.newtype": "verified",
+        "decl.struct": "verified",
+        "decl.union": {
+          "note": "Case decl-union: the writer refuses it: codespec-write-go: case.go:7: union Shape: Go has no tagged union.",
+          "state": "refused"
+        },
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": "verified",
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": "verified",
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": "verified",
+        "expr.nil": "verified",
+        "expr.struct": "verified",
+        "expr.to_error": "verified",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "verified",
+        "fact.comma_ok": "verified",
+        "fact.displays": "verified",
+        "fact.fallible": "verified",
+        "fact.messages": "verified",
+        "fact.read_only": "verified",
+        "fact.shared": "verified",
+        "fact.unordered_iteration": "verified",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "verified",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "verified",
+        "intrinsic.sorted_keys": "verified",
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "verified",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "verified",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": "verified",
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": "verified",
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "verified",
+        "stmt.return": "verified",
+        "stmt.send": "verified",
+        "stmt.switch": "verified",
+        "stmt.var": "verified",
+        "type.any": "verified",
+        "type.bool": "verified",
+        "type.chan": "verified",
+        "type.error": "verified",
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": "verified",
+        "type.unit": "verified",
+        "unop.complement": "verified",
+        "unop.deref": "verified",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "verified",
+        "unop.ref": "verified"
+      }
+    },
+    {
+      "name": "Rust",
+      "read": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": "verified",
+        "decl.newtype": "verified",
+        "decl.struct": "verified",
+        "decl.union": "refused",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": "verified",
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": "verified",
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": "verified",
+        "expr.nil": "refused",
+        "expr.struct": "verified",
+        "expr.to_error": "verified",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "refused",
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "verified",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "verified",
+        "intrinsic.sorted_keys": "refused",
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "verified",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "verified",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": "verified",
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "verified",
+        "stmt.return": "verified",
+        "stmt.send": "verified",
+        "stmt.switch": "verified",
+        "stmt.var": "verified",
+        "type.any": "refused",
+        "type.bool": "verified",
+        "type.chan": "verified",
+        "type.error": "verified",
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": "refused",
+        "unop.complement": "verified",
+        "unop.deref": "verified",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "refused",
+        "unop.recv": "refused",
+        "unop.ref": "verified"
+      },
+      "write": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": "verified",
+        "decl.newtype": "verified",
+        "decl.struct": "verified",
+        "decl.union": "verified",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": "verified",
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": "verified",
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": "verified",
+        "expr.nil": "verified",
+        "expr.struct": "verified",
+        "expr.to_error": "verified",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "verified",
+        "fact.comma_ok": "verified",
+        "fact.displays": "verified",
+        "fact.fallible": "verified",
+        "fact.messages": "verified",
+        "fact.read_only": "verified",
+        "fact.shared": "verified",
+        "fact.unordered_iteration": "verified",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "verified",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "verified",
+        "intrinsic.sorted_keys": "verified",
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "verified",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "verified",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": "verified",
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": {
+          "note": "Case stmt-foreign: the writer refuses it: Count (case.go:6): foreign go statement: defer is outside cir/1.",
+          "state": "refused"
+        },
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "verified",
+        "stmt.return": "verified",
+        "stmt.send": "verified",
+        "stmt.switch": "verified",
+        "stmt.var": "verified",
+        "type.any": "verified",
+        "type.bool": "verified",
+        "type.chan": "verified",
+        "type.error": "verified",
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": "verified",
+        "type.unit": "verified",
+        "unop.complement": "verified",
+        "unop.deref": "verified",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "verified",
+        "unop.ref": "verified"
+      }
+    },
+    {
+      "name": "Java",
+      "read": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "refused",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "refused",
+        "assign.shr": "refused",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "decl.newtype": "refused",
+        "decl.struct": "verified",
+        "decl.union": "refused",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": "verified",
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": "verified",
+        "expr.nil": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "expr.struct": "verified",
+        "expr.to_error": "refused",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "refused",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "refused",
+        "intrinsic.sorted_keys": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "refused",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "refused",
+        "op.shr": "refused",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "refused",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "refused",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "refused",
+        "stmt.return": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "stmt.send": "refused",
+        "stmt.switch": "verified",
+        "stmt.var": "refused",
+        "type.any": "refused",
+        "type.bool": "verified",
+        "type.chan": "refused",
+        "type.error": "verified",
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": {
+          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "unop.complement": "verified",
+        "unop.deref": "refused",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "refused",
+        "unop.ref": "verified"
+      },
+      "write": {
+        "assign.add": "none",
+        "assign.and": "none",
+        "assign.and_not": "none",
+        "assign.div": "none",
+        "assign.mul": "none",
+        "assign.or": "none",
+        "assign.rem": "none",
+        "assign.shl": "none",
+        "assign.shr": "none",
+        "assign.sub": "none",
+        "assign.xor": "none",
+        "decl.enum": "none",
+        "decl.newtype": "none",
+        "decl.struct": "none",
+        "decl.union": "none",
+        "expr.binop": "none",
+        "expr.call": "none",
+        "expr.const": "none",
+        "expr.conv": "none",
+        "expr.errvar": "none",
+        "expr.field": "none",
+        "expr.index": "none",
+        "expr.intrinsic": "none",
+        "expr.lit": "none",
+        "expr.make": "none",
+        "expr.method": "none",
+        "expr.nil": "none",
+        "expr.struct": "none",
+        "expr.to_error": "none",
+        "expr.unop": "none",
+        "expr.var": "none",
+        "expr.zero": "none",
+        "fact.comma_ok": "none",
+        "fact.displays": "none",
+        "fact.fallible": "none",
+        "fact.messages": "none",
+        "fact.read_only": "none",
+        "fact.shared": "none",
+        "fact.unordered_iteration": "none",
+        "intrinsic.append": "none",
+        "intrinsic.errorf": "none",
+        "intrinsic.len": "none",
+        "intrinsic.println": "none",
+        "intrinsic.sorted_keys": "none",
+        "intrinsic.sprintf": "none",
+        "op.add": "none",
+        "op.and": "none",
+        "op.and_not": "none",
+        "op.div": "none",
+        "op.eq": "none",
+        "op.ge": "none",
+        "op.gt": "none",
+        "op.land": "none",
+        "op.le": "none",
+        "op.lor": "none",
+        "op.lt": "none",
+        "op.mul": "none",
+        "op.ne": "none",
+        "op.or": "none",
+        "op.rem": "none",
+        "op.shl": "none",
+        "op.shr": "none",
+        "op.sub": "none",
+        "op.xor": "none",
+        "sem.continue.post": "none",
+        "sem.int.wrap": "none",
+        "sem.map.order": "none",
+        "sem.multi_assign.order": "none",
+        "sem.rem.sign": "none",
+        "sem.switch.break": "none",
+        "stmt.assign": "none",
+        "stmt.break": "none",
+        "stmt.continue": "none",
+        "stmt.decr": "none",
+        "stmt.expr": "none",
+        "stmt.for": "none",
+        "stmt.for_range": "none",
+        "stmt.foreign": "none",
+        "stmt.if": "none",
+        "stmt.incr": "none",
+        "stmt.let": "none",
+        "stmt.lookup_else": "none",
+        "stmt.return": "none",
+        "stmt.send": "none",
+        "stmt.switch": "none",
+        "stmt.var": "none",
+        "type.any": "none",
+        "type.bool": "none",
+        "type.chan": "none",
+        "type.error": "none",
+        "type.int": "none",
+        "type.map": "none",
+        "type.named": "none",
+        "type.ptr": "none",
+        "type.slice": "none",
+        "type.string": "none",
+        "type.tuple": "none",
+        "type.unit": "none",
+        "unop.complement": "none",
+        "unop.deref": "none",
+        "unop.neg": "none",
+        "unop.not": "none",
+        "unop.plus": "none",
+        "unop.recv": "none",
+        "unop.ref": "none"
+      }
+    },
+    {
+      "name": "Groovy",
+      "read": {
+        "assign.add": {
+          "note": "Not claimed, though its case assign-add passes.",
+          "state": "refused"
+        },
+        "assign.and": {
+          "note": "Not claimed, though its case assign-and passes.",
+          "state": "refused"
+        },
+        "assign.and_not": "refused",
+        "assign.div": {
+          "note": "Case assign-div: its module does not use the feature.",
+          "state": "refused"
+        },
+        "assign.mul": {
+          "note": "Not claimed, though its case assign-mul passes.",
+          "state": "refused"
+        },
+        "assign.or": {
+          "note": "Not claimed, though its case assign-or passes.",
+          "state": "refused"
+        },
+        "assign.rem": {
+          "note": "Not claimed, though its case assign-rem passes.",
+          "state": "refused"
+        },
+        "assign.shl": "refused",
+        "assign.shr": "refused",
+        "assign.sub": {
+          "note": "Not claimed, though its case assign-sub passes.",
+          "state": "refused"
+        },
+        "assign.xor": {
+          "note": "Not claimed, though its case assign-xor passes.",
+          "state": "refused"
+        },
+        "decl.enum": {
+          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "decl.newtype": "refused",
+        "decl.struct": "verified",
+        "decl.union": "refused",
+        "expr.binop": "verified",
+        "expr.call": {
+          "note": "Not claimed, though its case expr-call passes.",
+          "state": "refused"
+        },
+        "expr.const": "verified",
+        "expr.conv": "verified",
+        "expr.errvar": {
+          "note": "Case expr-errvar: its module does not use the feature.",
+          "state": "refused"
+        },
+        "expr.field": "verified",
+        "expr.index": "verified",
+        "expr.intrinsic": {
+          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "expr.lit": "verified",
+        "expr.make": "verified",
+        "expr.method": {
+          "note": "Not claimed, though its case expr-method passes.",
+          "state": "refused"
+        },
+        "expr.nil": "refused",
+        "expr.struct": "verified",
+        "expr.to_error": "refused",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "refused",
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "verified",
+        "intrinsic.errorf": "refused",
+        "intrinsic.len": "verified",
+        "intrinsic.println": "refused",
+        "intrinsic.sorted_keys": {
+          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "intrinsic.sprintf": "verified",
+        "op.add": "verified",
+        "op.and": {
+          "note": "Not claimed, though its case op-and passes.",
+          "state": "refused"
+        },
+        "op.and_not": "refused",
+        "op.div": {
+          "note": "Case op-div: its module does not use the feature.",
+          "state": "refused"
+        },
+        "op.eq": "verified",
+        "op.ge": {
+          "note": "Not claimed, though its case op-ge passes.",
+          "state": "refused"
+        },
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": {
+          "note": "Not claimed, though its case op-le passes.",
+          "state": "refused"
+        },
+        "op.lor": {
+          "note": "Not claimed, though its case op-lor passes.",
+          "state": "refused"
+        },
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": {
+          "note": "Not claimed, though its case op-ne passes.",
+          "state": "refused"
+        },
+        "op.or": {
+          "note": "Not claimed, though its case op-or passes.",
+          "state": "refused"
+        },
+        "op.rem": {
+          "note": "Not claimed, though its case op-rem passes.",
+          "state": "refused"
+        },
+        "op.shl": "refused",
+        "op.shr": "refused",
+        "op.sub": {
+          "note": "Not claimed, though its case op-sub passes.",
+          "state": "refused"
+        },
+        "op.xor": {
+          "note": "Not claimed, though its case op-xor passes.",
+          "state": "refused"
+        },
+        "sem.continue.post": {
+          "note": "Not claimed, though its case sem-continue-post passes.",
+          "state": "refused"
+        },
+        "sem.int.wrap": {
+          "note": "Case sem-int-wrap, step 3: foreign_statement: the module keeps source as a foreign statement; sem.int.wrap counts only when nothing of its case is foreign.",
+          "state": "failing"
+        },
+        "sem.map.order": "verified",
+        "sem.multi_assign.order": "refused",
+        "sem.rem.sign": {
+          "note": "Not claimed, though its case sem-rem-sign passes.",
+          "state": "refused"
+        },
+        "sem.switch.break": "refused",
+        "stmt.assign": "verified",
+        "stmt.break": "verified",
+        "stmt.continue": {
+          "note": "Not claimed, though its case stmt-continue passes.",
+          "state": "refused"
+        },
+        "stmt.decr": {
+          "note": "Not claimed, though its case stmt-decr passes.",
+          "state": "refused"
+        },
+        "stmt.expr": "refused",
+        "stmt.for": "verified",
+        "stmt.for_range": "verified",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "refused",
+        "stmt.return": {
+          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
+          "state": "claimed"
+        },
+        "stmt.send": "refused",
+        "stmt.switch": "verified",
+        "stmt.var": "refused",
+        "type.any": "refused",
+        "type.bool": "verified",
+        "type.chan": "refused",
+        "type.error": {
+          "note": "Case type-error: its module does not use the feature.",
+          "state": "refused"
+        },
+        "type.int": "verified",
+        "type.map": "verified",
+        "type.named": "verified",
+        "type.ptr": "verified",
+        "type.slice": "verified",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": "refused",
+        "unop.complement": {
+          "note": "Not claimed, though its case unop-complement passes.",
+          "state": "refused"
+        },
+        "unop.deref": "refused",
+        "unop.neg": {
+          "note": "Not claimed, though its case unop-neg passes.",
+          "state": "refused"
+        },
+        "unop.not": {
+          "note": "Not claimed, though its case unop-not passes.",
+          "state": "refused"
+        },
+        "unop.plus": {
+          "note": "Not claimed, though its case unop-plus passes.",
+          "state": "refused"
+        },
+        "unop.recv": "refused",
+        "unop.ref": "verified"
+      },
+      "write": {
+        "assign.add": "none",
+        "assign.and": "none",
+        "assign.and_not": "none",
+        "assign.div": "none",
+        "assign.mul": "none",
+        "assign.or": "none",
+        "assign.rem": "none",
+        "assign.shl": "none",
+        "assign.shr": "none",
+        "assign.sub": "none",
+        "assign.xor": "none",
+        "decl.enum": "none",
+        "decl.newtype": "none",
+        "decl.struct": "none",
+        "decl.union": "none",
+        "expr.binop": "none",
+        "expr.call": "none",
+        "expr.const": "none",
+        "expr.conv": "none",
+        "expr.errvar": "none",
+        "expr.field": "none",
+        "expr.index": "none",
+        "expr.intrinsic": "none",
+        "expr.lit": "none",
+        "expr.make": "none",
+        "expr.method": "none",
+        "expr.nil": "none",
+        "expr.struct": "none",
+        "expr.to_error": "none",
+        "expr.unop": "none",
+        "expr.var": "none",
+        "expr.zero": "none",
+        "fact.comma_ok": "none",
+        "fact.displays": "none",
+        "fact.fallible": "none",
+        "fact.messages": "none",
+        "fact.read_only": "none",
+        "fact.shared": "none",
+        "fact.unordered_iteration": "none",
+        "intrinsic.append": "none",
+        "intrinsic.errorf": "none",
+        "intrinsic.len": "none",
+        "intrinsic.println": "none",
+        "intrinsic.sorted_keys": "none",
+        "intrinsic.sprintf": "none",
+        "op.add": "none",
+        "op.and": "none",
+        "op.and_not": "none",
+        "op.div": "none",
+        "op.eq": "none",
+        "op.ge": "none",
+        "op.gt": "none",
+        "op.land": "none",
+        "op.le": "none",
+        "op.lor": "none",
+        "op.lt": "none",
+        "op.mul": "none",
+        "op.ne": "none",
+        "op.or": "none",
+        "op.rem": "none",
+        "op.shl": "none",
+        "op.shr": "none",
+        "op.sub": "none",
+        "op.xor": "none",
+        "sem.continue.post": "none",
+        "sem.int.wrap": "none",
+        "sem.map.order": "none",
+        "sem.multi_assign.order": "none",
+        "sem.rem.sign": "none",
+        "sem.switch.break": "none",
+        "stmt.assign": "none",
+        "stmt.break": "none",
+        "stmt.continue": "none",
+        "stmt.decr": "none",
+        "stmt.expr": "none",
+        "stmt.for": "none",
+        "stmt.for_range": "none",
+        "stmt.foreign": "none",
+        "stmt.if": "none",
+        "stmt.incr": "none",
+        "stmt.let": "none",
+        "stmt.lookup_else": "none",
+        "stmt.return": "none",
+        "stmt.send": "none",
+        "stmt.switch": "none",
+        "stmt.var": "none",
+        "type.any": "none",
+        "type.bool": "none",
+        "type.chan": "none",
+        "type.error": "none",
+        "type.int": "none",
+        "type.map": "none",
+        "type.named": "none",
+        "type.ptr": "none",
+        "type.slice": "none",
+        "type.string": "none",
+        "type.tuple": "none",
+        "type.unit": "none",
+        "unop.complement": "none",
+        "unop.deref": "none",
+        "unop.neg": "none",
+        "unop.not": "none",
+        "unop.plus": "none",
+        "unop.recv": "none",
+        "unop.ref": "none"
+      }
+    }
+  ]
+}

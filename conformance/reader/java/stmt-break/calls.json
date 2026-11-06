@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Root",
+      "args": [
+        "0"
+      ]
+    },
+    {
+      "func": "Root",
+      "args": [
+        "10"
+      ]
+    }
+  ]
+}
