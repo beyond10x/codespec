@@ -148,6 +148,14 @@
 //! | `sem.multi_assign.order` | an `assign` without `op` with more than one target |
 //! | `sem.map.order` | a `for_range` over a map |
 //! | `sem.switch.break` | a `break` whose innermost enclosing loop or switch is a switch |
+//!
+//! # Conformance runs
+//!
+//! [`conform`] runs the kit against one reader or writer by its `--describe` manifest and writes a
+//! `codespec-conformance-report/1`; `codespec conform` is its command line. The reader corpus of
+//! the in-repository readers is `conformance/reader/<lang>/<case>/`.
+
+pub mod conform;
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;

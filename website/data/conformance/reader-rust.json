@@ -1,0 +1,788 @@
+{
+  "format": "codespec-conformance-report/1",
+  "adapter": {
+    "role": "reader",
+    "lang": "rust",
+    "version": "0.2.0",
+    "manifest_sha256": "e57f4c312d975a2f61848c6fc7befd1c5caed033e0b0a490e423784869f280c5"
+  },
+  "kit": {
+    "version": "0.2.0",
+    "sha256": "dfd17e8a3e65ede941526dffd16828ab5688561b9742c125a7ebe0c5b268e636"
+  },
+  "corpus": {
+    "sha256": "8b7417ad4923295987669372daae84f50e848386867f81cf6f76985cc1c20186"
+  },
+  "codespec": "0.2.0",
+  "features": [
+    {
+      "id": "assign.add",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-add"
+      ]
+    },
+    {
+      "id": "assign.and",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.and_not",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.div",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-div"
+      ]
+    },
+    {
+      "id": "assign.mul",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-mul"
+      ]
+    },
+    {
+      "id": "assign.or",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.rem",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-rem"
+      ]
+    },
+    {
+      "id": "assign.shl",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.shr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "assign.sub",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-sub"
+      ]
+    },
+    {
+      "id": "assign.xor",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.enum",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-enum"
+      ]
+    },
+    {
+      "id": "decl.newtype",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-newtype"
+      ]
+    },
+    {
+      "id": "decl.struct",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-struct"
+      ]
+    },
+    {
+      "id": "decl.union",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.binop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-binop"
+      ]
+    },
+    {
+      "id": "expr.call",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-call"
+      ]
+    },
+    {
+      "id": "expr.const",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-const"
+      ]
+    },
+    {
+      "id": "expr.conv",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-conv"
+      ]
+    },
+    {
+      "id": "expr.errvar",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-errvar"
+      ]
+    },
+    {
+      "id": "expr.field",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-field"
+      ]
+    },
+    {
+      "id": "expr.index",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.intrinsic",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-intrinsic"
+      ]
+    },
+    {
+      "id": "expr.lit",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-lit"
+      ]
+    },
+    {
+      "id": "expr.make",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.method",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-method"
+      ]
+    },
+    {
+      "id": "expr.nil",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.struct",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-struct"
+      ]
+    },
+    {
+      "id": "expr.to_error",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-error"
+      ]
+    },
+    {
+      "id": "expr.unop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-unop"
+      ]
+    },
+    {
+      "id": "expr.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-var"
+      ]
+    },
+    {
+      "id": "expr.zero",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.comma_ok",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.displays",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.fallible",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.messages",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.read_only",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.shared",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "fact.unordered_iteration",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.append",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-append"
+      ]
+    },
+    {
+      "id": "intrinsic.errorf",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-errorf"
+      ]
+    },
+    {
+      "id": "intrinsic.len",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.println",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-println"
+      ]
+    },
+    {
+      "id": "intrinsic.sorted_keys",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "intrinsic.sprintf",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-sprintf"
+      ]
+    },
+    {
+      "id": "op.add",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-add"
+      ]
+    },
+    {
+      "id": "op.and",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-and"
+      ]
+    },
+    {
+      "id": "op.and_not",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.div",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-div"
+      ]
+    },
+    {
+      "id": "op.eq",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-eq"
+      ]
+    },
+    {
+      "id": "op.ge",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-ge"
+      ]
+    },
+    {
+      "id": "op.gt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-gt"
+      ]
+    },
+    {
+      "id": "op.land",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-land"
+      ]
+    },
+    {
+      "id": "op.le",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-le"
+      ]
+    },
+    {
+      "id": "op.lor",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-lor"
+      ]
+    },
+    {
+      "id": "op.lt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-lt"
+      ]
+    },
+    {
+      "id": "op.mul",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-mul"
+      ]
+    },
+    {
+      "id": "op.ne",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-ne"
+      ]
+    },
+    {
+      "id": "op.or",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-or"
+      ]
+    },
+    {
+      "id": "op.rem",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-rem"
+      ]
+    },
+    {
+      "id": "op.shl",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.shr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "op.sub",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-sub"
+      ]
+    },
+    {
+      "id": "op.xor",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-xor"
+      ]
+    },
+    {
+      "id": "sem.continue.post",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-continue-post"
+      ]
+    },
+    {
+      "id": "sem.int.wrap",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-int-wrap"
+      ]
+    },
+    {
+      "id": "sem.map.order",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "sem.multi_assign.order",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-multi-assign-order"
+      ]
+    },
+    {
+      "id": "sem.rem.sign",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-rem-sign"
+      ]
+    },
+    {
+      "id": "sem.switch.break",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.assign",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-assign"
+      ]
+    },
+    {
+      "id": "stmt.break",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-break"
+      ]
+    },
+    {
+      "id": "stmt.continue",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.decr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-decr"
+      ]
+    },
+    {
+      "id": "stmt.expr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-expr"
+      ]
+    },
+    {
+      "id": "stmt.for",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-for"
+      ]
+    },
+    {
+      "id": "stmt.for_range",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.foreign",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.if",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-if"
+      ]
+    },
+    {
+      "id": "stmt.incr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-incr"
+      ]
+    },
+    {
+      "id": "stmt.let",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-let"
+      ]
+    },
+    {
+      "id": "stmt.lookup_else",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.return",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-return"
+      ]
+    },
+    {
+      "id": "stmt.send",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.switch",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "stmt.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-var"
+      ]
+    },
+    {
+      "id": "type.any",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.bool",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-bool"
+      ]
+    },
+    {
+      "id": "type.chan",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.error",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-error"
+      ]
+    },
+    {
+      "id": "type.int",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-int"
+      ]
+    },
+    {
+      "id": "type.map",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.named",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-named"
+      ]
+    },
+    {
+      "id": "type.ptr",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.slice",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-slice"
+      ]
+    },
+    {
+      "id": "type.string",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-string"
+      ]
+    },
+    {
+      "id": "type.tuple",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.unit",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.complement",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-complement"
+      ]
+    },
+    {
+      "id": "unop.deref",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.neg",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-neg"
+      ]
+    },
+    {
+      "id": "unop.not",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-not"
+      ]
+    },
+    {
+      "id": "unop.plus",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.recv",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "unop.ref",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    }
+  ],
+  "boundary": [],
+  "summary": {
+    "claimed": 64,
+    "pass": 64,
+    "fail": 0,
+    "refused_unclaimed": 0,
+    "pass_unclaimed": 0,
+    "untested": 41,
+    "boundary_fail": 0
+  },
+  "conforms": true
+}

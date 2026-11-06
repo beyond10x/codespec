@@ -144,9 +144,37 @@
     },
     {
       "area": "Interfaces",
-      "detail": "validate, schema, read, pass, write and harness.",
+      "detail": "validate, schema, features, read, pass, write, conform and harness.",
       "href": "/docs/reference/cli",
       "label": "codespec command line",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform runs codespec-read-go over its corpus, one Go source per claimed feature: each runs to the case's expected output, reads twice to the same bytes, uses its feature outside a foreign statement, and written as Go runs to the expected output again.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "Go reader conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform runs codespec-read-rust over its corpus, one Rust crate per claimed feature, through the same four steps as the Go reader.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "Rust reader conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "Go writer conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform writes every case of the kit with codespec-write-rust and runs it with codespec-run-rust, as for the Go writer; a module without facts is refused naming codespec pass.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "Rust writer conforms to the kit",
       "status": "shipped"
     }
   ],

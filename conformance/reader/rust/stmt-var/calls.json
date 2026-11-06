@@ -1,0 +1,9 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Zero",
+      "args": []
+    }
+  ]
+}

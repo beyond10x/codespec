@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "DivBy",
+      "args": [
+        "7",
+        "2"
+      ]
+    },
+    {
+      "func": "DivBy",
+      "args": [
+        "-7",
+        "2"
+      ]
+    }
+  ]
+}
