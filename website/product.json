@@ -3,7 +3,7 @@
   "product": {
     "name": "codespec",
     "mark": "cs",
-    "eyebrow": "Code intermediate representation · 0.1.0",
+    "eyebrow": "Code intermediate representation · 0.1.1",
     "promise": [
       "Code as typed data.",
       "Every translation runs against the original."
@@ -102,7 +102,7 @@
         },
         {
           "title": "A Rust reader on syn",
-          "description": "Rust to cir/1 to Go, held to the same harness. Decided for 0.1.0 and in progress.",
+          "description": "Rust to cir/1 to Go, held to the same harness.",
           "status": "decided",
           "href": "/docs/vision#milestones"
         },
@@ -117,7 +117,7 @@
     {
       "kind": "status",
       "eyebrow": "Status",
-      "title": "0.1.0. Here is exactly what exists.",
+      "title": "0.1.1. Here is exactly what exists.",
       "lede": "Shipped means code in the release, held by a named test or gate task.",
       "items": "data/status.json"
     },

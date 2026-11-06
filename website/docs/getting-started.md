@@ -35,7 +35,7 @@ task: [adapters] cargo build --locked -p codespec-write-rust
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.01s
 task: [adapters] cp target/debug/codespec-write-rust <checkout>/target/adapters/
 $ target/debug/codespec --version
-codespec 0.1.0
+codespec 0.1.1
 ```
 
 (`Compiling …` lines omitted.) Instead of `--adapters target/adapters` on every command you can

@@ -2,6 +2,17 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## 0.1.1
+
+The first published binaries. The `0.1.0` tag exists, but its release build failed and it has no
+release.
+
+### Fixed
+
+- `codespec-read-go` built with `-trimpath`, as the release archives are, finds the standard
+  library through `go env GOROOT` instead of failing with `could not import errors`.
+- The release build runs its macOS archive on `macos-15`; GitHub no longer offers `macos-14`.
+
 ## 0.1.0
 
 The first release: the model, the Go and Rust readers, the passes, the Go and Rust writers and the harness.
