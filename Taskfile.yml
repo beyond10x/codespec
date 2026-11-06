@@ -33,6 +33,7 @@ tasks:
       - task: examples-fees
       - task: harness
       - task: conformance-cases
+      - task: conformance-kit
       - task: groovy-fixture-check
       - task: docs-check
 
@@ -303,6 +304,32 @@ tasks:
     cmds:
       - cargo run --locked -q -p b10x-codespec-conformance -- kit > conformance/kit.json
       - cargo run --locked -q -p b10x-codespec-conformance -- check --write --codespec {{.CODESPEC}} --adapters {{.ADAPTERS}} --build-dir target/conformance
+
+  conformance-kit:
+    desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
+    cmds:
+      - cargo build --locked -p b10x-codespec-cli
+      - mkdir -p {{.ADAPTERS}}
+      - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/codespec-write-go ./cmd/codespec-run-go
+      - |
+        set -eu
+        version="$({{.CODESPEC}} --version | cut -d' ' -f2)"
+        test -n "$version"
+        name="codespec-conformance-$version"
+        scratch="{{.ROOT_DIR}}/target/conformance-kit"
+        archive="$scratch/$name.tar.gz"
+        rm -rf "$scratch"
+        mkdir -p "$scratch/stage/$name/schemas" "$scratch/unpacked"
+        cp -R conformance "$scratch/stage/$name/"
+        cp schemas/cir-1.features.json "$scratch/stage/$name/schemas/"
+        tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --mode=u+rw,go+r,go-w -C "$scratch/stage" -cf "$scratch/$name.tar" "$name"
+        gzip -n -9 -c "$scratch/$name.tar" > "$archive"
+        tar -xzf "$archive" -C "$scratch/unpacked"
+        diff -r conformance "$scratch/unpacked/$name/conformance"
+        cmp schemas/cir-1.features.json "$scratch/unpacked/$name/schemas/cir-1.features.json"
+        cd "$scratch"
+        {{.CODESPEC}} conform --lang go --role writer --kit "$scratch/unpacked/$name/conformance" --adapters {{.ADAPTERS}} --work "$scratch/work" --out "$scratch/go-writer.json"
+        echo "$archive"
 
   conformance-cases:
     desc: Fail when conformance/kit.json is not the one the feature vocabulary generates, or a case's case.go read and passed differs from its case.cir.json, its reference run on calls.json from its expected.txt, or its features.json from the features its module uses.

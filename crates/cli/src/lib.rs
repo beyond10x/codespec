@@ -88,7 +88,7 @@ pub enum Cmd {
             conflicts_with = "check"
         )]
         role: Option<String>,
-        /// Where the report is written.
+        /// Where the report is written; a missing directory is created.
         #[arg(long, required_unless_present = "check", conflicts_with = "check")]
         out: Option<PathBuf>,
         /// A report to check: run again and compare.

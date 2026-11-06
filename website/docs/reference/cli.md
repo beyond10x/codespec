@@ -113,7 +113,7 @@ Usage: codespec conform [OPTIONS] --adapters <ADAPTERS>
 |---|---|---|---|---|
 | `--lang <LANG>` | no | none | none | The adapter's language; selects codespec-ROLE-LANG and the runner codespec-run-LANG. |
 | `--role <ROLE>` | no | none | none | reader or writer. |
-| `--out <OUT>` | no | none | none | Where the report is written. |
+| `--out <OUT>` | no | none | none | Where the report is written; a missing directory is created. |
 | `--check <CHECK>` | no | none | none | A report to check: run again and compare. |
 | `--kit <KIT>` | no | `conformance` | none | The kit directory: kit.json and cases/. |
 | `--corpus <CORPUS>` | no | none | none | A reader's corpus: one directory per kit case, its source and calls.json. Defaults to KIT/reader/LANG. |

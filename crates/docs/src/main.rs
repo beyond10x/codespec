@@ -20,7 +20,9 @@
 //!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
 //!   (`target/adapters`, `task build`);
 //! - the support matrix (`website/data/support-matrix.json`, [`support`]), from the feature list,
-//!   each adapter's `--describe` manifest and those reports.
+//!   each adapter's `--describe` manifest and those reports;
+//! - the sample `codespec conform` run in the adapter guide (`guides/add-an-adapter.md`,
+//!   [`guide`]), the block between its markers, from the Go writer's report.
 //!
 //! The corpora, the reports and the matrix are generated first, since the status data takes the
 //! reports as evidence; the unit test of current files covers the others, which need no build.
@@ -33,6 +35,7 @@ mod cir;
 mod cli;
 mod crates;
 mod diagram;
+mod guide;
 mod routes;
 mod series;
 mod showcase;
@@ -438,6 +441,12 @@ fn generate(root: &Path, adapters: &Path, check: bool) -> Result<()> {
         &support_matrix(root, adapters, &ran)?,
         check,
     )?;
+    let writer_go = ran
+        .iter()
+        .find(|(path, _)| *path == guide::REPORT)
+        .map(|(_, r)| r)
+        .ok_or_else(|| format!("no report {}", guide::REPORT))?;
+    settle(root, guide::PAGE, &guide::page(root, writer_go)?, check)?;
     let all = outputs(root)?;
     for (relative, content) in &all {
         settle(root, relative, content, check)?;

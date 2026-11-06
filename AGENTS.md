@@ -83,8 +83,9 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-ledger` | the Java `ledger` package read twice with `codespec-read-java` (byte-equal, equal to `ledger.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/ledger --seeds 200 --commands 300` byte-equal over the original Java, Go and Rust |
 | `examples-fees` | the Grails `fees` application read twice with `codespec-read-groovy` (byte-equal, equal to `fees.read.cir.json`, no refusal, `codespec measure` equal to `fees.measure.txt`), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/fees --seeds 200 --commands 300` byte-equal over the original Groovy (groovyc 2.4.10 on the JDK), Go and Rust |
 | `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
+| `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
-| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy}` equal to what the kit's case sources build, the six conformance reports equal to `codespec conform` run again on the Go, Rust, Java and Groovy readers and the Go and Rust writers (needs `task build`), the support matrix equal to what the manifests and reports build, no raw admonition title |
+| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy}` equal to what the kit's case sources build, the six conformance reports equal to `codespec conform` run again on the Go, Rust, Java and Groovy readers and the Go and Rust writers (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
 
 Not in the gate: the site build, `task docs-site` (`npm --prefix website ci --allow-git=root &&
 npm --prefix website run build`; npm 12 needs `--allow-git=root` for the Git-pinned
@@ -183,16 +184,21 @@ to `main` only.
 
 1. Bump `version` in `[workspace.package]` of `Cargo.toml` and `const version` in
    `adapters/go/cmd/codespec-read-go/main.go` (it is written into every document as
-   `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` likewise, a test checks it), then `task examples`, `task conformance` and `task docs-generate` (`VERSION` in
+   `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` likewise, a test checks it), then `task examples`, `task conformance` and `task docs-generate` (it rewrites the conform sample in `website/docs/guides/add-an-adapter.md` from the Go writer report; `VERSION` in
    `crates/docs/src/status.rs` follows the workspace version, a test checks it). Move the
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.
 3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec`,
-   `codespec-write-rust` and `codespec-read-rust` (Rust) and `codespec-read-go` and `codespec-write-go` (Go) for
+   `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
    `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, smoke-tests
-   each, and uploads the artifact `codespec-<tag>-release`: the three archives
-   `codespec-<tag>-<target>.tar.gz` and `SHA256SUMS`.
+   each (the runners on the kit case `op-add`, written as Go and as Rust); its job `kit` runs `task conformance-kit`, which packs `conformance/` and
+   `schemas/cir-1.features.json` into `codespec-conformance-<tag>.tar.gz` and runs `codespec conform`
+   on the Go writer against the unpacked copy. It uploads the artifact `codespec-<tag>-release`: the
+   three archives `codespec-<tag>-<target>.tar.gz`, the kit `codespec-conformance-<tag>.tar.gz` and
+   `SHA256SUMS` over all four. A binary archive and the kit are everything `codespec conform`
+   needs for a Go or Rust writer and for a reader (the guide `add-an-adapter.md` says so); a
+   program the conform engine calls that is missing from the archive is a release defect.
 4. Download the artifact `codespec-<tag>-release` (`gh run download <run> -n codespec-<tag>-release`,
    read-only) and run
    `sha256sum -c SHA256SUMS`.
