@@ -13,5 +13,6 @@ path = "src/main.rs"
 
 [dependencies]
 b10x-codespec-model = { path = "../model" }
+b10x-codespec-harness = { path = "../harness" }
 b10x-codespec-passes = { path = "../passes" }
 clap.workspace = true

@@ -13,7 +13,7 @@ tasks:
     cmds: [{task: check}]
 
   check:
-    desc: The gate. Format, lint, test, schema drift, adapters, examples.
+    desc: The gate. Format, lint, test, schema drift, adapters, examples, harness.
     cmds:
       - cargo fmt --all --check
       - cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -23,6 +23,7 @@ tasks:
       - task: examples-pass
       - task: examples-go
       - task: examples-rust
+      - task: harness
 
   build:
     desc: Build the codespec CLI and every adapter into target/.
@@ -90,6 +91,15 @@ tasks:
       - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-rust/orders/Cargo.toml --target-dir target/examples-rust/build
       - '! {{.CODESPEC}} write --lang rust examples/orders/orders.read.cir.json --out target/examples-rust/no-facts --adapters {{.ADAPTERS}}'
       - test ! -e target/examples-rust/no-facts
+
+  harness:
+    desc: Run the original, the Go output and the Rust output of orders on 200 seeded traces of 300 commands and require byte-equal output.
+    deps: [build]
+    cmds:
+      - test -z "$(gofmt -l examples/orders/drivers/go)"
+      - cargo fmt --manifest-path examples/orders/drivers/rust/Cargo.toml --check
+      - cargo clippy --manifest-path examples/orders/drivers/rust/Cargo.toml --locked --target-dir target/harness/rust-target -- -D warnings
+      - '{{.CODESPEC}} harness examples/orders --seeds 200 --commands 300 --build-dir target/harness'
 
   examples-pass:
     desc: Fail when the passes over an example give bytes other than its checked-in document, or change their own output.

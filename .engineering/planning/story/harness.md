@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:harness
 kind: story
-status: proposed
+status: active
 title: Comparison harness
 summary: codespec harness runs every implementation on seeded traces and requires byte-equal output
 relations:
@@ -22,9 +22,10 @@ scope:
   path: examples/orders/drivers
 - confidence: cited
   path: examples/orders/harness.toml
-revision: 10
+revision: 12
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T00:09:10Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "proposed", to: "active", at: "2026-11-06T01:08:09Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"review_outcome":2}}}
 ---
 # Story: Comparison harness
 
@@ -36,7 +37,7 @@ prints the seed, the implementation and the first differing line, exit 1.
 
 Implementations: the original (`examples/orders/source`), the Go output (`examples/orders/out/go`)
 and the Rust output (`examples/orders/out/rust`). One Go driver serves the first two, selected by
-build tag; one Rust driver serves the third.
+`go build -overlay` (a build tag would need a go.mod beside the reader's input); one Rust driver serves the third.
 
 ## Acceptance
 

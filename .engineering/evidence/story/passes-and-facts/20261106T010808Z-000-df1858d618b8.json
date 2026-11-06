@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-06T01:08:08Z",
+  "actor": "human:timo",
+  "artifact": "story:passes-and-facts",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (worktree codespec-m1, 3b2f6eb)"
+  }
+}

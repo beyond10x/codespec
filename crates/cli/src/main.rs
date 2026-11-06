@@ -1,5 +1,5 @@
-//! `codespec`: validate `cir/1` documents, print the schema, apply passes, and run reader and writer
-//! adapters.
+//! `codespec`: validate `cir/1` documents, print the schema, apply passes, run reader and writer
+//! adapters, and compare implementations of an example on seeded traces (`harness`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -59,6 +59,19 @@ enum Cmd {
         out: PathBuf,
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
+    },
+    /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
+    /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
+    /// differing line otherwise.
+    Harness {
+        example: PathBuf,
+        #[arg(long, default_value_t = 200)]
+        seeds: u64,
+        #[arg(long, default_value_t = 300)]
+        commands: usize,
+        /// Directory the implementations are built into; `{build}` in harness.toml.
+        #[arg(long, default_value = "target/harness")]
+        build_dir: PathBuf,
     },
 }
 
@@ -155,6 +168,22 @@ fn run(cmd: Cmd) -> Result<(), String> {
             if !status.success() {
                 return Err(format!("{} exited with {status}", prog.display()));
             }
+            Ok(())
+        }
+        Cmd::Harness {
+            example,
+            seeds,
+            commands,
+            build_dir,
+        } => {
+            let summary = codespec_harness::check(&codespec_harness::Options {
+                example,
+                build_dir,
+                seeds,
+                commands,
+            })
+            .map_err(|e| e.to_string())?;
+            println!("{summary}");
             Ok(())
         }
     }
