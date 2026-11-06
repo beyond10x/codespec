@@ -1,0 +1,10 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "decl.union",
+    "expr.var",
+    "stmt.return",
+    "type.int",
+    "type.string"
+  ]
+}

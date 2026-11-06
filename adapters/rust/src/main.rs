@@ -16,7 +16,7 @@
 //!
 //! `codespec-write-rust --describe` prints the writer's `codespec-adapter/1` manifest
 //! (`codespec_model::manifest`): every family, less the features whose conformance case the
-//! writer refuses or writes wrong, and those no case of the kit exercises.
+//! writer refuses or writes wrong.
 
 mod write;
 
@@ -51,10 +51,7 @@ fn manifest() -> AdapterManifest {
             "assign.shl",
             "assign.shr",
             "decl.newtype",
-            "decl.union",
-            "expr.zero",
             "fact.messages",
-            "intrinsic.sorted_keys",
             "op.shl",
             "op.shr",
             "stmt.foreign",
@@ -63,7 +60,6 @@ fn manifest() -> AdapterManifest {
             "type.chan",
             "type.ptr",
             "type.tuple",
-            "type.unit",
             "unop.deref",
             "unop.recv",
         ]),

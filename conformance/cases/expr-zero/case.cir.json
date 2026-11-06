@@ -1,0 +1,207 @@
+{
+  "format": "cir/1",
+  "name": "expr_zero",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: the Go reader reads Go's zero literals 0 and \"\" as literals. The Java reader writes zero for a value returned beside an error or a false comma-ok, the Rust reader for the zero of a type it has no literal for.",
+  "types": [],
+  "funcs": [
+    {
+      "name": "Check",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"negative: %d\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:12"
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        }
+      ],
+      "doc": "Check returns n, or the zero int beside an error when n is negative.",
+      "pos": "case.go:10"
+    },
+    {
+      "name": "Pick",
+      "exported": true,
+      "params": [
+        {
+          "name": "keep",
+          "t": {
+            "k": "bool"
+          }
+        },
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "keep",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "pos": "case.go:20"
+            }
+          ],
+          "pos": "case.go:19"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "zero",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:22"
+        }
+      ],
+      "doc": "Pick returns s, or the zero string when keep is false.",
+      "pos": "case.go:18"
+    }
+  ],
+  "layout": [
+    "func:Check",
+    "func:Pick"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Check"
+    ]
+  }
+}
