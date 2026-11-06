@@ -49,6 +49,9 @@ pub(crate) struct Fx<'r> {
     loops: Vec<Option<String>>,
     /// The type a later use fixes for the empty collection the next `let` binds.
     hint: Option<Type>,
+    /// The locals bound to `&mut x` of another local, as (index of their scope, Rust name): the
+    /// `cir/1` pointers a `*p` dereferences. A later binding of the name in that scope clears it.
+    mut_refs: Vec<(usize, String)>,
 }
 
 /// Whether `name` is one of the Rust writer's temporaries for `base`: `__base`, then as many `_`
@@ -498,12 +501,7 @@ fn continues(stmts: &[syn::Stmt], out: &mut Vec<Option<String>>) {
     fn expr(e: &syn::Expr, out: &mut Vec<Option<String>>) {
         match e {
             syn::Expr::Continue(_) => out.push(None),
-            syn::Expr::Block(b) => match b.block.stmts.as_slice() {
-                [s, syn::Stmt::Expr(syn::Expr::Continue(c), _)] if c.label.is_none() => {
-                    out.push(Some(no_ws(&src_of(s))));
-                }
-                ss => continues(ss, out),
-            },
+            syn::Expr::Block(b) => continues(&b.block.stmts, out),
             syn::Expr::If(i) => {
                 expr(&i.cond, out);
                 continues(&i.then_branch.stmts, out);
@@ -527,6 +525,17 @@ fn continues(stmts: &[syn::Stmt], out: &mut Vec<Option<String>>) {
             _ => {}
         }
     }
+    // A list that ends in `post; continue;`: the Rust writer's block, or an `if` that steps the
+    // loop itself before it continues.
+    let stmts = match stmts {
+        [rest @ .., s, syn::Stmt::Expr(syn::Expr::Continue(c), _)]
+            if c.label.is_none() && post_shaped(s) =>
+        {
+            out.push(Some(no_ws(&src_of(s))));
+            rest
+        }
+        ss => ss,
+    };
     for s in stmts {
         match s {
             syn::Stmt::Macro(m) => {
@@ -545,6 +554,15 @@ fn continues(stmts: &[syn::Stmt], out: &mut Vec<Option<String>>) {
             syn::Stmt::Expr(e, _) => expr(e, out),
             _ => {}
         }
+    }
+}
+
+/// `y` of `!y` (in parentheses or not): the right operand Go's `&^` and `&^=` clear.
+fn complement_of(e: &syn::Expr) -> Option<&syn::Expr> {
+    match e {
+        syn::Expr::Paren(p) => complement_of(&p.expr),
+        syn::Expr::Unary(u) if matches!(u.op, syn::UnOp::Not(_)) => Some(&u.expr),
+        _ => None,
     }
 }
 
@@ -640,6 +658,7 @@ impl<'r> Fx<'r> {
             refusals: Vec::new(),
             loops: Vec::new(),
             hint: None,
+            mut_refs: Vec::new(),
         }
     }
 
@@ -656,12 +675,24 @@ impl<'r> Fx<'r> {
         None
     }
 
+    /// Whether the binding `rust` resolves to is a `&mut` of a local (`mut_refs`).
+    fn is_mut_ref(&self, rust: &str) -> bool {
+        for (i, s) in self.scopes.iter().enumerate().rev() {
+            if s.iter().any(|(r, _, _)| r == rust) {
+                return self.mut_refs.iter().any(|(d, n)| *d == i && n == rust);
+            }
+        }
+        false
+    }
+
     /// Bind a Rust local and return its Go name: Go spelling, renamed when the current block
     /// already holds the name (Rust shadowing; Go's `:=` would not compile) or it is the receiver.
     fn bind(&mut self, rust: &str, t: Type) -> String {
         if rust == "_" {
             return "_".into();
         }
+        let depth = self.scopes.len() - 1;
+        self.mut_refs.retain(|(d, n)| !(*d == depth && n == rust));
         let base = names::unexported(rust);
         let recv = self.recv.as_ref().map(|(n, _)| n.clone());
         let mut go = base.clone();
@@ -747,6 +778,16 @@ impl<'r> Fx<'r> {
 
     /// A block in its own scope; `tail`: its tail expression is the function's result.
     fn block(&mut self, stmts: &[syn::Stmt], tail: bool) -> Vec<Stmt> {
+        // `…; post; continue;` in a loop whose post is `post`: Go's `continue`, which runs it.
+        if let [rest @ .., s, syn::Stmt::Expr(syn::Expr::Continue(c), _)] = stmts
+            && c.label.is_none()
+            && let Some(Some(post)) = self.loops.last()
+            && no_ws(&src_of(s)) == *post
+        {
+            let mut out = self.block(rest, false);
+            out.push(Stmt::Continue { pos: self.pos(c) });
+            return out;
+        }
         self.scopes.push(Vec::new());
         let mut out = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
@@ -846,6 +887,43 @@ impl<'r> Fx<'r> {
             p => (p, None),
         };
         match pat {
+            // `let p = &mut x;`, `x` a local: Go's `p := &x`. Through `p` the function reads and
+            // writes `x` itself, as Go's pointer does; the borrow checker keeps `x` unused while
+            // `p` is live, so no read of `x` can see a write through `p` that Go's would not.
+            syn::Pat::Ident(i)
+                if i.by_ref.is_none()
+                    && i.subpat.is_none()
+                    && ann.is_none()
+                    && let syn::Expr::Reference(r) = &*init.expr
+                    && r.mutability.is_some() =>
+            {
+                let target = match &*r.expr {
+                    syn::Expr::Path(p) if p.qself.is_none() && p.path.get_ident().is_some() => {
+                        let x = p.path.get_ident().expect("an ident").to_string();
+                        let (name, t) = self
+                            .lookup(&x)
+                            .ok_or("a `&mut` of something other than a local")?;
+                        Expr::Var { name, t }
+                    }
+                    _ => return Err("a `&mut` of something other than a local".into()),
+                };
+                let t = Type::Ptr {
+                    elem: Box::new(target.t().clone()),
+                };
+                let e = Expr::Unop {
+                    op: "&".into(),
+                    x: Box::new(target),
+                    t: t.clone(),
+                };
+                let rust = i.ident.to_string();
+                let name = self.bind(&rust, t);
+                self.mut_refs.push((self.scopes.len() - 1, rust));
+                Ok(vec![Stmt::Let {
+                    names: vec![name],
+                    rhs: vec![e],
+                    pos,
+                }])
+            }
             syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
                 let e = self.val(&init.expr, ann.as_ref().or(hint.as_ref()))?;
                 if let Some(a) = &ann
@@ -1714,9 +1792,31 @@ impl<'r> Fx<'r> {
         for arm in &m.arms {
             let pats: Vec<&syn::Pat> = match &arm.pat {
                 syn::Pat::Or(o) => o.cases.iter().collect(),
+                syn::Pat::Guard(_) => Vec::new(),
                 p => vec![p],
             };
             let mut values = Vec::new();
+            // `v if v == e`: the value of a run-time expression `e`, Go's `case e:`. `v` is the
+            // scrutinee's value, which `e` and the body must not read.
+            if let syn::Pat::Guard(g) = &arm.pat {
+                let (syn::Pat::Ident(pi), guard) = (&*g.pat, &g.guard) else {
+                    return Err("a match guard other than `v if v == e`".into());
+                };
+                let v = pi.ident.to_string();
+                let syn::Expr::Binary(b) = &**guard else {
+                    return Err("a match guard other than `v if v == e`".into());
+                };
+                if pi.by_ref.is_some()
+                    || pi.subpat.is_some()
+                    || !matches!(b.op, syn::BinOp::Eq(_))
+                    || !is_ident(&b.left, &v)
+                    || idents(&*b.right).contains(&v)
+                    || idents(&*arm.body).contains(&v)
+                {
+                    return Err("a match guard other than `v if v == e`".into());
+                }
+                values.push(self.val(strip_ref(&b.right), Some(&tt))?);
+            }
             for p in pats {
                 match p {
                     syn::Pat::Wild(_) => has_default = true,
@@ -1781,6 +1881,15 @@ impl<'r> Fx<'r> {
     }
 
     fn assign(&mut self, a: &syn::ExprAssign, pos: &str) -> R<Vec<Stmt>> {
+        // `(a, b) = (x, y);`: Rust evaluates every value, then assigns the targets in order, as
+        // the Rust writer's value block does; Go's `a, b = x, y` under the same conditions.
+        if let (syn::Expr::Tuple(l), syn::Expr::Tuple(r)) = (&*a.left, &*a.right)
+            && l.elems.len() == r.elems.len()
+            && l.elems.len() > 1
+        {
+            let pairs: Vec<(&syn::Expr, &syn::Expr)> = r.elems.iter().zip(&l.elems).collect();
+            return Ok(vec![self.assign_values(&pairs, pos)?]);
+        }
         let l = self.place(&a.left)?;
         if let syn::Expr::MethodCall(mc) = &*a.right
             && no_ws(&src_of(&*mc.receiver)) == no_ws(&src_of(&*a.left))
@@ -1839,6 +1948,19 @@ impl<'r> Fx<'r> {
             _ => return Err("an expression statement that is not a call or an assignment".into()),
         };
         let l = self.place(&b.left)?;
+        // `x &= !y` on integers: Go's `x &^= y`.
+        if op == "&="
+            && matches!(l.t(), Type::Int { .. })
+            && let Some(y) = complement_of(&b.right)
+        {
+            let r = self.val(strip_ref(y), Some(l.t()))?;
+            return Ok(vec![Stmt::Assign {
+                op: "&^=".into(),
+                lhs: vec![l],
+                rhs: vec![r],
+                pos: pos.into(),
+            }]);
+        }
         let r = self.val(&b.right, Some(l.t()))?;
         Ok(vec![Stmt::Assign {
             op: op.into(),
@@ -2119,6 +2241,16 @@ impl<'r> Fx<'r> {
                 self.expr(&r.expr, want)
             }
             syn::Expr::Unary(u) => match u.op {
+                syn::UnOp::Deref(_)
+                    if matches!(&*u.expr, syn::Expr::Path(p)
+                        if p.qself.is_none()
+                            && p.path.get_ident().is_some_and(|x| self.is_mut_ref(&x.to_string()))) =>
+                {
+                    let syn::Expr::Path(p) = &*u.expr else {
+                        unreachable!("matched as a path")
+                    };
+                    Ok(V::Deref(self.path_value(&p.path)?))
+                }
                 syn::UnOp::Deref(_) => match self.expr(&u.expr, want)? {
                     V::Deref(p) => Ok(V::Deref(p)),
                     V::E(x) if !matches!(x.t(), Type::Ptr { .. }) => Ok(V::E(x)),
@@ -2238,6 +2370,23 @@ impl<'r> Fx<'r> {
             'l' => Some(Type::Bool),
             _ => None,
         };
+        // `x & !y` on integers: Go's bit clear `x &^ y`, which the Rust writer writes so.
+        if op == "&"
+            && let Some(y) = complement_of(&b.right)
+            && !unsuffixed_int(&b.left)
+        {
+            let x = self.val(strip_ref(&b.left), operand_want.as_ref())?;
+            if matches!(x.t(), Type::Int { .. }) {
+                let y = self.val(strip_ref(y), Some(x.t()))?;
+                let t = x.t().clone();
+                return Ok(Expr::Binop {
+                    op: "&^".into(),
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    t,
+                });
+            }
+        }
         let (x, y) = if kind == 's' {
             let x = self.val(&b.left, operand_want.as_ref())?;
             let y = self.val(&b.right, None)?;

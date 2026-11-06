@@ -865,3 +865,42 @@ fn a_slice_loop_block_whose_body_reads_its_own_len_temporary_is_not_a_range() {
         );
     }
 }
+
+#[test]
+fn a_mutable_reference_to_other_than_a_local_is_kept_as_foreign_with_a_refusal_at_its_line() {
+    let m = read(
+        "pub fn f(mut v: Vec<i64>) -> i64 {\n\
+         \x20   let p = &mut v[0];\n\
+         \x20   0i64\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:2", "`&mut`");
+}
+
+#[test]
+fn a_match_guard_other_than_v_if_v_equals_e_is_kept_as_foreign() {
+    let m = read(
+        "pub fn f(n: i64, k: i64) -> i64 {\n\
+         \x20   match n {\n\
+         \x20       v if v > k => return 1i64,\n\
+         \x20       _ => {}\n\
+         \x20   }\n\
+         \x20   0i64\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:2", "guard");
+}
+
+#[test]
+fn a_guard_whose_body_reads_the_bound_value_is_kept_as_foreign() {
+    let m = read(
+        "pub fn f(n: i64, k: i64) -> i64 {\n\
+         \x20   match n {\n\
+         \x20       v if v == k => return v,\n\
+         \x20       _ => {}\n\
+         \x20   }\n\
+         \x20   0i64\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:2", "guard");
+}

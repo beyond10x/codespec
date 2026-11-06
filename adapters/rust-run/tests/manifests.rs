@@ -6,7 +6,7 @@ mod common;
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use codespec_conformance::{Case, features_used, load_cases};
 use codespec_model::{AdapterManifest, Module, manifest_from_json};
@@ -81,24 +81,28 @@ fn the_go_reader_claims_only_features_it_reads_from_their_cases() {
 }
 
 #[test]
-fn the_rust_reader_claims_only_features_it_reads_back_from_the_rust_writers_cases() {
+fn the_rust_reader_claims_only_features_it_reads_from_the_cases_rust_sources() {
     let (_, m) = describe(&read_rust());
-    let work = base().join("rust-read-back");
+    let work = base().join("rust-read-source");
     assert_read("codespec-read-rust", &m.claimed(), |c| {
+        let source = c.dir.join("rust/case.rs");
+        if !source.exists() {
+            return None;
+        }
         let out = work.join(&c.name);
         if out.exists() {
             std::fs::remove_dir_all(&out).unwrap();
         }
-        let input = std::fs::File::open(c.dir.join("case.cir.json")).unwrap();
-        let w = output(
-            Command::new(write_rust())
-                .arg(&out)
-                .stdin(Stdio::from(input)),
-            "codespec-write-rust",
-        );
-        if !w.status.success() {
-            return None;
-        }
+        std::fs::create_dir_all(out.join("src")).unwrap();
+        std::fs::write(
+            out.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n",
+                c.name
+            ),
+        )
+        .unwrap();
+        std::fs::copy(&source, out.join("src/lib.rs")).unwrap();
         let o = output(Command::new(read_rust()).arg(&out), "codespec-read-rust");
         o.status
             .success()

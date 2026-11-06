@@ -150,6 +150,7 @@ dependencies = [
 name = "codespec-read-rust"
 version = "0.2.0"
 dependencies = [
+ "b10x-codespec-conformance",
  "b10x-codespec-model",
  "b10x-codespec-passes",
  "proc-macro2",
