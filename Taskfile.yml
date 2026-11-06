@@ -90,7 +90,7 @@ tasks:
       - cargo run --locked -q -p b10x-codespec-cli -- features > schemas/cir-1.features.json
 
   examples:
-    desc: Re-read every example's source into its checked-in cir/1 document and rewrite its checked-in Go and Rust output.
+    desc: Re-read every example's source into its checked-in cir/1 document and rewrite its checked-in Go and Rust output; read the series Rust output back and rewrite its Go.
     deps: [build]
     cmds:
       - '{{.CODESPEC}} read --lang go examples/orders/source --out examples/orders/orders.read.cir.json --adapters {{.ADAPTERS}}'
@@ -109,6 +109,10 @@ tasks:
       - '{{.CODESPEC}} pass examples/series/series.read.cir.json --out examples/series/series.cir.json'
       - '{{.CODESPEC}} write --lang go examples/series/series.read.cir.json --out examples/series/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/series/series.cir.json --out examples/series/out/rust --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang rust examples/series/out/rust --out examples/series/series.rust-read.cir.json --adapters {{.ADAPTERS}}'
+      - mkdir -p target/examples
+      - '{{.CODESPEC}} pass examples/series/series.rust-read.cir.json --out target/examples/series.rust-passed.cir.json'
+      - '{{.CODESPEC}} write --lang go target/examples/series.rust-passed.cir.json --out examples/series/out/go-from-rust --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java examples/ledger/source --out examples/ledger/ledger.read.cir.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} pass examples/ledger/ledger.read.cir.json --out examples/ledger/ledger.cir.json'
       - '{{.CODESPEC}} write --lang go examples/ledger/ledger.read.cir.json --out examples/ledger/out/go --adapters {{.ADAPTERS}}'
@@ -249,7 +253,7 @@ tasks:
       - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-greeter/rust/Cargo.toml --target-dir target/examples-greeter/build
 
   examples-series:
-    desc: Read the algorithmic series package twice, pass it, write it as Go and as Rust, require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then run the original, the Go output and the Rust output on 200 seeded traces of 300 commands byte-equal.
+    desc: Read the algorithmic series package twice, pass it, write it as Go and as Rust; read the Rust output back twice, pass it and write it as Go; require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then run the original, the Go output, the Rust output and the Go from the Rust output on 200 seeded traces of 300 commands byte-equal.
     deps: [build]
     cmds:
       - rm -rf target/examples-series
@@ -274,6 +278,19 @@ tasks:
       - diff -r target/examples-series/rust examples/series/out/rust
       - 'test "$(cat target/examples-series/rust/refusals.json)" = "[]"'
       - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-series/rust/Cargo.toml --target-dir target/examples-series/build
+      - '{{.CODESPEC}} read --lang rust examples/series/out/rust --out target/examples-series/rust-read.1.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang rust examples/series/out/rust --out target/examples-series/rust-read.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/examples-series/rust-read.1.json target/examples-series/rust-read.2.json
+      - cmp target/examples-series/rust-read.1.json examples/series/series.rust-read.cir.json
+      - '{{.CODESPEC}} validate --canonical examples/series/series.rust-read.cir.json'
+      - '! grep -q ''"refusals"'' examples/series/series.rust-read.cir.json'
+      - '{{.CODESPEC}} pass examples/series/series.rust-read.cir.json --out target/examples-series/rust-pass.1.json'
+      - '{{.CODESPEC}} pass target/examples-series/rust-pass.1.json --out target/examples-series/rust-pass.2.json'
+      - cmp target/examples-series/rust-pass.1.json target/examples-series/rust-pass.2.json
+      - '{{.CODESPEC}} write --lang go target/examples-series/rust-pass.1.json --out target/examples-series/go-from-rust --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-series/go-from-rust examples/series/out/go-from-rust
+      - test -z "$(gofmt -l target/examples-series/go-from-rust)"
+      - go vet ./target/examples-series/go-from-rust/series.go
       - test -z "$(gofmt -l examples/series/drivers/go)"
       - cargo fmt --manifest-path examples/series/drivers/rust/Cargo.toml --check
       - cargo clippy --manifest-path examples/series/drivers/rust/Cargo.toml --locked --target-dir target/harness-series/rust-target -- -D warnings

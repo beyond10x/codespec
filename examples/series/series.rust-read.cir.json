@@ -1,0 +1,5188 @@
+{
+  "format": "cir/1",
+  "name": "series",
+  "reader": {
+    "language": "rust",
+    "name": "codespec-read-rust",
+    "version": "0.2.0"
+  },
+  "doc": "Package series keeps a list of integer samples and computes statistics over it.",
+  "types": [
+    {
+      "k": "enum",
+      "name": "Trend",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "Flat",
+          "value": {
+            "k": "lit",
+            "value": "\"flat\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Rising",
+          "value": {
+            "k": "lit",
+            "value": "\"rising\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Falling",
+          "value": {
+            "k": "lit",
+            "value": "\"falling\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Mixed",
+          "value": {
+            "k": "lit",
+            "value": "\"mixed\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "lib.rs:5"
+    },
+    {
+      "k": "struct",
+      "name": "Series",
+      "exported": true,
+      "fields": [
+        {
+          "name": "values",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        }
+      ],
+      "pos": "lib.rs:29"
+    }
+  ],
+  "consts": [
+    {
+      "name": "maxSteps",
+      "t": {
+        "k": "int",
+        "width": "64",
+        "signed": true
+      },
+      "value": {
+        "k": "lit",
+        "value": "1000",
+        "t": {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      },
+      "pos": "lib.rs:28"
+    }
+  ],
+  "errors": [
+    {
+      "name": "ErrEmpty",
+      "message": "series is empty",
+      "pos": "lib.rs:321"
+    },
+    {
+      "name": "ErrBadWindow",
+      "message": "window must be positive",
+      "pos": "lib.rs:322"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "New",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "named",
+          "name": "Series"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "struct",
+              "name": "Series",
+              "fields": [
+                {
+                  "name": "values",
+                  "value": {
+                    "k": "make",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Series"
+              }
+            }
+          ],
+          "pos": "lib.rs:34"
+        }
+      ],
+      "pos": "lib.rs:33"
+    },
+    {
+      "name": "Push",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "values",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:39"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:40"
+        }
+      ],
+      "doc": "Push appends v and returns the new length.",
+      "pos": "lib.rs:38"
+    },
+    {
+      "name": "Sum",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:44"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:49"
+            }
+          ],
+          "pos": "lib.rs:47"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:52"
+        }
+      ],
+      "doc": "Sum adds every value; the sum wraps on overflow.",
+      "pos": "lib.rs:43"
+    },
+    {
+      "name": "Mean",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrEmpty",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:56"
+            }
+          ],
+          "pos": "lib.rs:55"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Series"
+                    }
+                  }
+                },
+                "name": "Sum",
+                "args": [],
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:58"
+        }
+      ],
+      "pos": "lib.rs:54"
+    },
+    {
+      "name": "Sorted",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "out"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:62"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "append",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "pos": "lib.rs:67"
+            }
+          ],
+          "pos": "lib.rs:65"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:71"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:80"
+          },
+          "body": [
+            {
+              "k": "let",
+              "names": [
+                "x"
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "out",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:73"
+            },
+            {
+              "k": "let",
+              "names": [
+                "j"
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:74"
+            },
+            {
+              "k": "for",
+              "cond": {
+                "k": "binop",
+                "op": "&&",
+                "x": {
+                  "k": "binop",
+                  "op": ">=",
+                  "x": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                },
+                "y": {
+                  "k": "binop",
+                  "op": ">",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "j",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "x",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "body": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "var",
+                        "name": "out",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "binop",
+                        "op": "+",
+                        "x": {
+                          "k": "var",
+                          "name": "j",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "lit",
+                          "value": "1",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "var",
+                        "name": "out",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "j",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:76"
+                },
+                {
+                  "k": "decr",
+                  "x": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "pos": "lib.rs:77"
+                }
+              ],
+              "pos": "lib.rs:75"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "out",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "+",
+                    "x": {
+                      "k": "var",
+                      "name": "j",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "1",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:79"
+            }
+          ],
+          "pos": "lib.rs:72"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:83"
+        }
+      ],
+      "doc": "Sorted returns the values in ascending order, by insertion sort; the series is unchanged.",
+      "pos": "lib.rs:61"
+    },
+    {
+      "name": "Median",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:86"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrEmpty",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:88"
+            }
+          ],
+          "pos": "lib.rs:87"
+        },
+        {
+          "k": "let",
+          "names": [
+            "sorted"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "Sorted",
+              "args": [],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:90"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "binop",
+              "op": "%",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "/",
+                    "x": {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "nil",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:92"
+            }
+          ],
+          "pos": "lib.rs:91"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "-",
+                    "x": {
+                      "k": "binop",
+                      "op": "/",
+                      "x": {
+                        "k": "var",
+                        "name": "n",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "2",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "1",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "/",
+                    "x": {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:94"
+        }
+      ],
+      "pos": "lib.rs:85"
+    },
+    {
+      "name": "Reverse",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i",
+              "j"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "intrinsic",
+                  "name": "len",
+                  "args": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:103"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "j",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "assign",
+            "lhs": [
+              {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              {
+                "k": "var",
+                "name": "j",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "rhs": [
+              {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "var",
+                  "name": "j",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:111"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:105"
+            }
+          ],
+          "pos": "lib.rs:104"
+        }
+      ],
+      "doc": "Reverse reverses the series in place.",
+      "pos": "lib.rs:101"
+    },
+    {
+      "name": "Trend",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "named",
+          "name": "Trend"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "up"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:121"
+        },
+        {
+          "k": "let",
+          "names": [
+            "down"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:122"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:124"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:133"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "-",
+                    "x": {
+                      "k": "var",
+                      "name": "i",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "1",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "incr",
+                  "x": {
+                    "k": "var",
+                    "name": "up",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "pos": "lib.rs:127"
+                }
+              ],
+              "else": [
+                {
+                  "k": "if",
+                  "cond": {
+                    "k": "binop",
+                    "op": "<",
+                    "x": {
+                      "k": "index",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "s",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "Series"
+                            }
+                          }
+                        },
+                        "name": "values",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "i",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "index",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "s",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "Series"
+                            }
+                          }
+                        },
+                        "name": "values",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "binop",
+                        "op": "-",
+                        "x": {
+                          "k": "var",
+                          "name": "i",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "lit",
+                          "value": "1",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "bool"
+                    }
+                  },
+                  "then": [
+                    {
+                      "k": "incr",
+                      "x": {
+                        "k": "var",
+                        "name": "down",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "pos": "lib.rs:131"
+                    }
+                  ],
+                  "pos": "lib.rs:128"
+                }
+              ],
+              "pos": "lib.rs:126"
+            }
+          ],
+          "pos": "lib.rs:125"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "&&",
+            "x": {
+              "k": "binop",
+              "op": ">",
+              "x": {
+                "k": "var",
+                "name": "up",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": ">",
+              "x": {
+                "k": "var",
+                "name": "down",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "const",
+                  "name": "Mixed",
+                  "t": {
+                    "k": "named",
+                    "name": "Trend"
+                  }
+                }
+              ],
+              "pos": "lib.rs:137"
+            }
+          ],
+          "else": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "var",
+                  "name": "up",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "const",
+                      "name": "Rising",
+                      "t": {
+                        "k": "named",
+                        "name": "Trend"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:139"
+                }
+              ],
+              "else": [
+                {
+                  "k": "if",
+                  "cond": {
+                    "k": "binop",
+                    "op": ">",
+                    "x": {
+                      "k": "var",
+                      "name": "down",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "bool"
+                    }
+                  },
+                  "then": [
+                    {
+                      "k": "return",
+                      "results": [
+                        {
+                          "k": "const",
+                          "name": "Falling",
+                          "t": {
+                            "k": "named",
+                            "name": "Trend"
+                          }
+                        }
+                      ],
+                      "pos": "lib.rs:141"
+                    }
+                  ],
+                  "pos": "lib.rs:140"
+                }
+              ],
+              "pos": "lib.rs:138"
+            }
+          ],
+          "pos": "lib.rs:136"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "const",
+              "name": "Flat",
+              "t": {
+                "k": "named",
+                "name": "Trend"
+              }
+            }
+          ],
+          "pos": "lib.rs:143"
+        }
+      ],
+      "pos": "lib.rs:120"
+    },
+    {
+      "name": "MaxWindow",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "w",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrBadWindow",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:148"
+            }
+          ],
+          "pos": "lib.rs:147"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": ">",
+            "x": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"window %d is longer than the series (%d)\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "w",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    {
+                      "k": "intrinsic",
+                      "name": "len",
+                      "args": [
+                        {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "64",
+                              "signed": true
+                            }
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:151"
+            }
+          ],
+          "pos": "lib.rs:150"
+        },
+        {
+          "k": "let",
+          "names": [
+            "cur"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:160"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:162"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:165"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:164"
+            }
+          ],
+          "pos": "lib.rs:163"
+        },
+        {
+          "k": "let",
+          "names": [
+            "best"
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "cur",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:168"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:170"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:181"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "i",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "binop",
+                      "op": "-",
+                      "x": {
+                        "k": "var",
+                        "name": "i",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "var",
+                        "name": "w",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:172"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "best",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "best",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "var",
+                      "name": "cur",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:179"
+                }
+              ],
+              "pos": "lib.rs:178"
+            }
+          ],
+          "pos": "lib.rs:171"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "best",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:184"
+        }
+      ],
+      "doc": "MaxWindow is the largest sum of w consecutive values.",
+      "pos": "lib.rs:146"
+    },
+    {
+      "name": "Gcd",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "g"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:188"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "g",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "call",
+                  "name": "gcd",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "g",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:193"
+            }
+          ],
+          "pos": "lib.rs:191"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "g",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:196"
+        }
+      ],
+      "doc": "Gcd is the greatest common divisor of every value, 0 for an empty series.",
+      "pos": "lib.rs:187"
+    },
+    {
+      "name": "gcd",
+      "exported": false,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "a",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:201"
+            }
+          ],
+          "pos": "lib.rs:200"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "b",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:204"
+            }
+          ],
+          "pos": "lib.rs:203"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "a",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "b",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:207"
+            }
+          ],
+          "pos": "lib.rs:206"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:214"
+        }
+      ],
+      "pos": "lib.rs:199"
+    },
+    {
+      "name": "EvenSum",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:219"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:221"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:230"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "!=",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "i",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "continue",
+                  "pos": "lib.rs:226"
+                }
+              ],
+              "pos": "lib.rs:223"
+            },
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "lib.rs:229"
+            }
+          ],
+          "pos": "lib.rs:222"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:233"
+        }
+      ],
+      "doc": "EvenSum adds the even values.",
+      "pos": "lib.rs:218"
+    },
+    {
+      "name": "Drop",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "kept"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:237"
+        },
+        {
+          "k": "let",
+          "names": [
+            "removed"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:238"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "x",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "incr",
+                  "x": {
+                    "k": "var",
+                    "name": "removed",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "pos": "lib.rs:244"
+                },
+                {
+                  "k": "continue",
+                  "pos": "lib.rs:245"
+                }
+              ],
+              "pos": "lib.rs:243"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "kept",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "append",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "kept",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "x",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "pos": "lib.rs:247"
+            }
+          ],
+          "pos": "lib.rs:241"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "values",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "kept",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:250"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "removed",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:251"
+        }
+      ],
+      "doc": "Drop removes every value equal to v and returns how many it removed.",
+      "pos": "lib.rs:236"
+    },
+    {
+      "name": "Len",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:254"
+        }
+      ],
+      "pos": "lib.rs:253"
+    },
+    {
+      "name": "Steps",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"steps of %d: n must be positive\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:260"
+            }
+          ],
+          "pos": "lib.rs:259"
+        },
+        {
+          "k": "let",
+          "names": [
+            "steps"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:262"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "op": "/=",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:265"
+                }
+              ],
+              "else": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "binop",
+                      "op": "+",
+                      "x": {
+                        "k": "binop",
+                        "op": "*",
+                        "x": {
+                          "k": "lit",
+                          "value": "3",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "var",
+                          "name": "n",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "1",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:267"
+                }
+              ],
+              "pos": "lib.rs:264"
+            },
+            {
+              "k": "incr",
+              "x": {
+                "k": "var",
+                "name": "steps",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "pos": "lib.rs:269"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "var",
+                  "name": "steps",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "const",
+                  "name": "maxSteps",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "break",
+                  "pos": "lib.rs:271"
+                }
+              ],
+              "pos": "lib.rs:270"
+            }
+          ],
+          "pos": "lib.rs:263"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "steps",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:274"
+        }
+      ],
+      "doc": "Steps counts the Collatz steps from n to 1, stopping at maxSteps.",
+      "pos": "lib.rs:258"
+    },
+    {
+      "name": "IsPrime",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "2",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "false",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "lib.rs:278"
+            }
+          ],
+          "pos": "lib.rs:277"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "d"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "lib.rs:281"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "d",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "d",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "d",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "pos": "lib.rs:286"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "d",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "false",
+                      "t": {
+                        "k": "bool"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:284"
+                }
+              ],
+              "pos": "lib.rs:283"
+            }
+          ],
+          "pos": "lib.rs:282"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "true",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "lib.rs:289"
+        }
+      ],
+      "pos": "lib.rs:276"
+    },
+    {
+      "name": "Bucket",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "v",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "\"negative\"",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "pos": "lib.rs:294"
+            }
+          ],
+          "else": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"zero\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:296"
+                }
+              ],
+              "else": [
+                {
+                  "k": "if",
+                  "cond": {
+                    "k": "binop",
+                    "op": "<",
+                    "x": {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "10",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "bool"
+                    }
+                  },
+                  "then": [
+                    {
+                      "k": "return",
+                      "results": [
+                        {
+                          "k": "lit",
+                          "value": "\"small\"",
+                          "t": {
+                            "k": "string"
+                          }
+                        }
+                      ],
+                      "pos": "lib.rs:298"
+                    }
+                  ],
+                  "else": [
+                    {
+                      "k": "if",
+                      "cond": {
+                        "k": "binop",
+                        "op": "<",
+                        "x": {
+                          "k": "var",
+                          "name": "v",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "lit",
+                          "value": "1000",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "bool"
+                        }
+                      },
+                      "then": [
+                        {
+                          "k": "return",
+                          "results": [
+                            {
+                              "k": "lit",
+                              "value": "\"medium\"",
+                              "t": {
+                                "k": "string"
+                              }
+                            }
+                          ],
+                          "pos": "lib.rs:300"
+                        }
+                      ],
+                      "pos": "lib.rs:299"
+                    }
+                  ],
+                  "pos": "lib.rs:297"
+                }
+              ],
+              "pos": "lib.rs:295"
+            }
+          ],
+          "pos": "lib.rs:293"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"large\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "lib.rs:302"
+        }
+      ],
+      "doc": "Bucket names the size class of v.",
+      "pos": "lib.rs:292"
+    },
+    {
+      "name": "Residue",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "binop",
+            "op": "%",
+            "x": {
+              "k": "var",
+              "name": "v",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "3",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"divisible\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:309"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"one-over\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:311"
+                }
+              ]
+            },
+            {
+              "values": [],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"one-under\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:313"
+                }
+              ]
+            }
+          ],
+          "pos": "lib.rs:308"
+        }
+      ],
+      "doc": "Residue names v modulo 3, with Go's sign: the remainder takes the sign of v.",
+      "pos": "lib.rs:305"
+    }
+  ],
+  "layout": [
+    "type:Trend",
+    "const:maxSteps",
+    "type:Series",
+    "func:New",
+    "func:Series.Push",
+    "func:Series.Sum",
+    "func:Series.Mean",
+    "func:Series.Sorted",
+    "func:Series.Median",
+    "func:Series.Reverse",
+    "func:Series.Trend",
+    "func:Series.MaxWindow",
+    "func:Series.Gcd",
+    "func:gcd",
+    "func:Series.EvenSum",
+    "func:Series.Drop",
+    "func:Series.Len",
+    "func:Steps",
+    "func:IsPrime",
+    "func:Bucket",
+    "func:Residue",
+    "error:ErrEmpty",
+    "error:ErrBadWindow"
+  ]
+}
