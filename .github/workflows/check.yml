@@ -53,6 +53,19 @@ jobs:
           tar -xzf "$RUNNER_TEMP/task.tar.gz" -C "$RUNNER_TEMP/task-bin" task
           echo "$RUNNER_TEMP/task-bin" >> "$GITHUB_PATH"
 
+      - name: Install Groovy 2.4.10
+        env:
+          GROOVY_VERSION: "2.4.10"
+          GROOVY_SHA256: 1c4dff3b6edf9a8ced3bca658ee1857cee90cfed1ee3474a2790045033c317a9
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/groovy.zip" \
+            "https://repo1.maven.org/maven2/org/codehaus/groovy/groovy-binary/$GROOVY_VERSION/groovy-binary-$GROOVY_VERSION.zip"
+          echo "$GROOVY_SHA256  $RUNNER_TEMP/groovy.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
+          echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
+
       - name: task check
         env:
           JDK: ${{ steps.jdk.outputs.path }}

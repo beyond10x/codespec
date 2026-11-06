@@ -30,6 +30,7 @@ tasks:
       - task: examples-ledger
       - task: harness
       - task: conformance-cases
+      - task: groovy-fixture-check
       - task: docs-check
 
   docs-generate:
@@ -88,6 +89,14 @@ tasks:
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust codespec-read-java; do {{.ADAPTERS}}/$a --describe > target/manifests/$a.json || exit 1; done
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust; do cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/$a.json > /dev/null || exit 1; done
       - cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json > /dev/null
+
+  groovy-fixture-check:
+    desc: Compile the Grails lending fixture's domain classes, services and utils with groovyc 2.4.10 on the JDK, all but TransactionalAuditService.groovy, which needs the Grails jars. GROOVY_HOME defaults to the sdkman groovy/2.4.10 candidate.
+    cmds:
+      - rm -rf target/groovy-fixture
+      - mkdir -p target/groovy-fixture
+      - 'GROOVY_HOME="${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}"; JAVA_HOME="{{.JDK}}" "$GROOVY_HOME/bin/groovyc" -v 2>&1 | grep -q "Groovy compiler version 2.4.10"'
+      - 'GROOVY_HOME="${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}"; JAVA_HOME="{{.JDK}}" "$GROOVY_HOME/bin/groovyc" -d target/groovy-fixture $(find adapters/groovy/testdata/lending/grails-app/domain adapters/groovy/testdata/lending/grails-app/services adapters/groovy/testdata/lending/grails-app/utils -name "*.groovy" ! -name TransactionalAuditService.groovy | sort)'
 
   schema:
     desc: Regenerate schemas/cir-1.schema.json and schemas/cir-1.features.json from the model.
