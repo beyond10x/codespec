@@ -36,6 +36,7 @@ import com.sun.source.util.SourcePositions;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.source.util.TreePathScanner;
+import codespec.jvm.JvmTypes;
 import com.sun.source.util.Trees;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -93,7 +94,8 @@ import javax.tools.ToolProvider;
  *       and returns it.
  *   <li>{@code Optional<T>} as a method result is the comma-ok pair {@code (T, bool)}.
  *   <li>An interface with exactly one implementation in the package stands for that class.
- *   <li>{@code int}, {@code long}, {@code short}, {@code byte} and their boxes are signed integers
+ *   <li>By the JVM type table every JVM reader shares, {@link JvmTypes} under {@code adapters/jvm}:
+ *       {@code int}, {@code long}, {@code short}, {@code byte} and their boxes are signed integers
  *       of 32, 64, 16 and 8 bits; {@code List}/{@code ArrayList} slices; {@code Map}, {@code
  *       HashMap} and {@code TreeMap} maps. A loop over a {@code HashMap}'s keys is a {@code
  *       for_range} over the map, whose order is unspecified, as Java's is; a loop over a {@code
@@ -1445,7 +1447,7 @@ public final class Reader {
             return;
         }
         String q = qname(e.asType());
-        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !BOXES.containsKey(q)) {
+        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)) {
             return;
         }
         boolean[] checked = {false};
@@ -2481,7 +2483,7 @@ public final class Reader {
                 if (b.getKind() == Tree.Kind.EQUAL_TO || b.getKind() == Tree.Kind.NOT_EQUAL_TO) {
                     for (TreePath o : List.of(lp, rp)) {
                         String q = qname(trees.getTypeMirror(o));
-                        if (q.equals("java.lang.String") || BOXES.containsKey(q)) {
+                        if (q.equals("java.lang.String") || JvmTypes.isIntegerBox(q)) {
                             throw new Unsupported("== on a String or a boxed number compares references");
                         }
                     }
@@ -2616,9 +2618,6 @@ public final class Reader {
 
     private static final Map<String, Object> NULL = Map.of("k", "null");
 
-    private static final Map<String, String> BOXES = Map.of(
-        "java.lang.Integer", "32", "java.lang.Long", "64", "java.lang.Short", "16", "java.lang.Byte", "8");
-
     private Map<String, Object> typeOfOrNull(TypeMirror t) {
         try {
             return typeOf(t);
@@ -2627,47 +2626,65 @@ public final class Reader {
         }
     }
 
+    /** The cir/1 type of {@code t}: the JVM type table of {@link JvmTypes}, with the package's own classes. */
     private Map<String, Object> typeOf(TypeMirror t) {
+        if (t.getKind() == TypeKind.NULL) {
+            return NULL;
+        }
+        try {
+            return JvmTypes.map(jvmType(t), this::ownType);
+        } catch (JvmTypes.Outside o) {
+            throw new Unsupported(o.getMessage());
+        }
+    }
+
+    /** {@code t} as the JVM type table describes it, printed as javac prints it. */
+    private static JvmTypes.Type jvmType(TypeMirror t) {
         switch (t.getKind()) {
-            case INT:
-                return tInt("32");
-            case LONG:
-                return tInt("64");
-            case SHORT:
-                return tInt("16");
-            case BYTE:
-                return tInt("8");
             case BOOLEAN:
-                return tBool();
-            case NULL:
-                return NULL;
-            case DECLARED:
-                break;
+            case BYTE:
+            case SHORT:
+            case INT:
+            case LONG:
+            case CHAR:
+            case FLOAT:
+            case DOUBLE:
+                return JvmTypes.Type.primitive(JvmTypes.Primitive.valueOf(t.getKind().name()), t.toString());
+            case DECLARED: {
+                DeclaredType dt = (DeclaredType) t;
+                List<JvmTypes.Type> args = new ArrayList<>();
+                for (TypeMirror a : dt.getTypeArguments()) {
+                    args.add(jvmType(a));
+                }
+                return JvmTypes.Type.declared(((TypeElement) dt.asElement()).getQualifiedName().toString(), args, t.toString());
+            }
             default:
-                throw new Unsupported("type " + t + " is outside the reader's types");
+                return JvmTypes.Type.other(t.toString());
         }
-        DeclaredType dt = (DeclaredType) t;
-        TypeElement te = (TypeElement) dt.asElement();
-        String qn = te.getQualifiedName().toString();
-        List<? extends TypeMirror> args = dt.getTypeArguments();
-        if (qn.equals("java.lang.String")) {
-            return tString();
+    }
+
+    /**
+     * A class of the package: a class as {@code ptr(named)}, an enum as {@code named}, an interface
+     * with one implementation as that class, the checked-exception hierarchy as {@code error}; else
+     * {@code null}, which the table refuses.
+     */
+    private Map<String, Object> ownType(JvmTypes.Type t) {
+        List<TypeElement> own = new ArrayList<>(structs);
+        own.addAll(enums);
+        own.addAll(implOf.keySet());
+        own.addAll(errorLeaves.keySet());
+        if (errorRoot != null) {
+            own.add(errorRoot);
         }
-        if (BOXES.containsKey(qn)) {
-            return tInt(BOXES.get(qn));
+        TypeElement te = null;
+        for (TypeElement e : own) {
+            if (e.getQualifiedName().contentEquals(t.className())) {
+                te = e;
+                break;
+            }
         }
-        if (qn.equals("java.lang.Boolean")) {
-            return tBool();
-        }
-        if ((qn.equals("java.util.List") || qn.equals("java.util.ArrayList")) && args.size() == 1) {
-            return tSlice(typeOf(args.get(0)));
-        }
-        if ((qn.equals("java.util.Map") || qn.equals("java.util.HashMap") || qn.equals("java.util.TreeMap")) && args.size() == 2) {
-            Map<String, Object> m = Json.obj();
-            m.put("k", "map");
-            m.put("key", typeOf(args.get(0)));
-            m.put("elem", typeOf(args.get(1)));
-            return m;
+        if (te == null) {
+            return null;
         }
         if (structs.contains(te)) {
             return tPtr(tNamed(te.getSimpleName().toString()));
@@ -2681,7 +2698,7 @@ public final class Reader {
         if (te.equals(errorRoot) || errorLeaves.containsKey(te)) {
             return tError();
         }
-        throw new Unsupported("type " + t + " is outside the reader's types");
+        return null;
     }
 
     private String enumName(Map<String, Object> t) {

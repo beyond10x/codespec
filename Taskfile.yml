@@ -63,7 +63,7 @@ tasks:
       - cp target/debug/codespec-write-rust target/debug/codespec-read-rust {{.ADAPTERS}}/
       - rm -rf target/java/classes
       - mkdir -p target/java/classes
-      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src -name "*.java" | sort)'
+      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src adapters/jvm/src -name "*.java" | sort)'
       - printf '#!/bin/sh\nexec %s -cp %s codespec.read.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-read-java
       - chmod +x {{.ADAPTERS}}/codespec-read-java
 
@@ -75,7 +75,8 @@ tasks:
       - cd adapters/go && go vet ./...
       - rm -rf target/java/test-classes target/java/test-work target/java-check
       - mkdir -p target/java/test-classes target/java-check
-      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test -name "*.java" | sort)'
+      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test adapters/jvm/src adapters/jvm/test -name "*.java" | sort)'
+      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.jvm.JvmTypesTest'
       - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
