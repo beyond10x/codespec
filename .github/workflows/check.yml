@@ -34,6 +34,12 @@ jobs:
         with:
           go-version-file: adapters/go/go.mod
 
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        id: jdk
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Install go-task
         env:
           TASK_VERSION: "3.52.0"
@@ -48,4 +54,6 @@ jobs:
           echo "$RUNNER_TEMP/task-bin" >> "$GITHUB_PATH"
 
       - name: task check
-        run: task check
+        env:
+          JDK: ${{ steps.jdk.outputs.path }}
+        run: task check JDK="$JDK"

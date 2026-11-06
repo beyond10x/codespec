@@ -117,6 +117,10 @@ const INTRINSICS: &[(&str, &str)] = &[
     ("println", "print values and a newline on standard output"),
     ("append", "append values to a slice"),
     ("len", "length of a string, slice or map"),
+    (
+        "sorted_keys",
+        "the keys of a map as a slice, ascending: integers numerically, strings by UTF-16 code unit",
+    ),
 ];
 
 /// Behaviour two languages disagree on: one id per difference the harness has met.

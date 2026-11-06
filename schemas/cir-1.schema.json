@@ -519,7 +519,7 @@
           ]
         },
         {
-          "description": "`sprintf`, `errorf`, `println`, `append` or `len`.",
+          "description": "`sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and\ngives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code\nunit, as Java's String.compareTo orders them, which byte order does not always match.",
           "type": "object",
           "properties": {
             "args": {

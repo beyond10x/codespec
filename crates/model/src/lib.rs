@@ -459,7 +459,9 @@ pub enum Expr {
     Zero {
         t: Type,
     },
-    /// `sprintf`, `errorf`, `println`, `append` or `len`.
+    /// `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and
+    /// gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code
+    /// unit, as Java's String.compareTo orders them, which byte order does not always match.
     Intrinsic {
         name: String,
         args: Vec<Expr>,

@@ -79,6 +79,7 @@ fn the_constant_families_name_the_operators_intrinsics_and_semantics() {
         "intrinsic.println",
         "intrinsic.append",
         "intrinsic.len",
+        "intrinsic.sorted_keys",
         "type.map",
         "type.chan",
         "decl.union",

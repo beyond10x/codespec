@@ -86,7 +86,7 @@ A tagged union: the field `k` names the kind. 17 kinds.
 | `conv` | `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A conversion to the named type `name`. |
 | `make` | `t`\*: [`Type`](#type) | An empty map or slice. |
 | `zero` | `t`\*: [`Type`](#type) |  |
-| `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append` or `len`. |
+| `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match. |
 | `to_error` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A value of an error struct used where an error is expected. |
 
 ## Facts

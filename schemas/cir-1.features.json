@@ -126,7 +126,7 @@
     {
       "id": "expr.intrinsic",
       "family": "expression",
-      "description": "`sprintf`, `errorf`, `println`, `append` or `len`."
+      "description": "`sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match."
     },
     {
       "id": "expr.lit",
@@ -227,6 +227,11 @@
       "id": "intrinsic.println",
       "family": "intrinsic",
       "description": "print values and a newline on standard output"
+    },
+    {
+      "id": "intrinsic.sorted_keys",
+      "family": "intrinsic",
+      "description": "the keys of a map as a slice, ascending: integers numerically, strings by UTF-16 code unit"
     },
     {
       "id": "intrinsic.sprintf",
