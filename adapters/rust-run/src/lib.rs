@@ -25,6 +25,7 @@
 //! | `bool` | `true`, `false` |
 //! | `String`, `&str` | `String::from("…")`, `"…"` |
 //! | `Sender<T>`, `T` printable | `chan`: a fresh `std::sync::mpsc::channel()`, its sender passed and every value left in its receiver printed `sent <v>` after the call |
+//! | `Rc<(Sender<T>, Receiver<T>)>`, `T` printable | `chan`: a fresh `Rc::new(std::sync::mpsc::channel())`, a clone passed and every value left in its receiver printed `sent <v>` after the call |
 //!
 //! | result | line |
 //! |---|---|
@@ -35,7 +36,11 @@
 //!
 //! A printable value is an integer in decimal, `true` or `false`, a `String` or `&str` as Go's
 //! `strconv.Quote` writes it, a `Vec` as `[` its elements separated by one space `]`, a newtype
-//! `struct T(pub U)` as its `U`, and a unit-variant enum with `fn value(&self) -> U` as its value.
+//! `struct T(pub U)` as its `U`, a unit-variant enum with `fn value(&self) -> U` as its value, an
+//! enum whose every variant holds one printable value (`enum Message { Tick(Tick) }`) as that
+//! value, and an `Rc<dyn Any>` as the value it holds when that is a signed integer, `bool`,
+//! `String`, a `Vec` of `i64`, `bool` or `String`, or one of the crate's printable newtypes and
+//! enums; an `any` holding anything else is refused when printed (exit 2).
 //! The zero of a type is Go's: `0`, `false`, `""`, `[]`, and an enum's that of its value type. A
 //! string holding a character outside ASCII is refused when printed (exit 2): Go's `Quote` keeps a
 //! printable rune and escapes another, and this runner does not hold Unicode's table of which is
@@ -114,6 +119,12 @@ enum Ty {
     Option(Box<Ty>),
     Result(Box<Ty>),
     Sender(Box<Ty>),
+    /// `Rc<(Sender<T>, Receiver<T>)>`: both ends of a channel.
+    Chan(Box<Ty>),
+    /// `Rc<dyn Any>`.
+    Any,
+    /// An enum whose every variant holds one value: its name and the variants' types.
+    Tagged(String, Vec<Ty>),
     Other(String),
 }
 
@@ -129,6 +140,8 @@ struct Crate<'a> {
     newtypes: BTreeMap<String, &'a syn::Type>,
     /// A unit-variant enum with `fn value(&self) -> U`: `T` → `U`.
     enums: BTreeMap<String, &'a syn::Type>,
+    /// An enum whose every variant holds one value, `V(U)`: `T` → its variants and their `U`.
+    tagged: BTreeMap<String, Vec<(String, &'a syn::Type)>>,
 }
 
 fn spell(t: &impl ToTokens) -> String {
@@ -141,6 +154,7 @@ impl<'a> Crate<'a> {
             fns: Vec::new(),
             newtypes: BTreeMap::new(),
             enums: BTreeMap::new(),
+            tagged: BTreeMap::new(),
         };
         let mut unit_enums = Vec::new();
         let mut values = BTreeMap::new();
@@ -161,6 +175,22 @@ impl<'a> Crate<'a> {
                         .all(|v| matches!(v.fields, syn::Fields::Unit))
                     {
                         unit_enums.push(e.ident.to_string());
+                    } else if !e.variants.is_empty()
+                        && e.variants.iter().all(
+                            |v| matches!(&v.fields, syn::Fields::Unnamed(u) if u.unnamed.len() == 1),
+                        )
+                    {
+                        let vs = e
+                            .variants
+                            .iter()
+                            .filter_map(|v| match &v.fields {
+                                syn::Fields::Unnamed(u) => {
+                                    Some((v.ident.to_string(), &u.unnamed[0].ty))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        c.tagged.insert(e.ident.to_string(), vs);
                     }
                 }
                 syn::Item::Impl(im) if im.trait_.is_none() => {
@@ -226,12 +256,15 @@ impl<'a> Crate<'a> {
                     ("Vec", _) => one(Ty::Vec),
                     ("Option", _) => one(Ty::Option),
                     ("Sender", _) => one(Ty::Sender),
+                    ("Rc", 1) => self.rc(args[0]).unwrap_or_else(|| Ty::Other(spell(t))),
                     ("Result", 2) => Ty::Result(Box::new(self.ty(args[0]))),
                     (n, 0) if p.path.segments.len() == 1 => {
                         if let Some(u) = self.newtypes.get(n) {
                             Ty::Newtype(n.to_string(), Box::new(self.ty(u)))
                         } else if let Some(u) = self.enums.get(n) {
                             Ty::Enum(n.to_string(), Box::new(self.ty(u)))
+                        } else if let Some(vs) = self.tagged.get(n) {
+                            Ty::Tagged(n.to_string(), vs.iter().map(|(_, u)| self.ty(u)).collect())
                         } else {
                             Ty::Other(spell(t))
                         }
@@ -240,6 +273,37 @@ impl<'a> Crate<'a> {
                 }
             }
             _ => Ty::Other(spell(t)),
+        }
+    }
+
+    /// `Rc<dyn Any>` is [`Ty::Any`]; `Rc<(Sender<T>, Receiver<T>)>` is [`Ty::Chan`].
+    fn rc(&self, inner: &syn::Type) -> Option<Ty> {
+        match inner {
+            syn::Type::TraitObject(o) => {
+                let [syn::TypeParamBound::Trait(b)] = o.bounds.iter().collect::<Vec<_>>()[..]
+                else {
+                    return None;
+                };
+                let last = b.path.segments.last()?;
+                (last.ident == "Any" && last.arguments.is_none()).then_some(Ty::Any)
+            }
+            syn::Type::Tuple(tu) if tu.elems.len() == 2 => {
+                let Ty::Sender(a) = self.ty(&tu.elems[0]) else {
+                    return None;
+                };
+                let syn::Type::Path(p) = &tu.elems[1] else {
+                    return None;
+                };
+                let last = p.path.segments.last()?;
+                let syn::PathArguments::AngleBracketed(g) = &last.arguments else {
+                    return None;
+                };
+                let [syn::GenericArgument::Type(e)] = g.args.iter().collect::<Vec<_>>()[..] else {
+                    return None;
+                };
+                (last.ident == "Receiver" && self.ty(e) == *a).then_some(Ty::Chan(a))
+            }
+            _ => None,
         }
     }
 
@@ -299,6 +363,8 @@ fn printable(t: &Ty) -> Result<(), Error> {
         )),
         Ty::Int(_) | Ty::Bool | Ty::String | Ty::Str => Ok(()),
         Ty::Vec(e) | Ty::Newtype(_, e) | Ty::Enum(_, e) => printable(e),
+        Ty::Any => Ok(()),
+        Ty::Tagged(_, ts) => ts.iter().try_for_each(printable),
         other => Err(format!("{} cannot be printed", describe(other))),
     }
 }
@@ -452,6 +518,45 @@ pub fn main_rs(lib_rs: &str, calls: &Calls) -> Result<String, Error> {
             .expect("writing to a String");
         }
     }
+    let mut held: Vec<String> = ["i8", "i16", "i32", "i64", "isize", "bool", "String"]
+        .iter()
+        .map(|t| t.to_string())
+        .collect();
+    for t in ["i64", "bool", "String"] {
+        held.push(format!("Vec<{t}>"));
+    }
+    for (name, u) in c.newtypes.iter().chain(&c.enums) {
+        if printable(&c.ty(u)).is_ok() {
+            held.push(format!("subject::{name}"));
+        }
+    }
+    for (name, vs) in &c.tagged {
+        if vs.iter().all(|(_, u)| printable(&c.ty(u)).is_ok()) {
+            let arms: Vec<String> = vs
+                .iter()
+                .map(|(v, _)| format!("            subject::{name}::{v}(v) => v.show(),"))
+                .collect();
+            writeln!(
+                s,
+                "\nimpl Show for subject::{name} {{\n    fn show(&self) -> String {{\n        match self {{\n{}\n        }}\n    }}\n}}",
+                arms.join("\n")
+            )
+            .expect("writing to a String");
+            held.push(format!("subject::{name}"));
+        }
+    }
+    let tries: Vec<String> = held
+        .iter()
+        .map(|t| {
+            format!("        if let Some(v) = self.downcast_ref::<{t}>() {{\n            return v.show();\n        }}")
+        })
+        .collect();
+    writeln!(
+        s,
+        "\nimpl Show for std::rc::Rc<dyn std::any::Any> {{\n    fn show(&self) -> String {{\n{}\n        eprintln!(\"codespec-run-rust: an `any` holding a type it cannot print\");\n        std::process::exit(2);\n    }}\n}}",
+        tries.join("\n")
+    )
+    .expect("writing to a String");
     s.push_str("\nfn main() {\n");
     for call in &calls.calls {
         let f = c.func(&call.func)?;
@@ -481,7 +586,7 @@ pub fn main_rs(lib_rs: &str, calls: &Calls) -> Result<String, Error> {
                 Ty::Int(_) => ArgKind::Int,
                 Ty::Bool => ArgKind::Bool,
                 Ty::String | Ty::Str => ArgKind::String,
-                Ty::Sender(_) => ArgKind::Chan,
+                Ty::Sender(_) | Ty::Chan(_) => ArgKind::Chan,
                 other => {
                     return Err(at(format!(
                         "parameter {} cannot be passed",
@@ -503,6 +608,16 @@ pub fn main_rs(lib_rs: &str, calls: &Calls) -> Result<String, Error> {
                     .expect("writing to a String");
                     args.push(format!("tx{i}"));
                     chans.push(format!("rx{i}"));
+                }
+                Ty::Chan(elem) => {
+                    printable(&elem).map_err(at)?;
+                    writeln!(
+                        s,
+                        "        let ch{i} = std::rc::Rc::new(std::sync::mpsc::channel());"
+                    )
+                    .expect("writing to a String");
+                    args.push(format!("std::rc::Rc::clone(&ch{i})"));
+                    chans.push(format!("ch{i}.1"));
                 }
                 _ => unreachable!("every other type was refused above"),
             }

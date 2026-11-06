@@ -245,6 +245,42 @@ fn same_as_go_edited(name: &str, src: &str, edit: &dyn Fn(&mut serde_json::Value
     }
 }
 
+/// The writer refuses nothing, the written crate builds under `-D warnings`, and the written `Run`
+/// prints what the Go `Run` prints.
+///
+/// The Go reader types a `nil` only where it is returned (a `nil` operand of `==` is Go's untyped
+/// nil, which has no cir/1 form), so a probe spells a nil pointer `none()`, a function returning
+/// `nil`, and each call of it becomes the `nil` expression of its type before the passes run: the
+/// same program, as a reader that types every `nil` (the Java reader's `null`) writes it.
+fn written_same_as_go(name: &str, src: &str) {
+    fn nil_for_none(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(o) => {
+                if o.get("k").and_then(|k| k.as_str()) == Some("call")
+                    && o.get("name").and_then(|n| n.as_str()) == Some("none")
+                {
+                    let t = o["t"].clone();
+                    *v = serde_json::json!({ "k": "nil", "t": t });
+                    return;
+                }
+                o.values_mut().for_each(nil_for_none);
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(nil_for_none),
+            _ => {}
+        }
+    }
+    let p = probe_edited(name, src, &nil_for_none);
+    assert_eq!(p.refusals.trim(), "[]", "refused:\n{}", p.lib());
+    if let Err(e) = p.lint() {
+        panic!("the written crate warns under -D warnings:\n{e}");
+    }
+    let want = p.go_stdout();
+    match p.rust_stdout() {
+        Ok(got) => assert_eq!(got, want, "Rust and Go disagree:\n{}", p.lib()),
+        Err(e) => panic!("Go prints {want:?}, but {e}"),
+    }
+}
+
 /// The written crate builds under `-D warnings`.
 fn builds_clean(name: &str, src: &str) {
     let p = probe(name, src);
@@ -696,6 +732,146 @@ func helper() int { return 1 }
 func Audit() { defer fmt.Println(helper()) }
 
 func Run() { fmt.Println(2) }
+"#,
+    );
+}
+
+// ----- nil pointers (story rust-writer-nil-pointer) --------------------------------------------
+
+#[test]
+fn a_pointer_local_and_a_map_lookup_of_a_pointer_compare_with_nil_as_go_does() {
+    written_same_as_go(
+        "nil-local-lookup",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+func localIsNil(set bool) bool {
+	var p *Node
+	if set {
+		p = &Node{Val: 1}
+	}
+	return p == none()
+}
+
+func lookupIsNil(key string) bool {
+	m := map[string]*Node{}
+	m["a"] = &Node{Val: 2}
+	return m[key] == none()
+}
+
+func lookupVal(key string) int {
+	m := map[string]*Node{}
+	m["a"] = &Node{Val: 2}
+	n := m[key]
+	if n != none() {
+		return n.Val
+	}
+	return -1
+}
+
+func Run() {
+	fmt.Println(localIsNil(false), localIsNil(true))
+	fmt.Println(lookupIsNil("a"), lookupIsNil("b"))
+	fmt.Println(lookupVal("a"), lookupVal("b"))
+}
+"#,
+    );
+}
+
+#[test]
+fn a_pointer_field_never_assigned_reads_as_nil() {
+    written_same_as_go(
+        "nil-field",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+type Box struct {
+	Inner *Node
+}
+
+func Run() {
+	b := Box{}
+	fmt.Println(b.Inner == none())
+	b.Inner = &Node{Val: 7}
+	fmt.Println(b.Inner == none(), b.Inner.Val)
+	q := b.Inner
+	q.Val = 9
+	fmt.Println(b.Inner.Val, q.Next == none())
+}
+"#,
+    );
+}
+
+#[test]
+fn a_chain_of_pointers_ends_at_nil() {
+    written_same_as_go(
+        "nil-chain",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+func chain(n int) int {
+	var head *Node
+	for i := 1; i <= n; i++ {
+		head = &Node{Val: i, Next: head}
+	}
+	sum := 0
+	for p := head; p != none(); p = p.Next {
+		sum += p.Val
+	}
+	return sum
+}
+
+func Run() {
+	fmt.Println(chain(0), chain(3))
+}
+"#,
+    );
+}
+
+#[test]
+fn a_pointer_to_a_local_writes_the_local() {
+    written_same_as_go(
+        "pointer-to-local",
+        r#"package probe
+
+import "fmt"
+
+func bump(p *int) {
+	*p = *p + 1
+}
+
+func Run() {
+	n := 1
+	p := &n
+	bump(p)
+	bump(&n)
+	n++
+	fmt.Println(n, *p)
+}
 "#,
     );
 }

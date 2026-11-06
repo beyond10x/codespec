@@ -47,22 +47,7 @@ fn manifest() -> AdapterManifest {
             "type.*",
             "unop.*",
         ]),
-        not: list(&[
-            "assign.shl",
-            "assign.shr",
-            "decl.newtype",
-            "fact.messages",
-            "op.shl",
-            "op.shr",
-            "stmt.foreign",
-            "stmt.send",
-            "type.any",
-            "type.chan",
-            "type.ptr",
-            "type.tuple",
-            "unop.deref",
-            "unop.recv",
-        ]),
+        not: list(&["stmt.foreign"]),
     }
 }
 
