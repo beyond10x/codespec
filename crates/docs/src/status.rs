@@ -16,7 +16,7 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.1.2";
+pub const VERSION: &str = "0.2.0";
 
 /// The date the list below was last checked against the tree.
 const AS_OF: &str = "2026-11-06";
@@ -209,11 +209,11 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Examples",
-        label: "An algorithmic example",
-        detail: "Loops, switch, slices and arithmetic, held to the same criteria as orders.",
-        status: "planned",
-        evidence: None,
-        href: "/docs/vision#milestones",
+        label: "series",
+        detail: "An algorithmic Go package: for loops with break and continue, switch, slices and integer arithmetic that wraps on overflow. Read, passed, written as Go and as Rust with no refusal; the original, the Go output and the Rust output agree on 200 traces of 300 commands.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::examples-series"),
+        href: "/docs/concepts/harness",
     },
     Capability {
         area: "Interfaces",
@@ -311,7 +311,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.1.2\""));
+        assert!(document.contains("\"version\": \"0.2.0\""));
     }
 
     #[test]

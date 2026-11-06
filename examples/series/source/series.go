@@ -1,0 +1,245 @@
+// Package series keeps a list of integer samples and computes statistics over it.
+package series
+
+import (
+	"errors"
+	"fmt"
+)
+
+type Trend string
+
+const (
+	Flat    Trend = "flat"
+	Rising  Trend = "rising"
+	Falling Trend = "falling"
+	Mixed   Trend = "mixed"
+)
+
+const maxSteps = 1000
+
+var ErrEmpty = errors.New("series is empty")
+
+var ErrBadWindow = errors.New("window must be positive")
+
+type Series struct {
+	values []int
+}
+
+func New() *Series {
+	return &Series{values: []int{}}
+}
+
+// Push appends v and returns the new length.
+func (s *Series) Push(v int) int {
+	s.values = append(s.values, v)
+	return len(s.values)
+}
+
+// Sum adds every value; the sum wraps on overflow.
+func (s *Series) Sum() int {
+	total := 0
+	for _, v := range s.values {
+		total += v
+	}
+	return total
+}
+
+func (s *Series) Mean() (int, error) {
+	if len(s.values) == 0 {
+		return 0, ErrEmpty
+	}
+	return s.Sum() / len(s.values), nil
+}
+
+// Sorted returns the values in ascending order, by insertion sort; the series is unchanged.
+func (s *Series) Sorted() []int {
+	out := []int{}
+	for _, v := range s.values {
+		out = append(out, v)
+	}
+	for i := 1; i < len(out); i++ {
+		x := out[i]
+		j := i - 1
+		for j >= 0 && out[j] > x {
+			out[j+1] = out[j]
+			j--
+		}
+		out[j+1] = x
+	}
+	return out
+}
+
+func (s *Series) Median() (int, error) {
+	n := len(s.values)
+	if n == 0 {
+		return 0, ErrEmpty
+	}
+	sorted := s.Sorted()
+	if n%2 == 1 {
+		return sorted[n/2], nil
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2, nil
+}
+
+// Reverse reverses the series in place.
+func (s *Series) Reverse() {
+	for i, j := 0, len(s.values)-1; i < j; i, j = i+1, j-1 {
+		s.values[i], s.values[j] = s.values[j], s.values[i]
+	}
+}
+
+func (s *Series) Trend() Trend {
+	up := 0
+	down := 0
+	for i := 1; i < len(s.values); i++ {
+		switch {
+		case s.values[i] > s.values[i-1]:
+			up++
+		case s.values[i] < s.values[i-1]:
+			down++
+		}
+	}
+	switch {
+	case up > 0 && down > 0:
+		return Mixed
+	case up > 0:
+		return Rising
+	case down > 0:
+		return Falling
+	}
+	return Flat
+}
+
+// MaxWindow is the largest sum of w consecutive values.
+func (s *Series) MaxWindow(w int) (int, error) {
+	if w <= 0 {
+		return 0, ErrBadWindow
+	}
+	if w > len(s.values) {
+		return 0, fmt.Errorf("window %d is longer than the series (%d)", w, len(s.values))
+	}
+	cur := 0
+	for i := 0; i < w; i++ {
+		cur += s.values[i]
+	}
+	best := cur
+	for i := w; i < len(s.values); i++ {
+		cur += s.values[i] - s.values[i-w]
+		if cur > best {
+			best = cur
+		}
+	}
+	return best, nil
+}
+
+// Gcd is the greatest common divisor of every value, 0 for an empty series.
+func (s *Series) Gcd() int {
+	g := 0
+	for _, v := range s.values {
+		g = gcd(g, v)
+	}
+	return g
+}
+
+func gcd(a int, b int) int {
+	if a < 0 {
+		a = -a
+	}
+	if b < 0 {
+		b = -b
+	}
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+// EvenSum adds the even values.
+func (s *Series) EvenSum() int {
+	total := 0
+	for i := 0; i < len(s.values); i++ {
+		if s.values[i]%2 != 0 {
+			continue
+		}
+		total += s.values[i]
+	}
+	return total
+}
+
+// Drop removes every value equal to v and returns how many it removed.
+func (s *Series) Drop(v int) int {
+	kept := []int{}
+	removed := 0
+	for _, x := range s.values {
+		if x == v {
+			removed++
+			continue
+		}
+		kept = append(kept, x)
+	}
+	s.values = kept
+	return removed
+}
+
+func (s *Series) Len() int {
+	return len(s.values)
+}
+
+// Steps counts the Collatz steps from n to 1, stopping at maxSteps.
+func Steps(n int) (int, error) {
+	if n <= 0 {
+		return 0, fmt.Errorf("steps of %d: n must be positive", n)
+	}
+	steps := 0
+	for n != 1 {
+		if n%2 == 0 {
+			n /= 2
+		} else {
+			n = 3*n + 1
+		}
+		steps++
+		if steps == maxSteps {
+			break
+		}
+	}
+	return steps, nil
+}
+
+func IsPrime(n int) bool {
+	if n < 2 {
+		return false
+	}
+	for d := 2; d <= n/d; d++ {
+		if n%d == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Bucket names the size class of v.
+func Bucket(v int) string {
+	switch {
+	case v < 0:
+		return "negative"
+	case v == 0:
+		return "zero"
+	case v < 10:
+		return "small"
+	case v < 1000:
+		return "medium"
+	}
+	return "large"
+}
+
+// Residue names v modulo 3, with Go's sign: the remainder takes the sign of v.
+func Residue(v int) string {
+	switch v % 3 {
+	case 0:
+		return "divisible"
+	case 1, -2:
+		return "one-over"
+	default:
+		return "one-under"
+	}
+}

@@ -10,7 +10,9 @@
 //!   shipped item names the test that holds it and generation fails when that test is gone;
 //! - the showcase (`examples/greeter.md`), the landing's code pair
 //!   (`website/data/greeter-code-pair.json`) and the `cir/1` diagram
-//!   (`website/static/img/greeter-cir.svg`), from the checked-in files of `examples/greeter`.
+//!   (`website/static/img/greeter-cir.svg`), from the checked-in files of `examples/greeter`;
+//! - the algorithmic showcase (`examples/series.md`) and its diagram
+//!   (`website/static/img/series-cir.svg`), from the checked-in files of `examples/series`.
 //!
 //! `generate --check` also refuses an admonition whose title is not in brackets anywhere under
 //! `website/docs`.
@@ -21,6 +23,7 @@ mod cli;
 mod crates;
 mod diagram;
 mod routes;
+mod series;
 mod showcase;
 mod status;
 
@@ -179,6 +182,7 @@ fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
         (status::DATA, status::document(root)?),
     ];
     all.extend(showcase::outputs(root)?);
+    all.extend(series::outputs(root)?);
     Ok(all)
 }
 

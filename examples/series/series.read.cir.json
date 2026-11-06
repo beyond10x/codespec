@@ -1,0 +1,5208 @@
+{
+  "format": "cir/1",
+  "name": "series",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "doc": "Package series keeps a list of integer samples and computes statistics over it.",
+  "types": [
+    {
+      "k": "enum",
+      "name": "Trend",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "Flat",
+          "value": {
+            "k": "lit",
+            "value": "\"flat\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Rising",
+          "value": {
+            "k": "lit",
+            "value": "\"rising\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Falling",
+          "value": {
+            "k": "lit",
+            "value": "\"falling\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "Mixed",
+          "value": {
+            "k": "lit",
+            "value": "\"mixed\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "series.go:9"
+    },
+    {
+      "k": "struct",
+      "name": "Series",
+      "exported": true,
+      "fields": [
+        {
+          "name": "values",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          }
+        }
+      ],
+      "pos": "series.go:24"
+    }
+  ],
+  "consts": [
+    {
+      "name": "maxSteps",
+      "t": {
+        "k": "int",
+        "width": "platform",
+        "signed": true
+      },
+      "value": {
+        "k": "lit",
+        "value": "1000",
+        "t": {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      },
+      "pos": "series.go:18"
+    }
+  ],
+  "errors": [
+    {
+      "name": "ErrEmpty",
+      "message": "series is empty",
+      "pos": "series.go:20"
+    },
+    {
+      "name": "ErrBadWindow",
+      "message": "window must be positive",
+      "pos": "series.go:22"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "New",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Series",
+                "fields": [
+                  {
+                    "name": "values",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            }
+          ],
+          "pos": "series.go:29"
+        }
+      ],
+      "pos": "series.go:28"
+    },
+    {
+      "name": "Push",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "values",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:34"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:35"
+        }
+      ],
+      "doc": "Push appends v and returns the new length.",
+      "pos": "series.go:33"
+    },
+    {
+      "name": "Sum",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:40"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:42"
+            }
+          ],
+          "pos": "series.go:41"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:44"
+        }
+      ],
+      "doc": "Sum adds every value; the sum wraps on overflow.",
+      "pos": "series.go:39"
+    },
+    {
+      "name": "Mean",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrEmpty",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:49"
+            }
+          ],
+          "pos": "series.go:48"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Series"
+                    }
+                  }
+                },
+                "name": "Sum",
+                "args": [],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "series.go:51"
+        }
+      ],
+      "pos": "series.go:47"
+    },
+    {
+      "name": "Sorted",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "out"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:56"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "append",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "pos": "series.go:58"
+            }
+          ],
+          "pos": "series.go:57"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:60"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:60"
+          },
+          "body": [
+            {
+              "k": "let",
+              "names": [
+                "x"
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "out",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:61"
+            },
+            {
+              "k": "let",
+              "names": [
+                "j"
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:62"
+            },
+            {
+              "k": "for",
+              "cond": {
+                "k": "binop",
+                "op": "&&",
+                "x": {
+                  "k": "binop",
+                  "op": ">=",
+                  "x": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                },
+                "y": {
+                  "k": "binop",
+                  "op": ">",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "j",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "x",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "body": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "var",
+                        "name": "out",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "binop",
+                        "op": "+",
+                        "x": {
+                          "k": "var",
+                          "name": "j",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "lit",
+                          "value": "1",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "var",
+                        "name": "out",
+                        "t": {
+                          "k": "slice",
+                          "elem": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "j",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "series.go:64"
+                },
+                {
+                  "k": "decr",
+                  "x": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "pos": "series.go:65"
+                }
+              ],
+              "pos": "series.go:63"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "out",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "+",
+                    "x": {
+                      "k": "var",
+                      "name": "j",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "1",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:67"
+            }
+          ],
+          "pos": "series.go:60"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:69"
+        }
+      ],
+      "doc": "Sorted returns the values in ascending order, by insertion sort; the series is unchanged.",
+      "pos": "series.go:55"
+    },
+    {
+      "name": "Median",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n"
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:73"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrEmpty",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:75"
+            }
+          ],
+          "pos": "series.go:74"
+        },
+        {
+          "k": "let",
+          "names": [
+            "sorted"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "Sorted",
+              "args": [],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:77"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "binop",
+              "op": "%",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "/",
+                    "x": {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "nil",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:79"
+            }
+          ],
+          "pos": "series.go:78"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "-",
+                    "x": {
+                      "k": "binop",
+                      "op": "/",
+                      "x": {
+                        "k": "var",
+                        "name": "n",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "2",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "1",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "sorted",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "binop",
+                    "op": "/",
+                    "x": {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "series.go:81"
+        }
+      ],
+      "pos": "series.go:72"
+    },
+    {
+      "name": "Reverse",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i",
+              "j"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "intrinsic",
+                  "name": "len",
+                  "args": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:86"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "j",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "assign",
+            "lhs": [
+              {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              {
+                "k": "var",
+                "name": "j",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "rhs": [
+              {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              {
+                "k": "binop",
+                "op": "-",
+                "x": {
+                  "k": "var",
+                  "name": "j",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:86"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "j",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:87"
+            }
+          ],
+          "pos": "series.go:86"
+        }
+      ],
+      "doc": "Reverse reverses the series in place.",
+      "pos": "series.go:85"
+    },
+    {
+      "name": "Trend",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "named",
+          "name": "Trend"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "up"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:92"
+        },
+        {
+          "k": "let",
+          "names": [
+            "down"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:93"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:94"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:94"
+          },
+          "body": [
+            {
+              "k": "switch",
+              "cases": [
+                {
+                  "values": [
+                    {
+                      "k": "binop",
+                      "op": ">",
+                      "x": {
+                        "k": "index",
+                        "x": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        },
+                        "index": {
+                          "k": "var",
+                          "name": "i",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "index",
+                        "x": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        },
+                        "index": {
+                          "k": "binop",
+                          "op": "-",
+                          "x": {
+                            "k": "var",
+                            "name": "i",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "y": {
+                            "k": "lit",
+                            "value": "1",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "bool"
+                      }
+                    }
+                  ],
+                  "body": [
+                    {
+                      "k": "incr",
+                      "x": {
+                        "k": "var",
+                        "name": "up",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "pos": "series.go:97"
+                    }
+                  ]
+                },
+                {
+                  "values": [
+                    {
+                      "k": "binop",
+                      "op": "<",
+                      "x": {
+                        "k": "index",
+                        "x": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        },
+                        "index": {
+                          "k": "var",
+                          "name": "i",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "index",
+                        "x": {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        },
+                        "index": {
+                          "k": "binop",
+                          "op": "-",
+                          "x": {
+                            "k": "var",
+                            "name": "i",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "y": {
+                            "k": "lit",
+                            "value": "1",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "bool"
+                      }
+                    }
+                  ],
+                  "body": [
+                    {
+                      "k": "incr",
+                      "x": {
+                        "k": "var",
+                        "name": "down",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "pos": "series.go:99"
+                    }
+                  ]
+                }
+              ],
+              "pos": "series.go:95"
+            }
+          ],
+          "pos": "series.go:94"
+        },
+        {
+          "k": "switch",
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": "&&",
+                  "x": {
+                    "k": "binop",
+                    "op": ">",
+                    "x": {
+                      "k": "var",
+                      "name": "up",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "bool"
+                    }
+                  },
+                  "y": {
+                    "k": "binop",
+                    "op": ">",
+                    "x": {
+                      "k": "var",
+                      "name": "down",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "bool"
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "const",
+                      "name": "Mixed",
+                      "t": {
+                        "k": "named",
+                        "name": "Trend"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:104"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": ">",
+                  "x": {
+                    "k": "var",
+                    "name": "up",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "const",
+                      "name": "Rising",
+                      "t": {
+                        "k": "named",
+                        "name": "Trend"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:106"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": ">",
+                  "x": {
+                    "k": "var",
+                    "name": "down",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "const",
+                      "name": "Falling",
+                      "t": {
+                        "k": "named",
+                        "name": "Trend"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:108"
+                }
+              ]
+            }
+          ],
+          "pos": "series.go:102"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "const",
+              "name": "Flat",
+              "t": {
+                "k": "named",
+                "name": "Trend"
+              }
+            }
+          ],
+          "pos": "series.go:110"
+        }
+      ],
+      "pos": "series.go:91"
+    },
+    {
+      "name": "MaxWindow",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "w",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrBadWindow",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:116"
+            }
+          ],
+          "pos": "series.go:115"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": ">",
+            "x": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"window %d is longer than the series (%d)\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "w",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    {
+                      "k": "intrinsic",
+                      "name": "len",
+                      "args": [
+                        {
+                          "k": "field",
+                          "x": {
+                            "k": "var",
+                            "name": "s",
+                            "t": {
+                              "k": "ptr",
+                              "elem": {
+                                "k": "named",
+                                "name": "Series"
+                              }
+                            }
+                          },
+                          "name": "values",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:119"
+            }
+          ],
+          "pos": "series.go:118"
+        },
+        {
+          "k": "let",
+          "names": [
+            "cur"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:121"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:122"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "w",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:122"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:123"
+            }
+          ],
+          "pos": "series.go:122"
+        },
+        {
+          "k": "let",
+          "names": [
+            "best"
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "cur",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:125"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:126"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:126"
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "i",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "binop",
+                      "op": "-",
+                      "x": {
+                        "k": "var",
+                        "name": "i",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "var",
+                        "name": "w",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:127"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "var",
+                  "name": "cur",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "best",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "best",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "var",
+                      "name": "cur",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "series.go:129"
+                }
+              ],
+              "pos": "series.go:128"
+            }
+          ],
+          "pos": "series.go:126"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "best",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "series.go:132"
+        }
+      ],
+      "doc": "MaxWindow is the largest sum of w consecutive values.",
+      "pos": "series.go:114"
+    },
+    {
+      "name": "Gcd",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "g"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:137"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "v",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "g",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "call",
+                  "name": "gcd",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "g",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "v",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:139"
+            }
+          ],
+          "pos": "series.go:138"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "g",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:141"
+        }
+      ],
+      "doc": "Gcd is the greatest common divisor of every value, 0 for an empty series.",
+      "pos": "series.go:136"
+    },
+    {
+      "name": "gcd",
+      "exported": false,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "a",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:146"
+            }
+          ],
+          "pos": "series.go:145"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "var",
+                    "name": "b",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:149"
+            }
+          ],
+          "pos": "series.go:148"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "a",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "b",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:152"
+            }
+          ],
+          "pos": "series.go:151"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:154"
+        }
+      ],
+      "pos": "series.go:144"
+    },
+    {
+      "name": "EvenSum",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:159"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:160"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:160"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "!=",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "index",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "s",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Series"
+                          }
+                        }
+                      },
+                      "name": "values",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    "index": {
+                      "k": "var",
+                      "name": "i",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "continue",
+                  "pos": "series.go:162"
+                }
+              ],
+              "pos": "series.go:161"
+            },
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Series"
+                        }
+                      }
+                    },
+                    "name": "values",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "series.go:164"
+            }
+          ],
+          "pos": "series.go:160"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:166"
+        }
+      ],
+      "doc": "EvenSum adds the even values.",
+      "pos": "series.go:158"
+    },
+    {
+      "name": "Drop",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "kept"
+          ],
+          "rhs": [
+            {
+              "k": "make",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:171"
+        },
+        {
+          "k": "let",
+          "names": [
+            "removed"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:172"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "x",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "s",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Series"
+                }
+              }
+            },
+            "name": "values",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "v",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "incr",
+                  "x": {
+                    "k": "var",
+                    "name": "removed",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "pos": "series.go:175"
+                },
+                {
+                  "k": "continue",
+                  "pos": "series.go:176"
+                }
+              ],
+              "pos": "series.go:174"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "kept",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "append",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "kept",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "x",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "pos": "series.go:178"
+            }
+          ],
+          "pos": "series.go:173"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Series"
+                  }
+                }
+              },
+              "name": "values",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "kept",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "series.go:180"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "removed",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:181"
+        }
+      ],
+      "doc": "Drop removes every value equal to v and returns how many it removed.",
+      "pos": "series.go:170"
+    },
+    {
+      "name": "Len",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Series"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "len",
+              "args": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Series"
+                      }
+                    }
+                  },
+                  "name": "values",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:185"
+        }
+      ],
+      "pos": "series.go:184"
+    },
+    {
+      "name": "Steps",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "intrinsic",
+                  "name": "errorf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"steps of %d: n must be positive\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "series.go:191"
+            }
+          ],
+          "pos": "series.go:190"
+        },
+        {
+          "k": "let",
+          "names": [
+            "steps"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "series.go:193"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "op": "/=",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "lit",
+                      "value": "2",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "series.go:196"
+                }
+              ],
+              "else": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "binop",
+                      "op": "+",
+                      "x": {
+                        "k": "binop",
+                        "op": "*",
+                        "x": {
+                          "k": "lit",
+                          "value": "3",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "y": {
+                          "k": "var",
+                          "name": "n",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        },
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "1",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "series.go:198"
+                }
+              ],
+              "pos": "series.go:195"
+            },
+            {
+              "k": "incr",
+              "x": {
+                "k": "var",
+                "name": "steps",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "pos": "series.go:200"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "var",
+                  "name": "steps",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "const",
+                  "name": "maxSteps",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "break",
+                  "pos": "series.go:202"
+                }
+              ],
+              "pos": "series.go:201"
+            }
+          ],
+          "pos": "series.go:194"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "steps",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "series.go:205"
+        }
+      ],
+      "doc": "Steps counts the Collatz steps from n to 1, stopping at maxSteps.",
+      "pos": "series.go:189"
+    },
+    {
+      "name": "IsPrime",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "2",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "false",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "series.go:210"
+            }
+          ],
+          "pos": "series.go:209"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "d"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "series.go:212"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "d",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "d",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "d",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "series.go:212"
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "binop",
+                  "op": "%",
+                  "x": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "d",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "false",
+                      "t": {
+                        "k": "bool"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:214"
+                }
+              ],
+              "pos": "series.go:213"
+            }
+          ],
+          "pos": "series.go:212"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "true",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "series.go:217"
+        }
+      ],
+      "pos": "series.go:208"
+    },
+    {
+      "name": "Bucket",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": "<",
+                  "x": {
+                    "k": "var",
+                    "name": "v",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"negative\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:224"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": "==",
+                  "x": {
+                    "k": "var",
+                    "name": "v",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"zero\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:226"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": "<",
+                  "x": {
+                    "k": "var",
+                    "name": "v",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "10",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"small\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:228"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "binop",
+                  "op": "<",
+                  "x": {
+                    "k": "var",
+                    "name": "v",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1000",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"medium\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:230"
+                }
+              ]
+            }
+          ],
+          "pos": "series.go:222"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"large\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "series.go:232"
+        }
+      ],
+      "doc": "Bucket names the size class of v.",
+      "pos": "series.go:221"
+    },
+    {
+      "name": "Residue",
+      "exported": true,
+      "params": [
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "binop",
+            "op": "%",
+            "x": {
+              "k": "var",
+              "name": "v",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "3",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"divisible\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:239"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "unop",
+                  "op": "-",
+                  "x": {
+                    "k": "lit",
+                    "value": "2",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"one-over\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:241"
+                }
+              ]
+            },
+            {
+              "values": [],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"one-under\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "series.go:243"
+                }
+              ]
+            }
+          ],
+          "pos": "series.go:237"
+        }
+      ],
+      "doc": "Residue names v modulo 3, with Go's sign: the remainder takes the sign of v.",
+      "pos": "series.go:236"
+    }
+  ],
+  "layout": [
+    "type:Trend",
+    "const:maxSteps",
+    "error:ErrEmpty",
+    "error:ErrBadWindow",
+    "type:Series",
+    "func:New",
+    "func:Series.Push",
+    "func:Series.Sum",
+    "func:Series.Mean",
+    "func:Series.Sorted",
+    "func:Series.Median",
+    "func:Series.Reverse",
+    "func:Series.Trend",
+    "func:Series.MaxWindow",
+    "func:Series.Gcd",
+    "func:gcd",
+    "func:Series.EvenSum",
+    "func:Series.Drop",
+    "func:Series.Len",
+    "func:Steps",
+    "func:IsPrime",
+    "func:Bucket",
+    "func:Residue"
+  ]
+}

@@ -491,5 +491,5 @@ impl std::error::Error for Error {}
 
 ## What this does not show
 
-- The [harness](/docs/concepts/harness) compares implementations byte for byte on seeded traces. It has trace formats for `orders` and `inventory` only, so `greeter` is checked by its build and by equality with the checked-in outputs, not by the harness.
+- The [harness](/docs/concepts/harness) compares implementations byte for byte on seeded traces. It has trace formats for `orders`, `inventory` and `series` only, so `greeter` is checked by its build and by equality with the checked-in outputs, not by the harness.
 - Writing `g.greeted[name]++` instead of `g.greeted[name] = g.greeted[name] + 1` is refused by the Rust writer today ("a write into a map entry's value"); the example uses the form it writes.

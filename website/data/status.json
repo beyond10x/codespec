@@ -137,10 +137,10 @@
     },
     {
       "area": "Examples",
-      "detail": "Loops, switch, slices and arithmetic, held to the same criteria as orders.",
-      "href": "/docs/vision#milestones",
-      "label": "An algorithmic example",
-      "status": "planned"
+      "detail": "An algorithmic Go package: for loops with break and continue, switch, slices and integer arithmetic that wraps on overflow. Read, passed, written as Go and as Rust with no refusal; the original, the Go output and the Rust output agree on 200 traces of 300 commands.",
+      "href": "/docs/concepts/harness",
+      "label": "series",
+      "status": "shipped"
     },
     {
       "area": "Interfaces",
@@ -151,5 +151,5 @@
     }
   ],
   "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",
-  "version": "0.1.2"
+  "version": "0.2.0"
 }

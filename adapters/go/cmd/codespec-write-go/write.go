@@ -29,6 +29,14 @@ type writer struct {
 	untyped map[string]Type
 	pos     string
 	err     error
+	// breaks holds the enclosing loops and switches, innermost last; a cir/1 `break` inside a
+	// switch leaves the loop around it, which Go spells with a label on that loop.
+	breaks []*breakable
+}
+
+type breakable struct {
+	loop  bool
+	label string
 }
 
 type piece struct {
@@ -575,6 +583,29 @@ func idents(names ...string) []ast.Expr {
 	return out
 }
 
+// loop writes body into block and returns the loop, labeled when a break inside a switch in it
+// needs a label to leave it.
+func (w *writer) loop(l ast.Stmt, block *ast.BlockStmt, body []Stmt) ast.Stmt {
+	b := &breakable{loop: true}
+	w.breaks = append(w.breaks, b)
+	block.List = w.stmts(body)
+	w.breaks = w.breaks[:len(w.breaks)-1]
+	if b.label != "" {
+		return &ast.LabeledStmt{Label: ident(b.label), Stmt: l}
+	}
+	return l
+}
+
+// single writes a for loop's init or post statement, which is one Go statement.
+func (w *writer) single(s *Stmt) ast.Stmt {
+	out := w.stmt(s)
+	if len(out) != 1 {
+		w.refuse("for clause %q has no single Go statement", s.K)
+		return &ast.EmptyStmt{}
+	}
+	return out[0]
+}
+
 func (w *writer) stmt(s *Stmt) []ast.Stmt {
 	w.pos = s.Pos
 	switch s.K {
@@ -629,8 +660,37 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 		case s.Key != "_":
 			r.Key, r.Tok = ident(s.Key), token.DEFINE
 		}
-		r.Body = &ast.BlockStmt{List: w.stmts(s.Body)}
-		return []ast.Stmt{r}
+		r.Body = &ast.BlockStmt{}
+		return []ast.Stmt{w.loop(r, r.Body, s.Body)}
+	case "for":
+		f := &ast.ForStmt{Body: &ast.BlockStmt{}}
+		if s.Init != nil {
+			f.Init = w.single(s.Init)
+		}
+		if s.Cond != nil {
+			f.Cond = header(w.expr(*s.Cond))
+		}
+		if s.Post != nil {
+			f.Post = w.single(s.Post)
+		}
+		w.pos = s.Pos
+		return []ast.Stmt{w.loop(f, f.Body, s.Body)}
+	case "break":
+		var label *ast.Ident
+		if n := len(w.breaks); n > 0 && !w.breaks[n-1].loop {
+			for i := n - 1; i >= 0; i-- {
+				if b := w.breaks[i]; b.loop {
+					if b.label == "" {
+						b.label = w.fresh("loop")
+					}
+					label = ident(b.label)
+					break
+				}
+			}
+		}
+		return []ast.Stmt{&ast.BranchStmt{Tok: token.BREAK, Label: label}}
+	case "continue":
+		return []ast.Stmt{&ast.BranchStmt{Tok: token.CONTINUE}}
 	case "switch":
 		sw := &ast.SwitchStmt{Body: &ast.BlockStmt{}}
 		if s.Tag != nil {
@@ -641,7 +701,10 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 			for _, v := range w.exprs(c.Values) {
 				vals = append(vals, header(v))
 			}
-			sw.Body.List = append(sw.Body.List, &ast.CaseClause{List: vals, Body: w.stmts(c.Body)})
+			w.breaks = append(w.breaks, &breakable{})
+			body := w.stmts(c.Body)
+			w.breaks = w.breaks[:len(w.breaks)-1]
+			sw.Body.List = append(sw.Body.List, &ast.CaseClause{List: vals, Body: body})
 		}
 		return []ast.Stmt{sw}
 	case "return":

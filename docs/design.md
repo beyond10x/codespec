@@ -50,7 +50,7 @@ Defined by `crates/model/src/lib.rs`; `schemas/cir-1.schema.json` is generated f
 | module | name, reader `{language, name, version}`, doc, types, consts, sentinel errors, funcs, layout, facts, refusals |
 | types | `int {width: platform\|8\|16\|32\|64, signed}`, `bool`, `string`, `error`, `any`, `unit`, `named`, `ptr`, `slice`, `map`, `chan {dir}`, `tuple` |
 | declarations | `struct`, `newtype`, `enum`, `union` |
-| statements | `let`, `var`, `assign`, `incr`, `decr`, `if`, `for_range`, `switch`, `return`, `expr`, `send`, `lookup_else`, `foreign` |
+| statements | `let`, `var`, `assign`, `incr`, `decr`, `if`, `for_range`, `for`, `break`, `continue`, `switch`, `return`, `expr`, `send`, `lookup_else`, `foreign` |
 | expressions | `lit`, `nil`, `var`, `const`, `errvar`, `field`, `index`, `call`, `method`, `binop`, `unop`, `struct`, `conv`, `make`, `zero`, `intrinsic`, `to_error` |
 
 Changes from `cir/0`:
@@ -64,6 +64,7 @@ Changes from `cir/0`:
 | `union`, `switch` | Rust enums with data, Go `switch`, Rust `match` |
 | every expression has a type, required | writers never infer |
 | tagged nodes with strict fields | a document with an unknown field or kind is refused |
+| `for`, `break`, `continue` (added with M3) | loops other than a range, and leaving one early; additive, so every earlier document reads unchanged |
 
 ## 4. Passes (to port, M1)
 
@@ -85,7 +86,7 @@ Changes from `cir/0`:
 | M0 | model, schema, CLI (`validate`, `schema`, `read`, `write`), Go reader, `orders` | `task check` green; `orders` read twice gives the same bytes |
 | M1 | passes (Rust), Go writer (`go/ast`), Rust writer, harness | `orders`: original Go, Go output and Rust output byte-equal on 200 × 300 traces |
 | M2 | dropped: a tree-sitter Go reader (§ 7) | — |
-| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | M1 criteria on both examples |
+| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic (`series`) | M1 criteria on both examples |
 | M4 | Rust reader on `syn`, Rust → `cir/1` → Go | harness green on a Rust example |
 
 Release 0.1.0 is M0, M1 and M4: Go reader, Rust reader, Go writer, Rust writer, passes, harness.

@@ -1354,6 +1354,8 @@ impl<'a> Writer<'a> {
             mutated,
             refused,
             locals,
+            posts: std::cell::RefCell::new(Vec::new()),
+            moves: moves(f),
         };
         let body = cx.body(&f.body)?;
         let name = self.names.func(&f.key());
@@ -1612,6 +1614,17 @@ fn walk_stmts(body: &[Stmt], f: &mut dyn FnMut(&Stmt)) {
                 walk_stmts(otherwise, f);
             }
             Stmt::ForRange { body, .. } => walk_stmts(body, f),
+            Stmt::For {
+                init, post, body, ..
+            } => {
+                if let Some(init) = init {
+                    walk_stmts(std::slice::from_ref(&**init), f);
+                }
+                walk_stmts(body, f);
+                if let Some(post) = post {
+                    walk_stmts(std::slice::from_ref(&**post), f);
+                }
+            }
             Stmt::Switch { cases, .. } => cases.iter().for_each(|c| walk_stmts(&c.body, f)),
             Stmt::LookupElse { then, .. } => walk_stmts(then, f),
             _ => {}
@@ -1633,7 +1646,10 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         Stmt::Return { results, .. } => results.iter().collect(),
         Stmt::Send { chan, x, .. } => vec![chan, x],
         Stmt::LookupElse { map, index, .. } => vec![map, index],
-        Stmt::Var { .. } | Stmt::Foreign { .. } => vec![],
+        Stmt::For { cond, .. } => cond.iter().collect(),
+        Stmt::Var { .. } | Stmt::Foreign { .. } | Stmt::Break { .. } | Stmt::Continue { .. } => {
+            vec![]
+        }
     }
 }
 
@@ -1662,6 +1678,49 @@ fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
         Expr::Struct { fields, .. } => fields.iter().for_each(|fi| walk_expr(&fi.value, f)),
         _ => {}
     }
+}
+
+/// Positions of `x = v` statements, in the function's own block, that assign a local slice or
+/// map `v` no later statement of that block reads. Go would share `v`'s storage with `x`; since
+/// nothing reads `v` again, moving it is the same. Statements inside loops are never listed: a
+/// later iteration could read `v`.
+fn moves(f: &Func) -> BTreeSet<String> {
+    let mut locals = BTreeSet::new();
+    walk_stmts(&f.body, &mut |s| match s {
+        Stmt::Let { names, .. } => locals.extend(names.iter().cloned()),
+        Stmt::Var { name, .. } => {
+            locals.insert(name.clone());
+        }
+        _ => {}
+    });
+    let mut out = BTreeSet::new();
+    for (i, s) in f.body.iter().enumerate() {
+        let Stmt::Assign { op, lhs, rhs, pos } = s else {
+            continue;
+        };
+        let ([l], [Expr::Var { name, t }]) = (lhs.as_slice(), rhs.as_slice()) else {
+            continue;
+        };
+        if !op.is_empty()
+            || !locals.contains(name)
+            || !matches!(t, Type::Slice { .. } | Type::Map { .. })
+        {
+            continue;
+        }
+        let mut read = false;
+        walk_expr(l, &mut |e| {
+            read |= matches!(e, Expr::Var { name: n, .. } if n == name);
+        });
+        let rest = &f.body[i + 1..];
+        walk_stmts(rest, &mut |s| read |= matches!(s, Stmt::Foreign { .. }));
+        walk_exprs(rest, &mut |e| {
+            read |= matches!(e, Expr::Var { name: n, .. } if n == name);
+        });
+        if !read {
+            out.insert(pos.clone());
+        }
+    }
+    out
 }
 
 fn walk_exprs(body: &[Stmt], f: &mut dyn FnMut(&Expr)) {
@@ -1744,6 +1803,10 @@ struct Fx<'a, 'f> {
     refused: &'f BTreeSet<String>,
     /// The Rust names of every parameter and local, so a name the writer introduces is fresh.
     locals: BTreeSet<String>,
+    /// Positions of assignments that move a local slice or map instead of copying it.
+    moves: BTreeSet<String>,
+    /// For each enclosing loop, innermost last, the `post` statement a `continue` runs first.
+    posts: std::cell::RefCell<Vec<Vec<TokenStream>>>,
 }
 
 impl Fx<'_, '_> {
@@ -1795,6 +1858,14 @@ impl Fx<'_, '_> {
         Ok(out)
     }
 
+    /// A loop body, with `post` run before each `continue` that ends one of its iterations.
+    fn looped(&self, post: Vec<TokenStream>, body: &[Stmt]) -> Result<Vec<TokenStream>, Refuse> {
+        self.posts.borrow_mut().push(post);
+        let b = self.block(body);
+        self.posts.borrow_mut().pop();
+        b
+    }
+
     fn block(&self, body: &[Stmt]) -> Result<Vec<TokenStream>, Refuse> {
         let mut out = Vec::new();
         for s in body {
@@ -1813,6 +1884,18 @@ impl Fx<'_, '_> {
                 let ty = self.w.ty(t)?;
                 let z = self.w.zero(t)?.ts;
                 Ok(quote! { let #b: #ty = #z; })
+            })()),
+            Stmt::Assign {
+                lhs: l,
+                rhs: r,
+                pos: p,
+                ..
+            } if self.moves.contains(p) => one((|| {
+                let (Some(l), Some(Expr::Var { name, .. })) = (l.first(), r.first()) else {
+                    return Err("a move of something other than a local".to_string());
+                };
+                let n = self.w.names.local(name);
+                self.store(l, Rx::atom(quote! { #n }), false)
             })()),
             Stmt::Assign { op, lhs, rhs, .. } => one(self.assign(op, lhs, rhs)),
             Stmt::Incr { x, .. } => one(self.step(x, quote! { wrapping_add })),
@@ -1842,9 +1925,47 @@ impl Fx<'_, '_> {
                 body,
                 pos,
             } => {
-                let b = self.block(body)?;
+                let b = self.looped(Vec::new(), body)?;
                 let r = self.range(key, val, over, pos, b).map_err(|e| at(pos, e))?;
                 Ok(vec![r])
+            }
+            Stmt::For {
+                init,
+                cond,
+                post,
+                body,
+                ..
+            } => {
+                let init = match init {
+                    Some(s) => self.stmt(s)?,
+                    None => Vec::new(),
+                };
+                let post = match post {
+                    Some(s) => self.stmt(s)?,
+                    None => Vec::new(),
+                };
+                let b = self.looped(post.clone(), body)?;
+                let head = match cond {
+                    Some(c) => {
+                        let c = self.val(c).map_err(|e| at(pos, e))?.ts;
+                        quote! { while #c }
+                    }
+                    None => quote! { loop },
+                };
+                let l = quote! { #head { #(#b)* #(#post)* } };
+                if init.is_empty() {
+                    return Ok(vec![l]);
+                }
+                Ok(vec![quote! { { #(#init)* #l } }])
+            }
+            Stmt::Break { .. } => Ok(vec![quote! { break; }]),
+            Stmt::Continue { .. } => {
+                let posts = self.posts.borrow();
+                let post = posts.last().cloned().unwrap_or_default();
+                if post.is_empty() {
+                    return Ok(vec![quote! { continue; }]);
+                }
+                Ok(vec![quote! { { #(#post)* continue; } }])
             }
             Stmt::Switch { tag, cases, .. } => self.switch(tag.as_ref(), cases, pos),
             Stmt::Return { results, .. } => {
@@ -1920,6 +2041,9 @@ impl Fx<'_, '_> {
     }
 
     fn assign(&self, op: &str, lhs: &[Expr], rhs: &[Expr]) -> R<TokenStream> {
+        if op.is_empty() && lhs.len() > 1 && lhs.len() == rhs.len() {
+            return self.assign_many(lhs, rhs);
+        }
         let ([l], [r]) = (lhs, rhs) else {
             return Err("an assignment of more than one value".into());
         };
@@ -1986,6 +2110,54 @@ impl Fx<'_, '_> {
             self.compound(op, l, r)?
         };
         self.store(l, value, touches_shared(self.w, r) || !op.is_empty())
+    }
+
+    /// `a, b = x, y`, as Go runs it: every value first, into fresh bindings, then each target in
+    /// order. A target whose index or field operand reads a variable another target assigns is
+    /// refused, since Go reads that operand before any assignment.
+    fn assign_many(&self, lhs: &[Expr], rhs: &[Expr]) -> R<TokenStream> {
+        for l in lhs {
+            match l {
+                Expr::Var { .. } | Expr::Index { .. } | Expr::Field { .. } => {}
+                _ => return Err("an assignment of more than one value to a target other than a variable, an index or a field".into()),
+            }
+        }
+        for (i, l) in lhs.iter().enumerate() {
+            let Expr::Var { name, .. } = l else { continue };
+            if name == "_" {
+                continue;
+            }
+            for (j, other) in lhs.iter().enumerate() {
+                if i == j || matches!(other, Expr::Var { .. }) {
+                    continue;
+                }
+                let mut reads = false;
+                walk_expr(other, &mut |e| {
+                    reads |= matches!(e, Expr::Var { name: n, .. } if n == name);
+                });
+                if reads {
+                    return Err(format!(
+                        "an assignment of more than one value whose targets read {name}, which it assigns"
+                    ));
+                }
+            }
+        }
+        let mut pre = Vec::new();
+        let mut binds = Vec::new();
+        for r in rhs {
+            let v = self.val(r)?.ts;
+            let b = self.fresh(&format!("value{}", binds.len()));
+            pre.push(quote! { let #b = #v; });
+            binds.push(b);
+        }
+        let mut stores = Vec::new();
+        for (l, b) in lhs.iter().zip(binds) {
+            if matches!(l, Expr::Var { name, .. } if name == "_") {
+                continue;
+            }
+            stores.push(self.store(l, Rx::atom(quote! { #b }), false)?);
+        }
+        Ok(quote! { { #(#pre)* #(#stores)* } })
     }
 
     /// `lhs = value`; when the target borrows a shared value mutably and the value or an index
@@ -2788,6 +2960,9 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Decr { pos, .. }
         | Stmt::If { pos, .. }
         | Stmt::ForRange { pos, .. }
+        | Stmt::For { pos, .. }
+        | Stmt::Break { pos }
+        | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
         | Stmt::Expr { pos, .. }

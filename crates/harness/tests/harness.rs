@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 
 use codespec_harness::{
-    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, run_driver, trace,
+    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, run_driver, series_trace,
+    trace,
 };
 
 fn root() -> PathBuf {
@@ -190,6 +191,74 @@ fn inventory_traces_are_reproducible_and_reach_every_command_and_error_path() {
     assert!(bad_qty > 100, "{bad_qty} non-positive quantities");
     assert!(unknown_sku > 100, "{unknown_sku} unknown skus");
 }
+
+#[test]
+fn the_manifest_selects_the_series_trace() {
+    let ok = "trace = \"series\"\n[[implementation]]\nname = \"a\"\nbuild = [\"true\"]\nrun = [\"cat\"]\n";
+    assert_eq!(Manifest::parse(ok).unwrap().trace, TraceKind::Series);
+}
+
+#[test]
+fn series_traces_are_reproducible_and_reach_every_command_and_edge() {
+    let mut seen = std::collections::BTreeSet::new();
+    let (mut extreme, mut bad_window, mut bad_steps, mut longest) = (0, 0, 0, 0usize);
+    for seed in 0..200 {
+        let t = series_trace(seed, 300);
+        assert_eq!(t, series_trace(seed, 300));
+        assert_eq!(t.lines().count(), 300);
+        assert!(t.starts_with("new\n"), "seed {seed}");
+        let mut pushed = 0usize;
+        for l in t.lines() {
+            let f: Vec<&str> = l.split(' ').collect();
+            assert!(f.iter().all(|x| !x.is_empty()), "empty field in {l:?}");
+            seen.insert(f[0].to_string());
+            match f[0] {
+                "new" => pushed = 0,
+                "push" => {
+                    pushed += 1;
+                    longest = longest.max(pushed);
+                    let v: i64 = f[1].parse().unwrap();
+                    if v == i64::MAX || v == i64::MIN {
+                        extreme += 1;
+                    }
+                }
+                "window" if f[1].parse::<i64>().unwrap() <= 0 => bad_window += 1,
+                "steps" if f[1].parse::<i64>().unwrap() <= 0 => bad_steps += 1,
+                _ => {}
+            }
+        }
+    }
+    let want: Vec<String> = [
+        "bucket", "drop", "evens", "gcd", "len", "mean", "median", "new", "prime", "push",
+        "residue", "reverse", "sorted", "steps", "sum", "trend", "window",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), want);
+    assert!(extreme > 100, "{extreme} pushes of an int64 extreme");
+    assert!(bad_window > 100, "{bad_window} non-positive windows");
+    assert!(bad_steps > 50, "{bad_steps} non-positive steps");
+    assert!(longest >= 30, "the longest series has {longest} values");
+}
+
+#[test]
+fn a_series_trace_is_pinned_across_platforms() {
+    assert_eq!(series_trace(0, 12), PINNED_SERIES_SEED_0);
+}
+
+const PINNED_SERIES_SEED_0: &str = "new
+new
+steps -5
+bucket 31
+residue 50
+push 1
+push -262
+push -4611686018427387904
+steps 3019
+window 4
+steps 4611686018427387904
+mean
+";
 
 #[test]
 fn an_inventory_trace_is_pinned_across_platforms() {

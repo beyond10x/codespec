@@ -994,6 +994,97 @@
           ]
         },
         {
+          "description": "`for init; cond; post { body }`: `init` runs once, `cond` is checked before each iteration\n(absent: always true), `post` runs after each iteration, including one a `continue` ends.\n`init` is a `let` or an `assign`; `post` an `assign`, `incr` or `decr`.",
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            },
+            "cond": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Expr"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "init": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Stmt"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "k": {
+              "type": "string",
+              "const": "for"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "post": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Stmt"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "body",
+            "pos"
+          ]
+        },
+        {
+          "description": "Leaves the innermost enclosing `for` or `for_range`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "break"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "pos"
+          ]
+        },
+        {
+          "description": "Ends the current iteration of the innermost enclosing `for` or `for_range`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "continue"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "pos"
+          ]
+        },
+        {
           "description": "A `switch` on `tag`, or on `true` when `tag` is absent.",
           "type": "object",
           "properties": {

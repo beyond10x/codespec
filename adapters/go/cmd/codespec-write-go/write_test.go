@@ -159,6 +159,44 @@ func TestOrdersFixedPoint(t *testing.T) {
 	}
 }
 
+func TestSeriesFixedPoint(t *testing.T) {
+	want, err := os.ReadFile(filepath.Join(repo, "examples", "series", "series.read.cir.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := writeDoc(t, want)
+	got := goTool(t, "run", "../codespec-read-go", out)
+	var a, b any
+	if err := json.Unmarshal(want, &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(got, &b); err != nil {
+		t.Fatal(err)
+	}
+	if d := firstDiff("$", strip(a, true), strip(b, true)); d != "" {
+		t.Fatalf("reading the written package is not a fixed point: first difference at %s", d)
+	}
+}
+
+// A cir/1 break leaves the loop; inside a switch Go's unlabeled break would leave the switch.
+const breakInSwitch = `{
+  "format": "cir/1", "name": "m",
+  "reader": {"language": "rust", "name": "test", "version": "0"},
+  "types": [],
+  "funcs": [{"name": "F", "exported": true, "params": [], "results": [], "pos": "m.rs:1",
+    "body": [{"k": "for", "body": [
+      {"k": "switch", "cases": [{"values": [], "body": [{"k": "break", "pos": "m.rs:4"}]}], "pos": "m.rs:3"}
+    ], "pos": "m.rs:2"}]}],
+  "layout": ["func:F"]
+}`
+
+func TestBreakInsideASwitchLeavesTheLoopByLabel(t *testing.T) {
+	_, src := writeDoc(t, []byte(breakInSwitch))
+	if !strings.Contains(src, "loop:\n\tfor {") || !strings.Contains(src, "break loop") {
+		t.Fatalf("break inside a switch is not a labeled break of the loop:\n%s", src)
+	}
+}
+
 const foreignRust = `{
   "format": "cir/1", "name": "m",
   "reader": {"language": "rust", "name": "test", "version": "0"},

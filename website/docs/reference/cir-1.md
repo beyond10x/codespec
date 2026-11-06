@@ -165,7 +165,7 @@ A string, one of `"platform"`, `"8"`, `"16"`, `"32"`, `"64"`.
 
 A statement.
 
-A tagged union: the field `k` names the kind. 13 kinds.
+A tagged union: the field `k` names the kind. 16 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
@@ -176,6 +176,9 @@ A tagged union: the field `k` names the kind. 13 kinds.
 | `decr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
 | `if` | `cond`\*: [`Expr`](#expr); `else`: list of [`Stmt`](#stmt); `pos`\*: `string`; `then`\*: list of [`Stmt`](#stmt) |  |
 | `for_range` | `body`\*: list of [`Stmt`](#stmt); `key`\*: `string`; `over`\*: [`Expr`](#expr); `pos`\*: `string`; `val`\*: `string` | `for key, val := range over { body }`; `_` for an unused name. |
+| `for` | `body`\*: list of [`Stmt`](#stmt); `cond`: [`Expr`](#expr) or null; `init`: [`Stmt`](#stmt) or null; `pos`\*: `string`; `post`: [`Stmt`](#stmt) or null | `for init; cond; post { body }`: `init` runs once, `cond` is checked before each iteration (absent: always true), `post` runs after each iteration, including one a `continue` ends. `init` is a `let` or an `assign`; `post` an `assign`, `incr` or `decr`. |
+| `break` | `pos`\*: `string` | Leaves the innermost enclosing `for` or `for_range`. |
+| `continue` | `pos`\*: `string` | Ends the current iteration of the innermost enclosing `for` or `for_range`. |
 | `switch` | `cases`\*: list of [`Case`](#case); `pos`\*: `string`; `tag`: [`Expr`](#expr) or null | A `switch` on `tag`, or on `true` when `tag` is absent. |
 | `return` | `pos`\*: `string`; `results`\*: list of [`Expr`](#expr) |  |
 | `expr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |

@@ -125,6 +125,8 @@ type Stmt struct {
 	Val     string   `json:"val"`
 	Over    *Expr    `json:"over"`
 	Body    []Stmt   `json:"body"`
+	Init    *Stmt    `json:"init"`
+	Post    *Stmt    `json:"post"`
 	Tag     *Expr    `json:"tag"`
 	Cases   []Case   `json:"cases"`
 	Results []Expr   `json:"results"`

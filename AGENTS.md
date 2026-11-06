@@ -79,6 +79,7 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-rust` | `orders` written as Rust equals `out/rust`, exactly one refusal (`Service.Audit`), builds with `-D warnings`; a module without facts refused |
 | `examples-greeter` | `greeter` passed, written as Go and as Rust, equal to the checked-in copies, no refusal, both build |
 | `examples-inventory` | the Rust `inventory` crate read twice (byte-equal, equal to `inventory.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, all built without warnings, drivers formatted and linted, then `codespec harness examples/inventory --seeds 200 --commands 300` byte-equal |
+| `examples-series` | the Go `series` package read twice (byte-equal, equal to `series.read.cir.json`, no refusal), passed, written as Go (gofmt-clean, vetted) and as Rust (no refusal, built without warnings) equal to the checked-in copies, drivers formatted and linted, then `codespec harness examples/series --seeds 200 --commands 300` byte-equal |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
 | `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, no raw admonition title |
 
@@ -123,6 +124,14 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions`;
   Rust outside the subset is kept as `foreign` with a refusal at its line:
   `adapters/rust-read/tests/reader.rs::a_closure_is_kept_as_foreign_with_a_refusal_at_its_line`.
+- A cir/1 `break` inside a `switch` leaves the loop in the Go output:
+  `adapters/go/cmd/codespec-write-go/write_test.go::TestBreakInsideASwitchLeavesTheLoopByLabel`;
+  the Go writer's `series` output reads back to the same `cir/1`:
+  `adapters/go/cmd/codespec-write-go/write_test.go::TestSeriesFixedPoint`.
+- The Rust writer runs a three-clause `for`'s `post` before each `continue`:
+  `adapters/rust/tests/writer.rs::a_continue_in_a_three_clause_for_runs_the_post_statement_first`;
+  reads every value of a multi-value assignment before it assigns any:
+  `adapters/rust/tests/writer.rs::a_swap_reads_every_value_before_it_assigns_any`.
 - The Rust writer refuses a module without facts:
   `adapters/rust/tests/writer.rs::a_module_without_facts_is_refused_naming_the_pass`; its crate builds
   without warnings: `adapters/rust/tests/writer.rs::the_written_crate_builds_without_warnings`.

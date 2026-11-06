@@ -174,6 +174,37 @@ fn stmt_parts(s: &Stmt) -> (String, Vec<&Expr>, Vec<&Stmt>) {
             vec![over],
             body.iter().collect(),
         ),
+        Stmt::For {
+            init,
+            cond,
+            post,
+            body,
+            ..
+        } => (
+            {
+                let parts: Vec<&str> = [
+                    (init.is_some(), "init"),
+                    (cond.is_some(), "cond"),
+                    (post.is_some(), "post"),
+                ]
+                .into_iter()
+                .filter_map(|(on, name)| on.then_some(name))
+                .collect();
+                if parts.is_empty() {
+                    "for".to_owned()
+                } else {
+                    format!("for ({})", parts.join("; "))
+                }
+            },
+            cond.iter().collect(),
+            init.iter()
+                .map(|s| &**s)
+                .chain(body.iter())
+                .chain(post.iter().map(|s| &**s))
+                .collect(),
+        ),
+        Stmt::Break { .. } => ("break".to_owned(), vec![], vec![]),
+        Stmt::Continue { .. } => ("continue".to_owned(), vec![], vec![]),
         Stmt::Switch { tag, cases, .. } => (
             format!("switch, {} cases", cases.len()),
             tag.iter().collect(),

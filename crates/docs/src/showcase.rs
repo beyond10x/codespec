@@ -25,15 +25,15 @@ const GO: &str = "examples/greeter/out/go/greeter.go";
 const RUST: &str = "examples/greeter/out/rust/src/lib.rs";
 const REFUSALS: &str = "examples/greeter/out/rust/refusals.json";
 
-fn read(root: &Path, relative: &str) -> Result<String> {
+pub(crate) fn read(root: &Path, relative: &str) -> Result<String> {
     fs::read_to_string(root.join(relative)).map_err(|e| format!("reading {relative}: {e}"))
 }
 
-fn module(root: &Path, relative: &str) -> Result<Module> {
+pub(crate) fn module(root: &Path, relative: &str) -> Result<Module> {
     Module::from_json(read(root, relative)?.as_bytes()).map_err(|e| format!("{relative}: {e}"))
 }
 
-fn fence(language: &str, title: &str, code: &str) -> String {
+pub(crate) fn fence(language: &str, title: &str, code: &str) -> String {
     format!(
         "```{language} title=\"{title}\"\n{}\n```\n",
         code.trim_end_matches('\n')
@@ -42,7 +42,7 @@ fn fence(language: &str, title: &str, code: &str) -> String {
 
 /// The lines of `text` from the first line starting with `start` up to and including the next line
 /// that is exactly `end` (or the end of the text).
-fn excerpt(text: &str, start: &str, end: Option<&str>) -> Result<String> {
+pub(crate) fn excerpt(text: &str, start: &str, end: Option<&str>) -> Result<String> {
     let lines: Vec<&str> = text.lines().collect();
     let first = lines
         .iter()
@@ -61,7 +61,7 @@ fn excerpt(text: &str, start: &str, end: Option<&str>) -> Result<String> {
     Ok(lines[first..=last].join("\n"))
 }
 
-fn func_json(m: &Module, name: &str) -> Result<String> {
+pub(crate) fn func_json(m: &Module, name: &str) -> Result<String> {
     let f = m
         .funcs
         .iter()
@@ -129,8 +129,8 @@ fn page(root: &Path) -> Result<String> {
          arithmetic. It refused nothing:\n\n{}\n{}\n\
          ## What this does not show\n\n\
          - The [harness](/docs/concepts/harness) compares implementations byte for byte on \
-         seeded traces. It has trace formats for `orders` and `inventory` only, so `greeter` is checked by \
-         its build and by equality with the checked-in outputs, not by the harness.\n\
+         seeded traces. It has trace formats for `orders`, `inventory` and `series` only, so `greeter` is \
+         checked by its build and by equality with the checked-in outputs, not by the harness.\n\
          - Writing `g.greeted[name]++` instead of `g.greeted[name] = g.greeted[name] + 1` is \
          refused by the Rust writer today (\"a write into a map entry's value\"); the example \
          uses the form it writes.\n",

@@ -2,6 +2,29 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## 0.2.0
+
+### Added
+
+- `cir/1` statements `for` (`init`, `cond`, `post`, each optional), `break` and `continue`. They are
+  additive: every earlier document reads unchanged; a document using them is refused by a 0.1.2
+  `codespec`.
+- `codespec-read-go` reads three-clause and condition-only `for` loops, unlabeled `break` and
+  `continue`, and `switch` with or without a tag. A `break` that would leave a `switch`, a labeled
+  branch, `goto` and `fallthrough` are kept as `foreign` with a refusal.
+- `codespec-write-go` writes them back; a `break` inside a `switch` gets a label on its loop.
+- `codespec-write-rust` writes `for` as `while` or `loop` in a block holding `init`, runs `post`
+  before each `continue`, writes `a, b = x, y` as every value bound first and then each target
+  assigned, and moves a local slice or map that no later statement reads instead of refusing the
+  copy.
+- `examples/series`: an algorithmic Go package (insertion sort, sliding window, gcd, Collatz steps,
+  trial-division primes, `switch` classification, integer overflow). Read, passed, written as Go and
+  as Rust with no refusal; the harness trace `series` runs the original, the Go output and the Rust
+  output on 200 seeds of 300 commands byte-equal (`task examples-series`).
+- The documentation site has a generated page for `series`, `/docs/examples/series`: the Go
+  source, the `cir/1` of four functions drawn as a tree, and each Go construct beside the Rust
+  written from it.
+
 ## 0.1.2
 
 ### Fixed

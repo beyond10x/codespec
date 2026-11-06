@@ -65,4 +65,6 @@ says where it is going.
   harness.
 - [Showcase](/docs/examples/greeter): one small Go program, its `cir/1`, and the Go and Rust written
   from it.
+- [Showcase: series](/docs/examples/series): an algorithm with loops, `switch` and overflowing
+  arithmetic, its `cir/1` drawn as a tree, and the Rust written from each construct.
 - [Translate a Go package to Rust](/docs/guides/translate-go-to-rust).

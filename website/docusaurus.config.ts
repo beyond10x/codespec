@@ -68,6 +68,7 @@ const config: Config = {
             {label: 'Vision', to: '/docs/vision'},
             {label: 'Getting started', to: '/docs/getting-started'},
             {label: 'Showcase: greeter', to: '/docs/examples/greeter'},
+            {label: 'Showcase: series', to: '/docs/examples/series'},
             {label: 'The cir/1 model', to: '/docs/concepts/cir-1'},
             {label: 'Readers, passes and writers', to: '/docs/concepts/pipeline'},
             {label: 'The harness', to: '/docs/concepts/harness'},

@@ -1,0 +1,10 @@
+[package]
+name = "series-driver"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+series = { path = "../../out/rust" }
+
+[workspace]
