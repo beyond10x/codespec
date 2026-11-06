@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "c75e7c45751c9137776949d2f79f8ce0fb1e93cdb4ebfcee74a6d76b4167fb81"
+    "sha256": "08ca243ece1b720c1c050c05578ea262e7d6e74f0e2e3779f70d7bda9e5e7eed"
   },
   "corpus": {
-    "sha256": "21907413b8ddc647c7fcb35ea7db1d26363bbdc0c23de9b348b645fb6c9626de"
+    "sha256": "0f48dcb5795f049c6a43bf6ea9b567e41ba58905368ea8c37fd3f0ffc27f99a2"
   },
   "codespec": "0.2.0",
   "features": [
@@ -100,9 +100,10 @@
     {
       "id": "decl.enum",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "decl-enum-string"
+      ]
     },
     {
       "id": "decl.newtype",
@@ -183,9 +184,10 @@
     {
       "id": "expr.intrinsic",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "expr-intrinsic-slice"
+      ]
     },
     {
       "id": "expr.lit",
@@ -214,9 +216,10 @@
     {
       "id": "expr.nil",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "expr-nil-error"
+      ]
     },
     {
       "id": "expr.struct",
@@ -251,9 +254,10 @@
     {
       "id": "expr.zero",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "expr-zero-error"
+      ]
     },
     {
       "id": "fact.comma_ok",
@@ -500,7 +504,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "sem-int-wrap"
+        "sem-int-wrap",
+        "sem-int-wrap-no-div"
       ]
     },
     {
@@ -566,9 +571,10 @@
     {
       "id": "stmt.expr",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "stmt-expr-method"
+      ]
     },
     {
       "id": "stmt.for",
@@ -625,9 +631,10 @@
     {
       "id": "stmt.return",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "stmt-return-one"
+      ]
     },
     {
       "id": "stmt.send",
@@ -734,9 +741,10 @@
     {
       "id": "type.unit",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "type-unit-method"
+      ]
     },
     {
       "id": "unop.complement",
@@ -794,12 +802,12 @@
   "boundary": [],
   "summary": {
     "claimed": 76,
-    "pass": 69,
-    "fail": 7,
+    "pass": 76,
+    "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
     "untested": 29,
     "boundary_fail": 0
   },
-  "conforms": false
+  "conforms": true
 }

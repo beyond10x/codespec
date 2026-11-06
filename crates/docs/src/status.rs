@@ -245,6 +245,22 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Conformance",
+        label: "Java reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-java over its corpus, one Java source per claimed feature, through the same four steps as the Go reader; codespec-run-java runs each source to the case's expected output first.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-java.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Groovy reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-groovy over its corpus, the kit's Java sources compiled as Groovy 2.4, through the same four steps as the Go reader; codespec-run-groovy runs each source to the case's expected output first.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-groovy.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
         label: "Go writer conforms to the kit",
         detail: "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
         status: "shipped",

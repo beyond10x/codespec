@@ -83,7 +83,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-run-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
+    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -123,7 +123,9 @@ tasks:
       - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust; do cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/$a.json > /dev/null || exit 1; done
       - 'for d in target/java/test-work/kit/*/; do cargo run --locked -q -p b10x-codespec-conformance -- features "$d/read.cir.json" | grep -qxF "$(cat "$d/subject")" || { echo "$d does not use its subject $(cat "$d/subject")"; exit 1; }; done'
       - 'cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json $(for m in target/java/test-work/kit/*/read.cir.json; do echo --read "$m"; done) > /dev/null'
-      - cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-groovy.json --read target/groovy-check/typed.1.json > /dev/null
+      - rm -rf target/groovy-check/kit && mkdir -p target/groovy-check/kit
+      - 'for d in conformance/reader/groovy/*/; do {{.CODESPEC}} read --lang groovy "$d" --out "target/groovy-check/kit/$(basename "$d").json" --adapters {{.ADAPTERS}} 2>/dev/null || true; done'
+      - 'cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-groovy.json --read target/groovy-check/typed.1.json $(for m in target/groovy-check/kit/*.json; do echo --read "$m"; done) > /dev/null'
       - rm -rf target/nullable
       - mkdir -p target/nullable/java
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/nullable --out target/nullable/read.json --adapters {{.ADAPTERS}}'

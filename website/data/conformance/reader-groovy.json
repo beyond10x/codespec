@@ -4,20 +4,20 @@
     "role": "reader",
     "lang": "groovy",
     "version": "0.2.0",
-    "manifest_sha256": "e2436446e77d1a9f67a91d3dbbd264cb292ea1c2eff893dccd42b11c5a1aa068"
+    "manifest_sha256": "075782ac18a677cbc08f35a304274edace4a255cd3aaa5c2279af61c1cde382b"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "c75e7c45751c9137776949d2f79f8ce0fb1e93cdb4ebfcee74a6d76b4167fb81"
+    "sha256": "08ca243ece1b720c1c050c05578ea262e7d6e74f0e2e3779f70d7bda9e5e7eed"
   },
   "corpus": {
-    "sha256": "acbfa3f1348048913f30cabc0081adda7d2f8df60e053df695fd8a9ab311db31"
+    "sha256": "3d56de7fc2d3b8e1fbf82e9156b96326f951b37b97000e32d8801c42fa131999"
   },
   "codespec": "0.2.0",
   "features": [
     {
       "id": "assign.add",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-add"
@@ -25,7 +25,7 @@
     },
     {
       "id": "assign.and",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-and"
@@ -51,7 +51,7 @@
     },
     {
       "id": "assign.mul",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-mul"
@@ -59,7 +59,7 @@
     },
     {
       "id": "assign.or",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-or"
@@ -67,7 +67,7 @@
     },
     {
       "id": "assign.rem",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-rem"
@@ -87,7 +87,7 @@
     },
     {
       "id": "assign.sub",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-sub"
@@ -95,7 +95,7 @@
     },
     {
       "id": "assign.xor",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "assign-xor"
@@ -104,9 +104,10 @@
     {
       "id": "decl.enum",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "decl-enum-string"
+      ]
     },
     {
       "id": "decl.newtype",
@@ -138,7 +139,7 @@
     },
     {
       "id": "expr.call",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-call"
@@ -191,9 +192,10 @@
     {
       "id": "expr.intrinsic",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "expr-intrinsic-slice"
+      ]
     },
     {
       "id": "expr.lit",
@@ -213,7 +215,7 @@
     },
     {
       "id": "expr.method",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-method"
@@ -222,8 +224,14 @@
     {
       "id": "expr.nil",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-nil-error"
+      ],
+      "case": "expr-nil-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.nil outside a foreign statement"
     },
     {
       "id": "expr.struct",
@@ -258,8 +266,14 @@
     {
       "id": "expr.zero",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-zero-error"
+      ],
+      "case": "expr-zero-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.zero outside a foreign statement"
     },
     {
       "id": "fact.comma_ok",
@@ -357,7 +371,7 @@
     },
     {
       "id": "op.and",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-and"
@@ -391,7 +405,7 @@
     },
     {
       "id": "op.ge",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-ge"
@@ -415,7 +429,7 @@
     },
     {
       "id": "op.le",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-le"
@@ -423,7 +437,7 @@
     },
     {
       "id": "op.lor",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-lor"
@@ -447,7 +461,7 @@
     },
     {
       "id": "op.ne",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-ne"
@@ -455,7 +469,7 @@
     },
     {
       "id": "op.or",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-or"
@@ -463,7 +477,7 @@
     },
     {
       "id": "op.rem",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-rem"
@@ -483,7 +497,7 @@
     },
     {
       "id": "op.sub",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-sub"
@@ -491,7 +505,7 @@
     },
     {
       "id": "op.xor",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "op-xor"
@@ -499,7 +513,7 @@
     },
     {
       "id": "sem.continue.post",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "sem-continue-post"
@@ -507,10 +521,11 @@
     },
     {
       "id": "sem.int.wrap",
-      "claimed": true,
-      "verdict": "fail",
+      "claimed": false,
+      "verdict": "refused",
       "cases": [
-        "sem-int-wrap"
+        "sem-int-wrap",
+        "sem-int-wrap-no-div"
       ],
       "case": "sem-int-wrap",
       "step": 3,
@@ -533,7 +548,7 @@
     },
     {
       "id": "sem.rem.sign",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "sem-rem-sign"
@@ -563,7 +578,7 @@
     },
     {
       "id": "stmt.continue",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "stmt-continue"
@@ -571,7 +586,7 @@
     },
     {
       "id": "stmt.decr",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "stmt-decr"
@@ -579,9 +594,11 @@
     },
     {
       "id": "stmt.expr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-expr-method"
+      ]
     },
     {
       "id": "stmt.for",
@@ -638,9 +655,10 @@
     {
       "id": "stmt.return",
       "claimed": true,
-      "verdict": "fail",
-      "cases": [],
-      "reason": "no_case"
+      "verdict": "pass",
+      "cases": [
+        "stmt-return-one"
+      ]
     },
     {
       "id": "stmt.send",
@@ -750,13 +768,15 @@
     },
     {
       "id": "type.unit",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-unit-method"
+      ]
     },
     {
       "id": "unop.complement",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "unop-complement"
@@ -770,7 +790,7 @@
     },
     {
       "id": "unop.neg",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "unop-neg"
@@ -778,7 +798,7 @@
     },
     {
       "id": "unop.not",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "unop-not"
@@ -786,7 +806,7 @@
     },
     {
       "id": "unop.plus",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
         "unop-plus"
@@ -809,13 +829,13 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 42,
-    "pass": 38,
-    "fail": 4,
-    "refused_unclaimed": 4,
-    "pass_unclaimed": 26,
-    "untested": 33,
+    "claimed": 69,
+    "pass": 69,
+    "fail": 0,
+    "refused_unclaimed": 7,
+    "pass_unclaimed": 0,
+    "untested": 29,
     "boundary_fail": 0
   },
-  "conforms": false
+  "conforms": true
 }

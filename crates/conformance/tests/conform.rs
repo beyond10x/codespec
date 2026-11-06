@@ -296,6 +296,31 @@ fn a_claimed_feature_the_writer_refuses_fails() {
 }
 
 #[test]
+fn a_feature_that_is_the_subject_of_several_cases_runs_each_and_fails_when_one_fails() {
+    let several: Vec<String> = load_cases(&kit().join("cases"))
+        .unwrap()
+        .into_iter()
+        .filter(|c| c.subject() == "stmt.return")
+        .map(|c| c.name)
+        .collect();
+    assert!(
+        several.len() >= 2,
+        "stmt.return is the subject of {several:?}; the kit holds a variant beside stmt-return"
+    );
+    let w = work("stub-several-cases");
+    let m = manifest("writer", &subjects_except(&[]));
+    let last = several.last().unwrap().clone();
+    let runner = stub_runner(|case| (case == last).then(|| "ok 0\n".to_string()));
+    let report = conform_writer(&run(&m, &w), &stub_writer(|_| None), &runner).unwrap();
+    let f = feature(&report, "stmt.return");
+    assert_eq!(f.cases, several);
+    assert_eq!(f.verdict, Verdict::Fail);
+    assert_eq!(f.reason, Some(Reason::WrongOutput));
+    assert_eq!(f.case.as_deref(), Some(last.as_str()));
+    assert!(!report.conforms);
+}
+
+#[test]
 fn an_unclaimed_feature_refused_passes_as_refused_and_written_wrong_fails() {
     let w = work("stub-unclaimed");
     let m = manifest("writer", &subjects_except(&["op.add", "op.sub"]));

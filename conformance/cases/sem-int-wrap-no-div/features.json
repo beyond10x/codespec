@@ -1,0 +1,21 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.int.wrap",
+    "expr.binop",
+    "expr.unop",
+    "expr.var",
+    "op.add",
+    "op.mul",
+    "op.sub",
+    "stmt.return",
+    "type.int",
+    "unop.neg"
+  ],
+  "edges": [
+    "MaxInt64 + 1",
+    "MinInt64 - 1",
+    "MinInt64 * -1",
+    "-MinInt64"
+  ]
+}

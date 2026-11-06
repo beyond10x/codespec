@@ -64,6 +64,12 @@
 //! "Uses" is [`features_used`] of `case.cir.json`, and the declared set must equal it, so a case
 //! cannot claim a feature its module does not contain nor hide one it does.
 //!
+//! A feature may be the subject of several cases. Where a reader's language cannot write the
+//! first case of a feature, a variant beside it holds the same subject in a form that language
+//! can: `decl-enum-string` beside `decl-enum`, an enum over `string` as the JVM readers read one.
+//! A run takes every case of a subject, and the feature passes only when each of them does
+//! ([`conform`] § Verdicts).
+//!
 //! # `calls.json`: `codespec-calls/1`
 //!
 //! ```json
