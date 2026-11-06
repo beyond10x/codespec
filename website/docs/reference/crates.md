@@ -19,12 +19,12 @@ The model, the passes, the harness, the `codespec` command and the Rust writer a
 
 | Package | Version | Directory | In Rust | What it is |
 |---|---|---|---|---|
-| `b10x-codespec-cli` | 0.1.0 | [`crates/cli`](https://github.com/beyond10x/codespec/tree/main/crates/cli) | `use codespec_cli`, binary `codespec` | The codespec command: validate cir/1, print its schema, apply the passes, run reader and writer adapters and the comparison harness |
-| `b10x-codespec-harness` | 0.1.0 | [`crates/harness`](https://github.com/beyond10x/codespec/tree/main/crates/harness) | `use codespec_harness` | Runs every implementation of an example on seeded traces and requires byte-equal output |
-| `b10x-codespec-model` | 0.1.0 | [`crates/model`](https://github.com/beyond10x/codespec/tree/main/crates/model) | `use codespec_model` | The cir/1 code intermediate representation: Rust types, strict reading, canonical JSON and its JSON Schema |
-| `b10x-codespec-passes` | 0.1.0 | [`crates/passes`](https://github.com/beyond10x/codespec/tree/main/crates/passes) | `use codespec_passes` | Passes over cir/1: lookup-guard and the whole-module facts writers read |
-| `codespec-read-rust` | 0.1.0 | [`adapters/rust-read`](https://github.com/beyond10x/codespec/tree/main/adapters/rust-read) | `use codespec_read_rust`, binary `codespec-read-rust` | Reads a Rust crate's src/lib.rs into one cir/1 module with syn and its own name and type resolution for the cir/1 subset |
-| `codespec-write-rust` | 0.1.0 | [`adapters/rust`](https://github.com/beyond10x/codespec/tree/main/adapters/rust) | binary `codespec-write-rust` | Writes a cir/1 module and its facts as a Rust crate, built as syn trees and printed with prettyplease |
+| `b10x-codespec-cli` | 0.1.1 | [`crates/cli`](https://github.com/beyond10x/codespec/tree/main/crates/cli) | `use codespec_cli`, binary `codespec` | The codespec command: validate cir/1, print its schema, apply the passes, run reader and writer adapters and the comparison harness |
+| `b10x-codespec-harness` | 0.1.1 | [`crates/harness`](https://github.com/beyond10x/codespec/tree/main/crates/harness) | `use codespec_harness` | Runs every implementation of an example on seeded traces and requires byte-equal output |
+| `b10x-codespec-model` | 0.1.1 | [`crates/model`](https://github.com/beyond10x/codespec/tree/main/crates/model) | `use codespec_model` | The cir/1 code intermediate representation: Rust types, strict reading, canonical JSON and its JSON Schema |
+| `b10x-codespec-passes` | 0.1.1 | [`crates/passes`](https://github.com/beyond10x/codespec/tree/main/crates/passes) | `use codespec_passes` | Passes over cir/1: lookup-guard and the whole-module facts writers read |
+| `codespec-read-rust` | 0.1.1 | [`adapters/rust-read`](https://github.com/beyond10x/codespec/tree/main/adapters/rust-read) | `use codespec_read_rust`, binary `codespec-read-rust` | Reads a Rust crate's src/lib.rs into one cir/1 module with syn and its own name and type resolution for the cir/1 subset |
+| `codespec-write-rust` | 0.1.1 | [`adapters/rust`](https://github.com/beyond10x/codespec/tree/main/adapters/rust) | binary `codespec-write-rust` | Writes a cir/1 module and its facts as a Rust crate, built as syn trees and printed with prettyplease |
 
 ## Repository tooling
 
@@ -32,4 +32,4 @@ Generators and checks the repository's own gate runs. Nothing outside the reposi
 
 | Package | Version | Directory | In Rust | What it is |
 |---|---|---|---|---|
-| `codespec-docs` | 0.1.0 | [`crates/docs`](https://github.com/beyond10x/codespec/tree/main/crates/docs) | binary `codespec-docs` | Generates the derived pages of the codespec documentation site (CLI, crates, cir/1, status) and checks them for drift |
+| `codespec-docs` | 0.1.1 | [`crates/docs`](https://github.com/beyond10x/codespec/tree/main/crates/docs) | binary `codespec-docs` | Generates the derived pages of the codespec documentation site (CLI, crates, cir/1, status) and checks them for drift |

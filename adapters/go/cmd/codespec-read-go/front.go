@@ -52,6 +52,7 @@ func load(dir string) (*Module, error) {
 		Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{},
 		Types: map[ast.Expr]types.TypeAndValue{}, Selections: map[*ast.SelectorExpr]*types.Selection{},
 	}
+	ensureGOROOT()
 	conf := types.Config{Importer: importer.ForCompiler(fset, "source", nil)}
 	pkg, err := conf.Check(name, fset, files, info)
 	if err != nil {
