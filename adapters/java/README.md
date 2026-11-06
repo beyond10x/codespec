@@ -2,7 +2,10 @@
 
 Reads one Java package directory with javac's attributed trees (`JavacTask.analyze()`) and prints
 it as one `cir/1` module. The program is `codespec.read.Main` under `src/`, on the JDK only; what
-it maps and what it refuses is the class comment of `src/codespec/read/Reader.java`.
+it maps and what it refuses is the class comment of `src/codespec/read/Reader.java`. Its JVM type
+table (primitives, boxes, `String`, lists and maps) is `codespec.jvm.JvmTypes` in
+[`../jvm/src`](../jvm/src/codespec/jvm/JvmTypes.java), shared with the other JVM readers and compiled
+with this one.
 
 ```console
 task adapters        # compiles src/ into target/java/classes and writes target/adapters/codespec-read-java

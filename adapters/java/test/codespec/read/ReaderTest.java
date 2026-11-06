@@ -101,6 +101,10 @@ public final class ReaderTest {
         cases.add(t::adversary2_a_collection_changed_inside_a_for_each_over_itself_is_refused);
         names.add("adversary2_a_string_or_boxed_parameter_printed_where_java_prints_null_is_refused");
         cases.add(t::adversary2_a_string_or_boxed_parameter_printed_where_java_prints_null_is_refused);
+        names.add("a_generic_type_outside_the_table_is_refused_with_the_type_named");
+        cases.add(t::aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed);
+        names.add("adversary3_a_package_under_javax_reads_its_own_classes_as_before");
+        cases.add(t::adversary3_a_package_under_javax_reads_its_own_classes_as_before);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -280,6 +284,31 @@ public final class ReaderTest {
         check(byNameOrNull(list(doc.get("types")), "Base") != null, "the base class was not read");
     }
 
+    /** The reason for {@code Map<String, List<Double>>}: the innermost type the table lacks. */
+    private static final String MAP_OF_DOUBLE_LISTS_REASON = "type java.lang.Double is outside the reader's types";
+    /** The reason for {@code Set<String>}: the type as {@code TypeMirror.toString()} prints it. */
+    private static final String SET_OF_STRINGS_REASON = "type java.util.Set<java.lang.String> is outside the reader's types";
+
+    /**
+     * A parameter type outside the JVM type table (codespec.jvm.JvmTypes) refuses its method with the
+     * reason the reader has always given, byte for byte.
+     */
+    private void aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed() throws Exception {
+        Path dir = testdata.resolve("refuse/generic-type");
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> got = new ArrayList<>();
+        for (Object r : list(doc.get("refusals"))) {
+            Map<String, Object> m = map(r);
+            got.add(m.get("pos") + " " + m.get("what") + ": " + m.get("reason"));
+        }
+        Path shelf = dir.resolve("Shelf.java");
+        List<String> want = List.of(
+            "Shelf.java:" + lineOf(shelf, "ratings(Map<String, List<Double>>") + " Shelf.ratings: " + MAP_OF_DOUBLE_LISTS_REASON,
+            "Shelf.java:" + lineOf(shelf, "tags(Set<String>") + " Shelf.tags: " + SET_OF_STRINGS_REASON);
+        check(got.equals(want), "refusals " + got + ", want " + want);
+        check(funcByKeyOrNull(doc, "count") != null, "the method beside them was not read");
+    }
+
     // ---- adversary ----
 
     /** {@code <file>:<line>} of the first line of {@code adversary/<fixture>/<file>} holding {@code text}. */
@@ -432,6 +461,29 @@ public final class ReaderTest {
             {"return \"hi \" + name;", "public static String hello(String name)"},
             {"return String.format(\"%d items\", n);", "public static String count(Integer n)"},
         });
+    }
+
+    // ---- adversary pass 3 ----
+
+    /**
+     * Byte-equality of the reader's output: a package named {@code javax.lending} is the package's
+     * own code, and its class, enum, one-implementation interface and exception hierarchy map as they
+     * do in any other package. The reader on the base read it with no refusal and {@code books} as a
+     * slice of {@code *Book}.
+     */
+    private void adversary3_a_package_under_javax_reads_its_own_classes_as_before() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("javax-package"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> library = byNameOrNull(list(doc.get("types")), "Library");
+        check(library != null, "Library was not read");
+        String books = null;
+        for (Object f : list(library.get("fields"))) {
+            if ("books".equals(map(f).get("name"))) {
+                books = Json.write(map(f).get("t")).replaceAll("\\s+", "");
+            }
+        }
+        check("{\"k\":\"slice\",\"elem\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Book\"}}}".equals(books),
+            "Library.books is " + books);
     }
 
     // ---- helpers ----
