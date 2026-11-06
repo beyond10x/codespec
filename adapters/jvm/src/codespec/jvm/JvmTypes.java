@@ -27,6 +27,9 @@ import java.util.function.Function;
  * <p>Every other type is refused with the reason {@code type <text> is outside the reader's
  * types}, {@code <text>} being the reader's own printing of the type ({@code
  * TypeMirror.toString()} in the Java reader). A refusal inside a type argument names that argument.
+ *
+ * <p>A reference field some constructor leaves unassigned holds null, which no zero value of its
+ * mapped type is; {@link #unassignedField} gives its type, a pointer to the mapped type.
  */
 public final class JvmTypes {
     private JvmTypes() {}
@@ -179,6 +182,24 @@ public final class JvmTypes {
             }
         }
         throw new Outside(outside(t.text));
+    }
+
+    /**
+     * The cir/1 type of a reference field some constructor leaves unassigned, given {@code mapped},
+     * the type {@link #map} gives its JVM type: Java holds null there until it is assigned, which is
+     * {@code nil}, so a type without nil ({@code string}, an integer, {@code bool}, a slice, a map,
+     * an enum) becomes {@code ptr(mapped)}. A pointer (a class of the reader's own) and {@code
+     * error} already hold nil and are returned as they are. Which fields are left unassigned is each
+     * reader's analysis. {@code mapped} is not changed.
+     */
+    public static Map<String, Object> unassignedField(Map<String, Object> mapped) {
+        Object k = mapped.get("k");
+        if ("ptr".equals(k) || "error".equals(k)) {
+            return mapped;
+        }
+        Map<String, Object> p = kind("ptr");
+        p.put("elem", mapped);
+        return p;
     }
 
     private static Map<String, Object> kind(String k) {

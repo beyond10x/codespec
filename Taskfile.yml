@@ -78,7 +78,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language; read the Java ledger and the Groovy typed package twice each through codespec read, byte-equal and canonical; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output.
+    desc: Format, vet and test every adapter in its own language; read the Java ledger and the Groovy typed package twice each through codespec read, byte-equal and canonical; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -110,6 +110,20 @@ tasks:
       - 'for d in target/java/test-work/kit/*/; do cargo run --locked -q -p b10x-codespec-conformance -- features "$d/read.cir.json" | grep -qxF "$(cat "$d/subject")" || { echo "$d does not use its subject $(cat "$d/subject")"; exit 1; }; done'
       - 'cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json $(for m in target/java/test-work/kit/*/read.cir.json; do echo --read "$m"; done) > /dev/null'
       - cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-groovy.json --read target/groovy-check/typed.1.json > /dev/null
+      - rm -rf target/nullable
+      - mkdir -p target/nullable/java
+      - '{{.CODESPEC}} read --lang java adapters/java/testdata/nullable --out target/nullable/read.json --adapters {{.ADAPTERS}}'
+      - '! grep -q ''"refusals"'' target/nullable/read.json'
+      - '{{.CODESPEC}} pass target/nullable/read.json --out target/nullable/pass.json'
+      - '{{.CODESPEC}} write --lang go target/nullable/pass.json --out target/nullable/go --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} write --lang rust target/nullable/pass.json --out target/nullable/rust --adapters {{.ADAPTERS}}'
+      - 'test "$(cat target/nullable/rust/refusals.json)" = "[]"'
+      - '{{.ADAPTERS}}/codespec-run-go -build target/nullable/go-build target/nullable/go adapters/java/testdata/nullable/calls.json > target/nullable/go.txt'
+      - '{{.ADAPTERS}}/codespec-run-rust --build target/nullable/rust-build target/nullable/rust adapters/java/testdata/nullable/calls.json > target/nullable/rust.txt'
+      - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/nullable/java adapters/java/testdata/nullable/*.java adapters/java/testdata/nullable/driver/Main.java'
+      - '{{.JDK}}/bin/java -cp target/nullable/java Main adapters/java/testdata/nullable/calls.json > target/nullable/java.txt'
+      - cmp target/nullable/go.txt target/nullable/java.txt
+      - cmp target/nullable/rust.txt target/nullable/java.txt
 
   groovy-fixture-check:
     desc: Compile the Grails lending fixture's domain classes, services and utils with groovyc 2.4.10 on the JDK, all but TransactionalAuditService.groovy, which needs the Grails jars. GROOVY_HOME defaults to the sdkman groovy/2.4.10 candidate.

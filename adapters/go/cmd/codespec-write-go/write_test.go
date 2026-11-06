@@ -332,6 +332,90 @@ func TestPrecedenceAndPlatformInt(t *testing.T) {
 	}
 }
 
+// noteDoc is the form the Java reader gives a String and an Integer field that hold null until
+// assigned: fields *string and *int32 left out of the constructor's literal, an assignment through
+// a fresh local, a nil check, a dereference and an assignment of nil.
+func noteDoc() string {
+	tPStr := `{"k": "ptr", "elem": {"k": "string"}}`
+	tPI32 := `{"k": "ptr", "elem": {"k": "int", "width": "32", "signed": true}}`
+	tPNote := `{"k": "ptr", "elem": {"k": "named", "name": "Note"}}`
+	this := jv("this", tPNote)
+	text := jfield(this, "text", tPStr)
+	count := jfield(this, "count", tPI32)
+	method := func(name, pos string, params, results, body string) string {
+		return fmt.Sprintf(`{"name": %q, "exported": true, "recv": {"name": "this", "t": %s}, "pos": %q,
+         "params": [%s], "results": [%s], "body": [%s]}`, name, tPNote, pos, params, results, body)
+	}
+	set := func(local, param, field, elem, ptr, pos string) string {
+		return fmt.Sprintf(`{"k": "let", "names": [%q], "rhs": [%s], "pos": %q},
+           {"k": "assign", "lhs": [%s], "rhs": [{"k": "unop", "op": "&", "x": %s, "t": %s}], "pos": %q}`,
+			local, jv(param, elem), pos, field, jv(local, elem), ptr, pos)
+	}
+	isSet := func(field, ptr string) string {
+		return jret("Note.java:9", fmt.Sprintf(`{"k": "binop", "op": "!=", "x": %s, "y": {"k": "nil", "t": %s}, "t": {"k": "bool"}}`,
+			field, ptr))
+	}
+	deref := func(field, elem string) string {
+		return jret("Note.java:10", fmt.Sprintf(`{"k": "unop", "op": "*", "x": %s, "t": %s}`, field, elem))
+	}
+	return fmt.Sprintf(`{"format": "cir/1", "name": "note",
+      "reader": {"language": "java", "name": "test", "version": "0"},
+      "types": [{"k": "struct", "name": "Note", "exported": true, "pos": "Note.java:1",
+        "fields": [{"name": "text", "t": %[1]s}, {"name": "count", "t": %[2]s}]}],
+      "funcs": [
+        {"name": "NewNote", "exported": true, "pos": "Note.java:2", "params": [], "results": [%[3]s],
+         "body": [{"k": "let", "names": ["this"], "rhs": [{"k": "unop", "op": "&", "x": {"k": "struct", "name": "Note", "fields": [], "t": {"k": "named", "name": "Note"}}, "t": %[3]s}], "pos": "Note.java:2"},
+           %[4]s]},
+        %[5]s, %[6]s, %[7]s, %[8]s, %[9]s, %[10]s, %[11]s],
+      "layout": ["type:Note", "func:NewNote", "func:Note.write", "func:Note.tally", "func:Note.clear", "func:Note.hasText",
+        "func:Note.hasCount", "func:Note.read", "func:Note.counted"]}`,
+		tPStr, tPI32, tPNote, jret("Note.java:2", this),
+		method("write", "Note.java:3", `{"name": "t", "t": `+tStr+`}`, "",
+			set("text", "t", text, tStr, tPStr, "Note.java:4")+`, {"k": "assign", "lhs": [`+jv("t", tStr)+`], "rhs": [`+jlit(`"changed"`, tStr)+`], "pos": "Note.java:5"}`),
+		method("tally", "Note.java:6", `{"name": "n", "t": `+tI32+`}`, "", set("count", "n", count, tI32, tPI32, "Note.java:7")),
+		method("clear", "Note.java:8", "", "", fmt.Sprintf(`{"k": "assign", "lhs": [%s], "rhs": [{"k": "nil", "t": %s}], "pos": "Note.java:8"}`, text, tPStr)),
+		method("hasText", "Note.java:9", "", `{"k": "bool"}`, isSet(text, tPStr)),
+		method("hasCount", "Note.java:9", "", `{"k": "bool"}`, isSet(count, tPI32)),
+		method("read", "Note.java:10", "", tStr, deref(text, tStr)),
+		method("counted", "Note.java:10", "", tI32, deref(count, tI32)))
+}
+
+// A *string and a *int32 field: nil in a fresh object, a pointer to the value's own copy once
+// assigned, so a later write to the parameter does not reach the field, nil again when cleared.
+func TestAPointerToAStringOrAnInt32FieldIsNilUntilAssigned(t *testing.T) {
+	out, src := writeInto(t, noteDoc(), "note")
+	vet(t, out)
+	for _, want := range []string{
+		"\ttext  *string\n", "\tcount *int32\n", "this.text = &text", "return this.text != nil", "return *this.count",
+		"this.text = nil",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("want %q in:\n%s", want, src)
+		}
+	}
+	got := runWith(t, out, "note", `package main
+
+import (
+	"fmt"
+
+	"probe/note"
+)
+
+func main() {
+	n := note.NewNote()
+	fmt.Println(n.HasText(), n.HasCount())
+	n.Write("kept")
+	n.Tally(-7)
+	fmt.Println(n.HasText(), n.Read(), n.HasCount(), n.Counted())
+	n.Clear()
+	fmt.Println(n.HasText())
+}
+`)
+	if want := "false false\ntrue kept true -7\nfalse\n"; got != want {
+		t.Fatalf("got %q, want %q\n%s", got, want, src)
+	}
+}
+
 func TestForeignGoIsVerbatim(t *testing.T) {
 	want, err := os.ReadFile(filepath.Join(repo, "examples", "orders", "orders.read.cir.json"))
 	if err != nil {
