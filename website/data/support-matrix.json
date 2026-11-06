@@ -1352,10 +1352,7 @@
         "assign.add": "verified",
         "assign.and": "verified",
         "assign.and_not": "refused",
-        "assign.div": {
-          "note": "Case assign-div: its module does not use the feature.",
-          "state": "refused"
-        },
+        "assign.div": "verified",
         "assign.mul": "verified",
         "assign.or": "verified",
         "assign.rem": "verified",
@@ -1409,10 +1406,7 @@
         "op.add": "verified",
         "op.and": "verified",
         "op.and_not": "refused",
-        "op.div": {
-          "note": "Case op-div: its module does not use the feature.",
-          "state": "refused"
-        },
+        "op.div": "verified",
         "op.eq": "verified",
         "op.ge": "verified",
         "op.gt": "verified",
@@ -1429,10 +1423,7 @@
         "op.sub": "verified",
         "op.xor": "verified",
         "sem.continue.post": "verified",
-        "sem.int.wrap": {
-          "note": "Case sem-int-wrap: the reader keeps part of it as a foreign statement.",
-          "state": "refused"
-        },
+        "sem.int.wrap": "verified",
         "sem.map.order": "verified",
         "sem.multi_assign.order": "refused",
         "sem.rem.sign": "verified",

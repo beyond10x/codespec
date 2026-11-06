@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "groovy",
     "version": "0.2.0",
-    "manifest_sha256": "075782ac18a677cbc08f35a304274edace4a255cd3aaa5c2279af61c1cde382b"
+    "manifest_sha256": "2fbdd583bcece651304bba224c0aba081a4c81f8280e2be999fe6bfba050b003"
   },
   "kit": {
     "version": "0.2.0",
-    "sha256": "08ca243ece1b720c1c050c05578ea262e7d6e74f0e2e3779f70d7bda9e5e7eed"
+    "sha256": "9db5a64834237999a39107c9f7905b9bd7bbbe82c73f464f6d643cd8deef72d1"
   },
   "corpus": {
-    "sha256": "3d56de7fc2d3b8e1fbf82e9156b96326f951b37b97000e32d8801c42fa131999"
+    "sha256": "03282ce39f19b651eb1c5343d52e84713a6c96a41cdec8dc52c472e395fa726f"
   },
   "codespec": "0.2.0",
   "features": [
@@ -39,15 +39,11 @@
     },
     {
       "id": "assign.div",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "assign-div"
-      ],
-      "case": "assign-div",
-      "step": 3,
-      "reason": "subject_missing",
-      "detail": "the module does not use assign.div outside a foreign statement"
+      ]
     },
     {
       "id": "assign.mul",
@@ -385,15 +381,11 @@
     },
     {
       "id": "op.div",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "op-div"
-      ],
-      "case": "op-div",
-      "step": 3,
-      "reason": "subject_missing",
-      "detail": "the module does not use op.div outside a foreign statement"
+      ]
     },
     {
       "id": "op.eq",
@@ -521,16 +513,12 @@
     },
     {
       "id": "sem.int.wrap",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "sem-int-wrap",
         "sem-int-wrap-no-div"
-      ],
-      "case": "sem-int-wrap",
-      "step": 3,
-      "reason": "foreign_statement",
-      "detail": "the module keeps source as a foreign statement; sem.int.wrap counts only when nothing of its case is foreign"
+      ]
     },
     {
       "id": "sem.map.order",
@@ -829,10 +817,10 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 69,
-    "pass": 69,
+    "claimed": 72,
+    "pass": 72,
     "fail": 0,
-    "refused_unclaimed": 7,
+    "refused_unclaimed": 4,
     "pass_unclaimed": 0,
     "untested": 29,
     "boundary_fail": 0

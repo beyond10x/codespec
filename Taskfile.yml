@@ -70,16 +70,16 @@ tasks:
       - rm -rf target/java/classes
       - mkdir -p target/java/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src adapters/jvm/src -name "*.java" | sort)'
-      - printf '#!/bin/sh\nexec %s -cp %s codespec.read.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-read-java
+      - printf '#!/bin/sh\nexec %s -XX:-UsePerfData -cp %s codespec.read.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-read-java
       - chmod +x {{.ADAPTERS}}/codespec-read-java
-      - printf '#!/bin/sh\nexec %s -cp %s codespec.run.java.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-run-java
+      - printf '#!/bin/sh\nexec %s -XX:-UsePerfData -cp %s codespec.run.java.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/java/classes' > {{.ADAPTERS}}/codespec-run-java
       - chmod +x {{.ADAPTERS}}/codespec-run-java
       - rm -rf target/groovy/classes
       - mkdir -p target/groovy/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -cp {{.GROOVY_JAR}} -d target/groovy/classes $(find adapters/groovy/src adapters/jvm/src -name "*.java" | sort)'
-      - printf '#!/bin/sh\nexec %s -cp %s:%s codespec.read.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-read-groovy
+      - printf '#!/bin/sh\nexec %s -XX:-UsePerfData -cp %s:%s codespec.read.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-read-groovy
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
-      - printf '#!/bin/sh\nexec %s -cp %s:%s codespec.run.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-run-groovy
+      - printf '#!/bin/sh\nexec %s -XX:-UsePerfData -cp %s:%s codespec.run.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-run-groovy
       - chmod +x {{.ADAPTERS}}/codespec-run-groovy
 
   adapters-check:

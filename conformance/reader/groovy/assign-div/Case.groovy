@@ -1,10 +1,10 @@
-package assign_div;
+package assign_div
 
-/** The Java source of the kit case assign-div. */
-public final class Case {
+/** The Groovy source of the kit case assign-div: Groovy has no compound intdiv, so x = x.intdiv(y) is its x /= y. */
+final class Case {
     /** Divides in place. */
-    public static long divBy(long a, long b) {
-        a /= b;
-        return a;
+    static long divBy(long a, long b) {
+        a = a.intdiv(b)
+        return a
     }
 }

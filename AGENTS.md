@@ -103,7 +103,7 @@ Never edit these by hand; change the generator and regenerate.
 | `schemas/cir-1.features.json` | `codespec features`, from `crates/model/src/features.rs` | `task schema` |
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
-| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs` or `java/Case.java` (Groovy: `java/Case.java` as `Case.groovy`) and `calls.json` | `task docs-generate` |
+| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs` or `java/Case.java` (Groovy: `groovy/Case.groovy`, else `java/Case.java`, as `Case.groovy`) and `calls.json` | `task docs-generate` |
 | `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy; writers go, rust | `task docs-generate` |
 | `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
