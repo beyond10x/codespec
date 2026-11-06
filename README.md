@@ -27,7 +27,7 @@ original and the output produce the same bytes on the same generated inputs.
 
 ## Status
 
-**0.1.1**: the `cir/1` model and schema, the `codespec` CLI, a Go reader, the passes and facts, a Go
+**0.1.2**: the `cir/1` model and schema, the `codespec` CLI, a Go reader, the passes and facts, a Go
 writer, a Rust writer, a Rust reader (Rust → `cir/1` → Go, on `examples/inventory`) and the comparison
 harness. A second, algorithmic example is planned. Every capability and the test that
 holds it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
@@ -38,7 +38,7 @@ holds it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
 Download the archive for your platform from the
 [GitHub Releases](https://github.com/beyond10x/codespec/releases), `codespec-<tag>-<target>.tar.gz`
 for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` or `aarch64-apple-darwin`, and check it
-against `SHA256SUMS`. It holds `codespec` and the adapters `codespec-read-go`, `codespec-write-go`
+against `SHA256SUMS`. It holds `codespec` and the adapters `codespec-read-go`, `codespec-read-rust`, `codespec-write-go`
 and `codespec-write-rust`; the directory you extract it into is the `--adapters` directory.
 
 Or build from source, with Rust 1.97 (`rust-toolchain.toml`), Go 1.23 or newer and

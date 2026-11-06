@@ -163,16 +163,17 @@ to `main` only.
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.
-3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec` and
-   `codespec-write-rust` (Rust) and `codespec-read-go` and `codespec-write-go` (Go) for
+3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec`,
+   `codespec-write-rust` and `codespec-read-rust` (Rust) and `codespec-read-go` and `codespec-write-go` (Go) for
    `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, smoke-tests
    each, and uploads the artifact `codespec-<tag>-release`: the three archives
    `codespec-<tag>-<target>.tar.gz` and `SHA256SUMS`.
 4. Download the artifact `codespec-<tag>-release` (`gh run download <run> -n codespec-<tag>-release`,
    read-only) and run
    `sha256sum -c SHA256SUMS`.
-5. Create the GitHub Release and upload the archives and `SHA256SUMS` through `b10x-gates api` as
-   `b10x-bot[bot]`.
+5. Create the GitHub Release as `b10x-bot[bot]`: copy the archives, `SHA256SUMS` and the notes under
+   `target/release-assets/` and run `b10x-gates gh -- release create <tag> --verify-tag --notes-file …` from
+   the checkout with paths relative to it; Gates refuses an argument holding a home-directory path.
 6. Report released only after the release, its assets and their checksums are verified.
 
 ## Never

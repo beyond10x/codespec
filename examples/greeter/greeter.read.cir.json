@@ -4,7 +4,7 @@
   "reader": {
     "language": "go",
     "name": "codespec-read-go",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "doc": "Package greeter greets people by name and counts how often each was greeted.",
   "types": [
