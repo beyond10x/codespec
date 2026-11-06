@@ -44,6 +44,508 @@ pub(crate) struct Fx<'r> {
     scopes: Vec<Vec<(String, String, Type)>>,
     taken: BTreeSet<String>,
     refusals: Vec<Refusal>,
+    /// The enclosing loops, innermost last: the source of the post statement a `continue` in
+    /// each runs first (the Rust writer's `{ post; continue; }`), `None` when it has none.
+    loops: Vec<Option<String>>,
+    /// The type a later use fixes for the empty collection the next `let` binds.
+    hint: Option<Type>,
+}
+
+/// Whether `name` is one of the Rust writer's temporaries for `base`: `__base`, then as many `_`
+/// as it took to make the name fresh.
+fn temp(name: &str, base: &str) -> bool {
+    name.strip_prefix("__")
+        .is_some_and(|r| r.trim_end_matches('_') == base)
+}
+
+/// The name a `let` binds, when its pattern is one plain name without a type annotation.
+fn local_name(l: &syn::Local) -> Option<String> {
+    match &l.pat {
+        syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => Some(i.ident.to_string()),
+        _ => None,
+    }
+}
+
+/// The value a `let` binds, when it has one and no `else`.
+fn local_init(l: &syn::Local) -> Option<&syn::Expr> {
+    l.init
+        .as_ref()
+        .filter(|i| i.diverge.is_none())
+        .map(|i| &*i.expr)
+}
+
+fn ident_of(e: &syn::Expr) -> Option<String> {
+    match e {
+        syn::Expr::Path(p) if p.qself.is_none() => p.path.get_ident().map(|i| i.to_string()),
+        _ => None,
+    }
+}
+
+fn is_type(t: &syn::Type, name: &str) -> bool {
+    matches!(t, syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident(name))
+}
+
+/// `Vec::new()`, `HashMap::new()`, `BTreeMap::new()` or `vec![]`: a collection whose element types
+/// only a later use fixes.
+fn empty_collection(e: &syn::Expr) -> bool {
+    match e {
+        syn::Expr::Call(c) if c.args.is_empty() => matches!(
+            &*c.func,
+            syn::Expr::Path(p) if matches!(
+                path_idents(&p.path).as_slice(),
+                [t, n] if n == "new" && (t == "Vec" || t == "HashMap" || t == "BTreeMap")
+            )
+        ),
+        syn::Expr::Macro(m) => macro_name(&m.mac) == "vec" && m.mac.tokens.is_empty(),
+        _ => false,
+    }
+}
+
+/// The Rust writer's multi-value assignment `{ let __value0 = x; let __value1 = y; a = __value0;
+/// b = __value1; }`: each value bound in order, then each target assigned its value in order.
+/// The values and the targets, when `stmts` has that form.
+fn value_block(stmts: &[syn::Stmt]) -> Option<Vec<(&syn::Expr, &syn::Expr)>> {
+    let n = stmts.len() / 2;
+    if n < 2 || stmts.len() != 2 * n {
+        return None;
+    }
+    let mut out = Vec::new();
+    for k in 0..n {
+        let syn::Stmt::Local(l) = &stmts[k] else {
+            return None;
+        };
+        let name = local_name(l).filter(|v| temp(v, &format!("value{k}")))?;
+        let value = local_init(l)?;
+        let syn::Stmt::Expr(syn::Expr::Assign(a), Some(_)) = &stmts[n + k] else {
+            return None;
+        };
+        if ident_of(&a.right).as_deref() != Some(name.as_str()) {
+            return None;
+        }
+        out.push((value, &*a.left));
+    }
+    Some(out)
+}
+
+/// A node the walker visits.
+enum Node<'a> {
+    Expr(&'a syn::Expr),
+    Pat(&'a syn::Pat),
+}
+
+/// Every expression and pattern in `stmts`, nested blocks, loops and closures included.
+/// A macro's body is entered when it parses as comma-separated expressions, as the arguments of
+/// every macro the reader accepts (`println!`, `format!`, `write!`, `vec!`) do.
+fn walk_stmts(stmts: &[syn::Stmt], f: &mut dyn FnMut(Node<'_>)) {
+    for s in stmts {
+        match s {
+            syn::Stmt::Macro(m) => walk_macro(&m.mac, f),
+            syn::Stmt::Local(l) => {
+                f(Node::Pat(&l.pat));
+                if let Some(i) = &l.init {
+                    walk_expr(&i.expr, f);
+                    if let Some((_, e)) = &i.diverge {
+                        walk_expr(e, f);
+                    }
+                }
+            }
+            syn::Stmt::Expr(e, _) => walk_expr(e, f),
+            _ => {}
+        }
+    }
+}
+
+fn walk_macro(m: &syn::Macro, f: &mut dyn FnMut(Node<'_>)) {
+    if let Ok(args) = macro_args(m) {
+        for a in &args {
+            walk_expr(a, f);
+        }
+    }
+}
+
+fn walk_expr(e: &syn::Expr, f: &mut dyn FnMut(Node<'_>)) {
+    f(Node::Expr(e));
+    let mut w = |x: &syn::Expr| walk_expr(x, f);
+    match e {
+        syn::Expr::Macro(m) => walk_macro(&m.mac, f),
+        syn::Expr::Array(a) => a.elems.iter().for_each(w),
+        syn::Expr::Assign(a) => {
+            w(&a.left);
+            w(&a.right);
+        }
+        syn::Expr::Binary(b) => {
+            w(&b.left);
+            w(&b.right);
+        }
+        syn::Expr::Block(b) => walk_stmts(&b.block.stmts, f),
+        syn::Expr::Break(b) => {
+            if let Some(x) = &b.expr {
+                w(x)
+            }
+        }
+        syn::Expr::Call(c) => {
+            w(&c.func);
+            c.args.iter().for_each(w);
+        }
+        syn::Expr::Cast(c) => w(&c.expr),
+        syn::Expr::Closure(c) => {
+            c.inputs.iter().for_each(|p| f(Node::Pat(p)));
+            walk_expr(&c.body, f);
+        }
+        syn::Expr::Field(x) => w(&x.base),
+        syn::Expr::ForLoop(l) => {
+            f(Node::Pat(&l.pat));
+            walk_expr(&l.expr, f);
+            walk_stmts(&l.body.stmts, f);
+        }
+        syn::Expr::Group(g) => w(&g.expr),
+        syn::Expr::If(i) => {
+            walk_expr(&i.cond, f);
+            walk_stmts(&i.then_branch.stmts, f);
+            if let Some((_, x)) = &i.else_branch {
+                walk_expr(x, f);
+            }
+        }
+        syn::Expr::Index(i) => {
+            w(&i.expr);
+            w(&i.index);
+        }
+        syn::Expr::Let(l) => {
+            f(Node::Pat(&l.pat));
+            walk_expr(&l.expr, f);
+        }
+        syn::Expr::Loop(l) => walk_stmts(&l.body.stmts, f),
+        syn::Expr::Match(m) => {
+            walk_expr(&m.expr, f);
+            for arm in &m.arms {
+                // A guard is part of the pattern in this syn; `match_stmt` refuses one.
+                f(Node::Pat(&arm.pat));
+                walk_expr(&arm.body, f);
+            }
+        }
+        syn::Expr::MethodCall(m) => {
+            w(&m.receiver);
+            m.args.iter().for_each(w);
+        }
+        syn::Expr::Paren(p) => w(&p.expr),
+        syn::Expr::Range(r) => {
+            if let Some(x) = &r.start {
+                w(x)
+            }
+            if let Some(x) = &r.end {
+                w(x)
+            }
+        }
+        syn::Expr::Reference(r) => w(&r.expr),
+        syn::Expr::Repeat(r) => {
+            w(&r.expr);
+            w(&r.len);
+        }
+        syn::Expr::Return(r) => {
+            if let Some(x) = &r.expr {
+                w(x)
+            }
+        }
+        syn::Expr::Struct(s) => {
+            s.fields.iter().for_each(|fv| walk_expr(&fv.expr, f));
+            if let Some(x) = &s.rest {
+                walk_expr(x, f);
+            }
+        }
+        syn::Expr::Try(t) => w(&t.expr),
+        syn::Expr::Tuple(t) => t.elems.iter().for_each(w),
+        syn::Expr::Unary(u) => w(&u.expr),
+        syn::Expr::Unsafe(u) => walk_stmts(&u.block.stmts, f),
+        syn::Expr::While(l) => {
+            walk_expr(&l.cond, f);
+            walk_stmts(&l.body.stmts, f);
+        }
+        _ => {}
+    }
+}
+
+/// Every identifier in the source of `n`: a superset of the names it reads or binds.
+fn idents(n: &impl Spanned) -> BTreeSet<String> {
+    fn go(ts: proc_macro2::TokenStream, out: &mut BTreeSet<String>) {
+        for t in ts {
+            match t {
+                proc_macro2::TokenTree::Ident(i) => {
+                    out.insert(i.to_string());
+                }
+                proc_macro2::TokenTree::Group(g) => go(g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    if let Ok(ts) = src_of(n).parse::<proc_macro2::TokenStream>() {
+        go(ts, &mut out);
+    }
+    out
+}
+
+/// Every name a pattern anywhere in `stmts` binds (by identifier, so a superset).
+fn bound_names(stmts: &[syn::Stmt]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    walk_stmts(stmts, &mut |n| {
+        if let Node::Pat(p) = n {
+            out.extend(idents(p));
+        }
+    });
+    out
+}
+
+/// The variable at the root of a place: `s` in `s`, `s.f`, `s[i]`, `(*s).f`.
+fn root_ident(e: &syn::Expr) -> Option<String> {
+    match e {
+        syn::Expr::Path(_) => ident_of(e),
+        syn::Expr::Field(f) => root_ident(&f.base),
+        syn::Expr::Index(i) => root_ident(&i.expr),
+        syn::Expr::Paren(p) => root_ident(&p.expr),
+        syn::Expr::Group(g) => root_ident(&g.expr),
+        syn::Expr::Unary(u) if matches!(u.op, syn::UnOp::Deref(_)) => root_ident(&u.expr),
+        _ => None,
+    }
+}
+
+/// The std methods of the reader's table that only read their receiver.
+const READS: &[&str] = &[
+    "len",
+    "is_empty",
+    "clone",
+    "get",
+    "contains_key",
+    "to_string",
+    "wrapping_add",
+    "wrapping_sub",
+    "wrapping_mul",
+    "wrapping_div",
+    "wrapping_rem",
+    "wrapping_neg",
+];
+
+/// What `stmts` may do to the variable `root` or anything reached through it: whether it
+/// assigns a place rooted at it or takes a `&mut` of one, and every method call on such a
+/// place (receiver and method), which only the receiver's type can clear.
+fn root_effects(stmts: &[syn::Stmt], root: &str) -> (bool, Vec<(String, String)>) {
+    let at = |e: &syn::Expr| root_ident(e).as_deref() == Some(root);
+    let mut found = false;
+    let mut methods = Vec::new();
+    walk_stmts(stmts, &mut |n| {
+        let Node::Expr(e) = n else { return };
+        found |= match e {
+            syn::Expr::Assign(a) => at(&a.left),
+            syn::Expr::Binary(b) => {
+                at(&b.left)
+                    && matches!(
+                        b.op,
+                        syn::BinOp::AddAssign(_)
+                            | syn::BinOp::SubAssign(_)
+                            | syn::BinOp::MulAssign(_)
+                            | syn::BinOp::DivAssign(_)
+                            | syn::BinOp::RemAssign(_)
+                            | syn::BinOp::BitAndAssign(_)
+                            | syn::BinOp::BitOrAssign(_)
+                            | syn::BinOp::BitXorAssign(_)
+                            | syn::BinOp::ShlAssign(_)
+                            | syn::BinOp::ShrAssign(_)
+                    )
+            }
+            syn::Expr::Reference(r) => r.mutability.is_some() && at(&r.expr),
+            syn::Expr::MethodCall(m) => {
+                if at(&m.receiver) {
+                    methods.push((src_of(&*m.receiver), m.method.to_string()));
+                }
+                false
+            }
+            _ => false,
+        };
+    });
+    (found, methods)
+}
+
+/// Whether any part of `e` calls a function or method.
+fn calls(e: &Expr) -> bool {
+    let sub: Vec<&Expr> = match e {
+        Expr::Call { .. } | Expr::Method { .. } => return true,
+        Expr::Field { x, .. }
+        | Expr::Unop { x, .. }
+        | Expr::Conv { x, .. }
+        | Expr::ToError { x, .. } => vec![x],
+        Expr::Index { x, index, .. } => vec![x, index],
+        Expr::Binop { x, y, .. } => vec![x, y],
+        Expr::Struct { fields, .. } => fields.iter().map(|f| &f.value).collect(),
+        Expr::Intrinsic { args, .. } => args.iter().collect(),
+        _ => Vec::new(),
+    };
+    sub.into_iter().any(calls)
+}
+
+/// The direct sub-expressions of `e`.
+fn children(e: &Expr) -> Vec<&Expr> {
+    match e {
+        Expr::Field { x, .. }
+        | Expr::Unop { x, .. }
+        | Expr::Conv { x, .. }
+        | Expr::ToError { x, .. } => vec![x],
+        Expr::Index { x, index, .. } => vec![x, index],
+        Expr::Binop { x, y, .. } => vec![x, y],
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => args.iter().collect(),
+        Expr::Method { x, args, .. } => std::iter::once(&**x).chain(args).collect(),
+        Expr::Struct { fields, .. } => fields.iter().map(|f| &f.value).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// A place as a path from its variable: `s.f[i]` is `s`, `.f`, `[]`. Every index is the same
+/// step, since two indexes into one container may name the same element. `None` for what is
+/// not a place.
+fn place_key(e: &Expr) -> Option<Vec<String>> {
+    let (base, step) = match e {
+        Expr::Var { name, .. } => return Some(vec![name.clone()]),
+        Expr::Field { x, name, .. } => (x, format!(".{name}")),
+        Expr::Index { x, .. } => (x, "[]".to_string()),
+        Expr::Unop { op, x, .. } if op == "*" => (x, "*".to_string()),
+        _ => return None,
+    };
+    let mut k = place_key(base)?;
+    k.push(step);
+    Some(k)
+}
+
+fn is_prefix(a: &[String], b: &[String]) -> bool {
+    a.len() <= b.len() && b[..a.len()] == *a
+}
+
+/// Whether evaluating the target `t`'s operands (as Go does before any assignment) reads the
+/// place `l`, or a part or a whole of it. A place it reads as a value conflicts when one place
+/// encloses the other; a container it indexes or selects into conflicts when `l` is that
+/// container or encloses it (assigning an element leaves its container as it was). What is not
+/// a comparable place counts as a conflict.
+fn target_reads(t: &Expr, l: &Expr) -> bool {
+    let Some(kl) = place_key(l) else { return true };
+    fn values(e: &Expr, kl: &[String]) -> bool {
+        if let Some(k) = place_key(e)
+            && (is_prefix(kl, &k) || is_prefix(&k, kl))
+        {
+            return true;
+        }
+        children(e).into_iter().any(|c| values(c, kl))
+    }
+    let mut at = t;
+    loop {
+        let (container, index) = match at {
+            Expr::Var { .. } => return false,
+            Expr::Field { x, .. } => (&**x, None),
+            Expr::Index { x, index, .. } => (&**x, Some(&**index)),
+            Expr::Unop { op, x, .. } if op == "*" => (&**x, None),
+            _ => return true,
+        };
+        if index.is_some_and(|i| values(i, &kl)) {
+            return true;
+        }
+        match place_key(container) {
+            Some(k) if !is_prefix(&kl, &k) => at = container,
+            _ => return true,
+        }
+    }
+}
+
+/// The names a post-shaped statement may read: every identifier in it, but for a value block
+/// only those of its values and targets, since its `__value` bindings are its own.
+fn post_reads(s: &syn::Stmt) -> BTreeSet<String> {
+    if let syn::Stmt::Expr(syn::Expr::Block(b), _) = s
+        && let Some(pairs) = value_block(&b.block.stmts)
+    {
+        let mut out = BTreeSet::new();
+        for (v, t) in pairs {
+            out.extend(idents(v));
+            out.extend(idents(t));
+        }
+        return out;
+    }
+    idents(s)
+}
+
+/// Whether `s` reads as one assignment, increment or decrement: what a loop's post may be.
+fn post_shaped(s: &syn::Stmt) -> bool {
+    match s {
+        syn::Stmt::Expr(syn::Expr::Assign(_), Some(_)) => true,
+        syn::Stmt::Expr(syn::Expr::Binary(b), Some(_)) => matches!(
+            b.op,
+            syn::BinOp::AddAssign(_)
+                | syn::BinOp::SubAssign(_)
+                | syn::BinOp::MulAssign(_)
+                | syn::BinOp::DivAssign(_)
+                | syn::BinOp::RemAssign(_)
+                | syn::BinOp::BitAndAssign(_)
+                | syn::BinOp::BitOrAssign(_)
+                | syn::BinOp::BitXorAssign(_)
+                | syn::BinOp::ShlAssign(_)
+                | syn::BinOp::ShrAssign(_)
+        ),
+        syn::Stmt::Expr(syn::Expr::Block(b), _) => {
+            b.label.is_none() && value_block(&b.block.stmts).is_some()
+        }
+        _ => false,
+    }
+}
+
+/// Every `continue` that ends an iteration of the loop whose body is `stmts`: the source of the
+/// statement it runs first when it is the Rust writer's `{ post; continue; }`, `None` for a bare
+/// or labeled one. Nested loops and closures are not entered: their `continue`s are their own.
+fn continues(stmts: &[syn::Stmt], out: &mut Vec<Option<String>>) {
+    fn expr(e: &syn::Expr, out: &mut Vec<Option<String>>) {
+        match e {
+            syn::Expr::Continue(_) => out.push(None),
+            syn::Expr::Block(b) => match b.block.stmts.as_slice() {
+                [s, syn::Stmt::Expr(syn::Expr::Continue(c), _)] if c.label.is_none() => {
+                    out.push(Some(no_ws(&src_of(s))));
+                }
+                ss => continues(ss, out),
+            },
+            syn::Expr::If(i) => {
+                expr(&i.cond, out);
+                continues(&i.then_branch.stmts, out);
+                if let Some((_, e)) = &i.else_branch {
+                    expr(e, out);
+                }
+            }
+            syn::Expr::Match(m) => {
+                expr(&m.expr, out);
+                for arm in &m.arms {
+                    expr(&arm.body, out);
+                }
+            }
+            syn::Expr::Paren(p) => expr(&p.expr, out),
+            syn::Expr::Unsafe(u) => continues(&u.block.stmts, out),
+            syn::Expr::Macro(m) => {
+                for a in macro_args(&m.mac).unwrap_or_default() {
+                    expr(&a, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    for s in stmts {
+        match s {
+            syn::Stmt::Macro(m) => {
+                for a in macro_args(&m.mac).unwrap_or_default() {
+                    expr(&a, out);
+                }
+            }
+            syn::Stmt::Local(l) => {
+                if let Some(i) = &l.init {
+                    expr(&i.expr, out);
+                    if let Some((_, e)) = &i.diverge {
+                        expr(e, out);
+                    }
+                }
+            }
+            syn::Stmt::Expr(e, _) => expr(e, out),
+            _ => {}
+        }
+    }
 }
 
 fn is_ident(e: &syn::Expr, name: &str) -> bool {
@@ -136,6 +638,8 @@ impl<'r> Fx<'r> {
             scopes: vec![Vec::new()],
             taken: BTreeSet::new(),
             refusals: Vec::new(),
+            loops: Vec::new(),
+            hint: None,
         }
     }
 
@@ -246,10 +750,71 @@ impl<'r> Fx<'r> {
         self.scopes.push(Vec::new());
         let mut out = Vec::new();
         for (i, s) in stmts.iter().enumerate() {
+            self.hint = match s {
+                syn::Stmt::Local(l) => self.empty_hint(l, &stmts[i + 1..], tail),
+                _ => None,
+            };
             out.extend(self.stmt(s, tail && i + 1 == stmts.len()));
+            self.hint = None;
         }
         self.scopes.pop();
         out
+    }
+
+    /// The type of the empty collection `l` binds without an annotation, as the first later
+    /// statement of its block that uses the whole binding fixes it: the function's result (a
+    /// tail, `return x`, `Ok(x)`) or the place it is assigned to. `None` when no such statement
+    /// comes before the name is bound again.
+    fn empty_hint(&mut self, l: &syn::Local, rest: &[syn::Stmt], tail: bool) -> Option<Type> {
+        if !matches!(l.pat, syn::Pat::Ident(_)) || !empty_collection(local_init(l)?) {
+            return None;
+        }
+        let name = local_name(l)?;
+        let (shape, results) = (self.shape, self.results.clone());
+        let result = |e: &syn::Expr| -> Option<Type> {
+            match (shape, results.as_slice()) {
+                (Shape::Plain, [t]) if is_ident(e, &name) => Some(t.clone()),
+                (Shape::Fallible, [t, _]) => match e {
+                    syn::Expr::Call(c)
+                        if is_ident(&c.func, "Ok")
+                            && c.args.len() == 1
+                            && is_ident(&c.args[0], &name) =>
+                    {
+                        Some(t.clone())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            }
+        };
+        // Names a `let` of the block binds after `l`: the scope at `l` no longer holds them.
+        let mut rebound = BTreeSet::new();
+        for (j, s) in rest.iter().enumerate() {
+            let t = match s {
+                syn::Stmt::Local(other) => {
+                    rebound.extend(idents(&other.pat));
+                    if rebound.contains(&name) {
+                        return None;
+                    }
+                    None
+                }
+                syn::Stmt::Expr(e, None) if tail && j + 1 == rest.len() => result(e),
+                syn::Stmt::Expr(syn::Expr::Return(r), _) => r.expr.as_deref().and_then(result),
+                // Reading a place binds nothing and records no refusal; it is read in the scope
+                // at `l`, so the scan stops when that is not the scope at the assignment.
+                syn::Stmt::Expr(syn::Expr::Assign(a), _) if is_ident(&a.right, &name) => {
+                    if root_ident(&a.left).is_none_or(|r| rebound.contains(&r)) {
+                        return None;
+                    }
+                    self.place(&a.left).ok().map(|x| x.t().clone())
+                }
+                _ => None,
+            };
+            if let Some(t @ (Type::Slice { .. } | Type::Map { .. })) = t {
+                return Some(t);
+            }
+        }
+        None
     }
 
     fn stmt(&mut self, s: &syn::Stmt, tail: bool) -> Vec<Stmt> {
@@ -270,6 +835,7 @@ impl<'r> Fx<'r> {
     }
 
     fn local(&mut self, l: &syn::Local) -> R<Vec<Stmt>> {
+        let hint = self.hint.take();
         let pos = self.pos(l);
         let init = l.init.as_ref().ok_or("a `let` without a value")?;
         if let Some((_, otherwise)) = &init.diverge {
@@ -281,7 +847,7 @@ impl<'r> Fx<'r> {
         };
         match pat {
             syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
-                let e = self.val(&init.expr, ann.as_ref())?;
+                let e = self.val(&init.expr, ann.as_ref().or(hint.as_ref()))?;
                 if let Some(a) = &ann
                     && e.t() != a
                 {
@@ -318,6 +884,32 @@ impl<'r> Fx<'r> {
                     rhs: vec![e],
                     pos,
                 }])
+            }
+            // `let (a, b) = (x, y);`: every value read before any name is bound, as Go's
+            // `a, b := x, y`.
+            syn::Pat::Tuple(pt)
+                if ann.is_none()
+                    && matches!(&*init.expr, syn::Expr::Tuple(t) if t.elems.len() == pt.elems.len() && t.elems.len() > 1) =>
+            {
+                let syn::Expr::Tuple(te) = &*init.expr else {
+                    unreachable!("matched as a tuple")
+                };
+                let rhs = te
+                    .elems
+                    .iter()
+                    .map(|x| self.val(x, None))
+                    .collect::<R<Vec<_>>>()?;
+                let mut names = Vec::new();
+                for (p, x) in pt.elems.iter().zip(&rhs) {
+                    match p {
+                        syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
+                            names.push(self.bind(&i.ident.to_string(), x.t().clone()))
+                        }
+                        syn::Pat::Wild(_) => names.push("_".into()),
+                        _ => return Err("a tuple pattern element other than a name".into()),
+                    }
+                }
+                Ok(vec![Stmt::Let { names, rhs, pos }])
             }
             syn::Pat::Tuple(pt) => {
                 let e = match self.expr(&init.expr, None)? {
@@ -434,6 +1026,7 @@ impl<'r> Fx<'r> {
             syn::Expr::Match(m) => Ok(vec![self.match_stmt(m, true)?]),
             syn::Expr::Return(r) => self.ret(r.expr.as_deref(), &pos),
             syn::Expr::Paren(p) => self.tail(&p.expr),
+            syn::Expr::Block(b) => self.block_stmt(b, true),
             e => self.ret(Some(e), &pos),
         }
     }
@@ -556,13 +1149,32 @@ impl<'r> Fx<'r> {
             }
             syn::Expr::Unsafe(_) => Err("unsafe is outside cir/1".into()),
             syn::Expr::Closure(_) => Err("a closure is outside cir/1".into()),
-            syn::Expr::While(_) | syn::Expr::Loop(_) => {
-                Err("a loop other than `for` over a map or slice is outside cir/1".into())
+            syn::Expr::While(_) | syn::Expr::Loop(_) => Ok(vec![self.loop_stmt(e, None)?]),
+            syn::Expr::Break(b) => {
+                if b.label.is_some() {
+                    return Err("a labeled break is outside cir/1".into());
+                }
+                if b.expr.is_some() {
+                    return Err("a break with a value is outside cir/1".into());
+                }
+                if self.loops.is_empty() {
+                    return Err("a break outside a loop".into());
+                }
+                Ok(vec![Stmt::Break { pos }])
             }
-            syn::Expr::Break(_) | syn::Expr::Continue(_) => {
-                Err("break and continue are outside cir/1".into())
+            syn::Expr::Continue(c) => {
+                if c.label.is_some() {
+                    return Err("a labeled continue is outside cir/1".into());
+                }
+                match self.loops.last() {
+                    Some(None) => Ok(vec![Stmt::Continue { pos }]),
+                    Some(Some(_)) => {
+                        Err("a `continue` that does not run the loop's post statement first".into())
+                    }
+                    None => Err("a continue outside a loop".into()),
+                }
             }
-            syn::Expr::Block(_) => Err("a block statement is outside cir/1".into()),
+            syn::Expr::Block(b) => self.block_stmt(b, false),
             syn::Expr::Try(_) => Err("the `?` operator is outside cir/1".into()),
             syn::Expr::Tuple(t) if t.elems.is_empty() => Ok(Vec::new()),
             _ => Err("an expression statement that is not a call or an assignment".into()),
@@ -652,12 +1264,437 @@ impl<'r> Fx<'r> {
         self.scopes.push(Vec::new());
         let key = self.bind(&key, kt);
         let val = self.bind(&val, vt);
+        self.loops.push(None);
         let body = self.block(&f.body.stmts, false);
+        self.loops.pop();
         self.scopes.pop();
         Ok(Stmt::ForRange {
             key,
             val,
             over,
+            body,
+            pos,
+        })
+    }
+
+    /// A block statement: one of the forms the Rust writer gives a `cir/1` statement that Rust
+    /// has no single statement for. Any other block is outside `cir/1` (its scope has no Go
+    /// statement), and so is a form whose parts do not read.
+    fn block_stmt(&mut self, b: &syn::ExprBlock, tail: bool) -> R<Vec<Stmt>> {
+        if b.label.is_some() {
+            return Err("a labeled block is outside cir/1".into());
+        }
+        let pos = self.pos(b);
+        let stmts = b.block.stmts.as_slice();
+        // `{ post; continue; }`: a `continue` in a loop with a post statement.
+        if let [s, syn::Stmt::Expr(syn::Expr::Continue(c), _)] = stmts
+            && c.label.is_none()
+            && let Some(Some(post)) = self.loops.last()
+            && no_ws(&src_of(s)) == *post
+        {
+            return Ok(vec![Stmt::Continue { pos: self.pos(c) }]);
+        }
+        if let Some(pairs) = value_block(stmts) {
+            // The `__value` bindings are not in the document: a value or target that reads one
+            // would read another binding of the name.
+            let temps: BTreeSet<String> = stmts[..pairs.len()]
+                .iter()
+                .filter_map(|s| match s {
+                    syn::Stmt::Local(l) => local_name(l),
+                    _ => None,
+                })
+                .collect();
+            if pairs
+                .iter()
+                .any(|(v, t)| !idents(*v).is_disjoint(&temps) || !idents(*t).is_disjoint(&temps))
+            {
+                return Err(
+                    "a multi-value assignment whose values or targets read the writer's temporaries"
+                        .into(),
+                );
+            }
+            return Ok(vec![self.assign_values(&pairs, &pos)?]);
+        }
+        let mark = self.refusals.len();
+        let r = match stmts {
+            [
+                syn::Stmt::Local(l),
+                syn::Stmt::Expr(syn::Expr::ForLoop(f), _),
+            ] if local_name(l).is_some_and(|n| temp(&n, "len")) => {
+                self.range_block(l, f).map(|s| vec![s])
+            }
+            [syn::Stmt::Local(l), syn::Stmt::Expr(syn::Expr::If(i), _)]
+                if local_name(l).is_some_and(|n| temp(&n, "tag")) =>
+            {
+                self.tag_block(l, i, tail).map(|s| vec![s])
+            }
+            [
+                init,
+                syn::Stmt::Expr(e @ (syn::Expr::While(_) | syn::Expr::Loop(_)), _),
+            ] if post_shaped(init) || matches!(init, syn::Stmt::Local(_)) => {
+                self.scopes.push(Vec::new());
+                let r = match self.stmt(init, false).as_slice() {
+                    [s @ (Stmt::Let { .. } | Stmt::Assign { .. })] => {
+                        let s = s.clone();
+                        self.loop_stmt(e, Some(s)).map(|s| vec![s])
+                    }
+                    _ => Err(
+                        "a loop block whose first statement is not one `let` or assignment"
+                            .to_string(),
+                    ),
+                };
+                self.scopes.pop();
+                r
+            }
+            _ => Err("a block statement is outside cir/1".into()),
+        };
+        if r.is_err() {
+            // The whole block is kept as foreign: what its parts refused is in it.
+            self.refusals.truncate(mark);
+        }
+        r
+    }
+
+    /// The Rust writer's multi-value assignment as one `cir/1` assignment: the targets read
+    /// first (reading binds and evaluates nothing), each value with its target's type.
+    fn assign_values(&mut self, pairs: &[(&syn::Expr, &syn::Expr)], pos: &str) -> R<Stmt> {
+        let mut lhs = Vec::new();
+        for (_, l) in pairs {
+            lhs.push(self.place(l)?);
+        }
+        // Go evaluates every target's index and field operands before it assigns any; the Rust
+        // block assigns in order. They agree only when no target's operand reads a variable
+        // another target assigns (the writer's `assign_many` refuses the same) and no target
+        // calls anything (a call would run after the values in Rust, before them in Go).
+        for l in &lhs {
+            if calls(l) {
+                return Err("a multi-value assignment whose target calls a function".into());
+            }
+        }
+        for (i, l) in lhs.iter().enumerate() {
+            if matches!(l, Expr::Var { name, .. } if name == "_") {
+                continue;
+            }
+            for (j, other) in lhs.iter().enumerate() {
+                if i != j && target_reads(other, l) {
+                    return Err(
+                        "a multi-value assignment whose target reads a place another target assigns"
+                            .into(),
+                    );
+                }
+            }
+        }
+        let mut rhs = Vec::new();
+        for ((v, _), l) in pairs.iter().zip(&lhs) {
+            rhs.push(self.val(v, Some(l.t()))?);
+        }
+        Ok(Stmt::Assign {
+            op: String::new(),
+            lhs,
+            rhs,
+            pos: pos.into(),
+        })
+    }
+
+    /// Whether `stmts` may change the variable `root` (bound in the current scope) or anything
+    /// reached through it: an assignment to a place rooted at it, a `&mut` of one, or a method
+    /// call on one, unless the method is a reading method of the std table and the receiver's
+    /// type is one the table covers. A crate method may take `&mut self`. When `stmts` binds the
+    /// name again, the receivers cannot be typed here, which counts as a change.
+    fn changes(&mut self, stmts: &[syn::Stmt], root: &str) -> bool {
+        let (assigns, methods) = root_effects(stmts, root);
+        if assigns {
+            return true;
+        }
+        if !methods.is_empty() && bound_names(stmts).contains(root) {
+            return true;
+        }
+        methods.iter().any(|(recv, m)| {
+            let std = match syn::parse_str::<syn::Expr>(recv)
+                .map_err(|e| e.to_string())
+                .and_then(|r| self.val(&r, None))
+            {
+                Ok(x) => matches!(
+                    x.t(),
+                    Type::Slice { .. }
+                        | Type::Map { .. }
+                        | Type::String
+                        | Type::Int { .. }
+                        | Type::Bool
+                ),
+                Err(_) => false,
+            };
+            !(std && READS.contains(&m.as_str()))
+        })
+    }
+
+    /// The Rust writer's `for … range` over a slice:
+    /// `{ let __len = s.len() as i64; for i in 0i64..__len { let v = s[i as usize]; … } }`, the
+    /// length fixed when the loop starts and each element read when its iteration starts. The
+    /// index is `_` when it is the writer's `__i`; the value is `_` when the body does not start
+    /// by reading the element.
+    fn range_block(&mut self, l: &syn::Local, f: &syn::ExprForLoop) -> R<Stmt> {
+        let not = || "a block that is not the Rust writer's loop over a slice".to_string();
+        let len = local_name(l).ok_or_else(not)?;
+        let src = match local_init(l) {
+            Some(syn::Expr::Cast(c)) if is_type(&c.ty, "i64") => match &*c.expr {
+                syn::Expr::MethodCall(mc) if mc.method == "len" && mc.args.is_empty() => {
+                    &*mc.receiver
+                }
+                _ => return Err(not()),
+            },
+            _ => return Err(not()),
+        };
+        if f.label.is_some() {
+            return Err(not());
+        }
+        let index = match &*f.pat {
+            syn::Pat::Ident(i)
+                if i.by_ref.is_none() && i.mutability.is_none() && i.subpat.is_none() =>
+            {
+                i.ident.to_string()
+            }
+            _ => return Err(not()),
+        };
+        let syn::Expr::Range(r) = &*f.expr else {
+            return Err(not());
+        };
+        let starts_at_zero = matches!(
+            r.start.as_deref(),
+            Some(syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Int(n), .. }))
+                if n.base10_digits() == "0" && n.suffix() == "i64"
+        );
+        if !starts_at_zero
+            || !matches!(r.limits, syn::RangeLimits::HalfOpen(_))
+            || r.end.as_deref().and_then(ident_of).as_deref() != Some(len.as_str())
+        {
+            return Err(not());
+        }
+        // `let v = s[i as usize];`, or `.clone()` of it.
+        let reads = |s: &syn::Stmt| -> Option<String> {
+            let syn::Stmt::Local(l) = s else { return None };
+            let mut e = local_init(l)?;
+            if let syn::Expr::MethodCall(mc) = e
+                && mc.method == "clone"
+                && mc.args.is_empty()
+            {
+                e = &mc.receiver;
+            }
+            let syn::Expr::Index(ix) = e else { return None };
+            let syn::Expr::Cast(c) = &*ix.index else {
+                return None;
+            };
+            (is_type(&c.ty, "usize")
+                && ident_of(&c.expr).as_deref() == Some(index.as_str())
+                && no_ws(&src_of(&*ix.expr)) == no_ws(&src_of(src)))
+            .then(|| local_name(l))
+            .flatten()
+        };
+        let stmts = f.body.stmts.as_slice();
+        let (val, body) = match stmts.split_first().map(|(f, rest)| (reads(f), rest)) {
+            Some((Some(v), rest)) => (v, rest),
+            _ => ("_".to_string(), stmts),
+        };
+        let pos = self.pos(f);
+        let over = self.val(src, None)?;
+        // Go evaluates the operand once; the Rust form reads it again for every element, which
+        // is the same only for a variable or a field of one.
+        fn place(e: &Expr) -> bool {
+            match e {
+                Expr::Var { .. } => true,
+                Expr::Field { x, .. } => place(x),
+                _ => false,
+            }
+        }
+        if !place(&over) {
+            return Err("a loop over a slice that is not a variable or a field".into());
+        }
+        let Type::Slice { elem } = over.t().clone() else {
+            return Err("the Rust writer's loop over something other than a slice".into());
+        };
+        // The writer's temporaries are not bound in the document: a body that reads one would
+        // read another binding of the name.
+        let mut temps = vec![len];
+        if temp(&index, "i") {
+            temps.push(index.clone());
+        }
+        let used: BTreeSet<String> = body.iter().flat_map(idents).collect();
+        if temps.iter().any(|t| used.contains(t)) {
+            return Err("a loop over a slice whose body reads the writer's temporaries".into());
+        }
+        let key = if temp(&index, "i") { "_".into() } else { index };
+        self.scopes.push(Vec::new());
+        let key = self.bind(
+            &key,
+            Type::Int {
+                width: IntWidth::W64,
+                signed: true,
+            },
+        );
+        let val = self.bind(&val, *elem);
+        // ... and only while the body leaves that variable alone (receivers typed with the
+        // index and the element bound).
+        if root_ident(src).is_none_or(|r| self.changes(body, &r)) {
+            self.scopes.pop();
+            return Err(
+                "a loop over a slice whose body may change the variable it reads the slice from"
+                    .into(),
+            );
+        }
+        self.loops.push(None);
+        let body = self.block(body, false);
+        self.loops.pop();
+        self.scopes.pop();
+        Ok(Stmt::ForRange {
+            key,
+            val,
+            over,
+            body,
+            pos,
+        })
+    }
+
+    /// The Rust writer's `switch` on a value: `{ let __tag = x; if __tag == a { … } else if
+    /// __tag == b || __tag == c { … } else { … } }`, the value read once and compared with each
+    /// case's values in order; the last `else` is the default.
+    fn tag_block(&mut self, l: &syn::Local, i: &syn::ExprIf, tail: bool) -> R<Stmt> {
+        let name = local_name(l).expect("matched with a name");
+        let x = local_init(l).ok_or("a `__tag` without a value")?;
+        let pos = self.pos(i);
+        let tag = self.val(x, None)?;
+        let tt = tag.t().clone();
+        // `__tag` is not bound in the document: a case value or body that reads it would read
+        // another binding of the name. Only the left of each `==` is the form's own.
+        let reads_tag = || "a `__tag` block whose cases read the tag".to_string();
+        let in_block = |b: &syn::Block| b.stmts.iter().any(|s| idents(s).contains(&name));
+        let mut c = Some(i);
+        while let Some(at) = c {
+            if in_block(&at.then_branch) {
+                return Err(reads_tag());
+            }
+            c = None;
+            match at.else_branch.as_ref().map(|(_, e)| &**e) {
+                Some(syn::Expr::If(next)) => c = Some(next),
+                Some(syn::Expr::Block(b)) if in_block(&b.block) => return Err(reads_tag()),
+                _ => {}
+            }
+        }
+        let mut cases = Vec::new();
+        let mut at = i;
+        loop {
+            let mut terms = Vec::new();
+            let mut c = &*at.cond;
+            while let syn::Expr::Binary(b) = c
+                && matches!(b.op, syn::BinOp::Or(_))
+            {
+                terms.push(&*b.right);
+                c = &b.left;
+            }
+            terms.push(c);
+            terms.reverse();
+            let mut values = Vec::new();
+            for t in terms {
+                match t {
+                    syn::Expr::Binary(b)
+                        if matches!(b.op, syn::BinOp::Eq(_)) && is_ident(&b.left, &name) =>
+                    {
+                        if idents(&*b.right).contains(&name) {
+                            return Err(reads_tag());
+                        }
+                        values.push(self.val(&b.right, Some(&tt))?);
+                    }
+                    _ => {
+                        return Err(
+                            "a `__tag` block whose condition is not a comparison of the tag".into(),
+                        );
+                    }
+                }
+            }
+            let body = self.block(&at.then_branch.stmts, tail);
+            cases.push(Case { values, body });
+            match at.else_branch.as_ref().map(|(_, e)| &**e) {
+                None => break,
+                Some(syn::Expr::If(next)) => at = next,
+                Some(syn::Expr::Block(b)) if b.label.is_none() => {
+                    let body = self.block(&b.block.stmts, tail);
+                    cases.push(Case {
+                        values: Vec::new(),
+                        body,
+                    });
+                    break;
+                }
+                Some(_) => return Err("an else that is neither a block nor an if".into()),
+            }
+        }
+        Ok(Stmt::Switch {
+            tag: Some(tag),
+            cases,
+            pos,
+        })
+    }
+
+    /// A `while` or `loop`, after `init` when the Rust writer's block gave it one. The last
+    /// statement of the body is the loop's post statement when it is an assignment and every
+    /// `continue` of the loop runs it first (`{ post; continue; }`); a loop without `init` takes
+    /// one only when some `continue` shows it, since the writer then has nothing else that
+    /// marks it. A label is dropped: any `break` or `continue` naming it is refused.
+    fn loop_stmt(&mut self, e: &syn::Expr, init: Option<Stmt>) -> R<Stmt> {
+        let pos = self.pos(e);
+        let (cond, stmts) = match e {
+            syn::Expr::While(w) => {
+                if matches!(&*w.cond, syn::Expr::Let(_)) {
+                    return Err("`while let` is outside cir/1".into());
+                }
+                (Some(&*w.cond), w.body.stmts.as_slice())
+            }
+            syn::Expr::Loop(l) => (None, l.body.stmts.as_slice()),
+            _ => unreachable!("a loop"),
+        };
+        let mut cs = Vec::new();
+        continues(stmts, &mut cs);
+        // The post runs outside the body's scopes, so it must read no name the body binds:
+        // otherwise it, and each `{ post; continue; }` copy of it, would read another binding.
+        let body_binds = match stmts.split_last() {
+            Some((_, rest)) => bound_names(rest),
+            None => BTreeSet::new(),
+        };
+        let post_src = stmts
+            .last()
+            .filter(|s| post_shaped(s))
+            .filter(|s| post_reads(s).is_disjoint(&body_binds))
+            .map(|s| no_ws(&src_of(s)))
+            .filter(|p| {
+                (init.is_some() || !cs.is_empty()) && cs.iter().all(|c| c.as_ref() == Some(p))
+            });
+        let cond = match cond {
+            Some(c) => Some(self.val(c, Some(&Type::Bool))?),
+            None => None,
+        };
+        let body_stmts = if post_src.is_some() {
+            &stmts[..stmts.len() - 1]
+        } else {
+            stmts
+        };
+        let mark = self.refusals.len();
+        self.loops.push(post_src.clone());
+        let body = self.block(body_stmts, false);
+        self.loops.pop();
+        let post = match post_src {
+            None => None,
+            Some(_) => match self.stmt(stmts.last().expect("a post"), false).as_slice() {
+                [s @ (Stmt::Assign { .. } | Stmt::Incr { .. } | Stmt::Decr { .. })] => {
+                    Some(Box::new(s.clone()))
+                }
+                _ => {
+                    self.refusals.truncate(mark);
+                    return Err("a loop whose post statement is outside cir/1".into());
+                }
+            },
+        };
+        Ok(Stmt::For {
+            init: init.map(Box::new),
+            cond,
+            post,
             body,
             pos,
         })
@@ -1113,9 +2150,20 @@ impl<'r> Fx<'r> {
                 _ => Err("a unary operator outside cir/1".into()),
             },
             syn::Expr::Binary(b) => self.binary(b, want).map(V::E),
+            // `x.len() as i64`: the length as an `i64`. A narrower cast truncates, which `len`
+            // does not, and `cir/1` has no integer conversion to say it with.
             syn::Expr::Cast(c) => match &*c.expr {
                 syn::Expr::MethodCall(mc) if mc.method == "len" && mc.args.is_empty() => {
-                    self.expr(&c.expr, want)
+                    if !is_type(&c.ty, "i64") {
+                        return Err("a length cast to other than `i64`".into());
+                    }
+                    let t = int_type("i64").expect("i64 is an integer type");
+                    match self.expr(&c.expr, want)? {
+                        V::E(Expr::Intrinsic { name, args, .. }) if name == "len" => {
+                            Ok(V::E(Expr::Intrinsic { name, args, t }))
+                        }
+                        _ => Err("a cast (`as`) is outside cir/1".into()),
+                    }
                 }
                 _ => Err("a cast (`as`) is outside cir/1".into()),
             },
@@ -1125,9 +2173,19 @@ impl<'r> Fx<'r> {
             syn::Expr::Macro(m) => self.macro_expr(&m.mac, want).map(V::E),
             syn::Expr::Index(ix) => {
                 let x = self.val(&ix.expr, None)?;
+                // `s[i as usize]`: the Rust writer's index of a signed integer.
+                let (index, cast) = match &*ix.index {
+                    syn::Expr::Cast(c) if is_type(&c.ty, "usize") => (&*c.expr, true),
+                    e => (e, false),
+                };
                 match x.t().clone() {
                     Type::Slice { elem } => {
-                        let i = self.val(&ix.index, Some(&platform_int()))?;
+                        let i = self.val(index, Some(&platform_int()))?;
+                        if cast && !matches!(i.t(), Type::Int { signed: true, .. }) {
+                            return Err(
+                                "an index cast to `usize` from other than a signed integer".into(),
+                            );
+                        }
                         Ok(V::E(Expr::Index {
                             x: Box::new(x),
                             index: Box::new(i),
@@ -1497,6 +2555,11 @@ impl<'r> Fx<'r> {
                     t,
                 }))
             }
+            (Type::Int { .. }, "wrapping_neg", 0) => Ok(V::E(Expr::Unop {
+                op: "-".into(),
+                x: Box::new(x),
+                t,
+            })),
             (Type::Int { .. }, "to_string", 0) => Ok(V::E(self.sprintf("%d", x))),
             (Type::Named { name }, "to_string", 0) if self.r.displays.contains(name) => {
                 Ok(V::E(self.sprintf("%s", x)))

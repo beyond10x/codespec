@@ -9,6 +9,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub mod features;
+pub use features::{
+    FEATURE_FAMILIES, FEATURES_FORMAT, Feature, FeatureDocument, FeaturesReadError,
+    features_from_json, features_json, vocabulary,
+};
+
 /// The format this crate reads and writes.
 pub const FORMAT: &str = "cir/1";
 
@@ -272,7 +278,8 @@ pub enum Stmt {
         t: Type,
         pos: Pos,
     },
-    /// `lhs = rhs`, or `lhs <op> rhs` for a compound operator such as `+=`.
+    /// `lhs = rhs`, or `lhs <op> rhs` for a compound operator: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
+    /// `|=`, `^=`, `&^=`, `<<=` or `>>=`.
     Assign {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         op: String,
@@ -419,6 +426,8 @@ pub enum Expr {
         args: Vec<Expr>,
         t: Type,
     },
+    /// `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`,
+    /// `<`, `<=`, `>` or `>=`.
     Binop {
         op: String,
         x: Box<Expr>,
@@ -450,7 +459,9 @@ pub enum Expr {
     Zero {
         t: Type,
     },
-    /// `sprintf`, `errorf`, `println`, `append` or `len`.
+    /// `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and
+    /// gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code
+    /// unit, as Java's String.compareTo orders them, which byte order does not always match.
     Intrinsic {
         name: String,
         args: Vec<Expr>,

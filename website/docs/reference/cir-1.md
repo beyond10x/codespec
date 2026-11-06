@@ -80,13 +80,13 @@ A tagged union: the field `k` names the kind. 17 kinds.
 | `index` | `index`\*: [`Expr`](#expr); `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
 | `call` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | A call of a module function. |
 | `method` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
-| `binop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr); `y`\*: [`Expr`](#expr) |  |
+| `binop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr); `y`\*: [`Expr`](#expr) | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `\|\|`, `==`, `!=`, `<`, `<=`, `>` or `>=`. |
 | `unop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | `!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&` (reference). |
 | `struct` | `fields`\*: list of [`FieldInit`](#fieldinit); `name`\*: `string`; `t`\*: [`Type`](#type) |  |
 | `conv` | `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A conversion to the named type `name`. |
 | `make` | `t`\*: [`Type`](#type) | An empty map or slice. |
 | `zero` | `t`\*: [`Type`](#type) |  |
-| `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append` or `len`. |
+| `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match. |
 | `to_error` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A value of an error struct used where an error is expected. |
 
 ## Facts
@@ -171,7 +171,7 @@ A tagged union: the field `k` names the kind. 16 kinds.
 |---|---|---|
 | `let` | `names`\*: list of `string`; `pos`\*: `string`; `rhs`\*: list of [`Expr`](#expr) | `names := rhs`; a name `_` discards. |
 | `var` | `name`\*: `string`; `pos`\*: `string`; `t`\*: [`Type`](#type) | `var name t`, the zero value. |
-| `assign` | `lhs`\*: list of [`Expr`](#expr); `op`: `string`; `pos`\*: `string`; `rhs`\*: list of [`Expr`](#expr) | `lhs = rhs`, or `lhs <op> rhs` for a compound operator such as `+=`. |
+| `assign` | `lhs`\*: list of [`Expr`](#expr); `op`: `string`; `pos`\*: `string`; `rhs`\*: list of [`Expr`](#expr) | `lhs = rhs`, or `lhs <op> rhs` for a compound operator: `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `\|=`, `^=`, `&^=`, `<<=` or `>>=`. |
 | `incr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
 | `decr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
 | `if` | `cond`\*: [`Expr`](#expr); `else`: list of [`Stmt`](#stmt); `pos`\*: `string`; `then`\*: list of [`Stmt`](#stmt) |  |

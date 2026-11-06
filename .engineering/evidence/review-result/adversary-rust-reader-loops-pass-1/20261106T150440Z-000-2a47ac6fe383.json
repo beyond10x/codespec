@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-06T15:04:40Z",
+  "actor": "human:timo",
+  "artifact": "review-result:adversary-rust-reader-loops-pass-1",
+  "kind": "review-result",
+  "revision": 2,
+  "change": {
+    "change": "redaction",
+    "literal_sha256": "03ad241a62b2c9bb1097f82bae5917176b023cdbb2d232902e6967f23eb9689c",
+    "literal_chars": 62,
+    "replacement": "<session scratch>",
+    "count": 1,
+    "reason": "a home-directory path may not enter the public repository"
+  }
+}

@@ -2,6 +2,19 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec features` prints the `cir/1` feature vocabulary (`codespec-features/1`, 105 ids), checked
+  in as `schemas/cir-1.features.json`; `features_from_json` reads it strictly.
+- `cir/1` intrinsic `sorted_keys`: the keys of a map in ascending order (integers numerically, strings
+  by UTF-16 code unit). No writer renders it yet.
+- `codespec-read-java` (`adapters/java`): reads a Java 17 package through javac into `cir/1`, refusing
+  every form whose meaning the document would not keep. Needs a JDK (default path: JDK 21).
+- `codespec-read-rust` reads the Rust writer's loops, switches and multi-assigns back: the `series`
+  output reads with 0 refusals.
+
 ## 0.2.0
 
 ### Added
