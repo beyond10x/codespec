@@ -9,71 +9,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-use clap::{Parser, Subcommand};
+use clap::Parser as _;
+use codespec_cli::{Cli, Cmd};
 use codespec_model::{Module, schema_json};
-
-#[derive(Parser)]
-#[command(
-    name = "codespec",
-    version,
-    about = "Read code into cir/1, check it, write code from it"
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Cmd,
-}
-
-#[derive(Subcommand)]
-enum Cmd {
-    /// Validate a cir/1 document; with --canonical, also require its canonical encoding.
-    Validate {
-        file: PathBuf,
-        #[arg(long)]
-        canonical: bool,
-    },
-    /// Print the JSON Schema of cir/1.
-    Schema,
-    /// Run the reader adapter for LANG over SOURCE and write the validated cir/1 module to OUT.
-    Read {
-        #[arg(long)]
-        lang: String,
-        source: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
-        #[arg(long, env = "CODESPEC_ADAPTERS")]
-        adapters: PathBuf,
-    },
-    /// Apply every pass (lookup-guard, then the facts) to a cir/1 module and write the result to OUT.
-    Pass {
-        file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-    },
-    /// Validate a cir/1 module and run the writer adapter for LANG, writing into OUT.
-    Write {
-        #[arg(long)]
-        lang: String,
-        file: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        #[arg(long, env = "CODESPEC_ADAPTERS")]
-        adapters: PathBuf,
-    },
-    /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
-    /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
-    /// differing line otherwise.
-    Harness {
-        example: PathBuf,
-        #[arg(long, default_value_t = 200)]
-        seeds: u64,
-        #[arg(long, default_value_t = 300)]
-        commands: usize,
-        /// Directory the implementations are built into; `{build}` in harness.toml.
-        #[arg(long, default_value = "target/harness")]
-        build_dir: PathBuf,
-    },
-}
 
 fn main() -> ExitCode {
     match run(Cli::parse().command) {

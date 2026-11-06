@@ -1,0 +1,111 @@
+name: Release build
+
+on:
+  push:
+    tags: ['0.*']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain rust-toolchain.toml names
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: adapters/go/go.mod
+
+      - name: Build the Rust binaries
+        run: |
+          export RUSTFLAGS="--remap-path-prefix=$HOME=/build-home --remap-path-prefix=$GITHUB_WORKSPACE=/codespec"
+          cargo build --release --locked -p b10x-codespec-cli -p codespec-write-rust
+
+      - name: Build the Go adapters
+        run: |
+          mkdir -p target/release-go
+          cd adapters/go
+          go build -trimpath -ldflags=-buildid= -o ../../target/release-go/ ./cmd/codespec-read-go ./cmd/codespec-write-go
+
+      - name: Smoke-test the binaries
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          work="$RUNNER_TEMP/smoke"
+          mkdir -p "$bin" "$work"
+          cp target/release/codespec target/release/codespec-write-rust target/release-go/codespec-read-go target/release-go/codespec-write-go "$bin/"
+          test "$("$bin/codespec" --version)" = "codespec $GITHUB_REF_NAME"
+          "$bin/codespec" read --lang go examples/orders/source --out "$work/orders.read.cir.json" --adapters "$bin"
+          cmp "$work/orders.read.cir.json" examples/orders/orders.read.cir.json
+          "$bin/codespec" pass "$work/orders.read.cir.json" --out "$work/orders.cir.json"
+          cmp "$work/orders.cir.json" examples/orders/orders.cir.json
+          "$bin/codespec" write --lang go "$work/orders.cir.json" --out "$work/go" --adapters "$bin"
+          "$bin/codespec" write --lang rust "$work/orders.cir.json" --out "$work/rust" --adapters "$bin"
+          cmp "$work/rust/src/lib.rs" examples/orders/out/rust/src/lib.rs
+
+      - name: Package the binaries
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          package="codespec-$GITHUB_REF_NAME-$TARGET"
+          mkdir -p "dist/$package"
+          cp target/release/codespec target/release/codespec-write-rust target/release-go/codespec-read-go target/release-go/codespec-write-go README.md LICENSE "dist/$package/"
+          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-write-rust codespec-read-go codespec-write-go README.md LICENSE
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: codespec-${{ github.ref_name }}-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  checksums:
+    name: SHA256SUMS
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: codespec-${{ github.ref_name }}-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        run: |
+          cd dist
+          archives=(*.tar.gz)
+          test "${#archives[@]}" -eq 3
+          sha256sum *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: codespec-${{ github.ref_name }}-release
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30

@@ -2,10 +2,12 @@
 format: aep.planning-md/3
 id: epic:tree-sitter-go-reader
 kind: epic
-status: draft
+status: archived
 title: A tree-sitter Go reader, measured against the go/types reader
 summary: A Go reader on tree-sitter with its own name resolution and type inference; it must produce byte-identical cir/1 to codespec-read-go on every example, or the gap is recorded by construct.
-revision: 2
+revision: 4
+transitions:
+- {from: "draft", to: "archived", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 4}
 ---
 # Epic: A tree-sitter Go reader, measured against the go/types reader
 
@@ -29,8 +31,8 @@ This epic measures that on Go, where the `go/types` reader is the reference.
 
 - `adapters/tree-sitter` (Rust, `tree-sitter` + `tree-sitter-go`): `codespec-read-go-ts`.
 - A comparison over every example: identical, or the differing constructs counted.
-- `codegate` pins the same grammars (`tree-sitter` 0.25.10, `tree-sitter-go` 0.25.0) for line
-  classification; whether the two share a crate is decided when this epic starts.
+- The tree-sitter layer is written so that adding a grammar (Rust, Java, JavaScript, …) reuses the
+  declaration extraction and only adds that language's node mapping.
 
 ## Out of Scope
 

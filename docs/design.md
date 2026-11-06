@@ -31,10 +31,8 @@ first seed. `cir/1` is `cir/0` with the changes in § 3.
 - Readers and writers are **adapters**, each in the language whose tooling handles its target best.
   A Go writer builds `go/ast` and prints it with `go/printer`; a Rust writer can build `syn` trees and
   print them with `prettyplease`; the Go reader uses `go/types`.
-- tree-sitter is the candidate where a language has no such tooling. It gives syntax trees only, so a
-  tree-sitter reader also has to resolve names and infer types for its language. Whether that reaches
-  the detail `cir/1` needs is measured, not assumed: a tree-sitter Go reader must produce
-  byte-identical `cir/1` to the `go/types` reader on every example.
+- The Rust reader parses with `syn`, which the Rust writer already depends on, and does its own name
+  and type resolution for the subset of Rust that `cir/1` covers.
 - An adapter is a program. A reader prints one module on stdout; a writer reads one on stdin.
   `codespec read` and `codespec write` validate each document against the model on the way through.
 
@@ -86,12 +84,27 @@ Changes from `cir/0`:
 |---|---|---|
 | M0 | model, schema, CLI (`validate`, `schema`, `read`, `write`), Go reader, `orders` | `task check` green; `orders` read twice gives the same bytes |
 | M1 | passes (Rust), Go writer (`go/ast`), Rust writer, harness | `orders`: original Go, Go output and Rust output byte-equal on 200 × 300 traces |
-| M2 | tree-sitter Go reader | byte-identical `cir/1` to the `go/types` reader on every example, or the measured gap |
-| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | M1 and M2 criteria on both examples |
-| M4 | Rust reader, Rust → `cir/1` → Go | harness green on a Rust example |
+| M2 | dropped: a tree-sitter Go reader (§ 7) | — |
+| M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | M1 criteria on both examples |
+| M4 | Rust reader on `syn`, Rust → `cir/1` → Go | harness green on a Rust example |
+
+Release 0.1.0 is M0, M1 and M4: Go reader, Rust reader, Go writer, Rust writer, passes, harness.
 
 ## 6. Later
 
 - ESS: a specification supplies a service's skeleton, `cir/1` bodies fill its obligations, and the
   ESS conformance suite is an equivalence oracle beside the harness.
 - More target languages through the same adapter boundary.
+
+## 7. Not used
+
+Decided 2026-11-06.
+
+- **tree-sitter.** Considered as the reader for languages without typed tooling, and not used. It
+  gives syntax only, and `cir/1` needs a type on every expression. No tree-sitter-based tool infers
+  types: Semgrep's generic AST covers 31 languages but stays close to the source text; GitHub's
+  stack-graphs resolves names but not types, and was archived on 2025-09-09; tree-sitter tags
+  queries only label definitions and references. A tree-sitter reader would have to bring its own
+  type inference per language, and the project keeps its dependencies minimal. M2 is dropped.
+- **rust-analyzer's `ra_ap_*` crates.** Not used for the Rust reader, for the same dependency
+  reason; the reader resolves names and types itself for the `cir/1` subset, on `syn`.

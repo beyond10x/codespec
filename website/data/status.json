@@ -1,0 +1,141 @@
+{
+  "asOf": "2026-11-06",
+  "format": "b10x-status/1",
+  "items": [
+    {
+      "area": "Model",
+      "detail": "Types, declarations, statements and expressions as tagged nodes; the JSON Schema is generated from the model and drift-checked.",
+      "href": "/docs/reference/cir-1",
+      "label": "cir/1, defined once in Rust",
+      "status": "shipped"
+    },
+    {
+      "area": "Model",
+      "detail": "An unknown field, an unknown kind, an expression without a type and any format other than cir/1 are refused.",
+      "href": "/docs/concepts/cir-1",
+      "label": "Strict reading",
+      "status": "shipped"
+    },
+    {
+      "area": "Model",
+      "detail": "One byte sequence per document; codespec validate --canonical refuses any other.",
+      "href": "/docs/concepts/cir-1",
+      "label": "Canonical encoding",
+      "status": "shipped"
+    },
+    {
+      "area": "Readers",
+      "detail": "codespec-read-go lifts one Go package; reading twice gives the same bytes, equal to the checked-in document of every example.",
+      "href": "/docs/concepts/pipeline",
+      "label": "Go reader on go/types",
+      "status": "shipped"
+    },
+    {
+      "area": "Readers",
+      "detail": "A construct cir/1 cannot express (a goroutine) is kept verbatim as a foreign statement and listed as a refusal; the Rust writer then refuses the function holding it.",
+      "href": "/docs/concepts/pipeline#refusals",
+      "label": "Foreign statements and refusals",
+      "status": "shipped"
+    },
+    {
+      "area": "Readers",
+      "detail": "codespec-read-rust: Rust to cir/1 with its own name and type resolution for the cir/1 subset, so Rust to cir/1 to Go runs under the harness. Decided for 0.1.0, in progress; not in this tree yet.",
+      "href": "/docs/vision#milestones",
+      "label": "Rust reader on syn",
+      "status": "decided"
+    },
+    {
+      "area": "Passes",
+      "detail": "A comma-ok map lookup followed by an early-return guard becomes one lookup_else statement.",
+      "href": "/docs/concepts/pipeline#passes-and-facts",
+      "label": "lookup-guard",
+      "status": "shipped"
+    },
+    {
+      "area": "Passes",
+      "detail": "shared, messages, fallible, comma_ok, read_only, displays and unordered_iteration, computed once per module for every writer.",
+      "href": "/docs/concepts/pipeline#passes-and-facts",
+      "label": "Seven facts",
+      "status": "shipped"
+    },
+    {
+      "area": "Passes",
+      "detail": "codespec pass over its own output gives the same bytes.",
+      "href": "/docs/concepts/pipeline#passes-and-facts",
+      "label": "Passes reach their fixed point in one run",
+      "status": "shipped"
+    },
+    {
+      "area": "Writers",
+      "detail": "codespec-write-go writes gofmt-clean, vetted Go; the reader reads it back to the same cir/1.",
+      "href": "/docs/concepts/pipeline#writers",
+      "label": "Go writer on go/ast and go/printer",
+      "status": "shipped"
+    },
+    {
+      "area": "Writers",
+      "detail": "codespec-write-rust writes a Cargo crate from the module and its facts; the crate builds without warnings.",
+      "href": "/docs/guides/translate-go-to-rust",
+      "label": "Rust writer on syn and prettyplease",
+      "status": "shipped"
+    },
+    {
+      "area": "Writers",
+      "detail": "A module without facts is refused whole by the Rust writer, naming the pass to run.",
+      "href": "/docs/concepts/pipeline#writers",
+      "label": "Writers decide nothing the facts do not say",
+      "status": "shipped"
+    },
+    {
+      "area": "Harness",
+      "detail": "The original Go, the Go output and the Rust output of orders agree on 200 traces of 300 commands.",
+      "href": "/docs/concepts/harness",
+      "label": "Byte-for-byte comparison on seeded traces",
+      "status": "shipped"
+    },
+    {
+      "area": "Harness",
+      "detail": "A one-token change in the Rust output exits 1 naming the seed, the implementation and the first differing line.",
+      "href": "/docs/concepts/harness",
+      "label": "A planted change is caught",
+      "status": "shipped"
+    },
+    {
+      "area": "Harness",
+      "detail": "SplitMix64 and integer arithmetic only: one seed gives the same trace bytes everywhere.",
+      "href": "/docs/concepts/harness#traces",
+      "label": "Traces pinned across platforms",
+      "status": "shipped"
+    },
+    {
+      "area": "Examples",
+      "detail": "A Go order service read, passed, written as Go and as Rust, and compared under the harness.",
+      "href": "/docs/getting-started",
+      "label": "orders",
+      "status": "shipped"
+    },
+    {
+      "area": "Examples",
+      "detail": "A Go greeting service written as Go and as Rust with no refusal; the showcase page is generated from its files.",
+      "href": "/docs/examples/greeter",
+      "label": "greeter",
+      "status": "shipped"
+    },
+    {
+      "area": "Examples",
+      "detail": "Loops, switch, slices and arithmetic, held to the same criteria as orders.",
+      "href": "/docs/vision#milestones",
+      "label": "An algorithmic example",
+      "status": "planned"
+    },
+    {
+      "area": "Interfaces",
+      "detail": "validate, schema, read, pass, write and harness.",
+      "href": "/docs/reference/cli",
+      "label": "codespec command line",
+      "status": "shipped"
+    }
+  ],
+  "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",
+  "version": "0.1.0"
+}

@@ -1,11 +1,15 @@
 [package]
 name = "b10x-codespec-cli"
-description = "The codespec command: validate cir/1, print its schema, run reader and writer adapters"
+description = "The codespec command: validate cir/1, print its schema, apply the passes, run reader and writer adapters and the comparison harness"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
+
+[lib]
+name = "codespec_cli"
+path = "src/lib.rs"
 
 [[bin]]
 name = "codespec"

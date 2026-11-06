@@ -2,10 +2,13 @@
 format: aep.planning-md/3
 id: epic:rust-reader
 kind: epic
-status: draft
+status: active
 title: A Rust reader and Rust to Go
 summary: A reader for Rust into cir/1, unions for enums with data, and a Rust example translated to Go with the harness green.
-revision: 2
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 4}
 ---
 # Epic: A Rust reader and Rust to Go
 
@@ -21,9 +24,9 @@ expression, and syntax trees alone (tree-sitter, `syn`) do not carry them.
 
 | option | types | decided |
 |---|---|---|
-| A: rust-analyzer's library crates (`ra_ap_*`): name resolution and inferred types | yes | **Rust uses this**, or whatever typed Rust tooling is most efficient when the epic starts |
-| B: `syn` plus our own name resolution and inference | only what we write | no |
-| C: a shared tree-sitter layer | syntax only | for languages with no typed tooling (JavaScript, Java, …); see `epic:tree-sitter-go-reader` |
+| A: rust-analyzer's library crates (`ra_ap_*`): name resolution and inferred types | yes | no: a large, fast-moving dependency tree |
+| B: `syn` plus our own name resolution and inference | only what we write | **Rust uses this** (`story:rust-reader-on-syn`) |
+| C: a shared tree-sitter layer | syntax only | no: dropped, see `docs/design.md` § Not used |
 
 Operator, 2026-11-06: "it's clear that we can't use tree sitter for the actual code content, the
 body. … A for Rust, C for languages with no such tooling … use whatever is most efficient".
@@ -42,3 +45,5 @@ body. … A for Rust, C for languages with no such tooling … use whatever is m
 ## Done When
 
 The harness is byte-equal on a Rust example read by `codespec-read-rust` and written as Go.
+
+Revised the same day: "So to me, it sounds like it's not really feasible to do tree sitter. Also, I'm really not a fan of dependencies in general. So let's maybe forget about tree sitter entirely." Rust is read with `syn`, already a dependency of the Rust writer.

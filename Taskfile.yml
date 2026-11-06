@@ -13,7 +13,7 @@ tasks:
     cmds: [{task: check}]
 
   check:
-    desc: The gate. Format, lint, test, schema drift, adapters, examples, harness.
+    desc: The gate. Format, lint, test, schema drift, adapters, examples, harness, generated docs.
     cmds:
       - cargo fmt --all --check
       - cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -23,7 +23,25 @@ tasks:
       - task: examples-pass
       - task: examples-go
       - task: examples-rust
+      - task: examples-greeter
       - task: harness
+      - task: docs-check
+
+  docs-generate:
+    desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram and website/data/status.json.
+    cmds:
+      - cargo run --locked -q -p codespec-docs -- generate
+
+  docs-check:
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, or a page has a raw admonition title.
+    cmds:
+      - cargo run --locked -q -p codespec-docs -- generate --check
+
+  docs-site:
+    desc: Build the documentation site into website/build (Node; not part of the gate).
+    cmds:
+      - npm --prefix website ci --allow-git=root
+      - npm --prefix website run build
 
   build:
     desc: Build the codespec CLI and every adapter into target/.
@@ -58,6 +76,10 @@ tasks:
       - '{{.CODESPEC}} pass examples/orders/orders.read.cir.json --out examples/orders/orders.cir.json'
       - '{{.CODESPEC}} write --lang go examples/orders/orders.read.cir.json --out examples/orders/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/orders/orders.cir.json --out examples/orders/out/rust --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang go examples/greeter/source --out examples/greeter/greeter.read.cir.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} pass examples/greeter/greeter.read.cir.json --out examples/greeter/greeter.cir.json'
+      - '{{.CODESPEC}} write --lang go examples/greeter/greeter.read.cir.json --out examples/greeter/out/go --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} write --lang rust examples/greeter/greeter.cir.json --out examples/greeter/out/rust --adapters {{.ADAPTERS}}'
 
   examples-go:
     desc: Write the orders example as Go, before and after the passes, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.
@@ -122,3 +144,27 @@ tasks:
       - cmp target/examples-check/orders.1.json target/examples-check/orders.2.json
       - cmp target/examples-check/orders.1.json examples/orders/orders.read.cir.json
       - '{{.CODESPEC}} validate --canonical examples/orders/orders.read.cir.json'
+      - '{{.CODESPEC}} read --lang go examples/greeter/source --out target/examples-check/greeter.1.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang go examples/greeter/source --out target/examples-check/greeter.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/examples-check/greeter.1.json target/examples-check/greeter.2.json
+      - cmp target/examples-check/greeter.1.json examples/greeter/greeter.read.cir.json
+      - '{{.CODESPEC}} validate --canonical examples/greeter/greeter.read.cir.json'
+
+  examples-greeter:
+    desc: Pass the greeter example, write it as Go and as Rust, require every output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings.
+    deps: [build]
+    cmds:
+      - rm -rf target/examples-greeter
+      - mkdir -p target/examples-greeter
+      - '{{.CODESPEC}} pass examples/greeter/greeter.read.cir.json --out target/examples-greeter/greeter.1.json'
+      - '{{.CODESPEC}} pass target/examples-greeter/greeter.1.json --out target/examples-greeter/greeter.2.json'
+      - cmp target/examples-greeter/greeter.1.json examples/greeter/greeter.cir.json
+      - cmp target/examples-greeter/greeter.1.json target/examples-greeter/greeter.2.json
+      - '{{.CODESPEC}} write --lang go examples/greeter/greeter.read.cir.json --out target/examples-greeter/go --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-greeter/go examples/greeter/out/go
+      - test -z "$(gofmt -l target/examples-greeter/go)"
+      - go vet ./target/examples-greeter/go/greeter.go
+      - '{{.CODESPEC}} write --lang rust examples/greeter/greeter.cir.json --out target/examples-greeter/rust --adapters {{.ADAPTERS}}'
+      - diff -r target/examples-greeter/rust examples/greeter/out/rust
+      - 'test "$(cat target/examples-greeter/rust/refusals.json)" = "[]"'
+      - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-greeter/rust/Cargo.toml --target-dir target/examples-greeter/build
