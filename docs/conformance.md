@@ -90,12 +90,12 @@ $ codespec-write-zig --describe
   "lang": "zig",
   "version": "0.3.1",
   "cir": "cir/1",
-  "features": ["stmt.*", "expr.*", "type.int.*", "sem.int.wrap", "fact.fallible"],
+  "features": ["stmt.*", "expr.*", "type.int", "sem.int.wrap", "fact.fallible"],
   "not": ["type.chan", "stmt.send"]
 }
 ```
 
-`features` may use a trailing `*` per family; `not` subtracts. `codespec` validates the manifest
+`features` and `not` may end an entry in `.*` after an id prefix that names a family (`stmt.*`, `op.*`); a prefix no id has is an unknown family and refused. `not` subtracts. `codespec` validates the manifest
 strictly (unknown ids are refused, so a claim cannot name a feature that does not exist) and
 expands it against `kit.json`.
 

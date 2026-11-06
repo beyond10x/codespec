@@ -55,12 +55,12 @@ tasks:
       - task: adapters
 
   adapters:
-    desc: Build every adapter program into target/adapters.
+    desc: Build every adapter program and runner into target/adapters.
     cmds:
       - mkdir -p {{.ADAPTERS}}
       - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
-      - cargo build --locked -p codespec-write-rust -p codespec-read-rust
-      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust {{.ADAPTERS}}/
+      - cargo build --locked -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust
+      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust target/debug/codespec-run-rust {{.ADAPTERS}}/
       - rm -rf target/java/classes
       - mkdir -p target/java/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src -name "*.java" | sort)'
@@ -68,7 +68,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-java
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language; read the Java ledger twice through codespec read, byte-equal and canonical.
+    desc: Format, vet and test every adapter in its own language; read the Java ledger twice through codespec read, byte-equal and canonical; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger output.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -82,6 +82,11 @@ tasks:
       - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json
       - '{{.CODESPEC}} validate --canonical target/java-check/ledger.1.json'
       - '! grep -q ''"refusals"'' target/java-check/ledger.1.json'
+      - rm -rf target/manifests
+      - mkdir -p target/manifests
+      - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust codespec-read-java; do {{.ADAPTERS}}/$a --describe > target/manifests/$a.json || exit 1; done
+      - for a in codespec-read-go codespec-write-go codespec-read-rust codespec-write-rust; do cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/$a.json > /dev/null || exit 1; done
+      - cargo run --locked -q -p b10x-codespec-conformance -- manifest target/manifests/codespec-read-java.json --read examples/ledger/ledger.read.cir.json > /dev/null
 
   schema:
     desc: Regenerate schemas/cir-1.schema.json and schemas/cir-1.features.json from the model.

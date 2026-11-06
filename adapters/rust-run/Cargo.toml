@@ -1,0 +1,28 @@
+[package]
+name = "codespec-run-rust"
+description = "Builds a written Rust crate with cargo and makes a conformance case's calls against it, printing each result in the harness encoding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_run_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codespec-run-rust"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-conformance = { path = "../../crates/conformance" }
+clap.workspace = true
+quote.workspace = true
+serde.workspace = true
+syn.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+serde_json.workspace = true

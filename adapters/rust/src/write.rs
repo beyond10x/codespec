@@ -15,6 +15,7 @@
 //! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map | `unordered_iteration` |
 //! | `for … range` over a map not listed | refused | `unordered_iteration` |
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
+//! | `x := make(…)` or an empty literal, `x` never mutated or bound more than once in the function | `let x: T = T::new();`: nothing after it need fix the element types; a mutated one bound once stays `let mut x = T::new();` | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
 //! | `for … range` over a slice | the length read once, each element read when its iteration starts | — |
 //! | `sorted_keys(m)` | a new `Vec` of the keys: integers in the `BTreeMap`'s order, strings sorted by UTF-16 code unit (`encode_utf16`), as cir/1 defines; other keys refused; a `for … range` over it binds it once | — |
@@ -1349,6 +1350,18 @@ impl<'a> Writer<'a> {
                 locals.insert(self.names.local_str(name));
             }
         });
+        let mut bound: Vec<String> = f.params.iter().map(|p| p.name.clone()).collect();
+        walk_stmts(&f.body, &mut |s| match s {
+            Stmt::Let { names, .. } => bound.extend(names.iter().cloned()),
+            Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => bound.push(name.clone()),
+            Stmt::ForRange { key, val, .. } => bound.extend([key.clone(), val.clone()]),
+            _ => {}
+        });
+        let mut once = BTreeSet::new();
+        let rebound: BTreeSet<String> = bound
+            .into_iter()
+            .filter(|n| n != "_" && !once.insert(n.clone()))
+            .collect();
         let cx = Fx {
             w: self,
             f,
@@ -1359,6 +1372,7 @@ impl<'a> Writer<'a> {
             locals,
             posts: std::cell::RefCell::new(Vec::new()),
             moves: moves(f),
+            rebound,
             owned: owned_locals(self, f),
         };
         let body = cx.body(&f.body)?;
@@ -1900,6 +1914,9 @@ struct Fx<'a, 'f> {
     locals: BTreeSet<String>,
     /// Positions of assignments that move a local slice or map instead of copying it.
     moves: BTreeSet<String>,
+    /// Locals bound more than once in the function (a parameter or binding shadowed by another):
+    /// `mutated` is keyed by name, so it cannot say which of them is written to.
+    rebound: BTreeSet<String>,
     /// Locals bound once to `&T{…}` of a type `shared` does not list and used only as a field
     /// base, a receiver or the returned value: the value itself, as a constructor builds it.
     owned: BTreeSet<String>,
@@ -2139,7 +2156,18 @@ impl Fx<'_, '_> {
             .iter()
             .map(|e| self.val(e).map(|r| r.ts))
             .collect::<R<Vec<_>>>()?;
-        if let ([b], [v]) = (bs.as_slice(), vs.as_slice()) {
+        if let ([b], [v], [n], [e]) = (bs.as_slice(), vs.as_slice(), names, rhs) {
+            // An empty collection nothing ever inserts into: no later use fixes its element
+            // types, so the binding states them. A mutated one keeps the bare form, which the
+            // Rust reader reads back as `make` (`let mut x: T = …` it reads as `var x T`). A
+            // name bound more than once may be mutated in one binding and not the other, so it
+            // states its type whatever `mutated` says.
+            if let Expr::Make { t } = e
+                && (!self.mutated.contains(n) || self.rebound.contains(n))
+            {
+                let ty = self.w.ty(t)?;
+                return Ok(quote! { let #b: #ty = #v; });
+            }
             return Ok(quote! { let #b = #v; });
         }
         Ok(quote! { let (#(#bs),*) = (#(#vs),*); })

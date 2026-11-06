@@ -160,6 +160,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespec-run-rust"
+version = "0.2.0"
+dependencies = [
+ "b10x-codespec-conformance",
+ "b10x-codespec-model",
+ "clap",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
+ "toml",
+]
+
+[[package]]
 name = "codespec-write-rust"
 version = "0.2.0"
 dependencies = [

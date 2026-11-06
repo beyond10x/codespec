@@ -208,3 +208,30 @@ fn a_local_slice_read_by_no_later_statement_is_moved_not_refused() {
     let refusals = std::fs::read_to_string(out.join("refusals.json")).unwrap();
     assert_eq!(refusals.trim(), "[]");
 }
+
+/// `m := map[string]int{}` whose only use is `len(m)`: nothing after the binding gives Rust the
+/// map's key and value types, so the binding carries them (conformance case `expr-make`).
+#[test]
+fn a_local_bound_to_make_carries_its_type_so_the_crate_builds() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/cases/expr-make/case.cir.json");
+    let doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let (out, lib) = write_ok(&doc, "expr-make");
+    assert!(
+        squash(&lib).contains("letm:BTreeMap<String,i64>=BTreeMap::new();"),
+        "{lib}"
+    );
+    let o = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(out.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(scratch("expr-make-target"))
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "cargo build failed:\n{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+}
