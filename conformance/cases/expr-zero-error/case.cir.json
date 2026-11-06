@@ -1,0 +1,131 @@
+{
+  "format": "cir/1",
+  "name": "expr_zero_error",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: the Go reader reads Go's zero literal 0 as a literal. The Java reader writes zero for the value a thrown sentinel exception returns beside its error.",
+  "types": [],
+  "errors": [
+    {
+      "name": "ErrNegative",
+      "message": "negative",
+      "pos": "case.go:8"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Check",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrNegative",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:13"
+            }
+          ],
+          "pos": "case.go:12"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Check returns n, or the zero int beside the sentinel error when n is negative.",
+      "pos": "case.go:11"
+    }
+  ],
+  "layout": [
+    "error:ErrNegative",
+    "func:Check"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Check"
+    ]
+  }
+}

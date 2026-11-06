@@ -6,8 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,26 +41,6 @@ public final class ReaderTest {
 
     interface Case {
         void run() throws Exception;
-    }
-
-    /**
-     * The claimed features that are the subject of a kit case without a Java source, by case, each
-     * with why Java cannot express that case: the ledger alone holds these claims
-     * ({@code codespec-conformance manifest --read}). Any other claimed subject of a kit case has
-     * {@code java/Case.java} in it.
-     */
-    static final Map<String, String> LEDGER_ONLY = ledgerOnly();
-
-    private static Map<String, String> ledgerOnly() {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("decl-enum", "an enum is read over string, its constants' names; the case prints an enum over int");
-        m.put("expr-nil", "the case returns a nil slice; null where a List is expected is refused, since a null List is no empty one");
-        m.put("expr-intrinsic", "the case takes len of a string; String.length() counts UTF-16 units, len bytes, and is not read");
-        m.put("stmt-expr", "the case prints with fmt.Println; System.out is not in the reader's library table");
-        m.put("stmt-return", "the case returns two values; a Java method returns one");
-        m.put("expr-zero", "the case's error message carries the value (errorf); a Java error is a sentinel with a literal message, and a Java \"\" is read as a literal");
-        m.put("type-unit", "the case prints with fmt.Println; System.out is not in the reader's library table");
-        return Collections.unmodifiableMap(m);
     }
 
     public static void main(String[] args) throws Exception {
@@ -148,8 +126,8 @@ public final class ReaderTest {
         cases.add(t::adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash);
         names.add("every_kit_case_with_a_java_source_reads_without_refusal_and_prints_its_expected_txt_through_the_go_writer");
         cases.add(t::everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter);
-        names.add("every_claimed_subject_of_a_kit_case_has_a_java_source_or_is_ledger_only");
-        cases.add(t::everyClaimedSubjectOfAKitCaseHasAJavaSourceOrIsLedgerOnly);
+        names.add("every_claimed_feature_is_the_subject_of_a_kit_case_with_a_java_source");
+        cases.add(t::everyClaimedFeatureIsTheSubjectOfAKitCaseWithAJavaSource);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -766,32 +744,23 @@ public final class ReaderTest {
     }
 
     /**
-     * Every claimed feature that is the subject of some kit case is held by that case's Java
-     * source, or is in {@link #LEDGER_ONLY}, whose cases have none; a claim no case has as its
-     * subject is held by the ledger alone.
+     * Every claimed feature is the subject of at least one kit case holding {@code java/Case.java},
+     * so {@code codespec conform --role reader --lang java} has a corpus case for it: a claim
+     * without one fails there as {@code no_case}. A feature may be the subject of several cases;
+     * one with a Java source is enough.
      */
-    private void everyClaimedSubjectOfAKitCaseHasAJavaSourceOrIsLedgerOnly() throws Exception {
-        Set<String> withJava = new TreeSet<>(javaCases());
+    private void everyClaimedFeatureIsTheSubjectOfAKitCaseWithAJavaSource() throws Exception {
+        Set<String> covered = new TreeSet<>();
+        for (String kase : javaCases()) {
+            covered.add(subject(kase));
+        }
         List<String> missing = new ArrayList<>();
-        try (Stream<Path> dirs = Files.list(kit())) {
-            for (Path d : dirs.sorted().toList()) {
-                String kase = d.getFileName().toString();
-                if (!Files.isRegularFile(d.resolve("features.json"))) {
-                    continue;
-                }
-                boolean claimed = Arrays.asList(Main.CLAIM).contains(subject(kase));
-                boolean ledgerOnly = LEDGER_ONLY.containsKey(kase);
-                check(!(ledgerOnly && withJava.contains(kase)), kase + " is ledger-only and has a Java source");
-                check(!(ledgerOnly && !claimed), kase + " is ledger-only and its subject " + subject(kase) + " is not claimed");
-                if (claimed && !ledgerOnly && !withJava.contains(kase)) {
-                    missing.add(kase + " (" + subject(kase) + ")");
-                }
+        for (String id : Main.CLAIM) {
+            if (!covered.contains(id)) {
+                missing.add(id);
             }
         }
-        for (String k : LEDGER_ONLY.keySet()) {
-            check(Files.isDirectory(kit().resolve(k)), "ledger-only case " + k + " does not exist");
-        }
-        check(missing.isEmpty(), "claimed subjects whose kit case has no java/Case.java: " + missing);
+        check(missing.isEmpty(), "claimed features that are the subject of no kit case with a java/Case.java: " + missing);
     }
 
     // ---- helpers ----

@@ -1143,10 +1143,7 @@
         "assign.shr": "refused",
         "assign.sub": "verified",
         "assign.xor": "verified",
-        "decl.enum": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "decl.enum": "verified",
         "decl.newtype": "refused",
         "decl.struct": "verified",
         "decl.union": "refused",
@@ -1157,25 +1154,16 @@
         "expr.errvar": "verified",
         "expr.field": "verified",
         "expr.index": "verified",
-        "expr.intrinsic": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "expr.intrinsic": "verified",
         "expr.lit": "verified",
         "expr.make": "verified",
         "expr.method": "verified",
-        "expr.nil": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "expr.nil": "verified",
         "expr.struct": "verified",
         "expr.to_error": "refused",
         "expr.unop": "verified",
         "expr.var": "verified",
-        "expr.zero": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "expr.zero": "verified",
         "fact.comma_ok": "n/a",
         "fact.displays": "n/a",
         "fact.fallible": "n/a",
@@ -1218,10 +1206,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
-        "stmt.expr": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
         "stmt.foreign": "refused",
@@ -1229,10 +1214,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "refused",
-        "stmt.return": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "stmt.return": "verified",
         "stmt.send": "refused",
         "stmt.switch": "verified",
         "stmt.var": "refused",
@@ -1247,10 +1229,7 @@
         "type.slice": "verified",
         "type.string": "verified",
         "type.tuple": "refused",
-        "type.unit": {
-          "note": "Claimed, but no Java conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "type.unit": "verified",
         "unop.complement": "verified",
         "unop.deref": "refused",
         "unop.neg": "verified",
@@ -1370,53 +1349,26 @@
     {
       "name": "Groovy",
       "read": {
-        "assign.add": {
-          "note": "Not claimed, though its case assign-add passes.",
-          "state": "refused"
-        },
-        "assign.and": {
-          "note": "Not claimed, though its case assign-and passes.",
-          "state": "refused"
-        },
+        "assign.add": "verified",
+        "assign.and": "verified",
         "assign.and_not": "refused",
         "assign.div": {
           "note": "Case assign-div: its module does not use the feature.",
           "state": "refused"
         },
-        "assign.mul": {
-          "note": "Not claimed, though its case assign-mul passes.",
-          "state": "refused"
-        },
-        "assign.or": {
-          "note": "Not claimed, though its case assign-or passes.",
-          "state": "refused"
-        },
-        "assign.rem": {
-          "note": "Not claimed, though its case assign-rem passes.",
-          "state": "refused"
-        },
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
         "assign.shl": "refused",
         "assign.shr": "refused",
-        "assign.sub": {
-          "note": "Not claimed, though its case assign-sub passes.",
-          "state": "refused"
-        },
-        "assign.xor": {
-          "note": "Not claimed, though its case assign-xor passes.",
-          "state": "refused"
-        },
-        "decl.enum": {
-          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.enum": "verified",
         "decl.newtype": "refused",
         "decl.struct": "verified",
         "decl.union": "refused",
         "expr.binop": "verified",
-        "expr.call": {
-          "note": "Not claimed, though its case expr-call passes.",
-          "state": "refused"
-        },
+        "expr.call": "verified",
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": {
@@ -1425,22 +1377,22 @@
         },
         "expr.field": "verified",
         "expr.index": "verified",
-        "expr.intrinsic": {
-          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "expr.intrinsic": "verified",
         "expr.lit": "verified",
         "expr.make": "verified",
-        "expr.method": {
-          "note": "Not claimed, though its case expr-method passes.",
+        "expr.method": "verified",
+        "expr.nil": {
+          "note": "Case expr-nil-error: its module does not use the feature.",
           "state": "refused"
         },
-        "expr.nil": "refused",
         "expr.struct": "verified",
         "expr.to_error": "refused",
         "expr.unop": "verified",
         "expr.var": "verified",
-        "expr.zero": "refused",
+        "expr.zero": {
+          "note": "Case expr-zero-error: its module does not use the feature.",
+          "state": "refused"
+        },
         "fact.comma_ok": "n/a",
         "fact.displays": "n/a",
         "fact.fallible": "n/a",
@@ -1455,80 +1407,41 @@
         "intrinsic.sorted_keys": "verified",
         "intrinsic.sprintf": "verified",
         "op.add": "verified",
-        "op.and": {
-          "note": "Not claimed, though its case op-and passes.",
-          "state": "refused"
-        },
+        "op.and": "verified",
         "op.and_not": "refused",
         "op.div": {
           "note": "Case op-div: its module does not use the feature.",
           "state": "refused"
         },
         "op.eq": "verified",
-        "op.ge": {
-          "note": "Not claimed, though its case op-ge passes.",
-          "state": "refused"
-        },
+        "op.ge": "verified",
         "op.gt": "verified",
         "op.land": "verified",
-        "op.le": {
-          "note": "Not claimed, though its case op-le passes.",
-          "state": "refused"
-        },
-        "op.lor": {
-          "note": "Not claimed, though its case op-lor passes.",
-          "state": "refused"
-        },
+        "op.le": "verified",
+        "op.lor": "verified",
         "op.lt": "verified",
         "op.mul": "verified",
-        "op.ne": {
-          "note": "Not claimed, though its case op-ne passes.",
-          "state": "refused"
-        },
-        "op.or": {
-          "note": "Not claimed, though its case op-or passes.",
-          "state": "refused"
-        },
-        "op.rem": {
-          "note": "Not claimed, though its case op-rem passes.",
-          "state": "refused"
-        },
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
         "op.shl": "refused",
         "op.shr": "refused",
-        "op.sub": {
-          "note": "Not claimed, though its case op-sub passes.",
-          "state": "refused"
-        },
-        "op.xor": {
-          "note": "Not claimed, though its case op-xor passes.",
-          "state": "refused"
-        },
-        "sem.continue.post": {
-          "note": "Not claimed, though its case sem-continue-post passes.",
-          "state": "refused"
-        },
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": "verified",
         "sem.int.wrap": {
-          "note": "Case sem-int-wrap, step 3: foreign_statement: the module keeps source as a foreign statement; sem.int.wrap counts only when nothing of its case is foreign.",
-          "state": "failing"
+          "note": "Case sem-int-wrap: the reader keeps part of it as a foreign statement.",
+          "state": "refused"
         },
         "sem.map.order": "verified",
         "sem.multi_assign.order": "refused",
-        "sem.rem.sign": {
-          "note": "Not claimed, though its case sem-rem-sign passes.",
-          "state": "refused"
-        },
+        "sem.rem.sign": "verified",
         "sem.switch.break": "refused",
         "stmt.assign": "verified",
         "stmt.break": "verified",
-        "stmt.continue": {
-          "note": "Not claimed, though its case stmt-continue passes.",
-          "state": "refused"
-        },
-        "stmt.decr": {
-          "note": "Not claimed, though its case stmt-decr passes.",
-          "state": "refused"
-        },
-        "stmt.expr": "refused",
+        "stmt.continue": "verified",
+        "stmt.decr": "verified",
+        "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
         "stmt.foreign": "refused",
@@ -1536,10 +1449,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "refused",
-        "stmt.return": {
-          "note": "Claimed, but no Groovy conformance case covers it, so the report cannot verify it.",
-          "state": "claimed"
-        },
+        "stmt.return": "verified",
         "stmt.send": "refused",
         "stmt.switch": "verified",
         "stmt.var": "refused",
@@ -1557,24 +1467,12 @@
         "type.slice": "verified",
         "type.string": "verified",
         "type.tuple": "refused",
-        "type.unit": "refused",
-        "unop.complement": {
-          "note": "Not claimed, though its case unop-complement passes.",
-          "state": "refused"
-        },
+        "type.unit": "verified",
+        "unop.complement": "verified",
         "unop.deref": "refused",
-        "unop.neg": {
-          "note": "Not claimed, though its case unop-neg passes.",
-          "state": "refused"
-        },
-        "unop.not": {
-          "note": "Not claimed, though its case unop-not passes.",
-          "state": "refused"
-        },
-        "unop.plus": {
-          "note": "Not claimed, though its case unop-plus passes.",
-          "state": "refused"
-        },
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
         "unop.recv": "refused",
         "unop.ref": "verified"
       },

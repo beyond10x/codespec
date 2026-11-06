@@ -115,6 +115,15 @@ same Groovy 2.4.10 and makes a `calls.json` against its static methods. The conf
 compiles every one unchanged, and step 1 of `codespec conform` requires each to run to its case's
 `expected.txt` under Groovy before the reader reads it.
 
+`codespec-read-groovy --describe` claims every feature whose cases in that corpus all pass, and
+`task adapters-check` requires each claimed feature to be used by the reader's output for
+`testdata/typed` or for the corpus. `sem.int.wrap` is not claimed: its case `sem-int-wrap` divides,
+and an integer `/` is a BigDecimal division in Groovy, which the reader refuses (`groovy`); the
+case `sem-int-wrap-no-div`, which adds, subtracts, multiplies and negates across the int64 edges,
+passes. The features whose cases the reader refuses are not claimed either: `expr.errvar`,
+`expr.nil`, `expr.zero` and `type.error` (a thrown exception is not read as an error) and
+`assign.div` and `op.div` (the same division).
+
 ## Refusal categories
 
 Each refusal and each `foreign` reason begins with one of these categories, then `: ` and the detail.

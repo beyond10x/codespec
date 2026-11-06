@@ -1,0 +1,23 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.intrinsic",
+    "expr.binop",
+    "expr.lit",
+    "expr.make",
+    "expr.var",
+    "intrinsic.append",
+    "intrinsic.len",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.slice",
+    "type.string"
+  ]
+}
