@@ -116,6 +116,21 @@ public final class ReaderTest {
         cases.put("lending_with_the_grails_jars_the_transactional_service_reads", t::lendingTransactionalWithJars);
         cases.put("lending_with_the_grails_jars_no_identifier_of_the_transactional_transform_is_in_the_read",
             t::lendingNoTransformIdentifier);
+        // Adversary (story:grails-artefacts): Grails 2.5.6 code read wrong, or refused for a reason
+        // that is not why it cannot be read. Each case builds a small application under the work dir.
+        cases.put("adversary_grails_a_service_injected_grails_application_is_spring_and_its_other_methods_are_read",
+            t::adversaryGrailsApplicationInjected);
+        cases.put("adversary_grails_a_domain_string_property_written_or_compared_with_null_is_read_as_the_java_reader_reads_it",
+            t::adversaryNullablePropertyUses);
+        cases.put("adversary_grails_a_service_naming_a_src_java_class_is_not_refused_unresolved",
+            t::adversarySrcJavaResolves);
+        cases.put("adversary_grails_with_the_grails_jars_an_entity_class_in_src_groovy_does_not_fail_the_read",
+            t::adversaryEntityInSrcGroovy);
+        cases.put("adversary_grails_an_initialised_service_field_that_spring_replaces_is_not_read_as_the_services_own_instance",
+            t::adversaryInitialisedServiceField);
+        cases.put("adversary_grails_with_the_grails_jars_an_overload_the_transform_did_not_rewrite_is_not_refused_as_rewritten",
+            t::adversaryOverloadNotRewritten);
+        cases.put("adversary_grails_list_order_by_on_a_domain_class_is_foreign_gorm", t::adversaryListOrderBy);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -698,6 +713,170 @@ public final class ReaderTest {
                 }
             }
         }
+    }
+
+    // ---- adversary: story:grails-artefacts ----
+
+    /** A Grails 2.5.6 application named {@code library} under the work dir, emptied first. */
+    private Path adversaryApp(String name) throws IOException {
+        Path app = work.resolve("adversary-grails/" + name);
+        if (Files.exists(app)) {
+            try (Stream<Path> s = Files.walk(app)) {
+                for (Path p : s.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.delete(p);
+                }
+            }
+        }
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=library\n");
+        return app;
+    }
+
+    /**
+     * Grails autowires every service by name (ServicesGrailsPlugin: {@code bean.autowire = true},
+     * {@code innerBean.autowire = "byName"}), and {@code grailsApplication} is always a bean. {@code
+     * def grailsApplication} is the idiomatic Grails 2 way to reach the configuration; the reader
+     * refuses it as {@code dynamic} and with it the whole service, so {@code one} is lost.
+     */
+    private void adversaryGrailsApplicationInjected() throws Exception {
+        Path app = adversaryApp("grails-application");
+        String svc = "grails-app/services/lib/AppService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass AppService {\n\n    def grailsApplication\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        check(funcByKeyOrNull(doc, "AppService.one") != null, "AppService.one is not read; refusals: " + reasonsAt(doc, svc + ":5"));
+        check(reasonsAt(doc, svc + ":5").equals(List.of("spring: injected dependency")), "def grailsApplication at " + svc
+            + ":5 is " + reasonsAt(doc, svc + ":5"));
+    }
+
+    /**
+     * story:grails-artefacts wires an uninitialised domain property to the shared ptr(T) rule of
+     * story:nullable-reference-fields; the Java reader reads a write of such a field and its
+     * comparison with null with no refusal. The Grails layer refuses every read and write of it.
+     */
+    private void adversaryNullablePropertyUses() throws Exception {
+        Path app = adversaryApp("nullable-uses");
+        write(app.resolve("grails-app/domain/lib/Book.groovy"), "package lib\n\nclass Book {\n\n    String title\n"
+            + "    int pages = 0\n\n"
+            + "    void rename(String t) {\n        title = t\n    }\n\n"
+            + "    boolean untitled() {\n        return title == null\n    }\n\n"
+            + "    String titleOr(String fallback) {\n        if (title == null) {\n            return fallback\n        }\n"
+            + "        return title\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        // Coordinator decision (story:grails-artefacts, round 3): the shared ptr(T) rule holds, so
+        // titleOr is refused exactly at its `return title`, as the Java reader refuses it; the
+        // other two methods read with no refusal.
+        String book = "grails-app/domain/lib/Book.groovy";
+        int ret = Files.readAllLines(app.resolve(book)).stream().map(String::trim).toList().indexOf("return title") + 1;
+        Map<String, Object> titleOr = funcByKeyOrNull(doc, "Book.titleOr");
+        check(titleOr != null, "Book.titleOr is not read as a function");
+        List<String> at = new ArrayList<>();
+        for (Map<String, Object> f : foreigns(titleOr)) {
+            at.add(f.get("pos") + " " + f.get("reason"));
+        }
+        check(at.size() == 1 && at.get(0).startsWith(book + ":" + ret + " unsupported: property title, null until set, returned"),
+            "Book.titleOr is not refused exactly at its return title (" + book + ":" + ret + "): " + at);
+        check(reasonsAt(doc, book + ":" + ret).size() == 1, "refusals at " + book + ":" + ret + ": " + reasonsAt(doc, book + ":" + ret));
+        List<String> refused = new ArrayList<>();
+        for (String key : List.of("Book.rename", "Book.untitled")) {
+            Map<String, Object> fn = funcByKeyOrNull(doc, key);
+            if (fn == null) {
+                refused.add(key + ": not read");
+            } else if (!foreigns(fn).isEmpty()) {
+                refused.add(key + ": " + foreignReasons(fn));
+            }
+        }
+        check(refused.isEmpty(), "uses of the ptr(string) property title refused: " + refused);
+    }
+
+    /**
+     * story:grails-artefacts, Context: "All of grails-app/ and src/ (src/groovy, src/java) go to
+     * the compiler, so a service that references a class from ... src/ resolves." A src/java class
+     * named in a service signature refuses the whole service as unresolved.
+     */
+    private void adversarySrcJavaResolves() throws Exception {
+        Path app = adversaryApp("src-java");
+        write(app.resolve("src/java/lib/JavaMath.java"), "package lib;\n\npublic final class JavaMath {\n"
+            + "    private JavaMath() {}\n\n    public static int twice(int n) {\n        return n * 2;\n    }\n}\n");
+        String svc = "grails-app/services/lib/JavaUserService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass JavaUserService {\n\n"
+            + "    int viaSrcJava(JavaMath m, int n) {\n        return n\n    }\n\n"
+            + "    int pure(int n) {\n        return n + 2\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        for (Object r : list(doc.get("refusals"))) {
+            check(!((String) map(r).get("reason")).startsWith("unresolved"), map(r).get("pos") + " " + map(r).get("reason"));
+        }
+        check(funcByKeyOrNull(doc, "JavaUserService.pure") != null, "JavaUserService.pure is not read");
+    }
+
+    /**
+     * Grails 2 lets a class in src/groovy be a GORM entity through {@code @grails.persistence.Entity}.
+     * With the six jars README.md names, its local transformation needs spring-context, and the
+     * NoClassDefFoundError fails the whole read, though src/groovy is resolve-only and "yields no
+     * struct, function or refusal". The same application without the jars reads.
+     */
+    private void adversaryEntityInSrcGroovy() throws Exception {
+        List<Path> jars = grailsJars();
+        Path app = adversaryApp("entity-src-groovy");
+        write(app.resolve("src/groovy/lib/Record.groovy"), "package lib\n\nimport grails.persistence.Entity\n\n@Entity\n"
+            + "class Record {\n\n    int pages = 0\n}\n");
+        write(app.resolve("grails-app/domain/lib/Shelf.groovy"), "package lib\n\nclass Shelf {\n\n    int slots = 0\n\n"
+            + "    int more(int n) {\n        return slots + n\n    }\n}\n");
+        Map<String, Object> doc;
+        try {
+            doc = Main.read(app, jars);
+        } catch (Throwable e) {
+            throw new AssertionError("the read failed: " + e);
+        }
+        check(funcByKeyOrNull(doc, "Shelf.more") != null, "Shelf.more is not read");
+    }
+
+    /**
+     * Spring's autowire by name sets a service property whatever its initializer, so in Grails
+     * {@code countService} is the shared singleton, not {@code new CountService()}. Run with
+     * spring-beans 4.1.9 from the Grails 2.5.6 distribution: twice() gives 3 after one earlier bump
+     * of the bean, 2 on a fresh instance. The reader reads twice() with no refusal on its own instance.
+     */
+    private void adversaryInitialisedServiceField() throws Exception {
+        Path app = adversaryApp("initialised-service-field");
+        write(app.resolve("grails-app/services/lib/CountService.groovy"), "package lib\n\nclass CountService {\n\n"
+            + "    int calls = 0\n\n    int bump() {\n        calls = calls + 1\n        return calls\n    }\n}\n");
+        String svc = "grails-app/services/lib/UserService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass UserService {\n\n    CountService countService = new CountService()\n\n"
+            + "    int twice() {\n        countService.bump()\n        return countService.bump()\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        Map<String, Object> fn = funcByKeyOrNull(doc, "UserService.twice");
+        check(fn == null || !foreigns(fn).isEmpty() || !reasonsAt(doc, svc + ":5").isEmpty(),
+            "UserService.twice is read as calling bump on the service's own CountService, with no refusal");
+    }
+
+    /**
+     * A method-level {@code @Transactional} on {@code size(int)} rewrites only that method. Its
+     * overload {@code size(String)} is matched by name and parameter count, emptied and refused as
+     * rewritten, which it is not; its own reason, overloading, is lost.
+     */
+    private void adversaryOverloadNotRewritten() throws Exception {
+        List<Path> jars = grailsJars();
+        Path app = adversaryApp("overload-transform");
+        String svc = "grails-app/services/lib/OverloadTxService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport grails.transaction.Transactional\n\nclass OverloadTxService {\n\n"
+            + "    @Transactional\n    int size(int n) {\n        return n\n    }\n\n"
+            + "    int size(String s) {\n        return s.length()\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, jars);
+        int line = lineOf(app.resolve(svc), "int size(String s)");
+        for (String reason : reasonsAt(doc, svc + ":" + line)) {
+            check(!reason.startsWith("unsupported: grails transform"), svc + ":" + line + " " + reason);
+        }
+    }
+
+    /** {@code listOrderBy*} is a GORM dynamic method (Grails 2.5 reference, Domain Classes). */
+    private void adversaryListOrderBy() throws Exception {
+        Path app = adversaryApp("list-order-by");
+        write(app.resolve("grails-app/domain/lib/Book.groovy"), "package lib\n\nclass Book {\n\n    int pages = 0\n}\n");
+        String svc = "grails-app/services/lib/ShelfService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass ShelfService {\n\n"
+            + "    List<Book> ordered() {\n        return Book.listOrderByPages()\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        foreignWith(doc, svc + ":6", "gorm: listOrderByPages");
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----

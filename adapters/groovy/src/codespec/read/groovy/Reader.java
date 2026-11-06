@@ -160,7 +160,7 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * call on a domain class, an instance of one or {@code this} in one is {@code foreign}, {@code gorm:
  * <name>}; a domain metadata static is refused, {@code gorm: mapping metadata <name>}; a domain
  * property of a reference type without an initializer is {@code JvmTypes.unassignedField} of its
- * type, and a use of it is refused; a service field Spring injects is refused, {@code spring:
+ * type, used as the Java reader uses such a field; a field Spring autowires is refused, {@code spring:
  * injected dependency}, and a call through it is {@code foreign}; a method {@code
  * TransactionalTransform} rewrote is refused, {@code unsupported: grails transform}. Two classes
  * with one simple name are both refused.
@@ -351,7 +351,7 @@ public final class Reader {
      * compiled so that references to them resolve, and never read.
      */
     public static Map<String, Object> read(List<Path> files, List<Path> resolveOnly) throws Failure {
-        return new Reader().run(files, resolveOnly, List.of());
+        return new Reader().run(files, resolveOnly, List.of(), new Hidden(Reader.class.getClassLoader()));
     }
 
     /**
@@ -368,10 +368,12 @@ public final class Reader {
         for (Path f : app.services) {
             r.serviceFiles.add(app.relative(f));
         }
-        return r.run(app.read(), app.resolveOnly, classpath);
+        ClassLoader parent = JavaSources.compile(app.java, classpath, new Hidden(Reader.class.getClassLoader()));
+        return r.run(app.read(), app.resolveOnly, classpath, parent);
     }
 
-    private Map<String, Object> run(List<Path> files, List<Path> resolveOnly, List<Path> classpath) throws Failure {
+    private Map<String, Object> run(List<Path> files, List<Path> resolveOnly, List<Path> classpath, ClassLoader parent)
+        throws Failure {
         List<Path> remaining = new ArrayList<>();
         for (Path f : files) {
             remaining.add(f.toAbsolutePath().normalize());
@@ -383,7 +385,7 @@ public final class Reader {
         Set<String> disabled = globalTransforms(classpath);
         Map<String, String> packages = new HashMap<>();
         while (true) {
-            CompilationUnit cu = newUnit(classpath, disabled);
+            CompilationUnit cu = newUnit(classpath, disabled, parent);
             for (Path f : remaining) {
                 cu.addSource(f.toFile());
             }
@@ -438,7 +440,7 @@ public final class Reader {
         return out;
     }
 
-    private static CompilationUnit newUnit(List<Path> classpath, Set<String> disabledGlobals) {
+    private static CompilationUnit newUnit(List<Path> classpath, Set<String> disabledGlobals, ClassLoader parent) {
         CompilerConfiguration config = new CompilerConfiguration();
         config.setSourceEncoding("UTF-8");
         List<String> cp = new ArrayList<>();
@@ -447,7 +449,7 @@ public final class Reader {
         }
         config.setClasspathList(cp);
         config.setDisabledGlobalASTTransformations(new HashSet<>(disabledGlobals));
-        GroovyClassLoader loader = new GroovyClassLoader(new Hidden(Reader.class.getClassLoader()), config);
+        GroovyClassLoader loader = new GroovyClassLoader(parent, config);
         return new CompilationUnit(config, null, loader);
     }
 
@@ -674,13 +676,33 @@ public final class Reader {
             }
             String name = moved.getName().substring(MOVED_BODY.length());
             for (MethodNode m : cn.getMethods(name)) {
-                if (userNode(m) && m.getParameters().length + 1 == moved.getParameters().length) {
+                if (userNode(m) && movedFrom(moved, m)) {
                     transformed.add(m);
                     m.setCode(new BlockStatement());
                 }
             }
             moved.setCode(new BlockStatement());
         }
+    }
+
+    /**
+     * Whether {@code moved} holds the body of {@code m}: its parameters are {@code m}'s, type for
+     * type, then the {@code TransactionStatus} the transform appends. An overload the transform did
+     * not rewrite has other parameter types and is read, or refused, on its own.
+     */
+    private static boolean movedFrom(MethodNode moved, MethodNode m) {
+        Parameter[] mp = m.getParameters();
+        Parameter[] tp = moved.getParameters();
+        if (tp.length != mp.length + 1
+            || !tp[mp.length].getType().getName().equals("org.springframework.transaction.TransactionStatus")) {
+            return false;
+        }
+        for (int i = 0; i < mp.length; i++) {
+            if (!tp[i].getType().getName().equals(mp[i].getType().getName())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Whether a class carries {@code @grails.transaction.Transactional} or one of its methods was rewritten by it. */
@@ -884,7 +906,7 @@ public final class Reader {
                 refuseDecl(u, f, cn.getNameWithoutPackage() + "." + f.getName(), GORM + ": mapping metadata " + f.getName());
                 consume(u, f);
                 metadata.add(f);
-            } else if (service && injectedField(f)) {
+            } else if ((service || domain) && injectedField(f)) {
                 refuseDecl(u, f, cn.getNameWithoutPackage() + "." + f.getName(), SPRING + ": injected dependency");
                 consume(u, f);
                 injected.add(f);
@@ -893,20 +915,32 @@ public final class Reader {
     }
 
     /**
-     * Whether Spring injects a service's field by its name: an instance field without an
-     * initializer that is {@code def xService}, or whose type is a service (a read service, or a
-     * class outside {@code java.*} named {@code *Service}, as a plugin's are).
+     * Whether Spring autowires a field of a service or domain class by its name. Grails 2 autowires
+     * both by name, whatever the field's initializer, so an initialised field is replaced too: a
+     * field named for a bean every application has ({@code grailsApplication}, {@code dataSource},
+     * {@code sessionFactory}) or for a service ({@code xService}, {@code def} or of a reference
+     * type), a {@code javax.sql.DataSource}, or a field whose type is a service (a read service, or
+     * a class outside {@code java.*} named {@code *Service}, as a plugin's are).
      */
     private boolean injectedField(FieldNode f) {
-        if (f.isStatic() || f.hasInitialExpression()) {
+        if (f.isStatic()) {
             return false;
         }
-        if (f.isDynamicTyped()) {
-            return f.getName().endsWith("Service") && f.getName().length() > "Service".length();
-        }
+        String n = f.getName();
         ClassNode t = f.getType();
-        return isService(t) || t.getNameWithoutPackage().endsWith("Service") && !t.getName().startsWith("java.");
+        boolean reference = f.isDynamicTyped() || !ClassHelper.isPrimitiveType(t);
+        if (reference && (AUTOWIRED_BEANS.contains(n) || n.endsWith("Service") && n.length() > "Service".length())) {
+            return true;
+        }
+        if (f.isDynamicTyped()) {
+            return false;
+        }
+        return t.getName().equals("javax.sql.DataSource") || isService(t)
+            || t.getNameWithoutPackage().endsWith("Service") && !t.getName().startsWith("java.");
     }
+
+    /** Beans every Grails 2 application defines, which Spring sets on a field of that name. */
+    private static final Set<String> AUTOWIRED_BEANS = Set.of("grailsApplication", "dataSource", "sessionFactory");
 
     /** Why a class is not read as a struct or an enum, or null. */
     private String classShape(ClassNode cn) {
@@ -1174,7 +1208,7 @@ public final class Reader {
             for (MethodNode m : userMethods(cn)) {
                 boolean ctor = m instanceof ConstructorNode;
                 String name = ctor ? "New" + cname : m.getName();
-                String what = ctor ? cname + "(…)" : cname + "." + name;
+                String what = ctor ? cname + "(…)" : cname + "." + name + "(…)";
                 String why = annotations(u, m);
                 for (Parameter p : m.getParameters()) {
                     String pw = annotations(u, p);
@@ -1442,7 +1476,7 @@ public final class Reader {
         String name = fn.cls.getNameWithoutPackage();
         List<Object> inits = new ArrayList<>();
         for (FieldNode f : userFields(fn.cls)) {
-            if (f.isStatic() || !f.hasInitialExpression()) {
+            if (f.isStatic() || !f.hasInitialExpression() || injected.contains(f)) {
                 continue;
             }
             Unit u = ctor.unit;
@@ -1647,12 +1681,19 @@ public final class Reader {
             BinaryExpression b = (BinaryExpression) e;
             int op = b.getOperation().getType();
             if (op == Types.EQUAL) {
+                FieldNode target = unassignedRead(b.getLeftExpression(), ctx);
+                if (target != null) {
+                    return assignUnassigned(target, b.getLeftExpression(), b.getRightExpression(), ctx, pos);
+                }
+                refuseUnassigned(b.getRightExpression(), "assigned", ESCAPES, ctx);
                 Map<String, Object> lhs = place(b.getLeftExpression(), ctx);
                 Map<String, Object> rhs = coerce(value(b.getRightExpression(), type(lhs), ctx), type(lhs));
                 return List.of(assign("", lhs, rhs, pos));
             }
             String cop = compoundOp(op);
             if (cop != null) {
+                refuseUnassigned(b.getLeftExpression(), "the target of " + cop, "Groovy unboxes or prints the null" + STOPS, ctx);
+                refuseUnassigned(b.getRightExpression(), "an operand of " + cop, "Groovy unboxes or prints the null" + STOPS, ctx);
                 Map<String, Object> lhs = place(b.getLeftExpression(), ctx);
                 Map<String, Object> rhs = expr(b.getRightExpression(), ctx);
                 Map<String, Object> lt = type(lhs);
@@ -1673,6 +1714,7 @@ public final class Reader {
             Expression x = e instanceof PostfixExpression ? ((PostfixExpression) e).getExpression() : ((PrefixExpression) e).getExpression();
             int op = e instanceof PostfixExpression ? ((PostfixExpression) e).getOperation().getType()
                 : ((PrefixExpression) e).getOperation().getType();
+            refuseUnassigned(x, "the target of ++ or --", "Groovy unboxes the null" + STOPS, ctx);
             Map<String, Object> p = place(x, ctx);
             if (!isInt(type(p))) {
                 throw unsupported("++ or -- on a value of type " + describe(type(p)));
@@ -1758,6 +1800,9 @@ public final class Reader {
                 throw refuse(DYNAMIC, "def local " + name + " holds a value of type " + describe(it)
                     + " first and a value of type " + describe(t) + " later: its type changes as it is assigned");
             }
+        }
+        if (init != null) {
+            refuseUnassigned(init, "the initializer of local " + name, ESCAPES, ctx);
         }
         if (init == null || init instanceof EmptyExpression) {
             if (!isInt(t) && !t.equals(tBool())) {
@@ -2176,6 +2221,11 @@ public final class Reader {
             return null;
         }
         Expression recvExpr = mce.getObjectExpression();
+        refuseUnassigned(recvExpr, "written by " + name, "a collection write through the property's pointer is outside the"
+            + " reader's subset", ctx);
+        for (Expression a : as) {
+            refuseUnassigned(a, "an argument of " + name, "Groovy stores the null" + STOPS, ctx);
+        }
         if (!owned(recvExpr, ctx)) {
             throw unsupported(name + " on a collection another name may share: a Groovy collection is one object every"
                 + " name sees changed, a cir/1 slice or map write is not; only a field of this or a local built here and"
@@ -2225,6 +2275,7 @@ public final class Reader {
             && args(((MethodCallExpression) coll).getArguments()).isEmpty() && !((MethodCallExpression) coll).isSafe()
             && !((MethodCallExpression) coll).isImplicitThis()) {
             Expression mp = ((MethodCallExpression) coll).getObjectExpression();
+            refuseUnassigned(mp, "iterated", "Groovy iterates a null zero times" + STOPS, ctx);
             source = named(mp);
             String cls = staticType(mp, ctx).getName();
             Map<String, Object> m = expr(mp, ctx);
@@ -2252,6 +2303,7 @@ public final class Reader {
                     + " HashMap (unordered) or TreeMap (sorted)");
             }
         } else {
+            refuseUnassigned(coll, "iterated", "Groovy iterates a null zero times" + STOPS, ctx);
             over = expr(coll, ctx);
             source = named(coll);
             String cls = staticType(coll, ctx).getName();
@@ -2339,6 +2391,7 @@ public final class Reader {
     }
 
     private List<Object> switchStmt(SwitchStatement sw, Ctx ctx, String pos) {
+        refuseUnassigned(sw.getExpression(), "switched on", "Groovy matches a null against no case" + STOPS, ctx);
         Map<String, Object> tag = expr(sw.getExpression(), ctx);
         Map<String, Object> tt = type(tag);
         if (!isInt(tt) && !tt.equals(tString()) && enumName(tt) == null) {
@@ -2427,6 +2480,7 @@ public final class Reader {
             }
             return List.of(ret(successResults(ctx, null), pos));
         }
+        refuseUnassigned(rs.getExpression(), "returned", ESCAPES, ctx);
         Map<String, Object> x = coerce(value(rs.getExpression(), fn.result, ctx), fn.result);
         return List.of(ret(successResults(ctx, x), pos));
     }
@@ -2508,6 +2562,7 @@ public final class Reader {
             Expression inner = e instanceof UnaryMinusExpression ? ((UnaryMinusExpression) e).getExpression()
                 : e instanceof UnaryPlusExpression ? ((UnaryPlusExpression) e).getExpression()
                 : ((BitwiseNegationExpression) e).getExpression();
+            refuseUnassigned(inner, "an operand of a unary operator", "Groovy unboxes the null" + STOPS, ctx);
             Map<String, Object> x = expr(inner, ctx);
             if (!isInt(type(x))) {
                 throw unsupported("unary operator on a value of type " + describe(type(x)));
@@ -2587,6 +2642,7 @@ public final class Reader {
                 fmt.append(String.valueOf(strings.get(i).getValue()).replace("%", "%%"));
             }
             if (i < values.size()) {
+                refuseUnassigned(values.get(i), "printed in a GString", "Groovy prints null" + STOPS, ctx);
                 Map<String, Object> x = expr(values.get(i), ctx);
                 Map<String, Object> t = type(x);
                 if (t.equals(tString())) {
@@ -2680,17 +2736,109 @@ public final class Reader {
         if (!structs.containsKey(owner.getName())) {
             throw unsupported("field of " + owner.getName() + ", which is not read");
         }
-        if (nullable.contains(f)) {
-            throw refuse(TYPE, "property " + name + " of " + owner.getNameWithoutPackage() + " holds null until set: a read or"
-                + " write of it, which Groovy goes on with where the pointer is nil, is outside the reader's subset");
-        }
         Map<String, Object> x = recv != null ? recv : thisRef(ctx);
         Map<String, Object> fm = Json.obj();
         fm.put("k", "field");
         fm.put("x", x);
         fm.put("name", name);
-        fm.put("t", typeOf(f.getType()));
-        return fm;
+        fm.put("t", fieldType(f));
+        return derefed(f) ? unop("*", fm, typeOf(f.getType())) : fm;
+    }
+
+    /**
+     * Whether a field holds null until set and its value is read through a pointer: a String, box,
+     * list, map or enum property; not a class of the package, whose value is a pointer already.
+     */
+    private boolean derefed(FieldNode f) {
+        return nullable.contains(f) && !fieldType(f).equals(typeOf(f.getType()));
+    }
+
+    /**
+     * The domain property holding null until set that {@code e} reads through a pointer ({@link
+     * #derefed}), as {@code p} or {@code x.p}, or null when {@code e} reads anything else.
+     */
+    private FieldNode unassignedRead(Expression e, Ctx ctx) {
+        FieldNode f = null;
+        if (e instanceof VariableExpression && !((VariableExpression) e).isThisExpression()) {
+            Variable a = ((VariableExpression) e).getAccessedVariable();
+            f = a instanceof PropertyNode ? ((PropertyNode) a).getField() : a instanceof FieldNode ? (FieldNode) a : null;
+        } else if (e instanceof PropertyExpression && !(e instanceof AttributeExpression) && !((PropertyExpression) e).isSafe()
+            && !((PropertyExpression) e).isSpreadSafe() && ((PropertyExpression) e).getPropertyAsString() != null) {
+            PropertyExpression pe = (PropertyExpression) e;
+            Expression obj = pe.getObjectExpression();
+            ClassNode c = isThis(obj) ? (ctx.fn == null ? null : ctx.fn.cls) : obj instanceof ClassExpression ? null : inferred(obj);
+            f = c == null ? null : c.redirect().getField(pe.getPropertyAsString());
+        }
+        return f != null && !f.isStatic() && derefed(f) ? f : null;
+    }
+
+    /** The pointer itself of a property {@link #unassignedRead} names: its read without the dereference. */
+    private Map<String, Object> unassignedPointer(Expression e, Ctx ctx) {
+        return sub(expr(e, ctx), "x");
+    }
+
+    /** How the written program differs where Groovy takes a null: it dereferences the nil pointer and stops. */
+    private static final String STOPS = ", where the written program stops at the nil pointer";
+
+    /** Why a read that hands the null on (returned, passed, bound, assigned) is refused. */
+    private static final String ESCAPES = "Groovy hands the null on" + STOPS;
+
+    /**
+     * Refuse {@code e} when it reads a property that holds null until set: {@code use} is what the
+     * expression does with it, {@code why} why that is not read. As the Java reader refuses it.
+     */
+    private void refuseUnassigned(Expression e, String use, String why, Ctx ctx) {
+        FieldNode f = unassignedRead(e, ctx);
+        if (f != null) {
+            throw unsupported("property " + f.getName() + ", null until set, " + use + ": " + why);
+        }
+    }
+
+    /**
+     * {@code p = v} for a property that holds null until set, whose cir/1 field is a pointer: {@code
+     * null} is {@code nil}; another such property of the same type gives its pointer; any other
+     * value is bound to a fresh local and the field points at it. Through a receiver that is not a
+     * name it is refused: Groovy evaluates the receiver before the value, which the value bound
+     * first would not.
+     */
+    private List<Object> assignUnassigned(FieldNode target, Expression lhsExpr, Expression rhsExpr, Ctx ctx, String pos) {
+        checkFieldWrite(lhsExpr, ctx);
+        Map<String, Object> lhs = unassignedPointer(lhsExpr, ctx);
+        Map<String, Object> pt = fieldType(target);
+        if (rhsExpr instanceof ConstantExpression && ((ConstantExpression) rhsExpr).getValue() == null) {
+            return List.of(assign("", lhs, nil(pt), pos));
+        }
+        FieldNode source = unassignedRead(rhsExpr, ctx);
+        if (source != null && fieldType(source).equals(pt)) {
+            return List.of(assign("", lhs, unassignedPointer(rhsExpr, ctx), pos));
+        }
+        refuseUnassigned(rhsExpr, "assigned to property " + target.getName() + " of another type", ESCAPES, ctx);
+        if (lhsExpr instanceof PropertyExpression) {
+            Expression recv = ((PropertyExpression) lhsExpr).getObjectExpression();
+            if (!(recv instanceof VariableExpression)) {
+                throw unsupported("an assignment to property " + target.getName() + ", null until set, through a receiver"
+                    + " that is not a name: Groovy evaluates the receiver before the value, which the value bound first would not");
+            }
+        }
+        Map<String, Object> elem = typeOf(target.getType());
+        Map<String, Object> value = coerce(value(rhsExpr, elem, ctx), elem);
+        String name = fresh(ctx, target.getName());
+        Map<String, Object> let = Json.obj();
+        let.put("k", "let");
+        let.put("names", new ArrayList<Object>(List.of(name)));
+        let.put("rhs", new ArrayList<Object>(List.of(value)));
+        let.put("pos", pos);
+        return List.of(let, assign("", lhs, unop("&", varRef(name, elem), pt), pos));
+    }
+
+    /** A local name no other name of the function uses: {@code base}, else {@code base1}, {@code base2}, … */
+    private static String fresh(Ctx ctx, String base) {
+        String n = base;
+        for (int i = 1; ctx.used.contains(n); i++) {
+            n = base + i;
+        }
+        ctx.used.add(n);
+        return n;
     }
 
     /** An instance field's cir/1 type: a domain property holding null until set is a pointer to its type. */
@@ -2809,10 +2957,11 @@ public final class Reader {
     private static final Set<String> GORM_METHODS = Set.of(
         "save", "delete", "validate", "refresh", "merge", "attach", "discard", "get", "read", "load", "list", "count",
         "exists", "find", "findAll", "findWhere", "findAllWhere", "where", "withCriteria", "createCriteria", "executeQuery",
-        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion");
+        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion",
+        "first", "ident", "getAll");
 
     private static final List<String> GORM_PREFIXES = List.of(
-        "findBy", "findAllBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
+        "findBy", "findAllBy", "listOrderBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
 
     /** The implicit properties of a domain instance. */
     private static final Set<String> GORM_PROPERTIES = Set.of("id", "version", "errors");
@@ -2915,6 +3064,9 @@ public final class Reader {
         if (owner.redirect().isPrimaryClassNode()) {
             throw unsupported("call of " + owner.getNameWithoutPackage() + "." + name + ", which is not read");
         }
+        for (Expression a : as) {
+            refuseUnassigned(a, "an argument of " + owner.getNameWithoutPackage() + "." + name, ESCAPES, ctx);
+        }
         if (on.equals("java.lang.String") && name.equals("format") && target.isStatic()) {
             return format(as, ctx);
         }
@@ -2957,6 +3109,7 @@ public final class Reader {
         }
         if (rt.equals(tString()) && on.equals("java.lang.String")) {
             if (name.equals("equals") && n == 1) {
+                refuseUnassigned(recvExpr, "the receiver of equals", "Groovy's null answers equals with false" + STOPS, ctx);
                 Expression arg = as.get(0);
                 ClassNode at = inferred(arg);
                 if (arg instanceof GStringExpression || at != null && at.getName().equals("groovy.lang.GString")) {
@@ -3010,6 +3163,7 @@ public final class Reader {
         }
         List<Object> out = new ArrayList<>();
         for (int i = 0; i < as.size(); i++) {
+            refuseUnassigned(as.get(i), "an argument of a call", ESCAPES, ctx);
             out.add(coerce(value(as.get(i), params.get(i), ctx), params.get(i)));
         }
         return out;
@@ -3113,6 +3267,25 @@ public final class Reader {
 
     private Map<String, Object> binary(BinaryExpression b, Ctx ctx) {
         int op = b.getOperation().getType();
+        // A property that holds null until set, against null: whether its pointer is nil. Any other
+        // operator unboxes, prints or compares the object Groovy holds there, which may be null.
+        Expression l = b.getLeftExpression();
+        Expression r = b.getRightExpression();
+        boolean leftNull = l instanceof ConstantExpression && ((ConstantExpression) l).getValue() == null;
+        boolean rightNull = r instanceof ConstantExpression && ((ConstantExpression) r).getValue() == null;
+        if ((op == Types.COMPARE_EQUAL || op == Types.COMPARE_NOT_EQUAL) && (leftNull || rightNull)) {
+            Expression fe = leftNull ? r : l;
+            FieldNode f = unassignedRead(fe, ctx);
+            if (f != null) {
+                return binop(op == Types.COMPARE_EQUAL ? "==" : "!=", unassignedPointer(fe, ctx), nil(fieldType(f)), tBool());
+            }
+        }
+        if (op != Types.EQUAL && op != Types.PLUS) {
+            for (Expression o : List.of(l, r)) {
+                refuseUnassigned(o, "an operand of " + b.getOperation().getText(),
+                    "Groovy unboxes the null or compares it as no object" + STOPS, ctx);
+            }
+        }
         switch (op) {
             case Types.EQUAL:
                 throw unsupported("an assignment inside an expression");
@@ -3186,6 +3359,9 @@ public final class Reader {
     }
 
     private Map<String, Object> arithmetic(BinaryExpression b, String op, Ctx ctx) {
+        for (Expression o : List.of(b.getLeftExpression(), b.getRightExpression())) {
+            refuseUnassigned(o, "an operand of " + op, "Groovy unboxes the null" + STOPS, ctx);
+        }
         Map<String, Object> x = expr(b.getLeftExpression(), ctx);
         Map<String, Object> y = expr(b.getRightExpression(), ctx);
         if (op.equals("/") && isInt(type(x)) && isInt(type(y))) {
@@ -3252,6 +3428,7 @@ public final class Reader {
         boolean allStrings = true;
         StringBuilder fmt = new StringBuilder();
         for (Expression part : parts) {
+            refuseUnassigned(part, "printed by string concatenation", "Groovy prints null" + STOPS, ctx);
             Map<String, Object> x = expr(part, ctx);
             Map<String, Object> t = type(x);
             if (t.equals(tString())) {

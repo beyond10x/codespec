@@ -36,7 +36,15 @@ Grails application, into one module named by its `app.name`. A directory without
   `controllers`) and under `src`. They are compiled so that references to them resolve, and yield no
   struct, function or refusal; a call of one of them is `unsupported`, its target not being read. A
   resolve-only file whose own imports do not resolve is left out of the compilation. Plugins are not
-  read. `.java` files under `src/java` are not compiled.
+  read.
+- `src/java` is resolve-only too: its `.java` files are compiled first, with javac in memory, against
+  the Groovy jar and `CODESPEC_GROOVY_CLASSPATH`, so a Groovy file that names one of their classes
+  resolves. A Java file javac reports an error in is left out. The Java files do not see the Groovy
+  files.
+- A resolve-only file that declares a GORM entity with `@grails.persistence.Entity` is left out of
+  the compilation: its local transformation needs the whole Grails runtime and would otherwise fail
+  the read of every file, and the class is never read. A read file that names it is refused
+  `unresolved`.
 - Positions name a file by its path in the application: `grails-app/services/lending/LoanService.groovy:15`.
 - Two artefacts with the same simple name in different packages are both refused,
   `unsupported: duplicate simple name`: one module has one namespace.
@@ -69,7 +77,8 @@ With them, `@Transactional`'s local transformation, `TransactionalTransform`, ru
 `CANONICALIZATION` (disabling global transformations does not turn it off) and rewrites each method
 it covers into a call through a transaction template. The reader never reads a rewritten method:
 each is refused, `unsupported: grails transform`, and no identifier the rewrite introduces reaches
-the module.
+the module. A method counts as rewritten when the transform moved its body: an overload it did not
+cover, with other parameter types, is read or refused on its own.
 
 What the Grails layer reads and refuses:
 
@@ -77,16 +86,26 @@ What the Grails layer reads and refuses:
   `save`, `delete`, `validate`, `refresh`, `merge`, `attach`, `discard`, `get`, `read`, `load`,
   `list`, `count`, `exists`, `find`, `findAll`, `findWhere`, `findAllWhere`, `where`,
   `withCriteria`, `createCriteria`, `executeQuery`, `executeUpdate`, `withTransaction`,
-  `withNewSession`, `errors`, `hasErrors`, the implicit `id` and `version`, and every `findBy*`,
-  `findAllBy*`, `countBy*`, `findOrCreateBy*`, `findOrSaveBy*`, `addTo*` and `removeFrom*`. The
-  classification wins over `dynamic` and `closure`.
+  `withNewSession`, `errors`, `hasErrors`, `first`, `ident`, `getAll`, the implicit `id` and
+  `version`, and every `findBy*`, `findAllBy*`, `listOrderBy*`, `countBy*`, `findOrCreateBy*`,
+  `findOrSaveBy*`, `addTo*` and `removeFrom*`. The classification wins over `dynamic` and `closure`.
 - Domain metadata (`static constraints`, `mapping`, `hasMany`, `belongsTo`, `hasOne`, `transients`,
   `embedded`, `namedQueries`) is no field: one refusal at its line, `gorm: mapping metadata <name>`.
 - A domain property of a reference type without an initializer holds `null` until set: it is a
-  `ptr(T)` field, zero value `nil` (`JvmTypes.unassignedField`, shared with the Java reader). A read
-  or write of such a property in a function body is refused, `type`.
-- A service field Spring injects (`def xService`, or a field of a service type without an
-  initializer) is no field: refused at its line, `spring: injected dependency`; a call through it is
+  `ptr(T)` field, zero value `nil` (`JvmTypes.unassignedField`, shared with the Java reader), and is
+  used as the Java reader uses such a field. Compared with `null` it is its pointer compared with
+  `nil`; assigned `null`, `nil`; assigned another such property of its type, that pointer; assigned
+  any other value, a pointer to a fresh local holding it, refused through a receiver that is not a
+  name. Every other read dereferences the pointer. A read Groovy would hand on (a return, an
+  argument, a local's initializer, an assignment), print (concatenation, a GString), unbox or
+  compare (an operator, `+=`, `++`), iterate or switch on (Groovy takes a null as empty or as no
+  case), or call `equals` on (Groovy's null answers false), and a collection write to it, are
+  refused at the use, `unsupported`: the written program stops at the nil pointer where Groovy goes
+  on. A read as any other receiver assumes an object is there.
+- A field of a service or domain class that Spring autowires by name is no field: refused at its
+  line, `spring: injected dependency`, whatever its initializer, since Spring replaces it. That is a
+  field named `grailsApplication`, `dataSource`, `sessionFactory` or `xService`, a
+  `javax.sql.DataSource`, or a field of a service type. A call through it is
   `spring: call through an injected dependency`.
 
 ## Refusal categories
@@ -131,8 +150,7 @@ int half = count / 2      // groovy-semantics: integer / integer is a BigDecimal
 ### `type`
 
 A type outside the reader's table, or a reference field with no initializer, which holds `null`
-until it is assigned. In a Grails domain class such a property is read as a pointer; a read or
-write of it in a function body is refused here.
+until it is assigned. In a Grails domain class such a property is read as a pointer instead.
 
 ```groovy
 def rate = 1.5            // type: type java.math.BigDecimal is outside the reader's types

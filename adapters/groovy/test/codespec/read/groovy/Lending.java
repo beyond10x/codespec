@@ -285,8 +285,12 @@ final class Lending {
         return false;
     }
 
-    /** The method a declaration refusal names, {@code Class.method}, when the refused line declares it. */
+    /** The method a declaration refusal names, {@code Class.method(…)}, when the refused line declares it. */
     private static String declaredMethod(String what, List<String> lines, int line) {
+        if (!what.endsWith("(…)")) {
+            return null;
+        }
+        what = what.substring(0, what.length() - "(…)".length());
         int dot = what.lastIndexOf('.');
         if (dot < 0 || line < 1 || line > lines.size()) {
             return null;
