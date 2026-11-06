@@ -1,0 +1,14 @@
+[package]
+name = "inventory-driver-original"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "inventory-driver-original"
+path = "../rust/src/main.rs"
+
+[dependencies]
+inventory = { path = "../../source" }
+
+[workspace]

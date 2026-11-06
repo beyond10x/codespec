@@ -28,8 +28,8 @@ original and the output produce the same bytes on the same generated inputs.
 ## Status
 
 **0.1.0**: the `cir/1` model and schema, the `codespec` CLI, a Go reader, the passes and facts, a Go
-writer, a Rust writer and the comparison harness; a Rust reader (Rust → `cir/1` → Go) is part of
-0.1.0 and in progress. A second, algorithmic example is planned. Every capability and the test that
+writer, a Rust writer, a Rust reader (Rust → `cir/1` → Go, on `examples/inventory`) and the comparison
+harness. A second, algorithmic example is planned. Every capability and the test that
 holds it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
 [CHANGELOG.md](CHANGELOG.md).
 

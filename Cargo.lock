@@ -137,6 +137,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespec-read-rust"
+version = "0.1.0"
+dependencies = [
+ "b10x-codespec-model",
+ "b10x-codespec-passes",
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "syn",
+ "toml",
+]
+
+[[package]]
 name = "codespec-write-rust"
 version = "0.1.0"
 dependencies = [

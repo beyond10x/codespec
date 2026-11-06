@@ -17,6 +17,9 @@
 //! default `target/harness`). Unknown fields, an empty `run`, an empty list and duplicate names are
 //! refused.
 //!
+//! `trace = "inventory"` at the top selects the inventory trace generator; without it, or with
+//! `trace = "orders"`, the orders one. Another name is refused.
+//!
 //! # Trace
 //!
 //! A trace is UTF-8 text, one command per line, each line ending in `\n`, fields separated by one
@@ -54,6 +57,24 @@
 //! | `get` | `get found <order>` or `get missing` |
 //! | `pending` | `pending <n>` followed by ` \| <order>` per order, sorted by id, since Go map order is random |
 //! | each event | `event OrderPlaced id=<id> customer=<c> total=<t>`, `event OrderPaid id=<id>`, `event OrderShipped id=<id> tracking=<t>`, `event OrderCancelled id=<id>` |
+//!
+//! # Inventory trace and output
+//!
+//! [`inventory_trace`] draws on the same generator. About a quarter of prices and quantities are
+//! zero, negative or an edge value, and about a sixth of SKUs are `x9`, which no `add` uses, so
+//! every error path is reached. Each command prints one line:
+//!
+//! | line | call | output |
+//! |---|---|---|
+//! | `new` | a fresh inventory | `new` |
+//! | `add <sku> <name> <category> <price>` | `AddItem`; `category` `tool`, `part` or `supply` | `add ok` or `add err <error>` |
+//! | `receive <sku> <qty>` | `Receive` | `receive ok <n>` or `receive err <error>` |
+//! | `reserve <sku> <qty>` | `Reserve` | `reserve ok <n>` or `reserve err <error>` |
+//! | `find <sku>` | `Find`, then the item's `Label` | `find found <sku> <label>` or `find missing` |
+//! | `stock <sku>` | `StockOf` | `stock <n>` |
+//! | `value <category>` | `ValueOf` | `value <category> <n>` |
+//! | `low <threshold>` | `LowStock` | `low <n>` followed by ` \| <sku>` per SKU, sorted, since map order is not fixed |
+//! | `reserved` | `Reserved` | `reserved <n>` |
 //!
 //! # Comparison
 //!
@@ -150,11 +171,94 @@ fn id(r: &mut SplitMix64, placed: u64) -> String {
     }
 }
 
+const SKUS: &[&str] = &["a1", "b2", "c3", "d4", "Ω5"];
+const UNKNOWN_SKU: &str = "x9";
+const NAMES: &[&str] = &["hammer", "bolt", "tape", "zoë", "Ω-ring"];
+const CATEGORIES: &[&str] = &["tool", "part", "supply"];
+const EDGE_PRICES: &[i64] = &[0, -1, 1, -1000, 5000];
+const EDGE_QTYS: &[i64] = &[0, -1, 1, -50];
+
+/// The `inventory` trace of `commands` commands for `seed` (manifest `trace = "inventory"`).
+pub fn inventory_trace(seed: u64, commands: usize) -> String {
+    let mut r = SplitMix64(seed);
+    let mut out = String::new();
+    for i in 0..commands {
+        let roll = r.below(100);
+        if i == 0 || roll < 2 {
+            out.push_str("new\n");
+            continue;
+        }
+        let line = match roll {
+            2..=21 => {
+                let sku = r.pick(SKUS);
+                let name = r.pick(NAMES);
+                let category = r.pick(CATEGORIES);
+                let price = if r.below(4) == 0 {
+                    EDGE_PRICES[r.below(EDGE_PRICES.len() as u64) as usize]
+                } else {
+                    1 + r.below(1000) as i64
+                };
+                format!("add {sku} {name} {category} {price}")
+            }
+            22..=41 => format!("receive {} {}", sku(&mut r), qty(&mut r)),
+            42..=61 => format!("reserve {} {}", sku(&mut r), qty(&mut r)),
+            62..=71 => format!("find {}", sku(&mut r)),
+            72..=79 => format!("stock {}", sku(&mut r)),
+            80..=87 => format!("value {}", r.pick(CATEGORIES)),
+            88..=93 => format!("low {}", r.below(60)),
+            _ => "reserved".to_string(),
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+fn sku(r: &mut SplitMix64) -> &'static str {
+    if r.below(6) == 0 {
+        UNKNOWN_SKU
+    } else {
+        r.pick(SKUS)
+    }
+}
+
+fn qty(r: &mut SplitMix64) -> i64 {
+    if r.below(4) == 0 {
+        EDGE_QTYS[r.below(EDGE_QTYS.len() as u64) as usize]
+    } else {
+        1 + r.below(50) as i64
+    }
+}
+
 /// `harness.toml`: the implementations of one example, the first the reference.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+    /// Which trace generator drives the drivers; `orders` when absent.
+    #[serde(default)]
+    pub trace: TraceKind,
     pub implementation: Vec<Implementation>,
+}
+
+/// A trace generator, named by `trace` in `harness.toml`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TraceKind {
+    /// [`trace`]: the `orders` service.
+    #[default]
+    Orders,
+    /// [`inventory_trace`]: the `inventory` crate.
+    Inventory,
+}
+
+impl TraceKind {
+    /// The trace of `commands` commands for `seed`.
+    pub fn generate(self, seed: u64, commands: usize) -> String {
+        match self {
+            TraceKind::Orders => trace(seed, commands),
+            TraceKind::Inventory => inventory_trace(seed, commands),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -285,10 +389,13 @@ pub fn run_driver(built: &Built, trace: &str) -> Result<Vec<u8>, String> {
 
 /// Build every implementation and compare them on seeds `0..opts.seeds`.
 pub fn check(opts: &Options) -> Result<Summary, Failure> {
+    let kind = Manifest::load(&absolute(&opts.example).map_err(Failure::Setup)?)
+        .map_err(Failure::Setup)?
+        .trace;
     let built = build(opts)?;
     let mut lines = 0u64;
     for seed in 0..opts.seeds {
-        let t = trace(seed, opts.commands);
+        let t = kind.generate(seed, opts.commands);
         let mut reference: Option<Vec<u8>> = None;
         for b in &built {
             let out = run_driver(b, &t).map_err(|message| Failure::Driver {

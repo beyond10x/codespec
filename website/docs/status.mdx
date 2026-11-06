@@ -9,8 +9,7 @@ source_url: https://github.com/beyond10x/codespec/blob/main/website/data/status.
 
 import status from '@site/data/status.json';
 
-This page describes release **0.1.0**: milestones M0, M1 and M4 of the [Vision](/docs/vision#milestones);
-M4, the Rust reader, is decided and in progress.
+This page describes release **0.1.0**: milestones M0, M1 and M4 of the [Vision](/docs/vision#milestones).
 The [changelog](https://github.com/beyond10x/codespec/blob/main/CHANGELOG.md) records every
 user-visible change. **Shipped** means code in the release held by a named check: `codespec-docs`
 generates this table from its capability list and fails when a test or gate task it names is gone.
@@ -29,10 +28,13 @@ that is not built.
 
 ## Known limitations
 
-- **One reader in this tree.** Only Go can be read; the Rust reader, and with it Rust → `cir/1` →
-  Go, is decided for 0.1.0 and in progress.
-- **The harness speaks `orders`.** Its trace generator and drivers are the `orders` example's;
-  `greeter` is checked by equality with its checked-in outputs and its builds.
+- **The Rust reader reads a subset.** One file, `src/lib.rs`; no generics, traits other than
+  `Display`, closures, `while` or `loop`, `?`, or integer literals nothing types. Each is kept as a
+  `foreign` statement with a refusal inside a body; an item outside it (a generic function, a trait
+  impl) is listed as a refusal and left out. Go's `int` and `int64` both come back from Rust as `int64`.
+- **The harness speaks two programs.** Its trace generators are the `orders` and `inventory`
+  examples' (`trace` in `harness.toml`); `greeter` is checked by equality with its checked-in
+  outputs and its builds.
 - **The Rust writer refuses more than the Go writer.** It refuses a function holding a `foreign`
   statement, a loop over a map the facts do not list, an `error` result that is not `fallible`, and
   a write into a map entry's value (`m[k]++`); each lands in `refusals.json`.

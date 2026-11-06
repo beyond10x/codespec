@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: epic:go-and-rust-writers-with-harness
 kind: epic
-status: active
+status: implemented
 title: Passes, a Go writer, a Rust writer and the comparison harness
 summary: Passes in Rust, a Go writer on go/ast and go/printer, a Rust writer, and a harness that runs the original, the Go output and the Rust output of examples/orders on 200 seeded traces of 300 commands and requires byte-equal output.
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-11-06T00:09:09Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-11-06T02:14:12Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Epic: Passes, a Go writer, a Rust writer and the comparison harness
 

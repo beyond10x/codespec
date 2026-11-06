@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: epic:rust-reader
 kind: epic
-status: active
+status: implemented
 title: A Rust reader and Rust to Go
 summary: A reader for Rust into cir/1, unions for enums with data, and a Rust example translated to Go with the harness green.
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T02:14:12Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Epic: A Rust reader and Rust to Go
 

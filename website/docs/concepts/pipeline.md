@@ -32,7 +32,7 @@ handles its target best:
 | `codespec-read-go` | Go | `go/parser`, `go/types` | shipped |
 | `codespec-write-go` | Go | `go/ast`, `go/printer`, `go/format` | shipped |
 | `codespec-write-rust` | Rust | `syn`, `prettyplease` | shipped |
-| `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | decided for 0.1.0, in progress |
+| `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
 
 How to add one: [Add a reader or writer adapter](/docs/guides/add-an-adapter).
 

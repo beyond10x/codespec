@@ -2,15 +2,16 @@
 format: aep.planning-md/3
 id: story:rust-reader-on-syn
 kind: story
-status: active
+status: implemented
 title: Rust reader on syn
 summary: codespec-read-rust lifts the cir/1 subset of Rust with syn and its own name and type resolution; round trip on orders' Rust output and a Rust example byte-equal in the harness
 relations:
 - decomposes: epic:rust-reader
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-06T01:44:49Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-06T02:14:12Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: Rust reader on syn
 

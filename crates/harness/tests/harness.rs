@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
-use codespec_harness::{Manifest, Options, SplitMix64, build, run_driver, trace};
+use codespec_harness::{
+    Manifest, Options, SplitMix64, TraceKind, build, inventory_trace, run_driver, trace,
+};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -145,3 +147,65 @@ fn the_original_run_twice_on_one_seed_gives_the_same_bytes() {
         "seed 5 lists at most {most_pending} pending orders"
     );
 }
+
+#[test]
+fn the_manifest_names_its_trace_and_refuses_an_unknown_one() {
+    let ok = "[[implementation]]\nname = \"a\"\nbuild = [\"true\"]\nrun = [\"cat\"]\n";
+    assert_eq!(Manifest::parse(ok).unwrap().trace, TraceKind::Orders);
+    let inv = format!("trace = \"inventory\"\n{ok}");
+    assert_eq!(Manifest::parse(&inv).unwrap().trace, TraceKind::Inventory);
+    assert!(Manifest::parse(&format!("trace = \"bogus\"\n{ok}")).is_err());
+}
+
+#[test]
+fn inventory_traces_are_reproducible_and_reach_every_command_and_error_path() {
+    let mut seen = std::collections::BTreeSet::new();
+    let (mut bad_price, mut bad_qty, mut unknown_sku) = (0, 0, 0);
+    for seed in 0..200 {
+        let t = inventory_trace(seed, 300);
+        assert_eq!(t, inventory_trace(seed, 300));
+        assert_eq!(t.lines().count(), 300);
+        assert!(t.starts_with("new\n"), "seed {seed}");
+        for l in t.lines() {
+            let f: Vec<&str> = l.split(' ').collect();
+            assert!(f.iter().all(|x| !x.is_empty()), "empty field in {l:?}");
+            seen.insert(f[0].to_string());
+            match f[0] {
+                "add" if f[4].parse::<i64>().unwrap() <= 0 => bad_price += 1,
+                "receive" | "reserve" if f[2].parse::<i64>().unwrap() <= 0 => bad_qty += 1,
+                _ => {}
+            }
+            if matches!(f[0], "receive" | "reserve" | "find" | "stock") && f[1] == "x9" {
+                unknown_sku += 1;
+            }
+        }
+    }
+    let want: Vec<String> = [
+        "add", "find", "low", "new", "receive", "reserve", "reserved", "stock", "value",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), want);
+    assert!(bad_price > 100, "{bad_price} non-positive prices");
+    assert!(bad_qty > 100, "{bad_qty} non-positive quantities");
+    assert!(unknown_sku > 100, "{unknown_sku} unknown skus");
+}
+
+#[test]
+fn an_inventory_trace_is_pinned_across_platforms() {
+    assert_eq!(inventory_trace(0, 12), PINNED_INVENTORY_SEED_0);
+}
+
+const PINNED_INVENTORY_SEED_0: &str = "new
+new
+stock c3
+low 53
+receive a1 27
+value tool
+add c3 hammer supply 5000
+stock d4
+reserve Ω5 0
+stock b2
+find x9
+low 7
+";

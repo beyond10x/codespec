@@ -3,7 +3,7 @@ title: The harness
 sidebar_position: 3
 description: How codespec harness runs every implementation of an example on seeded traces and fails on the first differing byte.
 lede: A translation is accepted when the original and every output print the same bytes on the same generated inputs, and the run names the first line where they do not.
-source: crates/harness/src/lib.rs, crates/harness/tests/harness.rs, crates/cli/tests/harness.rs, examples/orders/harness.toml, examples/orders/drivers
+source: crates/harness/src/lib.rs, crates/harness/tests/harness.rs, crates/cli/tests/harness.rs, examples/orders/harness.toml, examples/orders/drivers, examples/inventory/harness.toml, examples/inventory/drivers
 ---
 
 # The harness
@@ -60,8 +60,12 @@ bytes). About a fifth of totals are zero, negative, one or an `int64` extreme, a
 ids are ones the service never issued, so every error path is reached. There is no `audit`
 command: the Rust writer refused `Audit`, so the Rust output has no such method.
 
-The trace format is the `orders` service's. Another program needs its own drivers and its own
-trace format before the harness can compare it.
+`trace = "inventory"` at the top of a `harness.toml` selects the second generator, for the Rust
+`inventory` crate (`add`, `receive`, `reserve`, `find`, `stock`, `value`, `low`, `reserved`); its
+commands and output lines are in the crate doc of `crates/harness`. `examples/inventory` runs the
+original Rust crate, the Go output and the Rust output, the two Rust ones from one driver source
+built by two manifests (`drivers/rust`, `drivers/rust-original`). Another program needs its own
+drivers and its own trace format before the harness can compare it.
 
 ## Output
 

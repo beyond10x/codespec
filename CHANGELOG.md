@@ -4,7 +4,7 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## 0.1.0
 
-The first release: the model, the Go reader, the passes, the Go and Rust writers and the harness.
+The first release: the model, the Go and Rust readers, the passes, the Go and Rust writers and the harness.
 
 ### Added
 
@@ -15,6 +15,13 @@ The first release: the model, the Go reader, the passes, the Go and Rust writers
   which run a language's adapter and validate what crosses to and from it.
 - `codespec-read-go`: a Go reader on `go/types`. A construct `cir/1` cannot express is kept as a
   `foreign` statement and listed as a refusal. Its `reader.version` is 0.1.0.
+- `codespec-read-rust`: a Rust reader on `syn` with its own name and type resolution for the
+  `cir/1` subset (`codespec read --lang rust <crate dir>`). It maps Rust's idioms back to the
+  Go-shaped forms the passes read: `Result<T, Error>` to `(T, error)`, `Option<T>` to `(T, bool)`,
+  `&mut self` to pointer receivers, `enum Error` to sentinel errors, `Display` to `String()` and
+  `Error()`. A construct it cannot type is kept as a `foreign` statement with a refusal at its line.
+  The Rust writer's `orders` output reads back to the passed document but for three named
+  exceptions.
 - `codespec pass`: the `lookup-guard` rewrite (a comma-ok map lookup and its early-return guard
   become one `lookup_else`) and seven facts in `Module.facts` (`shared`, `messages`, `fallible`,
   `comma_ok`, `read_only`, `displays`, `unordered_iteration`). Running it on its own output gives
@@ -33,5 +40,8 @@ The first release: the model, the Go reader, the passes, the Go and Rust writers
   harness drivers. The original, the Go output and the Rust output agree on 200 traces of 300
   commands.
 - `examples/greeter`: a Go greeting service written as Go and as Rust with no refusal.
+- `examples/inventory`: a hand-written Rust crate read, passed and written as Go and as Rust; the
+  original, the Go output and the Rust output agree on 200 traces of 300 commands.
+- `harness.toml` `trace`: `orders` (the default) or `inventory` selects the trace generator.
 - The documentation site, <https://beyond10x.github.io/codespec/>, with its generated CLI, crate,
   `cir/1` and status pages and the showcase, from `codespec-docs`.

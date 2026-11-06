@@ -84,10 +84,22 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         area: "Readers",
         label: "Rust reader on syn",
-        detail: "codespec-read-rust: Rust to cir/1 with its own name and type resolution for the cir/1 subset, so Rust to cir/1 to Go runs under the harness. Decided for 0.1.0, in progress; not in this tree yet.",
-        status: "decided",
-        evidence: None,
-        href: "/docs/vision#milestones",
+        detail: "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for three named exceptions.",
+        status: "shipped",
+        evidence: Some(
+            "adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions",
+        ),
+        href: "/docs/concepts/pipeline",
+    },
+    Capability {
+        area: "Readers",
+        label: "Rust outside the subset is kept, not guessed",
+        detail: "A trait object, a generic function, a closure, unsafe or an integer literal nothing types is kept as a foreign Rust statement with a refusal at its line.",
+        status: "shipped",
+        evidence: Some(
+            "adapters/rust-read/tests/reader.rs::a_closure_is_kept_as_foreign_with_a_refusal_at_its_line",
+        ),
+        href: "/docs/concepts/pipeline#refusals",
     },
     Capability {
         area: "Passes",
@@ -186,6 +198,14 @@ pub const CAPABILITIES: &[Capability] = &[
         status: "shipped",
         evidence: Some("Taskfile.yml::examples-greeter"),
         href: "/docs/examples/greeter",
+    },
+    Capability {
+        area: "Examples",
+        label: "inventory",
+        detail: "A hand-written Rust crate read, passed and written as Go and as Rust; the original, the Go output and the Rust output agree on 200 traces of 300 commands.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::examples-inventory"),
+        href: "/docs/concepts/harness",
     },
     Capability {
         area: "Examples",

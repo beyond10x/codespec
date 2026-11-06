@@ -18,9 +18,9 @@ source ──reader──▶ cir/1 ──passes──▶ cir/1 ──writer─�
 original ───────────────── harness: byte-equal? ─────────┘
 ```
 
-This tree reads Go, writes Go and Rust, and runs the harness on the `orders` example (a Rust
-reader, also part of 0.1.0, is in progress): the
-original Go, the Go output and the Rust output agree on 200 traces of 300 commands each.
+This tree reads Go and Rust, writes Go and Rust, and runs the harness on two examples: for
+`orders` the original Go, the Go output and the Rust output, for `inventory` the original Rust,
+the Go output and the Rust output, agree on 200 traces of 300 commands each.
 [Status](/docs/status) lists every capability and the test that holds it; [Vision](/docs/vision)
 says where it is going.
 
@@ -45,11 +45,11 @@ says where it is going.
 - **Not a language model and not a guesser.** Nothing in the pipeline is a model. A construct a
   reader cannot express is kept verbatim as a `foreign` statement with a reason and listed as a
   refusal; a writer that cannot write a function leaves it out and says so.
-- **Not a general-purpose transpiler today.** This tree reads Go only; a [Rust reader](/docs/vision#milestones)
-  on `syn` is decided for 0.1.0 and in progress. Concurrency (goroutines), network I/O and
+- **Not a general-purpose transpiler today.** This tree reads Go, and the subset of Rust that `cir/1`
+  covers with the [Rust reader](/docs/concepts/pipeline) on `syn`. Concurrency (goroutines), network I/O and
   anything else `cir/1` has no node for are refused, not approximated.
-- **Not a test generator for any program.** The harness's trace format is the `orders` service's.
-  A new program needs its own drivers and trace format to be compared.
+- **Not a test generator for any program.** The harness has two trace formats, `orders` and
+  `inventory`. A new program needs its own drivers and trace format to be compared.
 - **Not a specification of a system's outside.** Entities, commands, events and lifecycles belong
   to ESS; `cir/1` describes what code does inside a function.
 

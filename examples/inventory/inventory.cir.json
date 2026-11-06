@@ -1,0 +1,2248 @@
+{
+  "format": "cir/1",
+  "name": "inventory",
+  "reader": {
+    "language": "rust",
+    "name": "codespec-read-rust",
+    "version": "0.1.0"
+  },
+  "doc": "Inventory keeps a catalogue of items, their stock, and the stock reserved for orders.",
+  "types": [
+    {
+      "k": "enum",
+      "name": "Category",
+      "exported": true,
+      "under": {
+        "k": "int",
+        "width": "platform",
+        "signed": true
+      },
+      "variants": [
+        {
+          "name": "Tool",
+          "value": {
+            "k": "lit",
+            "value": "0",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "Part",
+          "value": {
+            "k": "lit",
+            "value": "1",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "Supply",
+          "value": {
+            "k": "lit",
+            "value": "2",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          }
+        }
+      ],
+      "doc": "What kind of thing an item is.",
+      "pos": "lib.rs:6"
+    },
+    {
+      "k": "struct",
+      "name": "Item",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Sku",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Name",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Category",
+          "t": {
+            "k": "named",
+            "name": "Category"
+          }
+        },
+        {
+          "name": "Price",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "One catalogue entry.",
+      "pos": "lib.rs:24"
+    },
+    {
+      "k": "struct",
+      "name": "Shortage",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Sku",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Have",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "Want",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Too little stock to reserve what was asked for.",
+      "pos": "lib.rs:40"
+    },
+    {
+      "k": "struct",
+      "name": "Inventory",
+      "exported": true,
+      "fields": [
+        {
+          "name": "items",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "named",
+              "name": "Item"
+            }
+          }
+        },
+        {
+          "name": "stock",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "reserved",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "The catalogue and the stock of each item in it.",
+      "pos": "lib.rs:76"
+    }
+  ],
+  "errors": [
+    {
+      "name": "ErrUnknownItem",
+      "message": "unknown item",
+      "pos": "lib.rs:57"
+    },
+    {
+      "name": "ErrInvalidPrice",
+      "message": "price must be positive",
+      "pos": "lib.rs:58"
+    },
+    {
+      "name": "ErrInvalidQuantity",
+      "message": "quantity must be positive",
+      "pos": "lib.rs:59"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "String",
+      "exported": true,
+      "recv": {
+        "name": "c",
+        "t": {
+          "k": "named",
+          "name": "Category"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "var",
+            "name": "c",
+            "t": {
+              "k": "named",
+              "name": "Category"
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "Tool",
+                  "t": {
+                    "k": "named",
+                    "name": "Category"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"tool\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:17"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "Part",
+                  "t": {
+                    "k": "named",
+                    "name": "Category"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"part\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:18"
+                }
+              ]
+            },
+            {
+              "values": [],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"supply\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:19"
+                }
+              ]
+            }
+          ],
+          "pos": "lib.rs:16"
+        }
+      ],
+      "pos": "lib.rs:14"
+    },
+    {
+      "name": "Label",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "named",
+          "name": "Item"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"%s (%s, %d each)\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  },
+                  "name": "Name",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  },
+                  "name": "Category",
+                  "t": {
+                    "k": "named",
+                    "name": "Category"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  },
+                  "name": "Price",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "lib.rs:36"
+        }
+      ],
+      "doc": "The item as one line of text.",
+      "pos": "lib.rs:35"
+    },
+    {
+      "name": "Error",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "named",
+          "name": "Shortage"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"%s has %d of %d wanted\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "named",
+                      "name": "Shortage"
+                    }
+                  },
+                  "name": "Sku",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "named",
+                      "name": "Shortage"
+                    }
+                  },
+                  "name": "Have",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "named",
+                      "name": "Shortage"
+                    }
+                  },
+                  "name": "Want",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "lib.rs:50"
+        }
+      ],
+      "pos": "lib.rs:48"
+    },
+    {
+      "name": "New",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "named",
+          "name": "Inventory"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "struct",
+              "name": "Inventory",
+              "fields": [
+                {
+                  "name": "items",
+                  "value": {
+                    "k": "make",
+                    "t": {
+                      "k": "map",
+                      "key": {
+                        "k": "string"
+                      },
+                      "elem": {
+                        "k": "named",
+                        "name": "Item"
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "stock",
+                  "value": {
+                    "k": "make",
+                    "t": {
+                      "k": "map",
+                      "key": {
+                        "k": "string"
+                      },
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Inventory"
+              }
+            }
+          ],
+          "pos": "lib.rs:85"
+        }
+      ],
+      "doc": "An empty inventory.",
+      "pos": "lib.rs:84"
+    },
+    {
+      "name": "AddItem",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "sku",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "name",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "category",
+          "t": {
+            "k": "named",
+            "name": "Category"
+          }
+        },
+        {
+          "name": "price",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "price",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "ErrInvalidPrice",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:102"
+            }
+          ],
+          "pos": "lib.rs:101"
+        },
+        {
+          "k": "let",
+          "names": [
+            "have"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "stock",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:104"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "stock",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "have",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:105"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "items",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "named",
+                    "name": "Item"
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Item",
+              "fields": [
+                {
+                  "name": "Sku",
+                  "value": {
+                    "k": "var",
+                    "name": "sku",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                },
+                {
+                  "name": "Name",
+                  "value": {
+                    "k": "var",
+                    "name": "name",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                },
+                {
+                  "name": "Category",
+                  "value": {
+                    "k": "var",
+                    "name": "category",
+                    "t": {
+                      "k": "named",
+                      "name": "Category"
+                    }
+                  }
+                },
+                {
+                  "name": "Price",
+                  "value": {
+                    "k": "var",
+                    "name": "price",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          ],
+          "pos": "lib.rs:106"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:115"
+        }
+      ],
+      "doc": "Add an item, or replace the one with its SKU; its stock is kept.",
+      "pos": "lib.rs:94"
+    },
+    {
+      "name": "Receive",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "sku",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "qty",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "qty",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrInvalidQuantity",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:121"
+            }
+          ],
+          "pos": "lib.rs:120"
+        },
+        {
+          "k": "lookup_else",
+          "name": "have",
+          "map": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Inventory"
+                }
+              }
+            },
+            "name": "stock",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "index": {
+            "k": "var",
+            "name": "sku",
+            "t": {
+              "k": "string"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrUnknownItem",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:124"
+            }
+          ],
+          "pos": "lib.rs:123"
+        },
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "var",
+                "name": "have",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "qty",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:126"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "stock",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:127"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:128"
+        }
+      ],
+      "doc": "Add received stock and return the new level.",
+      "pos": "lib.rs:119"
+    },
+    {
+      "name": "Reserve",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "sku",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "qty",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "qty",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrInvalidQuantity",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:134"
+            }
+          ],
+          "pos": "lib.rs:133"
+        },
+        {
+          "k": "lookup_else",
+          "name": "have",
+          "map": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Inventory"
+                }
+              }
+            },
+            "name": "stock",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "index": {
+            "k": "var",
+            "name": "sku",
+            "t": {
+              "k": "string"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrUnknownItem",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:137"
+            }
+          ],
+          "pos": "lib.rs:136"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "have",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "qty",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "to_error",
+                  "x": {
+                    "k": "struct",
+                    "name": "Shortage",
+                    "fields": [
+                      {
+                        "name": "Sku",
+                        "value": {
+                          "k": "var",
+                          "name": "sku",
+                          "t": {
+                            "k": "string"
+                          }
+                        }
+                      },
+                      {
+                        "name": "Have",
+                        "value": {
+                          "k": "var",
+                          "name": "have",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      {
+                        "name": "Want",
+                        "value": {
+                          "k": "var",
+                          "name": "qty",
+                          "t": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "Shortage"
+                    }
+                  },
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "lib.rs:140"
+            }
+          ],
+          "pos": "lib.rs:139"
+        },
+        {
+          "k": "let",
+          "names": [
+            "left"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "have",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "qty",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:146"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "stock",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "left",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:147"
+        },
+        {
+          "k": "assign",
+          "op": "+=",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Inventory"
+                  }
+                }
+              },
+              "name": "reserved",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "qty",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:148"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "left",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "lib.rs:149"
+        }
+      ],
+      "doc": "Take stock for an order and return what is left.",
+      "pos": "lib.rs:132"
+    },
+    {
+      "name": "Find",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "sku",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "named",
+          "name": "Item"
+        },
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "lookup_else",
+          "name": "item",
+          "map": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Inventory"
+                }
+              }
+            },
+            "name": "items",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          },
+          "index": {
+            "k": "var",
+            "name": "sku",
+            "t": {
+              "k": "string"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "struct",
+                  "name": "Item",
+                  "fields": [],
+                  "t": {
+                    "k": "named",
+                    "name": "Item"
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "false",
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "lib.rs:155"
+            }
+          ],
+          "pos": "lib.rs:154"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "item",
+              "t": {
+                "k": "named",
+                "name": "Item"
+              }
+            },
+            {
+              "k": "lit",
+              "value": "true",
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "lib.rs:157"
+        }
+      ],
+      "doc": "The item with this SKU, if there is one.",
+      "pos": "lib.rs:153"
+    },
+    {
+      "name": "StockOf",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "sku",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Inventory"
+                    }
+                  }
+                },
+                "name": "stock",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "sku",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:162"
+        }
+      ],
+      "doc": "The stock of an item; 0 for an unknown one.",
+      "pos": "lib.rs:161"
+    },
+    {
+      "name": "ValueOf",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "category",
+          "t": {
+            "k": "named",
+            "name": "Category"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "total",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          },
+          "pos": "lib.rs:167"
+        },
+        {
+          "k": "for_range",
+          "key": "sku",
+          "val": "item",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Inventory"
+                }
+              }
+            },
+            "name": "items",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "==",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "item",
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  },
+                  "name": "Category",
+                  "t": {
+                    "k": "named",
+                    "name": "Category"
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "category",
+                  "t": {
+                    "k": "named",
+                    "name": "Category"
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "let",
+                  "names": [
+                    "have"
+                  ],
+                  "rhs": [
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "i",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "Inventory"
+                            }
+                          }
+                        },
+                        "name": "stock",
+                        "t": {
+                          "k": "map",
+                          "key": {
+                            "k": "string"
+                          },
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "sku",
+                        "t": {
+                          "k": "string"
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:170"
+                },
+                {
+                  "k": "assign",
+                  "op": "+=",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "total",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "binop",
+                      "op": "*",
+                      "x": {
+                        "k": "var",
+                        "name": "have",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "item",
+                          "t": {
+                            "k": "named",
+                            "name": "Item"
+                          }
+                        },
+                        "name": "Price",
+                        "t": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:171"
+                }
+              ],
+              "pos": "lib.rs:169"
+            }
+          ],
+          "pos": "lib.rs:168"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:174"
+        }
+      ],
+      "doc": "The value of the stock of every item in a category.",
+      "pos": "lib.rs:166"
+    },
+    {
+      "name": "LowStock",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "threshold",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "string"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "out",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "string"
+            }
+          },
+          "pos": "lib.rs:179"
+        },
+        {
+          "k": "for_range",
+          "key": "sku",
+          "val": "have",
+          "over": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Inventory"
+                }
+              }
+            },
+            "name": "stock",
+            "t": {
+              "k": "map",
+              "key": {
+                "k": "string"
+              },
+              "elem": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": "<",
+                "x": {
+                  "k": "var",
+                  "name": "have",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "threshold",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "string"
+                        }
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "intrinsic",
+                      "name": "append",
+                      "args": [
+                        {
+                          "k": "var",
+                          "name": "out",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "string"
+                            }
+                          }
+                        },
+                        {
+                          "k": "var",
+                          "name": "sku",
+                          "t": {
+                            "k": "string"
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "string"
+                        }
+                      }
+                    }
+                  ],
+                  "pos": "lib.rs:182"
+                }
+              ],
+              "pos": "lib.rs:181"
+            }
+          ],
+          "pos": "lib.rs:180"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "string"
+                }
+              }
+            }
+          ],
+          "pos": "lib.rs:185"
+        }
+      ],
+      "doc": "The SKUs whose stock is below the threshold, in no particular order.",
+      "pos": "lib.rs:178"
+    },
+    {
+      "name": "Reserved",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Inventory"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Inventory"
+                  }
+                }
+              },
+              "name": "reserved",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "lib.rs:190"
+        }
+      ],
+      "doc": "Everything reserved so far.",
+      "pos": "lib.rs:189"
+    }
+  ],
+  "layout": [
+    "type:Category",
+    "func:Category.String",
+    "type:Item",
+    "func:Item.Label",
+    "type:Shortage",
+    "func:Shortage.Error",
+    "error:ErrUnknownItem",
+    "error:ErrInvalidPrice",
+    "error:ErrInvalidQuantity",
+    "type:Inventory",
+    "func:New",
+    "func:Inventory.AddItem",
+    "func:Inventory.Receive",
+    "func:Inventory.Reserve",
+    "func:Inventory.Find",
+    "func:Inventory.StockOf",
+    "func:Inventory.ValueOf",
+    "func:Inventory.LowStock",
+    "func:Inventory.Reserved"
+  ],
+  "facts": {
+    "shared": [],
+    "comma_ok": [
+      "Inventory.Find"
+    ],
+    "fallible": [
+      "Inventory.AddItem",
+      "Inventory.Receive",
+      "Inventory.Reserve"
+    ],
+    "read_only": [
+      "Category.String",
+      "Item.Label",
+      "Shortage.Error",
+      "Inventory.Find",
+      "Inventory.StockOf",
+      "Inventory.ValueOf",
+      "Inventory.LowStock",
+      "Inventory.Reserved"
+    ],
+    "displays": [
+      "Category",
+      "Shortage"
+    ],
+    "unordered_iteration": [
+      "lib.rs:168",
+      "lib.rs:180"
+    ]
+  }
+}
