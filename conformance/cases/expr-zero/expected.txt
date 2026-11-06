@@ -1,0 +1,4 @@
+ok 4
+err negative: -1
+ok "a"
+ok ""

@@ -1,0 +1,11 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.tuple",
+    "expr.call",
+    "expr.var",
+    "stmt.let",
+    "stmt.return",
+    "type.int"
+  ]
+}

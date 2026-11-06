@@ -1,0 +1,20 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "intrinsic.sorted_keys",
+    "assign.add",
+    "expr.index",
+    "expr.intrinsic",
+    "expr.lit",
+    "expr.make",
+    "expr.var",
+    "stmt.assign",
+    "stmt.for_range",
+    "stmt.let",
+    "stmt.return",
+    "type.int",
+    "type.map",
+    "type.slice",
+    "type.string"
+  ]
+}

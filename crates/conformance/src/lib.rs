@@ -18,7 +18,29 @@
 //!
 //! A case directory holds exactly these five files. `case.cir.json` and `expected.txt` are
 //! generated (`codespec-conformance check --write`), never edited by hand; the other three are
-//! written by hand.
+//! written by hand. The exception is a case written by hand, below.
+//!
+//! # Cases written by hand
+//!
+//! Every id of the vocabulary is the subject of a case (`tests/cases.rs`). Some ids no Go source
+//! reaches through `codespec-read-go` and `codespec pass`; another reader produces them:
+//!
+//! | id | the Go reader writes instead | reached by |
+//! |---|---|---|
+//! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
+//! | `expr.zero` | a literal, `0` or `""` | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal |
+//! | `intrinsic.sorted_keys` | nothing: Go has no expression for a map's keys in order | the Java reader, for a loop over a TreeMap's keySet |
+//! | `type.unit` | an empty tuple for a call of a function without results | the Rust and Java readers |
+//!
+//! Such a case's `case.cir.json` is written by hand in the form those readers give, with
+//! `reader.name` [`HAND_WRITTEN`] and a module `doc` that says why, which [`load_case`] requires.
+//! `case.go` stays the reference: a Go program with the same exported signatures and behaviour,
+//! which gives `expected.txt`. [`check_case`] then requires `case.cir.json` to be what `codespec
+//! pass` makes of it (with `--write`, it is rewritten so; the facts are always the pass's), and
+//! refuses the case when `case.go` read and passed already uses its subject: a feature Go reaches
+//! is read, never written by hand. Nothing but review checks that the hand-written module means
+//! what `case.go` does; the writers' runs on it in the acceptance test of `adapters/rust-run`
+//! compare it with `expected.txt`.
 //!
 //! # `kit.json`: `codespec-conformance-kit/1`
 //!
@@ -132,6 +154,10 @@ use codespec_model::{Expr, Feature, Module, Stmt, Type, TypeDecl, features_from_
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// The `reader.name` of a case whose `case.cir.json` is written by hand (crate doc § Cases
+/// written by hand).
+pub const HAND_WRITTEN: &str = "hand-written";
+
 /// The format of `conformance/kit.json`.
 pub const KIT_FORMAT: &str = "codespec-conformance-kit/1";
 /// The format of a case's `features.json`.
@@ -214,6 +240,11 @@ impl Case {
     pub fn subject(&self) -> &str {
         &self.features.features[0]
     }
+
+    /// Whether `case.cir.json` is written by hand rather than read from `case.go`.
+    pub fn hand_written(&self) -> bool {
+        self.module.reader.name == HAND_WRITTEN
+    }
 }
 
 fn read(path: &Path) -> Result<Vec<u8>, Error> {
@@ -288,6 +319,12 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
             "{name}: package {:?}, a case's package is {:?}",
             module.name,
             package_name(&name)
+        ));
+    }
+    if module.reader.name == HAND_WRITTEN && module.doc.trim().is_empty() {
+        return Err(format!(
+            "{name}/case.cir.json is written by hand and its `doc` does not say why: name the \
+             reader or pass that reaches its subject and why the Go reader does not"
         ));
     }
     let known: BTreeSet<String> = vocabulary().into_iter().map(|f| f.id).collect();
@@ -1025,6 +1062,34 @@ pub fn check_case(case: &Case, tools: &Tools, build: &Path, write: bool) -> Resu
             .arg(&passed),
         &format!("{}: codespec pass", case.name),
     )?;
+    let passed = if case.hand_written() {
+        let from_go = Module::from_json(&read(&passed)?)
+            .map_err(|e| format!("{}: case.go read and passed: {e}", case.name))?;
+        let used = features_used(&from_go).map_err(|e| format!("{}: {e}", case.name))?;
+        if used.contains(case.subject()) {
+            return Err(format!(
+                "{}: case.cir.json is written by hand, yet the Go reader reaches {} from \
+                 case.go: read case.cir.json from case.go instead",
+                case.name,
+                case.subject()
+            ));
+        }
+        let hand = work.join("hand.cir.json");
+        run(
+            Command::new(&tools.codespec)
+                .arg("pass")
+                .arg(case.dir.join("case.cir.json"))
+                .arg("--out")
+                .arg(&hand),
+            &format!(
+                "{}: codespec pass of the hand-written case.cir.json",
+                case.name
+            ),
+        )?;
+        hand
+    } else {
+        passed
+    };
     let module_bytes = String::from_utf8(read(&passed)?)
         .map_err(|e| format!("{}: passed module is not UTF-8: {e}", case.name))?;
     let module = Module::from_json(module_bytes.as_bytes())

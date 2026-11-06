@@ -1,0 +1,93 @@
+{
+  "format": "cir/1",
+  "name": "type_unit",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: the Go reader types a call of a function without results as an empty tuple and fmt.Println as (int, error). The Rust and Java readers type both as unit.",
+  "types": [],
+  "funcs": [
+    {
+      "name": "say",
+      "exported": false,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "intrinsic",
+            "name": "println",
+            "args": [
+              {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "string"
+                }
+              }
+            ],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "case.go:10"
+        }
+      ],
+      "pos": "case.go:9"
+    },
+    {
+      "name": "Greet",
+      "exported": true,
+      "params": [
+        {
+          "name": "name",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "say",
+            "args": [
+              {
+                "k": "var",
+                "name": "name",
+                "t": {
+                  "k": "string"
+                }
+              }
+            ],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Greet calls a function that returns nothing.",
+      "pos": "case.go:14"
+    }
+  ],
+  "layout": [
+    "func:say",
+    "func:Greet"
+  ],
+  "facts": {
+    "shared": []
+  }
+}
