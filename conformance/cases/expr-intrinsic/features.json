@@ -1,0 +1,11 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.intrinsic",
+    "expr.var",
+    "intrinsic.len",
+    "stmt.return",
+    "type.int",
+    "type.string"
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "format": "cir/1",
+  "name": "type_error",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "errors": [
+    {
+      "name": "ErrBad",
+      "message": "bad",
+      "pos": "case.go:5"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Fail",
+      "exported": true,
+      "params": [
+        {
+          "name": "bad",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "bad",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "ErrBad",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:10"
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Fail fails when told to.",
+      "pos": "case.go:8"
+    }
+  ],
+  "layout": [
+    "error:ErrBad",
+    "func:Fail"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "Fail"
+    ]
+  }
+}

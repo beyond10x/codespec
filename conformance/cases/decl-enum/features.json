@@ -1,0 +1,16 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "decl.enum",
+    "expr.binop",
+    "expr.const",
+    "expr.lit",
+    "expr.var",
+    "op.eq",
+    "stmt.if",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.named"
+  ]
+}

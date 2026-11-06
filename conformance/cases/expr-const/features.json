@@ -1,0 +1,14 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.const",
+    "expr.binop",
+    "expr.lit",
+    "expr.var",
+    "op.gt",
+    "stmt.if",
+    "stmt.return",
+    "type.bool",
+    "type.int"
+  ]
+}

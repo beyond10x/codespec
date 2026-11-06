@@ -1,0 +1,71 @@
+{
+  "format": "cir/1",
+  "name": "stmt_incr",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.2.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Next",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "incr",
+          "x": {
+            "k": "var",
+            "name": "n",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "case.go:5"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        }
+      ],
+      "doc": "Next increments a local.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Next"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

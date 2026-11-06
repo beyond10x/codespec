@@ -1,0 +1,23 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "fact.unordered_iteration",
+    "expr.binop",
+    "expr.index",
+    "expr.lit",
+    "expr.make",
+    "expr.var",
+    "op.lt",
+    "sem.int.wrap",
+    "sem.map.order",
+    "stmt.assign",
+    "stmt.for",
+    "stmt.for_range",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.map"
+  ]
+}

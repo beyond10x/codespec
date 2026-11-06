@@ -1,0 +1,17 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "fact.fallible",
+    "expr.binop",
+    "expr.errvar",
+    "expr.lit",
+    "expr.nil",
+    "expr.var",
+    "op.lt",
+    "stmt.if",
+    "stmt.return",
+    "type.bool",
+    "type.error",
+    "type.int"
+  ]
+}

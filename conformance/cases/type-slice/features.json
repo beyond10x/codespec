@@ -1,0 +1,14 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.slice",
+    "expr.intrinsic",
+    "expr.make",
+    "expr.var",
+    "intrinsic.append",
+    "stmt.assign",
+    "stmt.let",
+    "stmt.return",
+    "type.string"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "ClearWith",
+      "args": [
+        "12",
+        "10"
+      ]
+    }
+  ]
+}

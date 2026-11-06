@@ -1,0 +1,18 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.ptr",
+    "expr.binop",
+    "expr.lit",
+    "expr.unop",
+    "expr.var",
+    "op.add",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.let",
+    "stmt.return",
+    "type.int",
+    "unop.deref",
+    "unop.ref"
+  ]
+}

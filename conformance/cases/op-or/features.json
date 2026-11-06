@@ -1,0 +1,10 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "op.or",
+    "expr.binop",
+    "expr.var",
+    "stmt.return",
+    "type.int"
+  ]
+}

@@ -1,0 +1,2 @@
+err negative: -2
+ok
