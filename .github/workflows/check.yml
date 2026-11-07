@@ -111,7 +111,33 @@ jobs:
               ( while sleep 30; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; echo "procs $(ps -e --no-headers | wc -l)"; done ) &
               ulimit -u 2048
               ulimit -v 8388608
-              timeout -k 10 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
+              case "$PART" in
+                *--test=*)
+                  # One test at a time, each killed after three minutes; its output goes to a
+                  # file so a child it leaves behind cannot hold this step open, and a test that
+                  # does not finish is named with the processes still running.
+                  cargo test --locked "${args[@]}" --no-run --message-format=json \
+                    | jq -r 'select(.profile.test == true) | .executable // empty' > "$RUNNER_TEMP/bins"
+                  failed=0
+                  while read -r bin; do
+                    for t in $("$bin" --list --format terse | sed -n 's/: test$//p'); do
+                      s=$(date +%s); rc=0
+                      timeout -s KILL 180 setsid "$bin" --exact "$t" --test-threads 1 \
+                        > "$RUNNER_TEMP/test.out" 2>&1 < /dev/null || rc=$?
+                      echo "::group::$t rc=$rc $(( $(date +%s) - s ))s"
+                      tail -c 100000 "$RUNNER_TEMP/test.out"
+                      echo "::endgroup::"
+                      if [ "$rc" -ne 0 ]; then
+                        failed=1
+                        echo "::error::$t exited $rc after $(( $(date +%s) - s ))s"
+                        ps -eo pid,pgid,etimes,rss,args --forest | cut -c1-200
+                      fi
+                    done
+                  done < "$RUNNER_TEMP/bins"
+                  exit "$failed" ;;
+                *)
+                  timeout -k 10 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
+              esac ;;
             adapters)
               task adapters-check JDK="$JDK"
               task groovy-fixture-check JDK="$JDK" ;;
