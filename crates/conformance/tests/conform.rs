@@ -282,6 +282,24 @@ fn a_writer_that_sleeps_past_a_two_second_limit_fails_with_reason_timeout() {
     );
 }
 
+/// A program whose own child holds its output pipe open is stopped with that child: the whole
+/// process group is killed, with no `kill` program on the path.
+#[test]
+fn a_timed_out_program_is_stopped_with_the_children_holding_its_pipes() {
+    let script = work("group-kill").join("hold.sh");
+    std::fs::write(&script, "sleep 60 &\nsleep 60\n").unwrap();
+    let start = Instant::now();
+    let ran = Process(PathBuf::from("sh"))
+        .exec_within(&[script.into_os_string()], None, Duration::from_secs(1))
+        .unwrap();
+    assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
+    assert!(
+        start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
+}
+
 #[test]
 fn a_program_that_prints_without_end_keeps_only_the_output_limit_and_is_stopped() {
     let start = Instant::now();
