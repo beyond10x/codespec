@@ -2,16 +2,43 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
+- Each release ships the conformance kit `codespec-conformance-<version>.tar.gz` (`conformance/` and
+  `schemas/cir-1.features.json`) beside the binaries, listed in `SHA256SUMS`. `task conformance-kit`
+  packs it, unpacks it and runs `codespec conform` on the Go writer against the unpacked copy; it is
+  part of `task check`. The binary archives now also hold the runners `codespec-run-go` and
+  `codespec-run-rust`, so a release has every program `codespec conform` calls for Go and Rust. The
+  guide "Add a reader or writer adapter" shows an outside author how to run `codespec conform`; its
+  sample run is written by `codespec-docs generate` from the Go writer's report.
+- `codespec conform --out` creates a missing parent directory.
+- `codespec measure <module.cir.json>` prints, per artefact (source file), the functions read and
+  refused and the refusals by category, then the totals and the share read; `--format json` prints
+  `codespec-measure/1`. Works on every reader's output; a reason without one of the Groovy reader's
+  eight categories counts as `uncategorised`. The lending fixture's report is checked in as
+  `adapters/groovy/testdata/lending.measure.txt`.
+- `codespec-run-java` and `codespec-run-groovy` (`adapters/jvm/src/codespec/run`): the JVM runners
+  of the conformance kit; they compile a package with javac or Groovy 2.4 and make a `calls.json`
+  against its static methods.
+- Conformance reports for every adapter in `website/data/conformance/`: the Java and Groovy readers
+  join the Go and Rust readers and writers. The reader corpora `conformance/reader/<lang>` are built
+  from the kit's case sources (`case.go`, `rust/case.rs`, `java/Case.java`) and drift-checked.
+- The support matrix `website/data/support-matrix.json` is generated from the feature list, the
+  adapters' manifests and their reports, with a note on every failing cell, every claim without a
+  case and every refusal a report explains.
+- A writer's refusal listed in `refusals.json` is reported as `name (pos): reason`.
 - `codespec features` prints the `cir/1` feature vocabulary (`codespec-features/1`, 105 ids), checked
   in as `schemas/cir-1.features.json`; `features_from_json` reads it strictly.
 - `cir/1` intrinsic `sorted_keys`: the keys of a map in ascending order (integers numerically, strings
   by UTF-16 code unit). No writer renders it yet.
 - `codespec-read-java` (`adapters/java`): reads a Java 17 package through javac into `cir/1`, refusing
   every form whose meaning the document would not keep. Needs a JDK (default path: JDK 21).
+- `codespec-read-groovy` (`adapters/groovy`): reads a directory of Groovy 2.4 files into `cir/1`,
+  typed by the Groovy static type checker whether a class is annotated or not. Dynamic code is kept
+  as `foreign` with a refusal in one of eight categories (`adapters/groovy/README.md`). Needs a JDK
+  and Groovy 2.4.10 (`GROOVY_HOME`, default: the sdkman `groovy/2.4.10` candidate).
 - `codespec-read-rust` reads the Rust writer's loops, switches and multi-assigns back: the `series`
   output reads with 0 refusals.
 - `examples/series` runs a fourth implementation, the Rust output read back and written as Go
@@ -27,6 +54,20 @@ Every change a user of `codespec` or of `cir/1` would notice.
   function it cannot write as valid Rust instead of failing the whole module.
 - `codespec-read-go` reads a labeled loop whose label only its own `break` and `continue` use as the
   plain loop.
+- `codespec conform --lang <lang> --role reader|writer`: runs an adapter against the conformance
+  kit and writes a per-feature report (pass, fail, refused, untested) with the boundary checks.
+- The kit holds a case for every `cir/1` feature, with Java and Rust sources beside the Go one where
+  the language can express the subject, and Groovy sources where Groovy needs its own (`intdiv`).
+  A subject may have several cases; a feature passes only when every one passes.
+- Every reader and writer conforms: the Go reader claims 92 features, the Rust reader 88, the Java
+  reader 76, the Groovy reader 72, the Go and Rust writers 104 each. The support matrix on the
+  documentation site shows each cell's verdict.
+- `codespec-write-rust` writes shifts with Go's semantics, newtype arithmetic, channels, `any`,
+  pointers and dereference; it refuses only `stmt.foreign`.
+- `codespec-read-groovy` reads Grails services and domain classes, keeping GORM calls foreign, and
+  reads `a.intdiv(b)` as integer division. `examples/fees` runs a Grails service as Groovy, Go and
+  Rust byte-equal.
+- A JVM reference field with no initializer reads as a nil pointer.
 
 ## 0.2.0
 

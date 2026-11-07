@@ -69,6 +69,32 @@ fn every_feature_the_examples_use_is_the_subject_of_a_case() {
     );
 }
 
+/// The whole vocabulary, not only what the examples use: a writer may claim only what a case
+/// checks, so an id that is the subject of no case is one no adapter can claim.
+#[test]
+fn every_vocabulary_id_is_the_subject_of_a_case() {
+    let vocabulary =
+        features_from_json(&std::fs::read(root().join("schemas/cir-1.features.json")).unwrap())
+            .unwrap();
+    assert!(
+        vocabulary.features.len() > 100,
+        "only {} features in the vocabulary",
+        vocabulary.features.len()
+    );
+    let subjects = subjects(&cases());
+    let missing: Vec<&str> = vocabulary
+        .features
+        .iter()
+        .map(|f| f.id.as_str())
+        .filter(|id| !subjects.contains_key(*id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "in schemas/cir-1.features.json and the subject of no case under conformance/cases: \
+         {missing:?}"
+    );
+}
+
 /// One edge a semantic feature's case must cross: its name in `features.json`, the call in
 /// `calls.json` that crosses it (function and exact arguments), and the features that function's
 /// own body must use for the call to cross it (its operator and the semantic feature).

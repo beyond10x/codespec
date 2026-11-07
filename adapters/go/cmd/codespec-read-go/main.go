@@ -3,6 +3,9 @@
 // statements and listed as refusals.
 //
 //	codespec-read-go <package dir>
+//	codespec-read-go --describe
+//
+// --describe prints the reader's codespec-adapter/1 manifest (describe.go).
 package main
 
 import (
@@ -11,11 +14,15 @@ import (
 	"os"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--describe" {
+		fmt.Print(describe())
+		return
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: codespec-read-go <package dir>")
+		fmt.Fprintln(os.Stderr, "usage: codespec-read-go <package dir> | --describe")
 		os.Exit(2)
 	}
 	m, err := load(os.Args[1])

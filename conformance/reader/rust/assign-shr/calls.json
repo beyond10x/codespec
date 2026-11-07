@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "ShrBy",
+      "args": [
+        "-48",
+        "4"
+      ]
+    }
+  ]
+}

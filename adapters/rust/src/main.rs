@@ -13,6 +13,10 @@
 //! `refusals.json` with its key, the position of the construct and the reason; the writer still
 //! exits 0. A module without facts, or one whose types cannot be written, is refused whole: exit 1,
 //! nothing written.
+//!
+//! `codespec-write-rust --describe` prints the writer's `codespec-adapter/1` manifest
+//! (`codespec_model::manifest`): every family, less the features whose conformance case the
+//! writer refuses or writes wrong.
 
 mod write;
 
@@ -20,12 +24,41 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use codespec_model::Module;
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module};
+
+/// The claim: what the acceptance test of `adapters/rust-run` shows the writer writing.
+fn manifest() -> AdapterManifest {
+    let list = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect();
+    AdapterManifest {
+        format: ADAPTER_FORMAT.into(),
+        role: "writer".into(),
+        lang: "rust".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        cir: codespec_model::FORMAT.into(),
+        features: list(&[
+            "assign.*",
+            "decl.*",
+            "expr.*",
+            "fact.*",
+            "intrinsic.*",
+            "op.*",
+            "sem.*",
+            "stmt.*",
+            "type.*",
+            "unop.*",
+        ]),
+        not: list(&["stmt.foreign"]),
+    }
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--describe"] {
+        print!("{}", manifest().to_json());
+        return ExitCode::SUCCESS;
+    }
     let [out] = args.as_slice() else {
-        eprintln!("usage: codespec-write-rust <out dir>");
+        eprintln!("usage: codespec-write-rust <out dir> | --describe");
         return ExitCode::from(2);
     };
     match run(Path::new(out)) {

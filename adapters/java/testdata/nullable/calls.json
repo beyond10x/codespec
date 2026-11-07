@@ -1,0 +1,86 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "FreshHasText",
+      "args": []
+    },
+    {
+      "func": "HasTextAfterWrite",
+      "args": [
+        "\"hello\""
+      ]
+    },
+    {
+      "func": "HasTextAfterWrite",
+      "args": [
+        "\"\""
+      ]
+    },
+    {
+      "func": "HoldsAfterWrite",
+      "args": [
+        "\"hello\"",
+        "\"hello\""
+      ]
+    },
+    {
+      "func": "HoldsAfterWrite",
+      "args": [
+        "\"hello\"",
+        "\"other\""
+      ]
+    },
+    {
+      "func": "HoldsAfterWriteThenChange",
+      "args": [
+        "\"kept\""
+      ]
+    },
+    {
+      "func": "HoldsOrNoneWhenFresh",
+      "args": [
+        "\"none\""
+      ]
+    },
+    {
+      "func": "HasTextAfterClear",
+      "args": [
+        "\"gone\""
+      ]
+    },
+    {
+      "func": "HasTextAfterCopyOfFresh",
+      "args": [
+        "\"lost\""
+      ]
+    },
+    {
+      "func": "CopyAfterSourceRewritten",
+      "args": [
+        "\"first\"",
+        "\"second\""
+      ]
+    },
+    {
+      "func": "FreshHasNext",
+      "args": []
+    },
+    {
+      "func": "NextHoldsAfterLink",
+      "args": [
+        "\"linked\""
+      ]
+    },
+    {
+      "func": "FreshHasCount",
+      "args": []
+    },
+    {
+      "func": "HasCountAfterTally",
+      "args": [
+        "-7"
+      ]
+    }
+  ]
+}

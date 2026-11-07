@@ -1,0 +1,268 @@
+{
+  "format": "cir/1",
+  "name": "sem_int_wrap_no_div",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.3.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Add",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        }
+      ],
+      "doc": "Add adds, wrapping on overflow.",
+      "pos": "case.go:4"
+    },
+    {
+      "name": "Sub",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        }
+      ],
+      "doc": "Sub subtracts, wrapping on overflow.",
+      "pos": "case.go:9"
+    },
+    {
+      "name": "Mul",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Mul multiplies, wrapping on overflow.",
+      "pos": "case.go:14"
+    },
+    {
+      "name": "Neg",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "unop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:20"
+        }
+      ],
+      "doc": "Neg negates; -MinInt64 wraps to MinInt64.",
+      "pos": "case.go:19"
+    }
+  ],
+  "layout": [
+    "func:Add",
+    "func:Sub",
+    "func:Mul",
+    "func:Neg"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

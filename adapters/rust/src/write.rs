@@ -5,6 +5,15 @@
 //! |---|---|---|
 //! | `*T`, `T` in `shared` | `Rc<RefCell<T>>`; field reads `x.borrow().f`, writes `x.borrow_mut().f` | `shared` |
 //! | `*T` result, `T` not shared | `T`, the value moved out (`New` returns `Service`) | `shared` |
+//! | `*T`, `T` not a struct or union (`*int`) | `Rc<RefCell<T>>`; `*p` reads `*p.borrow()`, writes `*p.borrow_mut()` | — |
+//! | `&n` of a local or parameter `n` | `n` held in `Rc<RefCell<T>>` from its binding on, every read and write of `n` through it, `&n` `Rc::clone(&n)`; refused for the receiver and for a name bound by a loop, a lookup, several names or more than once | — |
+//! | `*T` that holds `nil` somewhere in the module (a `nil` or `zero` of it, a `var` of it, a struct made without its `*T` field) | `Option<Rc<RefCell<T>>>`: `nil` `None`, `p == nil` `p.is_none()`, a dereference `p.as_ref().expect(…)` panicking as Go's does, a missing map key `None` | — |
+//! | `any` | `Rc<dyn std::any::Any>`; a value assigned, passed, returned or stored where `any` is expected is boxed `Rc::new(v) as Rc<dyn Any>`; a `nil` or zero `any`, and comparing or formatting one, are refused | — |
+//! | `chan T`, `<-chan T` in a module that receives | `Rc<(SyncSender<T>, Receiver<T>)>`, which the caller makes with `sync_channel(64)`: `ch <- v` `ch.0.try_send(v)`, which panics on a full channel, `<-ch` `ch.1.try_recv()`, which panics on an empty one, where Go's single goroutine deadlocks; passing it as `chan<- T` is refused | — |
+//! | `chan T`, `chan<- T` otherwise | `Sender<T>` | — |
+//! | `<<`, `>>`, `<<=`, `>>=` on integers | `checked_shl(n).unwrap_or(0)`; `>>` `wrapping_shr(n.min(width - 1))` signed, `checked_shr(n).unwrap_or(0)` unsigned: a count at or above the width gives 0, or -1 for a negative value shifted right; a negative count panics, as in Go | — |
+//! | arithmetic, bitwise and shift operators and `++`, `--` on a newtype over an integer | through its inner value: `Celsius(c.0.wrapping_add(1))` | — |
+//! | `x, y := f()`, `x, y = f()` for `f` returning a tuple | `let (x, y) = f();`; an assignment binds the tuple first, then stores each target | — |
 //! | last result `error`, function in `fallible` | `Result<T, Error>`; `Ok(())`, `Ok(x)`, `Ok((x, y))` | `fallible` |
 //! | `(T, bool)`, function in `comma_ok` | `Option<T>` | `comma_ok` |
 //! | an `error` result not in `fallible` | refused | `fallible` |
@@ -15,18 +24,26 @@
 //! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map | `unordered_iteration` |
 //! | `for … range` over a map not listed | refused | `unordered_iteration` |
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
+//! | `x := make(…)` or an empty literal, `x` never mutated or bound more than once in the function | `let x: T = T::new();`: nothing after it need fix the element types; a mutated one bound once stays `let mut x = T::new();` | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
 //! | `for … range` over a slice | the length read once, each element read when its iteration starts | — |
 //! | `sorted_keys(m)` | a new `Vec` of the keys: integers in the `BTreeMap`'s order, strings sorted by UTF-16 code unit (`encode_utf16`), as cir/1 defines; other keys refused; a `for … range` over it binds it once | — |
 //! | `conv` to a built-in integer type (`int32(len(xs))`) | `as`, which truncates and sign-extends as a Go conversion does | — |
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
-//! | `foreign` | refused | — |
+//! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
+//! | an assignment with a call in its target (`s.pick().f = g()`, `xs[next()] = g()`) and a call in its value | refused: Go calls the target's first, and the value is bound first here | — |
 //! | a constant that cannot be written | left out and listed; each function reading it refused | — |
 //!
 //! A send on `Sender<Message>` takes `&self`, which is what `read_only` says of a method that only
 //! sends; the caller holds the `Receiver` and drains it after each call, so the sequence of messages
 //! is observable and deterministic in one thread.
+//!
+//! A channel with both ends is bounded at 64 values, the room the kit's runners give every channel:
+//! the 65th send without a receive panics, and the process exits non-zero, as Go's deadlocked
+//! goroutine does. A send-only `Sender<T>` (a module that never receives, such as `orders`) has no
+//! bound, so there the 65th send succeeds where Go deadlocks; the kit's cases send fewer. `make` of
+//! a channel is refused.
 //!
 //! Values are cloned where Go copies them. A copy of a slice or map, or of a struct holding one,
 //! shares storage in Go and not here, so it is refused. A read through a shared value that a
@@ -92,7 +109,17 @@ pub fn write(m: &Module) -> Result<Written, String> {
         facts,
         names: Names::new(m),
         bad_consts: BTreeSet::new(),
+        nullable: BTreeSet::new(),
+        receives: false,
     };
+    w.nullable = nullable_pointers(&w);
+    w.receives = m.funcs.iter().any(|f| {
+        let mut found = false;
+        walk_exprs(&f.body, &mut |e| {
+            found |= matches!(e, Expr::Unop { op, .. } if op == "<-");
+        });
+        found
+    });
     w.check_types()?;
 
     let mut refused: Vec<Refusal> = Vec::new();
@@ -264,6 +291,87 @@ fn collect_idents(ts: TokenStream, out: &mut BTreeSet<String>) {
             _ => {}
         }
     }
+}
+
+/// The pointer types that can hold `nil` in the module: the type of a `nil` or `zero` expression,
+/// of a `var` without a value, and every pointer field of a struct value made without it (a
+/// struct literal leaving the field out, or the zero value of a struct). A pointer type outside
+/// this set is never nil, and is written without the `Option`.
+fn nullable_pointers(w: &Writer) -> BTreeSet<String> {
+    fn zero_of(w: &Writer, t: &Type, out: &mut BTreeSet<String>, seen: &mut BTreeSet<String>) {
+        match t {
+            Type::Ptr { .. } => {
+                out.insert(type_name(t));
+            }
+            Type::Named { name } => {
+                if !seen.insert(name.clone()) {
+                    return;
+                }
+                match w.decl(name) {
+                    Some(TypeDecl::Struct { fields, .. }) => {
+                        fields.iter().for_each(|f| zero_of(w, &f.t, out, seen))
+                    }
+                    Some(TypeDecl::Newtype { under, .. }) => zero_of(w, under, out, seen),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    for f in &w.m.funcs {
+        let comma_ok = w.facts.comma_ok.contains(&f.key());
+        let mut visit = |e: &Expr| match e {
+            Expr::Nil { t } | Expr::Zero { t } => zero_of(w, t, &mut out, &mut BTreeSet::new()),
+            Expr::Struct { name, fields, .. } => {
+                if let Some(TypeDecl::Struct { fields: decl, .. }) = w.decl(name) {
+                    for d in decl {
+                        if !fields.iter().any(|fi| fi.name == d.name) {
+                            zero_of(w, &d.t, &mut out, &mut BTreeSet::new());
+                        }
+                    }
+                }
+            }
+            // A read of a missing key of a `map[K]*T` is a nil `*T`.
+            Expr::Index { x, .. } => {
+                if let Type::Map { elem, .. } = x.t()
+                    && matches!(**elem, Type::Ptr { .. })
+                {
+                    zero_of(w, elem, &mut out, &mut BTreeSet::new());
+                }
+            }
+            _ => {}
+        };
+        walk_stmts(&f.body, &mut |s| match s {
+            Stmt::Var { t, .. } => visit(&Expr::Zero { t: t.clone() }),
+            // `m[k] = v` writes the entry and reads no missing key.
+            Stmt::Assign { lhs, rhs, .. } => {
+                for l in lhs {
+                    match l {
+                        Expr::Index { x, index, .. } if matches!(x.t(), Type::Map { .. }) => {
+                            walk_expr(x, &mut visit);
+                            walk_expr(index, &mut visit);
+                        }
+                        _ => walk_expr(l, &mut visit),
+                    }
+                }
+                rhs.iter().for_each(|e| walk_expr(e, &mut visit));
+            }
+            // `return nil, false` (or a zero) of a comma-ok function is `None`: never a value.
+            Stmt::Return { results, .. }
+                if comma_ok
+                    && matches!(
+                        results.as_slice(),
+                        [Expr::Nil { .. } | Expr::Zero { .. }, Expr::Lit { value, .. }] if value == "false"
+                    ) => {}
+            _ => {
+                for e in stmt_exprs(s) {
+                    walk_expr(e, &mut visit);
+                }
+            }
+        });
+    }
+    out
 }
 
 fn needs_messages(m: &Module) -> bool {
@@ -634,6 +742,12 @@ struct Writer<'a> {
     names: Names,
     /// Constants that cannot be written: left out, and every function reading one refused.
     bad_consts: BTreeSet<String>,
+    /// Pointer types, by [`type_name`], that hold `nil` somewhere in the module: written as
+    /// `Option<Rc<RefCell<T>>>`. See [`nullable_pointers`].
+    nullable: BTreeSet<String>,
+    /// Whether any function receives from a channel: then a channel that is not send-only is
+    /// written as both of its ends.
+    receives: bool,
 }
 
 enum Shape {
@@ -672,10 +786,68 @@ impl<'a> Writer<'a> {
         }
     }
 
+    /// Whether the pointer type `t` is written as `Rc<RefCell<T>>`: a pointer to a type `shared`
+    /// lists, one that can be nil, or a pointer to anything but a struct or union (`&n` of a local
+    /// `int`). A pointer to another struct is the value itself, where it is written at all.
+    fn rc(&self, t: &Type) -> bool {
+        let Type::Ptr { elem } = t else {
+            return false;
+        };
+        let record = match &**elem {
+            Type::Named { name } => matches!(
+                self.decl(name),
+                Some(TypeDecl::Struct { .. } | TypeDecl::Union { .. })
+            ),
+            _ => false,
+        };
+        self.shared(t) || self.nullable(t) || !record
+    }
+
+    /// Whether the pointer type `t` can hold nil: `Option<Rc<RefCell<T>>>`.
+    fn nullable(&self, t: &Type) -> bool {
+        matches!(t, Type::Ptr { .. }) && self.nullable.contains(&type_name(t))
+    }
+
+    /// The `Rc<RefCell<T>>` that `b`, a value of pointer type `t`, points through: a nullable one
+    /// is unwrapped, and a nil pointer panics as Go's dereference does.
+    fn through(&self, t: &Type, b: TokenStream) -> TokenStream {
+        if self.nullable(t) {
+            quote! { #b.as_ref().expect("invalid memory address or nil pointer dereference") }
+        } else {
+            b
+        }
+    }
+
+    /// Whether a channel type is written as both of its ends, `Rc<(SyncSender<T>, Receiver<T>)>`:
+    /// one that is not send-only, in a module that receives.
+    fn both_ends(&self, t: &Type) -> bool {
+        matches!(t, Type::Chan { dir, .. } if *dir != ChanDir::Send) && self.receives
+    }
+
+    /// Whether a struct `t` has a pointer field, directly or in a struct or newtype field.
+    fn pointer_field(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
+        match t {
+            Type::Ptr { .. } => true,
+            Type::Named { name } => {
+                if !seen.insert(name.clone()) {
+                    return false;
+                }
+                match self.decl(name) {
+                    Some(TypeDecl::Struct { fields, .. }) => {
+                        fields.iter().any(|f| self.pointer_field(&f.t, seen))
+                    }
+                    Some(TypeDecl::Newtype { under, .. }) => self.pointer_field(under, seen),
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
     /// Whether a value of `t` holds a shared pointer, directly or inside it.
     fn holds_shared(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
         match t {
-            Type::Ptr { elem } => self.shared(t) || self.holds_shared(elem, seen),
+            Type::Ptr { elem } => self.rc(t) || self.holds_shared(elem, seen),
             Type::Slice { elem } | Type::Chan { elem, .. } => self.holds_shared(elem, seen),
             Type::Map { key, elem } => {
                 self.holds_shared(key, seen) || self.holds_shared(elem, seen)
@@ -785,7 +957,7 @@ impl<'a> Writer<'a> {
             Type::String => quote! { String },
             Type::Error => quote! { Error },
             Type::Unit => quote! { () },
-            Type::Any => return Err("`any` outside a channel of `any`".into()),
+            Type::Any => quote! { Rc<dyn std::any::Any> },
             Type::Named { name } => {
                 if self.decl(name).is_none() {
                     return Err(format!("type {name} is not declared"));
@@ -794,14 +966,18 @@ impl<'a> Writer<'a> {
                 quote! { #n }
             }
             Type::Ptr { elem } => {
-                if !self.shared(t) {
+                if !self.rc(t) {
                     return Err(format!(
                         "a pointer to {}, which `shared` does not list, outside a result",
                         type_name(elem)
                     ));
                 }
                 let e = self.ty(elem)?;
-                quote! { Rc<RefCell<#e>> }
+                if self.nullable(t) {
+                    quote! { Option<Rc<RefCell<#e>>> }
+                } else {
+                    quote! { Rc<RefCell<#e>> }
+                }
             }
             Type::Slice { elem } => {
                 let e = self.ty(elem)?;
@@ -815,10 +991,7 @@ impl<'a> Writer<'a> {
                 let e = self.ty(elem)?;
                 quote! { BTreeMap<#k, #e> }
             }
-            Type::Chan { elem, dir } => {
-                if *dir != ChanDir::Send {
-                    return Err("a channel that is received from".into());
-                }
+            Type::Chan { elem, .. } => {
                 let e = if matches!(**elem, Type::Any) {
                     if self.facts.messages.is_empty() {
                         return Err("a channel of `any` on which `messages` lists nothing".into());
@@ -827,7 +1000,11 @@ impl<'a> Writer<'a> {
                 } else {
                     self.ty(elem)?
                 };
-                quote! { Sender<#e> }
+                if self.both_ends(t) {
+                    quote! { Rc<(std::sync::mpsc::SyncSender<#e>, std::sync::mpsc::Receiver<#e>)> }
+                } else {
+                    quote! { Sender<#e> }
+                }
             }
             Type::Tuple { .. } => return Err("a tuple outside a result list".into()),
         })
@@ -862,11 +1039,7 @@ impl<'a> Writer<'a> {
         match t {
             Type::Int { .. } | Type::Bool | Type::String | Type::Unit => true,
             Type::Error => self.error_eq(seen),
-            Type::Any => self
-                .facts
-                .messages
-                .iter()
-                .all(|n| self.eq(&Type::Named { name: n.clone() }, seen)),
+            Type::Any => false,
             Type::Named { name } => {
                 if !seen.insert(name.clone()) {
                     return true;
@@ -1148,7 +1321,17 @@ impl<'a> Writer<'a> {
             .iter()
             .map(|n| self.names.ty(n))
             .collect();
-        let derives = self.derives(&Type::Any);
+        let mut seen = BTreeSet::new();
+        let eq = self
+            .facts
+            .messages
+            .iter()
+            .all(|n| self.eq(&Type::Named { name: n.clone() }, &mut seen));
+        let derives = if eq {
+            quote! { #[derive(Debug, Clone, PartialEq)] }
+        } else {
+            quote! { #[derive(Debug, Clone)] }
+        };
         Ok(quote! {
             /// Every value sent on a channel of `any`.
             #derives
@@ -1274,7 +1457,7 @@ impl<'a> Writer<'a> {
     /// A result type: a pointer to a type `shared` does not list is the value itself.
     fn result_ty(&self, t: &Type) -> R<TokenStream> {
         match t {
-            Type::Ptr { elem } if !self.shared(t) => self.ty(elem),
+            Type::Ptr { elem } if !self.rc(t) => self.ty(elem),
             _ => self.ty(t),
         }
     }
@@ -1307,7 +1490,9 @@ impl<'a> Writer<'a> {
                 used.insert(name.clone());
             }
         });
+        let cells = celled_locals(f).map_err(at)?;
         let mut params = Vec::new();
+        let mut prelude = Vec::new();
         if f.recv.is_some() {
             params.push(if read_only {
                 quote! { &self }
@@ -1322,7 +1507,10 @@ impl<'a> Writer<'a> {
             } else {
                 self.names.local(&p.name)
             };
-            if mutated.contains(&p.name) {
+            if cells.contains(&p.name) {
+                params.push(quote! { #n: #t });
+                prelude.push(quote! { let #n = Rc::new(RefCell::new(#n)); });
+            } else if mutated.contains(&p.name) {
                 params.push(quote! { mut #n: #t });
             } else {
                 params.push(quote! { #n: #t });
@@ -1349,6 +1537,23 @@ impl<'a> Writer<'a> {
                 locals.insert(self.names.local_str(name));
             }
         });
+        let mut bound: Vec<String> = f.params.iter().map(|p| p.name.clone()).collect();
+        walk_stmts(&f.body, &mut |s| match s {
+            Stmt::Let { names, .. } => bound.extend(names.iter().cloned()),
+            Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => bound.push(name.clone()),
+            Stmt::ForRange { key, val, .. } => bound.extend([key.clone(), val.clone()]),
+            _ => {}
+        });
+        let mut once = BTreeSet::new();
+        let rebound: BTreeSet<String> = bound
+            .into_iter()
+            .filter(|n| n != "_" && !once.insert(n.clone()))
+            .collect();
+        if let Some(n) = cells.iter().find(|n| rebound.contains(*n)) {
+            return Err(at(format!(
+                "a pointer to {n}, a name bound more than once in the function"
+            )));
+        }
         let cx = Fx {
             w: self,
             f,
@@ -1359,9 +1564,12 @@ impl<'a> Writer<'a> {
             locals,
             posts: std::cell::RefCell::new(Vec::new()),
             moves: moves(f),
+            rebound,
             owned: owned_locals(self, f),
+            cells,
         };
-        let body = cx.body(&f.body)?;
+        let mut body = prelude;
+        body.extend(cx.body(&f.body)?);
         let name = self.names.func(&f.key());
         let doc = outer_doc(&f.doc);
         let v = vis(f.exported);
@@ -1472,6 +1680,7 @@ impl<'a> Writer<'a> {
             Type::Unit => quote! { () },
             Type::Slice { .. } => quote! { Vec::new() },
             Type::Map { .. } => quote! { BTreeMap::new() },
+            Type::Ptr { .. } if self.nullable(t) => quote! { None },
             Type::Named { name } => {
                 let n = self.names.ty(name);
                 match self.decl(name) {
@@ -1665,6 +1874,15 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
     }
 }
 
+/// Whether `e` calls a function or method anywhere inside it.
+fn calls(e: &Expr) -> bool {
+    let mut found = false;
+    walk_expr(e, &mut |x| {
+        found |= matches!(x, Expr::Call { .. } | Expr::Method { .. });
+    });
+    found
+}
+
 fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     f(e);
     match e {
@@ -1713,7 +1931,7 @@ fn owned_locals(w: &Writer, f: &Func) -> BTreeSet<String> {
                 && op == "&"
                 && matches!(**x, Expr::Struct { .. })
                 && matches!(t, Type::Ptr { .. })
-                && !w.shared(t)
+                && !w.rc(t)
             {
                 cands.insert(n.clone());
             }
@@ -1735,7 +1953,7 @@ fn owned_locals(w: &Writer, f: &Func) -> BTreeSet<String> {
                 for (r, t) in results.iter().zip(&f.results) {
                     let returned = matches!(r, Expr::Var { name, .. } if name == n)
                         && matches!(t, Type::Ptr { .. })
-                        && !w.shared(t);
+                        && !w.rc(t);
                     ok &= returned || only_through(r, n);
                 }
             }
@@ -1749,6 +1967,47 @@ fn owned_locals(w: &Writer, f: &Func) -> BTreeSet<String> {
         ok
     });
     cands
+}
+
+/// Locals whose address the function takes (`&n`): each is held in an `Rc<RefCell<T>>` from its
+/// binding on, so a write through the pointer and a write to the local are one write, as in Go.
+/// The receiver, and a name bound by a `for … range`, a lookup or a binding of several names,
+/// are refused.
+fn celled_locals(f: &Func) -> R<BTreeSet<String>> {
+    let mut cells = BTreeSet::new();
+    walk_exprs(&f.body, &mut |e| {
+        if let Expr::Unop { op, x, .. } = e
+            && op == "&"
+            && let Expr::Var { name, .. } = &**x
+        {
+            cells.insert(name.clone());
+        }
+    });
+    if let Some(r) = &f.recv
+        && cells.contains(&r.name)
+    {
+        return Err(format!("a pointer to the receiver {}", r.name));
+    }
+    let mut bad = None;
+    walk_stmts(&f.body, &mut |s| {
+        let names: Vec<&String> = match s {
+            Stmt::Let { names, .. } if names.len() > 1 => names.iter().collect(),
+            Stmt::LookupElse { name, .. } => vec![name],
+            Stmt::ForRange { key, val, .. } => vec![key, val],
+            _ => vec![],
+        };
+        for n in names {
+            if cells.contains(n) {
+                bad = Some(n.clone());
+            }
+        }
+    });
+    if let Some(n) = bad {
+        return Err(format!(
+            "a pointer to {n}, which a loop, a lookup or a binding of several names binds"
+        ));
+    }
+    Ok(cells)
 }
 
 /// Whether `e` uses the local `n` only as the base of a field or the receiver of a method.
@@ -1831,14 +2090,14 @@ fn root<'e>(w: &Writer, e: &'e Expr) -> Option<&'e str> {
     match e {
         Expr::Var { name, .. } => Some(name),
         Expr::Field { x, .. } | Expr::Index { x, .. } => {
-            if w.shared(x.t()) {
+            if w.rc(x.t()) {
                 None
             } else {
                 root(w, x)
             }
         }
         Expr::Unop { op, x, .. } if op == "*" => {
-            if w.shared(x.t()) {
+            if w.rc(x.t()) {
                 None
             } else {
                 root(w, x)
@@ -1900,9 +2159,14 @@ struct Fx<'a, 'f> {
     locals: BTreeSet<String>,
     /// Positions of assignments that move a local slice or map instead of copying it.
     moves: BTreeSet<String>,
+    /// Locals bound more than once in the function (a parameter or binding shadowed by another):
+    /// `mutated` is keyed by name, so it cannot say which of them is written to.
+    rebound: BTreeSet<String>,
     /// Locals bound once to `&T{…}` of a type `shared` does not list and used only as a field
     /// base, a receiver or the returned value: the value itself, as a constructor builds it.
     owned: BTreeSet<String>,
+    /// Locals whose address is taken, each held in an `Rc<RefCell<T>>`: see [`celled_locals`].
+    cells: BTreeSet<String>,
     /// For each enclosing loop, innermost last, the `post` statement a `continue` runs first.
     posts: std::cell::RefCell<Vec<Vec<TokenStream>>>,
 }
@@ -1929,9 +2193,20 @@ impl Fx<'_, '_> {
             .is_some_and(|r| !matches!(r.t, Type::Ptr { .. }))
     }
 
+    fn is_cell(&self, e: &Expr) -> bool {
+        matches!(e, Expr::Var { name, .. } if self.cells.contains(name) && !self.is_recv(e))
+    }
+
+    /// Whether evaluating `e` borrows a shared value or a local held in a cell.
+    fn borrows(&self, e: &Expr) -> bool {
+        let mut cell = false;
+        walk_expr(e, &mut |x| cell |= self.is_cell(x));
+        cell || touches_shared(self.w, e)
+    }
+
     fn binding(&self, name: &str) -> TokenStream {
         let n = self.w.names.local(name);
-        if name != "_" && self.mutated.contains(name) {
+        if name != "_" && self.mutated.contains(name) && !self.cells.contains(name) {
             quote! { mut #n }
         } else {
             quote! { #n }
@@ -1981,6 +2256,9 @@ impl Fx<'_, '_> {
                 let b = self.binding(name);
                 let ty = self.w.ty(t)?;
                 let z = self.w.zero(t)?.ts;
+                if self.cells.contains(name) {
+                    return Ok(quote! { let #b: Rc<RefCell<#ty>> = Rc::new(RefCell::new(#z)); });
+                }
                 Ok(quote! { let #b: #ty = #z; })
             })()),
             Stmt::Assign {
@@ -1988,13 +2266,15 @@ impl Fx<'_, '_> {
                 rhs: r,
                 pos: p,
                 ..
-            } if self.moves.contains(p) => one((|| {
-                let (Some(l), Some(Expr::Var { name, .. })) = (l.first(), r.first()) else {
-                    return Err("a move of something other than a local".to_string());
-                };
-                let n = self.w.names.local(name);
-                self.store(l, Rx::atom(quote! { #n }), false)
-            })()),
+            } if self.moves.contains(p) && !l.iter().chain(r).any(|e| self.is_cell(e)) => {
+                one((|| {
+                    let (Some(l), Some(Expr::Var { name, .. })) = (l.first(), r.first()) else {
+                        return Err("a move of something other than a local".to_string());
+                    };
+                    let n = self.w.names.local(name);
+                    self.store(l, Rx::atom(quote! { #n }), false)
+                })())
+            }
             Stmt::Assign { op, lhs, rhs, .. } => one(self.assign(op, lhs, rhs)),
             Stmt::Incr { x, .. } => one(self.step(x, quote! { wrapping_add })),
             Stmt::Decr { x, .. } => one(self.step(x, quote! { wrapping_sub })),
@@ -2034,14 +2314,39 @@ impl Fx<'_, '_> {
                 body,
                 ..
             } => {
-                let init = match init {
+                // Go 1.22: a variable the init binds is a new variable in each iteration, made
+                // before the post statement from the previous one's value. Only a variable whose
+                // address is taken can tell; its cell is replaced by a copy there.
+                let fresh_cell = match init.as_deref() {
+                    Some(Stmt::Let { names, rhs, .. }) if names.len() == 1 && rhs.len() == 1 => {
+                        Some(&names[0]).filter(|n| self.cells.contains(*n))
+                    }
+                    _ => None,
+                };
+                let init = match (init, fresh_cell) {
+                    (Some(s), Some(n)) => {
+                        let Stmt::Let { rhs, .. } = &**s else {
+                            unreachable!("matched above")
+                        };
+                        let v = self.val(&rhs[0]).map_err(|e| at(pos, e))?.ts;
+                        let n = self.w.names.local(n);
+                        vec![quote! { let mut #n = Rc::new(RefCell::new(#v)); }]
+                    }
+                    (Some(s), None) => self.stmt(s)?,
+                    (None, _) => Vec::new(),
+                };
+                let mut post = match post {
                     Some(s) => self.stmt(s)?,
                     None => Vec::new(),
                 };
-                let post = match post {
-                    Some(s) => self.stmt(s)?,
-                    None => Vec::new(),
-                };
+                if let Some(n) = fresh_cell {
+                    let n = self.w.names.local(n);
+                    let b = self.fresh("value");
+                    post.insert(
+                        0,
+                        quote! { { let #b = #n.borrow().clone(); #n = Rc::new(RefCell::new(#b)); } },
+                    );
+                }
                 let b = self.looped(post.clone(), body)?;
                 let head = match cond {
                     Some(c) => {
@@ -2113,6 +2418,16 @@ impl Fx<'_, '_> {
     }
 
     fn let_stmt(&self, names: &[String], rhs: &[Expr]) -> R<TokenStream> {
+        if let [e] = rhs
+            && let Type::Tuple { elems } = e.t()
+            && elems.len() == names.len()
+            && names.len() > 1
+        {
+            // `x, y := f()`: the call returns a Rust tuple, destructured in one binding.
+            let bs: Vec<TokenStream> = names.iter().map(|n| self.binding(n)).collect();
+            let v = self.val(e)?.ts;
+            return Ok(quote! { let (#(#bs),*) = #v; });
+        }
         if names.len() != rhs.len() {
             return Err(format!(
                 "{} names bound to {} values",
@@ -2129,17 +2444,35 @@ impl Fx<'_, '_> {
         }
         for e in rhs {
             if let Type::Ptr { .. } = e.t()
-                && !self.w.shared(e.t())
+                && !self.w.rc(e.t())
             {
                 return Err("a local pointer to a type `shared` does not list".into());
             }
+        }
+        if let ([n], [e]) = (names, rhs)
+            && self.cells.contains(n)
+        {
+            let b = self.binding(n);
+            let v = self.val(e)?.ts;
+            return Ok(quote! { let #b = Rc::new(RefCell::new(#v)); });
         }
         let bs: Vec<TokenStream> = names.iter().map(|n| self.binding(n)).collect();
         let vs = rhs
             .iter()
             .map(|e| self.val(e).map(|r| r.ts))
             .collect::<R<Vec<_>>>()?;
-        if let ([b], [v]) = (bs.as_slice(), vs.as_slice()) {
+        if let ([b], [v], [n], [e]) = (bs.as_slice(), vs.as_slice(), names, rhs) {
+            // An empty collection nothing ever inserts into: no later use fixes its element
+            // types, so the binding states them. A mutated one keeps the bare form, which the
+            // Rust reader reads back as `make` (`let mut x: T = …` it reads as `var x T`). A
+            // name bound more than once may be mutated in one binding and not the other, so it
+            // states its type whatever `mutated` says.
+            if let Expr::Make { t } = e
+                && (!self.mutated.contains(n) || self.rebound.contains(n))
+            {
+                let ty = self.w.ty(t)?;
+                return Ok(quote! { let #b: #ty = #v; });
+            }
             return Ok(quote! { let #b = #v; });
         }
         Ok(quote! { let (#(#bs),*) = (#(#vs),*); })
@@ -2149,9 +2482,35 @@ impl Fx<'_, '_> {
         if op.is_empty() && lhs.len() > 1 && lhs.len() == rhs.len() {
             return self.assign_many(lhs, rhs);
         }
+        if let [e] = rhs
+            && op.is_empty()
+            && lhs.len() > 1
+            && matches!(e.t(), Type::Tuple { elems } if elems.len() == lhs.len())
+        {
+            // `x, y = f()`: the tuple bound first, then each target in order.
+            let v = self.val(e)?.ts;
+            let binds: Vec<Ident> = (0..lhs.len())
+                .map(|i| self.fresh(&format!("value{i}")))
+                .collect();
+            let mut stores = Vec::new();
+            for (l, b) in lhs.iter().zip(&binds) {
+                if matches!(l, Expr::Var { name, .. } if name == "_") {
+                    continue;
+                }
+                stores.push(self.store(l, Rx::atom(quote! { #b }), false)?);
+            }
+            return Ok(quote! { { let (#(#binds),*) = #v; #(#stores)* } });
+        }
         let ([l], [r]) = (lhs, rhs) else {
             return Err("an assignment of more than one value".into());
         };
+        // Go evaluates a call in the target (`s.pick().label`, `xs[next()]`) before the value; the
+        // value is bound first here, so a call on both sides could run in the other order.
+        if calls(l) && calls(r) {
+            return Err(
+                "an assignment whose target goes through a call and whose value calls: Go calls the target's first".into(),
+            );
+        }
         if let Expr::Var { name, .. } = l
             && name == "_"
         {
@@ -2172,8 +2531,11 @@ impl Fx<'_, '_> {
             let mut pre = Vec::new();
             let mut vals = Vec::new();
             for a in rest {
-                let v = self.val(a)?.ts;
-                if through && touches_shared(self.w, a) {
+                let v = match l.t() {
+                    Type::Slice { elem } => self.coerce(a, elem)?.ts,
+                    _ => self.val(a)?.ts,
+                };
+                if through && self.borrows(a) {
                     let b = self.fresh(&format!("value{}", pre.len()));
                     pre.push(quote! { let #b = #v; });
                     vals.push(quote! { #b });
@@ -2198,7 +2560,7 @@ impl Fx<'_, '_> {
                 return Err("a compound assignment to a map entry".into());
             }
             let k = self.val(index)?.ts;
-            let v = self.val(r)?.ts;
+            let v = self.coerce(r, l.t())?.ts;
             let mut pre = Vec::new();
             if self.writes_through_shared(x) {
                 let (kb, vb) = (self.fresh("key"), self.fresh("value"));
@@ -2210,11 +2572,32 @@ impl Fx<'_, '_> {
             return Ok(quote! { #m.insert(#k, #v); });
         }
         let value = if op.is_empty() {
-            self.val(r)?
+            self.coerce(r, l.t())?
         } else {
             self.compound(op, l, r)?
         };
-        self.store(l, value, touches_shared(self.w, r) || !op.is_empty())
+        // `p = p.Next`: the value borrows `p` through the pointer, so it is bound before `p` is
+        // written.
+        if let Expr::Var { name, .. } = l
+            && !self.is_cell(l)
+        {
+            let mut through_self = false;
+            walk_expr(r, &mut |e| {
+                if let Expr::Field { x, .. } | Expr::Unop { x, .. } = e
+                    && matches!(&**x, Expr::Var { name: n, .. } if n == name)
+                    && self.w.rc(x.t())
+                {
+                    through_self = true;
+                }
+            });
+            if through_self {
+                let b = self.fresh("value");
+                let v = value.ts;
+                let target = self.place_mut(l)?.ts;
+                return Ok(quote! { { let #b = #v; #target = #b; } });
+            }
+        }
+        self.store(l, value, self.borrows(r) || !op.is_empty())
     }
 
     /// `a, b = x, y`, as Go runs it: every value first, into fresh bindings, then each target in
@@ -2284,8 +2667,9 @@ impl Fx<'_, '_> {
 
     fn writes_through_shared(&self, e: &Expr) -> bool {
         match e {
+            Expr::Var { .. } => self.is_cell(e),
             Expr::Field { x, .. } | Expr::Index { x, .. } | Expr::Unop { x, .. } => {
-                (!self.is_recv(x) && self.w.shared(x.t())) || self.writes_through_shared(x)
+                (!self.is_recv(x) && self.w.rc(x.t())) || self.writes_through_shared(x)
             }
             _ => false,
         }
@@ -2299,6 +2683,11 @@ impl Fx<'_, '_> {
     }
 
     fn step(&self, x: &Expr, method: TokenStream) -> R<TokenStream> {
+        if let Some((n, under)) = self.int_newtype(x.t()) {
+            let cur = self.place(x)?.recv();
+            let one = self.w.int_lit("1", &under)?.ts;
+            return self.store(x, Rx::atom(quote! { #n(#cur.0.#method(#one)) }), true);
+        }
         if !matches!(x.t(), Type::Int { .. }) {
             return Err("++ or -- on a value that is not an integer".into());
         }
@@ -2495,7 +2884,7 @@ impl Fx<'_, '_> {
     /// A returned value: a local moves out; `&T{…}` for an unshared `*T` result is the value.
     fn result_val(&self, e: &Expr, t: &Type) -> R<TokenStream> {
         if let Type::Ptr { .. } = t
-            && !self.w.shared(t)
+            && !self.w.rc(t)
         {
             return match e {
                 Expr::Unop { op, x, .. } if op == "&" => Ok(self.val(x)?.ts),
@@ -2508,11 +2897,40 @@ impl Fx<'_, '_> {
         }
         if let Expr::Var { name, .. } = e
             && !self.is_recv(e)
+            && !self.is_cell(e)
+            && e.t() == t
         {
             let n = self.w.names.local(name);
             return Ok(quote! { #n });
         }
-        Ok(self.val(e)?.ts)
+        Ok(self.coerce(e, t)?.ts)
+    }
+
+    /// `e` as a value of the slot type `t` it is assigned, passed or returned to: Go converts a
+    /// value to `any` there, which is boxed as `Rc<dyn Any>`, and a channel to a send-only one,
+    /// which is its sending end.
+    fn coerce(&self, e: &Expr, t: &Type) -> R<Rx> {
+        if matches!(t, Type::Any) && !matches!(e.t(), Type::Any) {
+            let v = self.val(e)?.ts;
+            return Ok(Rx::with(
+                quote! { Rc::new(#v) as Rc<dyn std::any::Any> },
+                CAST,
+            ));
+        }
+        if let (
+            Type::Chan {
+                dir: ChanDir::Send, ..
+            },
+            Type::Chan { .. },
+        ) = (t, e.t())
+            && self.w.both_ends(e.t())
+        {
+            return Err(
+                "a channel with both ends passed as send-only: its bounded sender is not a `Sender`"
+                    .into(),
+            );
+        }
+        self.val(e)
     }
 
     fn err_val(&self, e: &Expr) -> R<TokenStream> {
@@ -2561,6 +2979,11 @@ impl Fx<'_, '_> {
         } else {
             v
         };
+        if self.w.both_ends(chan.t()) {
+            return Ok(quote! {
+                #c.0.try_send(#msg).expect("all goroutines are asleep: a send on a full channel");
+            });
+        }
         Ok(quote! { #c.send(#msg).expect("send on a channel whose receiver is gone"); })
     }
 
@@ -2585,6 +3008,7 @@ impl Fx<'_, '_> {
             Expr::Lit { value, t } => self.w.lit(value, t),
             Expr::Nil { t } => match t {
                 Type::Slice { .. } | Type::Map { .. } => self.w.zero(t),
+                Type::Ptr { .. } if self.w.nullable(t) => self.w.zero(t),
                 _ => Err(format!("nil of type {}", type_name(t))),
             },
             Expr::Const { name, t } => {
@@ -2621,7 +3045,7 @@ impl Fx<'_, '_> {
                     .ok_or_else(|| format!("a call of {name}, which is not declared"))?;
                 self.callable(callee)?;
                 let n = self.w.names.func(name);
-                let a = self.args(args)?;
+                let a = self.args(args, callee)?;
                 Ok(Rx::atom(quote! { #n(#(#a),*) }))
             }
             Expr::Method { x, name, args, .. } => {
@@ -2633,8 +3057,8 @@ impl Fx<'_, '_> {
                 self.callable(callee)?;
                 let read_only = self.w.facts.read_only.contains(&key);
                 let n = self.w.names.func(&key);
-                let a = self.args(args)?;
-                let shared_args = args.iter().any(|a| touches_shared(self.w, a));
+                let a = self.args(args, callee)?;
+                let shared_args = args.iter().any(|a| self.borrows(a));
                 let r = if self.is_recv(x) {
                     if !read_only && self.facts_read_only() {
                         return Err(format!(
@@ -2642,14 +3066,19 @@ impl Fx<'_, '_> {
                         ));
                     }
                     quote! { self }
-                } else if self.w.shared(x.t()) {
+                } else if self.is_cell(x) && shared_args {
+                    return Err(format!(
+                        "a call of {key} on a local held in a cell with arguments that hold \
+                         shared values, which the callee could borrow while the receiver is borrowed"
+                    ));
+                } else if self.w.rc(x.t()) {
                     if shared_args {
                         return Err(format!(
                             "a call of {key} on a shared value with arguments that hold shared \
                              values, which the callee could borrow while the receiver is borrowed"
                         ));
                     }
-                    let o = self.place(x)?.recv();
+                    let o = self.w.through(x.t(), self.place(x)?.recv());
                     if read_only {
                         quote! { #o.borrow() }
                     } else {
@@ -2679,7 +3108,19 @@ impl Fx<'_, '_> {
                     let v = self.val(x)?.at(UNARY);
                     Ok(Rx::with(quote! { !#v }, UNARY))
                 }
-                "-" if matches!(x.t(), Type::Int { .. }) => {
+                // A negated constant is a constant of the expression's own type, which the
+                // reader may give the negation and not its operand (`c == -5`, `c` a newtype).
+                "-" if matches!(&**x, Expr::Lit { value, .. } if !value.starts_with('-')) => {
+                    let Expr::Lit { value, .. } = &**x else {
+                        unreachable!("matched above")
+                    };
+                    if matches!(e.t(), Type::Int { .. }) {
+                        let v = self.w.lit(value, e.t())?.recv();
+                        return Ok(Rx::atom(quote! { #v.wrapping_neg() }));
+                    }
+                    self.w.lit(&format!("-{value}"), e.t())
+                }
+                "-" if matches!(x.t(), Type::Int { .. }) && e.t() == x.t() => {
                     let v = self.val(x)?.recv();
                     Ok(Rx::atom(quote! { #v.wrapping_neg() }))
                 }
@@ -2688,14 +3129,43 @@ impl Fx<'_, '_> {
                     let v = self.val(x)?.at(UNARY);
                     Ok(Rx::with(quote! { !#v }, UNARY))
                 }
-                "*" if self.w.shared(x.t()) => {
+                "*" if self.w.rc(x.t()) => {
                     self.w.copy_ok(e.t())?;
                     let v = self.place(x)?.recv();
-                    Ok(Rx::atom(quote! { #v.borrow().clone() }))
+                    let v = self.w.through(x.t(), v);
+                    if self.w.is_copy(e.t()) {
+                        Ok(Rx::with(quote! { *#v.borrow() }, UNARY))
+                    } else {
+                        Ok(Rx::atom(quote! { #v.borrow().clone() }))
+                    }
                 }
-                "&" if self.w.shared(e.t()) => {
-                    let v = self.val(x)?.ts;
-                    Ok(Rx::atom(quote! { Rc::new(RefCell::new(#v)) }))
+                "&" if self.w.rc(e.t()) => {
+                    let p = if let Expr::Var { name, .. } = &**x {
+                        if !self.is_cell(x) {
+                            return Err(format!("a pointer to {name}, which is not a local"));
+                        }
+                        let n = self.w.names.local(name);
+                        quote! { Rc::clone(&#n) }
+                    } else {
+                        let v = self.val(x)?.ts;
+                        quote! { Rc::new(RefCell::new(#v)) }
+                    };
+                    Ok(Rx::atom(if self.w.nullable(e.t()) {
+                        quote! { Some(#p) }
+                    } else {
+                        p
+                    }))
+                }
+                "<-" => {
+                    if !self.w.both_ends(x.t())
+                        || matches!(x.t(), Type::Chan { elem, .. } if matches!(**elem, Type::Any))
+                    {
+                        return Err(format!("a receive from {}", type_name(x.t())));
+                    }
+                    let c = self.place(x)?.recv();
+                    Ok(Rx::atom(quote! {
+                        #c.1.try_recv().expect("all goroutines are asleep: a receive from an empty channel")
+                    }))
                 }
                 _ => Err(format!("unary {op} on {}", type_name(x.t()))),
             },
@@ -2706,7 +3176,10 @@ impl Fx<'_, '_> {
                 let mut fs = Vec::new();
                 for fi in fields {
                     let n = self.w.names.field(name, &fi.name);
-                    let v = self.val(&fi.value)?.ts;
+                    let v = match decl.iter().find(|d| d.name == fi.name) {
+                        Some(d) => self.coerce(&fi.value, &d.t)?.ts,
+                        None => self.val(&fi.value)?.ts,
+                    };
                     fs.push(quote! { #n: #v });
                 }
                 for d in decl {
@@ -2818,13 +3291,22 @@ impl Fx<'_, '_> {
         Ok(())
     }
 
-    fn args(&self, args: &[Expr]) -> R<Vec<TokenStream>> {
+    fn args(&self, args: &[Expr], callee: &Func) -> R<Vec<TokenStream>> {
+        if args.len() != callee.params.len() {
+            return Err(format!(
+                "a call of {} with {} arguments for {} parameters",
+                callee.key(),
+                args.len(),
+                callee.params.len()
+            ));
+        }
         args.iter()
-            .map(|a| {
+            .zip(&callee.params)
+            .map(|(a, p)| {
                 if self.is_recv(a) {
                     return Err("the receiver passed as an argument".into());
                 }
-                Ok(self.val(a)?.ts)
+                Ok(self.coerce(a, &p.t)?.ts)
             })
             .collect()
     }
@@ -2834,6 +3316,12 @@ impl Fx<'_, '_> {
             Type::Int { .. } | Type::Bool | Type::String => Ok(()),
             Type::Named { name } => match self.w.decl(name) {
                 Some(TypeDecl::Enum { .. } | TypeDecl::Newtype { .. }) => Ok(()),
+                Some(TypeDecl::Struct { .. }) if self.w.pointer_field(t, &mut BTreeSet::new()) => {
+                    Err(format!(
+                        "a comparison of {name}, which holds a pointer: Go compares it by address, \
+                         the derived PartialEq by the value it points to"
+                    ))
+                }
                 Some(TypeDecl::Struct { .. }) if self.w.eq(t, &mut BTreeSet::new()) => Ok(()),
                 _ => Err(format!("a comparison of {name}")),
             },
@@ -2841,13 +3329,32 @@ impl Fx<'_, '_> {
         }
     }
 
-    fn binop(&self, op: &str, x: &Expr, y: &Expr, t: &Type) -> R<Rx> {
-        let int = matches!(x.t(), Type::Int { .. });
-        let wrapping = |m: TokenStream| -> R<Rx> {
-            let a = self.place(x)?.recv();
-            let b = self.place(y)?.ts;
-            Ok(Rx::atom(quote! { #a.#m(#b) }))
+    /// A newtype over an integer type: its Rust name and the integer type.
+    fn int_newtype(&self, t: &Type) -> Option<(Ident, Type)> {
+        let Type::Named { name } = t else {
+            return None;
         };
+        match self.w.decl(name) {
+            Some(TypeDecl::Newtype { under, .. }) if matches!(under, Type::Int { .. }) => {
+                Some((self.w.names.ty(name), under.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    /// An integer operand: a newtype's inner value, with the integer type it has.
+    fn int_operand(&self, e: &Expr) -> R<(Rx, Type)> {
+        let p = self.place(e)?;
+        match self.int_newtype(e.t()) {
+            Some((_, under)) => {
+                let r = p.recv();
+                Ok((Rx::atom(quote! { #r.0 }), under))
+            }
+            None => Ok((p, e.t().clone())),
+        }
+    }
+
+    fn binop(&self, op: &str, x: &Expr, y: &Expr, t: &Type) -> R<Rx> {
         let infix = |o: TokenStream, p: u8, cmp: bool| -> R<Rx> {
             let a = self.place(x)?;
             // `x as T < y` and `x as T << y` parse `<` as the start of T's generic arguments, and a
@@ -2863,6 +3370,24 @@ impl Fx<'_, '_> {
             Ok(Rx::with(quote! { #a #o #b }, p))
         };
         match op {
+            "==" | "!=" if matches!(x, Expr::Nil { .. }) || matches!(y, Expr::Nil { .. }) => {
+                let other = if matches!(x, Expr::Nil { .. }) { y } else { x };
+                if self.is_recv(other) {
+                    return Err(
+                        "the receiver compared with nil: a method's receiver is `self`, never nil"
+                            .into(),
+                    );
+                }
+                if !self.w.nullable(other.t()) {
+                    return Err(format!("a comparison of {} with nil", type_name(other.t())));
+                }
+                let v = self.place(other)?.recv();
+                Ok(Rx::atom(if op == "==" {
+                    quote! { #v.is_none() }
+                } else {
+                    quote! { #v.is_some() }
+                }))
+            }
             "==" | "!=" | "<" | "<=" | ">" | ">=" => {
                 self.comparable(x.t())?;
                 if op != "==" && op != "!=" {
@@ -2888,21 +3413,89 @@ impl Fx<'_, '_> {
                 let b = self.place(y)?.ts;
                 Ok(Rx::atom(quote! { format!("{}{}", #a, #b) }))
             }
-            "+" if int => wrapping(quote! { wrapping_add }),
-            "-" if int => wrapping(quote! { wrapping_sub }),
-            "*" if int => wrapping(quote! { wrapping_mul }),
-            "/" if int => wrapping(quote! { wrapping_div }),
-            "%" if int => wrapping(quote! { wrapping_rem }),
-            "&" if int => infix(quote! { & }, BAND, false),
-            "|" if int => infix(quote! { | }, BOR, false),
-            "^" if int => infix(quote! { ^ }, BXOR, false),
-            "&^" if int => {
-                let a = self.place(x)?.at(BAND);
-                let b = self.place(y)?.at(UNARY);
-                Ok(Rx::with(quote! { #a & !#b }, BAND))
+            _ => {
+                let (a, at) = self.int_operand(x)?;
+                let (b, bt) = self.int_operand(y)?;
+                if !matches!(at, Type::Int { .. }) || !matches!(bt, Type::Int { .. }) {
+                    return Err(format!("binary {op} on {}", type_name(x.t())));
+                }
+                let r = self.int_op(op, a, &at, b, &bt)?;
+                match self.int_newtype(x.t()) {
+                    Some((n, _)) => {
+                        let r = r.ts;
+                        Ok(Rx::atom(quote! { #n(#r) }))
+                    }
+                    None => Ok(r),
+                }
             }
-            _ => Err(format!("binary {op} on {}", type_name(x.t()))),
         }
+    }
+
+    /// An integer operator on integer operands `a` of type `at` and `b` of type `bt`, as Go
+    /// computes it: arithmetic wraps, and a shift by at least the width gives 0 (or -1 for a
+    /// negative value shifted right), a negative count panicking.
+    fn int_op(&self, op: &str, a: Rx, at: &Type, b: Rx, bt: &Type) -> R<Rx> {
+        let Type::Int { width, signed } = at else {
+            return Err(format!("binary {op} on {}", type_name(at)));
+        };
+        let wrapping = |m: TokenStream| {
+            let a = a.recv();
+            let b = &b.ts;
+            Rx::atom(quote! { #a.#m(#b) })
+        };
+        let infix = |o: TokenStream, p: u8| {
+            let a = a.at(p);
+            let b = b.at(p + 1);
+            Rx::with(quote! { #a #o #b }, p)
+        };
+        let count = || {
+            let b = &b.ts;
+            if matches!(bt, Type::Int { signed: true, .. }) {
+                quote! {
+                    u32::try_from(u64::try_from(#b).expect("negative shift amount"))
+                        .unwrap_or(u32::MAX)
+                }
+            } else {
+                quote! { u32::try_from(#b).unwrap_or(u32::MAX) }
+            }
+        };
+        Ok(match op {
+            "+" => wrapping(quote! { wrapping_add }),
+            "-" => wrapping(quote! { wrapping_sub }),
+            "*" => wrapping(quote! { wrapping_mul }),
+            "/" => wrapping(quote! { wrapping_div }),
+            "%" => wrapping(quote! { wrapping_rem }),
+            "&" => infix(quote! { & }, BAND),
+            "|" => infix(quote! { | }, BOR),
+            "^" => infix(quote! { ^ }, BXOR),
+            "&^" => {
+                let a = a.at(BAND);
+                let b = b.at(UNARY);
+                Rx::with(quote! { #a & !#b }, BAND)
+            }
+            "<<" => {
+                let a = a.recv();
+                let n = count();
+                Rx::atom(quote! { #a.checked_shl(#n).unwrap_or(0) })
+            }
+            ">>" if *signed => {
+                let a = a.recv();
+                let n = count();
+                let max = Literal::u32_unsuffixed(match width {
+                    IntWidth::W8 => 7,
+                    IntWidth::W16 => 15,
+                    IntWidth::W32 => 31,
+                    IntWidth::W64 | IntWidth::Platform => 63,
+                });
+                Rx::atom(quote! { #a.wrapping_shr(#n.min(#max)) })
+            }
+            ">>" => {
+                let a = a.recv();
+                let n = count();
+                Rx::atom(quote! { #a.checked_shr(#n).unwrap_or(0) })
+            }
+            _ => return Err(format!("binary {op} on {}", type_name(at))),
+        })
     }
 
     /// `e` where it is read in place, without a clone.
@@ -2919,6 +3512,9 @@ impl Fx<'_, '_> {
                     return Err("a read of `_`".into());
                 }
                 let n = self.w.names.local(name);
+                if self.is_cell(e) {
+                    return Ok(Rx::with(quote! { *#n.borrow() }, UNARY));
+                }
                 Ok(Rx::atom(quote! { #n }))
             }
             Expr::Field { x, name, .. } => {
@@ -2927,7 +3523,8 @@ impl Fx<'_, '_> {
                     return Ok(Rx::atom(quote! { self.#n }));
                 }
                 let b = self.place(x)?.recv();
-                if self.w.shared(x.t()) {
+                if self.w.rc(x.t()) {
+                    let b = self.w.through(x.t(), b);
                     Ok(Rx::atom(quote! { #b.borrow().#n }))
                 } else {
                     Ok(Rx::atom(quote! { #b.#n }))
@@ -2937,7 +3534,7 @@ impl Fx<'_, '_> {
                 Type::Map { elem, .. } => {
                     let m = self.place(x)?.recv();
                     let k = self.place(index)?.ts;
-                    if self.w.shared(elem) {
+                    if self.w.rc(elem) && !self.w.nullable(elem) {
                         Ok(Rx::atom(quote! { #m[&#k] }))
                     } else {
                         let z = self.w.zero(t)?.ts;
@@ -2974,14 +3571,19 @@ impl Fx<'_, '_> {
     /// borrows one mutably is bound in `pre` first.
     fn place_mut_pre(&self, e: &Expr, pre: &mut Vec<TokenStream>) -> R<Rx> {
         match e {
+            Expr::Var { name, .. } if self.is_cell(e) => {
+                let n = self.w.names.local(name);
+                Ok(Rx::with(quote! { *#n.borrow_mut() }, UNARY))
+            }
             Expr::Var { .. } => self.place(e),
             Expr::Field { x, name, .. } => {
                 let n = self.field_name(x, name);
                 if self.is_recv(x) {
                     return Ok(Rx::atom(quote! { self.#n }));
                 }
-                if self.w.shared(x.t()) {
+                if self.w.rc(x.t()) {
                     let b = self.place(x)?.recv();
+                    let b = self.w.through(x.t(), b);
                     Ok(Rx::atom(quote! { #b.borrow_mut().#n }))
                 } else {
                     let b = self.place_mut_pre(x, pre)?.recv();
@@ -2991,7 +3593,7 @@ impl Fx<'_, '_> {
             Expr::Index { x, index, .. } => match x.t() {
                 Type::Slice { .. } => {
                     let iv = self.val(index)?;
-                    let i = if self.writes_through_shared(e) && touches_shared(self.w, index) {
+                    let i = if self.writes_through_shared(e) && self.borrows(index) {
                         let b = self.fresh(&format!("index{}", pre.len()));
                         let v = iv.ts;
                         pre.push(quote! { let #b = #v; });
@@ -3002,11 +3604,12 @@ impl Fx<'_, '_> {
                     let s = self.place_mut_pre(x, pre)?.recv();
                     Ok(Rx::atom(quote! { #s[#i as usize] }))
                 }
-                Type::Map { elem, .. } if self.w.shared(elem) => self.place(e),
+                Type::Map { elem, .. } if self.w.rc(elem) => self.place(e),
                 _ => Err("a write into a map entry's value".into()),
             },
-            Expr::Unop { op, x, .. } if op == "*" && self.w.shared(x.t()) => {
+            Expr::Unop { op, x, .. } if op == "*" && self.w.rc(x.t()) => {
                 let b = self.place(x)?.recv();
+                let b = self.w.through(x.t(), b);
                 Ok(Rx::with(quote! { *#b.borrow_mut() }, UNARY))
             }
             _ => Err("a write to something that is not a variable, field or index".into()),

@@ -245,6 +245,42 @@ fn same_as_go_edited(name: &str, src: &str, edit: &dyn Fn(&mut serde_json::Value
     }
 }
 
+/// The writer refuses nothing, the written crate builds under `-D warnings`, and the written `Run`
+/// prints what the Go `Run` prints.
+///
+/// The Go reader types a `nil` only where it is returned (a `nil` operand of `==` is Go's untyped
+/// nil, which has no cir/1 form), so a probe spells a nil pointer `none()`, a function returning
+/// `nil`, and each call of it becomes the `nil` expression of its type before the passes run: the
+/// same program, as a reader that types every `nil` (the Java reader's `null`) writes it.
+fn written_same_as_go(name: &str, src: &str) {
+    fn nil_for_none(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(o) => {
+                if o.get("k").and_then(|k| k.as_str()) == Some("call")
+                    && o.get("name").and_then(|n| n.as_str()) == Some("none")
+                {
+                    let t = o["t"].clone();
+                    *v = serde_json::json!({ "k": "nil", "t": t });
+                    return;
+                }
+                o.values_mut().for_each(nil_for_none);
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(nil_for_none),
+            _ => {}
+        }
+    }
+    let p = probe_edited(name, src, &nil_for_none);
+    assert_eq!(p.refusals.trim(), "[]", "refused:\n{}", p.lib());
+    if let Err(e) = p.lint() {
+        panic!("the written crate warns under -D warnings:\n{e}");
+    }
+    let want = p.go_stdout();
+    match p.rust_stdout() {
+        Ok(got) => assert_eq!(got, want, "Rust and Go disagree:\n{}", p.lib()),
+        Err(e) => panic!("Go prints {want:?}, but {e}"),
+    }
+}
+
 /// The written crate builds under `-D warnings`.
 fn builds_clean(name: &str, src: &str) {
     let p = probe(name, src);
@@ -698,4 +734,474 @@ func Audit() { defer fmt.Println(helper()) }
 func Run() { fmt.Println(2) }
 "#,
     );
+}
+
+// ----- nil pointers (story rust-writer-nil-pointer) --------------------------------------------
+
+#[test]
+fn a_pointer_local_and_a_map_lookup_of_a_pointer_compare_with_nil_as_go_does() {
+    written_same_as_go(
+        "nil-local-lookup",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+func localIsNil(set bool) bool {
+	var p *Node
+	if set {
+		p = &Node{Val: 1}
+	}
+	return p == none()
+}
+
+func lookupIsNil(key string) bool {
+	m := map[string]*Node{}
+	m["a"] = &Node{Val: 2}
+	return m[key] == none()
+}
+
+func lookupVal(key string) int {
+	m := map[string]*Node{}
+	m["a"] = &Node{Val: 2}
+	n := m[key]
+	if n != none() {
+		return n.Val
+	}
+	return -1
+}
+
+func Run() {
+	fmt.Println(localIsNil(false), localIsNil(true))
+	fmt.Println(lookupIsNil("a"), lookupIsNil("b"))
+	fmt.Println(lookupVal("a"), lookupVal("b"))
+}
+"#,
+    );
+}
+
+#[test]
+fn a_pointer_field_never_assigned_reads_as_nil() {
+    written_same_as_go(
+        "nil-field",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+type Box struct {
+	Inner *Node
+}
+
+func Run() {
+	b := Box{}
+	fmt.Println(b.Inner == none())
+	b.Inner = &Node{Val: 7}
+	fmt.Println(b.Inner == none(), b.Inner.Val)
+	q := b.Inner
+	q.Val = 9
+	fmt.Println(b.Inner.Val, q.Next == none())
+}
+"#,
+    );
+}
+
+#[test]
+fn a_chain_of_pointers_ends_at_nil() {
+    written_same_as_go(
+        "nil-chain",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+func chain(n int) int {
+	var head *Node
+	for i := 1; i <= n; i++ {
+		head = &Node{Val: i, Next: head}
+	}
+	sum := 0
+	for p := head; p != none(); p = p.Next {
+		sum += p.Val
+	}
+	return sum
+}
+
+func Run() {
+	fmt.Println(chain(0), chain(3))
+}
+"#,
+    );
+}
+
+#[test]
+fn a_pointer_to_a_local_writes_the_local() {
+    written_same_as_go(
+        "pointer-to-local",
+        r#"package probe
+
+import "fmt"
+
+func bump(p *int) {
+	*p = *p + 1
+}
+
+func Run() {
+	n := 1
+	p := &n
+	bump(p)
+	bump(&n)
+	n++
+	fmt.Println(n, *p)
+}
+"#,
+    );
+}
+
+// ----- adversary, wave 3b: pointers, newtypes and channels as written for full coverage ---------
+
+/// As [`same_as_go`], each call of `none()` first made the typed `nil` of its type, as
+/// [`written_same_as_go`] does: the written `Run` prints what Go's prints, or `Run` is refused.
+fn same_as_go_nil(name: &str, src: &str) {
+    fn nil_for_none(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(o) => {
+                if o.get("k").and_then(|k| k.as_str()) == Some("call")
+                    && o.get("name").and_then(|n| n.as_str()) == Some("none")
+                {
+                    let t = o["t"].clone();
+                    *v = serde_json::json!({ "k": "nil", "t": t });
+                    return;
+                }
+                o.values_mut().for_each(nil_for_none);
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(nil_for_none),
+            _ => {}
+        }
+    }
+    same_as_go_edited(name, src, &nil_for_none);
+}
+
+/// Go 1.22 gives each iteration of a three-clause `for` its own `i`, so `&i` taken in three
+/// iterations is three variables. The writer holds `i` in one cell for the whole loop.
+#[test]
+fn the_address_of_a_for_loop_variable_is_a_new_variable_each_iteration() {
+    same_as_go(
+        "loop-var-address",
+        r#"package probe
+
+import "fmt"
+
+func Run() {
+	ps := []*int{}
+	for i := 0; i < 3; i++ {
+		ps = append(ps, &i)
+	}
+	fmt.Println(*ps[0], *ps[1], *ps[2])
+}
+"#,
+    );
+}
+
+/// Go compares a struct's pointer fields by address. The derived `PartialEq` compares the values
+/// they point to, so two structs pointing at two equal ints compare equal.
+#[test]
+fn struct_equality_compares_pointer_fields_by_address() {
+    same_as_go(
+        "struct-pointer-eq",
+        r#"package probe
+
+import "fmt"
+
+type Ref struct {
+	P *int
+}
+
+func Run() {
+	x := 1
+	y := 1
+	a := Ref{P: &x}
+	b := Ref{P: &y}
+	c := Ref{P: &x}
+	fmt.Println(a == b, a == c)
+}
+"#,
+    );
+}
+
+/// A missing key of a `map[K]*T` reads as nil in Go. Where the module never spells a nil of `*T`,
+/// the pointer is not `Option` and the lookup indexes `m[&k]`, which panics.
+#[test]
+fn a_missing_key_of_a_pointer_map_reads_as_nil() {
+    same_as_go(
+        "pointer-map-missing-key",
+        r#"package probe
+
+import "fmt"
+
+func Run() {
+	m := map[string]*int{}
+	n := 1
+	m["a"] = &n
+	p := m["x"]
+	m["y"] = p
+	fmt.Println(len(m))
+}
+"#,
+    );
+}
+
+/// A pointer receiver can be nil in Go, and a method may compare it with nil. The writer writes
+/// `self.is_none()` on `&Node`, which does not compile, instead of refusing the method.
+#[test]
+fn a_pointer_receiver_compared_with_nil_is_written_or_refused() {
+    same_as_go_nil(
+        "nil-receiver",
+        r#"package probe
+
+import "fmt"
+
+func none() *Node { return nil }
+
+type Node struct {
+	Val  int
+	Next *Node
+}
+
+func (n *Node) Len() int {
+	if n == none() {
+		return 0
+	}
+	return 1 + n.Next.Len()
+}
+
+func Run() {
+	var p *Node
+	fmt.Println(p.Len())
+	p = &Node{Val: 1, Next: &Node{Val: 2}}
+	fmt.Println(p.Len())
+}
+"#,
+    );
+}
+
+/// `c.AddFrom(p)` with `p := &c`: the celled receiver is borrowed mutably for the call while the
+/// callee borrows the same cell through `p`, a `RefCell` panic where Go adds.
+#[test]
+fn a_method_on_a_celled_local_given_a_pointer_to_it_runs_as_go() {
+    same_as_go_nil(
+        "cell-receiver-alias",
+        r#"package probe
+
+import "fmt"
+
+func none() *Counter { return nil }
+
+type Counter struct {
+	N int
+}
+
+func (c *Counter) AddFrom(o *Counter) {
+	c.N += o.N
+}
+
+func Run() {
+	c := Counter{N: 1}
+	p := &c
+	c.AddFrom(p)
+	fmt.Println(c.N, p != none())
+}
+"#,
+    );
+}
+
+/// A negative constant compared with a newtype: the reader types the negation as the newtype and
+/// its operand as `int`, and the writer writes `5i64.wrapping_neg()` against a `Celsius`, which does
+/// not compile.
+#[test]
+fn a_negative_constant_of_a_newtype_builds() {
+    same_as_go(
+        "newtype-negative-const",
+        r#"package probe
+
+import "fmt"
+
+type Celsius int
+
+func Run() {
+	c := Celsius(5)
+	fmt.Println(c > -1, c == -5)
+}
+"#,
+    );
+}
+
+/// A Go send on a full buffered channel blocks its only goroutine: the program deadlocks. The
+/// written Rust channel has no bound, so the send succeeds and the run reports success. The kit's
+/// runners give every channel room for 64 values; the 65th send is where they part.
+#[test]
+fn a_send_on_a_full_channel_fails_as_in_go() {
+    let dir = base().join("full-channel");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("subject")).unwrap();
+    std::fs::write(
+        dir.join("subject/fill.go"),
+        "package fill\n\n// Fill sends n values and returns n.\nfunc Fill(ch chan int, n int) int {\n\tfor i := 0; i < n; i++ {\n\t\tch <- i\n\t}\n\treturn n\n}\n\n// Echo receives one value back.\nfunc Echo(ch chan int, n int) int {\n\tch <- n\n\treturn <-ch\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("calls.json"),
+        "{\n  \"format\": \"codespec-calls/1\",\n  \"calls\": [\n    {\n      \"func\": \"Fill\",\n      \"args\": [\n        \"chan\",\n        \"65\"\n      ]\n    }\n  ]\n}\n",
+    )
+    .unwrap();
+    let read = ok(
+        Command::new(reader()).arg(dir.join("subject")),
+        "codespec-read-go",
+    );
+    std::fs::write(dir.join("read.cir.json"), read).unwrap();
+    ok(
+        Command::new(codespec())
+            .arg("pass")
+            .arg(dir.join("read.cir.json"))
+            .arg("--out")
+            .arg(dir.join("pass.cir.json")),
+        "codespec pass",
+    );
+    let doc = std::fs::read(dir.join("pass.cir.json")).unwrap();
+    let mut child = Command::new(WRITER)
+        .arg(dir.join("rust"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(&doc).unwrap();
+    }
+    let o = child.wait_with_output().unwrap();
+    assert!(o.status.success(), "the writer refused the module");
+    let refusals = std::fs::read_to_string(dir.join("rust/refusals.json")).unwrap();
+    if refusals.contains("\"name\": \"Fill\"") {
+        return;
+    }
+    let go_run = base().join("bin/codespec-run-go");
+    ok(
+        Command::new("go")
+            .args(["build", "-o"])
+            .arg(&go_run)
+            .arg("./cmd/codespec-run-go")
+            .current_dir(root().join("adapters/go")),
+        "go build codespec-run-go",
+    );
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    ok(
+        Command::new(cargo)
+            .args(["build", "--quiet", "--locked", "-p", "codespec-run-rust"])
+            .current_dir(root()),
+        "cargo build codespec-run-rust",
+    );
+    let go = run(
+        Command::new(&go_run)
+            .arg("-build")
+            .arg(dir.join("go-build"))
+            .arg(dir.join("subject"))
+            .arg(dir.join("calls.json")),
+        "codespec-run-go",
+    );
+    let rust = run(
+        Command::new(root().join("target/debug/codespec-run-rust"))
+            .arg("--build")
+            .arg(dir.join("rust-build"))
+            .arg(dir.join("rust"))
+            .arg(dir.join("calls.json")),
+        "codespec-run-rust",
+    );
+    // Neither runner refused the call (exit 2 for a refusal is not the deadlock).
+    assert!(
+        String::from_utf8_lossy(&go.stderr).contains("all goroutines are asleep"),
+        "the Go run did not reach the full channel:\n{}",
+        String::from_utf8_lossy(&go.stderr)
+    );
+    assert_ne!(
+        rust.status.code(),
+        Some(2),
+        "codespec-run-rust refused:\n{}",
+        String::from_utf8_lossy(&rust.stderr)
+    );
+    assert_eq!(
+        rust.status.success(),
+        go.status.success(),
+        "Go {} ({}), Rust {} with {} lines of output",
+        go.status,
+        String::from_utf8_lossy(&go.stderr)
+            .lines()
+            .next()
+            .unwrap_or(""),
+        rust.status,
+        String::from_utf8_lossy(&rust.stdout).lines().count()
+    );
+}
+
+// ----- evaluation order -----------------------------------------------------------------------
+
+/// `s.pick().label = s.stamp()`: Go calls `pick`, the target's receiver, before `stamp`, the
+/// value. Binding the value first would print "value first"; the writer refuses `Run` instead.
+#[test]
+fn an_assignment_through_a_call_receiver_with_a_call_in_its_value_is_refused() {
+    let src = r#"package probe
+
+import "fmt"
+
+type Shelf struct {
+	label string
+	picks int
+	next  *Shelf
+}
+
+func (s *Shelf) pick() *Shelf {
+	s.picks++
+	return s.next
+}
+
+func (s *Shelf) stamp() string {
+	if s.picks == 0 {
+		return "value first"
+	}
+	return "receiver first"
+}
+
+func Run() {
+	s := &Shelf{}
+	s.next = &Shelf{}
+	s.pick().label = s.stamp()
+	fmt.Println(s.next.label)
+}
+"#;
+    let p = probe("call-receiver-order", src);
+    assert!(
+        p.refused("Run") && p.refusals.contains("goes through a call"),
+        "Run not refused for its evaluation order; refusals: {}\n{}",
+        p.refusals,
+        p.lib()
+    );
+    same_as_go("call-receiver-order-run", src);
 }

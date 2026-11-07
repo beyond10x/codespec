@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:runners-and-manifests
 kind: story
-status: active
+status: implemented
 title: Runners and adapter manifests
 relations:
 - decomposes: epic:adapter-conformance
@@ -20,6 +20,8 @@ scope:
 - confidence: cited
   path: adapters/go/cmd/codespec-write-go/main.go
 - confidence: cited
+  path: adapters/java/src/codespec/read/Main.java
+- confidence: cited
   path: adapters/rust-read/src/main.rs
 - confidence: cited
   path: adapters/rust-run
@@ -29,10 +31,11 @@ scope:
   path: crates/model/src/lib.rs
 - confidence: cited
   path: website/docs/reference/crates.md
-revision: 7
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T21:54:56Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":4}}}
 ---
 # Story: Runners and adapter manifests
 

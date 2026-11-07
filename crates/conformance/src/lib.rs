@@ -14,11 +14,40 @@
 //!     calls.json             codespec-calls/1: the calls to make, in order
 //!     expected.txt           what the reference prints for those calls
 //!     features.json          codespec-case-features/1: the features the case exercises
+//!     java/Case.java         optional: the case in Java, package `<case>` with `-` read as `_`
+//!     groovy/Case.groovy     optional: the case in Groovy, where its Java source is not Groovy
+//!                            that means the same (Groovy's `/` on integers divides as BigDecimal)
 //! ```
 //!
-//! A case directory holds exactly these five files. `case.cir.json` and `expected.txt` are
+//! A case directory holds exactly these five files, and may hold `groovy/`, `java/` and `rust/` directories,
+//! which the kit checks here do not read; [`conform::reader_corpus`] builds the reader corpora
+//! from them. The Java reader's tests also run `java/` through `codespec read --lang java`, the
+//! passes, the Go writer and `codespec-run-go` against `expected.txt`
+//! (`adapters/java/test/codespec/read/ReaderTest.java`). `case.cir.json` and `expected.txt` are
 //! generated (`codespec-conformance check --write`), never edited by hand; the other three are
-//! written by hand.
+//! written by hand. The exception is a case written by hand, below.
+//!
+//! # Cases written by hand
+//!
+//! Every id of the vocabulary is the subject of a case (`tests/cases.rs`). Some ids no Go source
+//! reaches through `codespec-read-go` and `codespec pass`; another reader produces them:
+//!
+//! | id | the Go reader writes instead | reached by |
+//! |---|---|---|
+//! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
+//! | `expr.zero` | a literal, `0` or `""` | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal |
+//! | `intrinsic.sorted_keys` | nothing: Go has no expression for a map's keys in order | the Java reader, for a loop over a TreeMap's keySet |
+//! | `type.unit` | an empty tuple for a call of a function without results | the Rust and Java readers |
+//!
+//! Such a case's `case.cir.json` is written by hand in the form those readers give, with
+//! `reader.name` [`HAND_WRITTEN`] and a module `doc` that says why, which [`load_case`] requires.
+//! `case.go` stays the reference: a Go program with the same exported signatures and behaviour,
+//! which gives `expected.txt`. [`check_case`] then requires `case.cir.json` to be what `codespec
+//! pass` makes of it (with `--write`, it is rewritten so; the facts are always the pass's), and
+//! refuses the case when `case.go` read and passed already uses its subject: a feature Go reaches
+//! is read, never written by hand. Nothing but review checks that the hand-written module means
+//! what `case.go` does; the writers' runs on it in the acceptance test of `adapters/rust-run`
+//! compare it with `expected.txt`.
 //!
 //! # `kit.json`: `codespec-conformance-kit/1`
 //!
@@ -36,6 +65,12 @@
 //!
 //! "Uses" is [`features_used`] of `case.cir.json`, and the declared set must equal it, so a case
 //! cannot claim a feature its module does not contain nor hide one it does.
+//!
+//! A feature may be the subject of several cases. Where a reader's language cannot write the
+//! first case of a feature, a variant beside it holds the same subject in a form that language
+//! can: `decl-enum-string` beside `decl-enum`, an enum over `string` as the JVM readers read one.
+//! A run takes every case of a subject, and the feature passes only when each of them does
+//! ([`conform`] § Verdicts).
 //!
 //! # `calls.json`: `codespec-calls/1`
 //!
@@ -71,8 +106,8 @@
 //! then one line `sent <v>` per value sent on each channel argument, in order. A value is an
 //! integer in decimal, `true` or `false`, a string as Go's `strconv.Quote` writes it, or a slice as
 //! `[` its elements separated by one space `]`; a declared newtype or enum prints as its underlying
-//! value and an `any` as the value it holds. Other result types (structs, pointers, maps) are
-//! refused when the calls are generated: an entry function returns plain values.
+//! value and an `any` as the value it holds. Other result types (unsigned integers, structs,
+//! pointers, maps) are refused when the calls are generated: an entry function returns plain values.
 //!
 //! # The Go driver
 //!
@@ -84,6 +119,13 @@
 //! generated `calls.go` and `case.go` (as package `codespec.conformance/case/subject`) into
 //! `<build>/`, writes a `go.mod`, builds with `go build` (`GOWORK=off`, `GOFLAGS` cleared) and runs
 //! the binary.
+//!
+//! The runners of written code reuse this: `codespec-run-go` (`adapters/go/cmd/codespec-run-go`)
+//! embeds the same driver and generates the same `calls.go`, taking each signature from the
+//! written package's `go/types` instead of `case.cir.json`; `codespec-run-rust`
+//! (`adapters/rust-run`) prints the same lines from a generated `main.rs`. Both check every
+//! argument with [`check_argument`] or its Go copy and read `calls.json` as [`read_calls`] does.
+//! The acceptance test of `adapters/rust-run` holds them to it on every case.
 //!
 //! This follows the examples' drivers (`examples/*/drivers/go`: a `main` that calls the package
 //! under test and prints one line per command) but not their trace on stdin, since a case's calls
@@ -115,6 +157,15 @@
 //! | `sem.multi_assign.order` | an `assign` without `op` with more than one target |
 //! | `sem.map.order` | a `for_range` over a map |
 //! | `sem.switch.break` | a `break` whose innermost enclosing loop or switch is a switch |
+//!
+//! # Conformance runs
+//!
+//! [`conform`] runs the kit against one reader or writer by its `--describe` manifest and writes a
+//! `codespec-conformance-report/1`; `codespec conform` is its command line. The reader corpus of
+//! the in-repository readers is `conformance/reader/<lang>/<case>/`, built from the case sources
+//! (`rust/`, `java/`, `groovy/` and `case.go`) by [`conform::reader_corpus`].
+
+pub mod conform;
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -125,13 +176,17 @@ use codespec_model::{Expr, Feature, Module, Stmt, Type, TypeDecl, features_from_
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// The `reader.name` of a case whose `case.cir.json` is written by hand (crate doc § Cases
+/// written by hand).
+pub const HAND_WRITTEN: &str = "hand-written";
+
 /// The format of `conformance/kit.json`.
 pub const KIT_FORMAT: &str = "codespec-conformance-kit/1";
 /// The format of a case's `features.json`.
 pub const CASE_FEATURES_FORMAT: &str = "codespec-case-features/1";
 /// The format of a case's `calls.json`.
 pub const CALLS_FORMAT: &str = "codespec-calls/1";
-/// The files a case directory holds, and no others.
+/// The files a case directory holds, and no others but the optional [`CASE_SOURCE_DIRS`].
 pub const CASE_FILES: &[&str] = &[
     "calls.json",
     "case.cir.json",
@@ -139,6 +194,10 @@ pub const CASE_FILES: &[&str] = &[
     "expected.txt",
     "features.json",
 ];
+
+/// The directories a case may hold besides [`CASE_FILES`]: the case in another language, read by
+/// that language's reader tests and never by this crate.
+pub const CASE_SOURCE_DIRS: &[&str] = &["groovy", "java", "rust"];
 
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;
@@ -207,6 +266,11 @@ impl Case {
     pub fn subject(&self) -> &str {
         &self.features.features[0]
     }
+
+    /// Whether `case.cir.json` is written by hand rather than read from `case.go`.
+    pub fn hand_written(&self) -> bool {
+        self.module.reader.name == HAND_WRITTEN
+    }
 }
 
 fn read(path: &Path) -> Result<Vec<u8>, Error> {
@@ -263,6 +327,7 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
         .map(|e| e.map(|e| e.file_name().to_string_lossy().into_owned()))
         .collect::<Result<_, _>>()
         .map_err(|e| format!("{}: {e}", dir.display()))?;
+    files.retain(|f| !(CASE_SOURCE_DIRS.contains(&f.as_str()) && dir.join(f).is_dir()));
     files.sort();
     if files != CASE_FILES {
         return Err(format!(
@@ -281,6 +346,12 @@ pub fn load_case(dir: &Path) -> Result<Case, Error> {
             "{name}: package {:?}, a case's package is {:?}",
             module.name,
             package_name(&name)
+        ));
+    }
+    if module.reader.name == HAND_WRITTEN && module.doc.trim().is_empty() {
+        return Err(format!(
+            "{name}/case.cir.json is written by hand and its `doc` does not say why: name the \
+             reader or pass that reaches its subject and why the Go reader does not"
         ));
     }
     let known: BTreeSet<String> = vocabulary().into_iter().map(|f| f.id).collect();
@@ -672,6 +743,9 @@ fn shape(results: &[Type], m: &Module) -> Result<&'static str, Error> {
 
 fn printable(t: &Type, m: &Module) -> Result<(), Error> {
     match t {
+        Type::Int { signed: false, .. } => Err(
+            "an unsigned result cannot be printed: the driver prints signed integers only".into(),
+        ),
         Type::Int { .. } | Type::Bool | Type::String | Type::Any => Ok(()),
         Type::Slice { elem } => printable(elem, m),
         Type::Named { name } => match m.types.iter().find(|d| d.name() == name) {
@@ -711,9 +785,33 @@ enum Arg {
     Chan(String),
 }
 
-fn argument(arg: &str, t: &Type, m: &Module) -> Result<Arg, Error> {
-    let ok = match t {
-        Type::Int { .. } => {
+/// The kinds of parameter a `calls.json` argument can be given to; every runner checks an
+/// argument against its parameter with [`check_argument`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgKind {
+    Int,
+    Bool,
+    String,
+    Chan,
+}
+
+impl ArgKind {
+    fn name(self) -> &'static str {
+        match self {
+            ArgKind::Int => "int",
+            ArgKind::Bool => "bool",
+            ArgKind::String => "string",
+            ArgKind::Chan => "chan",
+        }
+    }
+}
+
+/// Whether `arg` is a value of `kind` in the encoding of the crate doc's `calls.json` table. An
+/// integer that passes fits `i64`; a string that passes is the same text as a Go, Rust or Java
+/// string literal.
+pub fn check_argument(arg: &str, kind: ArgKind) -> Result<(), Error> {
+    let ok = match kind {
+        ArgKind::Int => {
             let digits = arg.strip_prefix('-').unwrap_or(arg);
             !digits.is_empty()
                 && digits.bytes().all(|b| b.is_ascii_digit())
@@ -721,8 +819,8 @@ fn argument(arg: &str, t: &Type, m: &Module) -> Result<Arg, Error> {
                 && arg != "-0"
                 && arg.parse::<i64>().is_ok()
         }
-        Type::Bool => arg == "true" || arg == "false",
-        Type::String => {
+        ArgKind::Bool => arg == "true" || arg == "false",
+        ArgKind::String => {
             arg.len() >= 2
                 && arg.starts_with('"')
                 && arg.ends_with('"')
@@ -730,24 +828,48 @@ fn argument(arg: &str, t: &Type, m: &Module) -> Result<Arg, Error> {
                     .bytes()
                     .all(|b| (b' '..=b'~').contains(&b) && b != b'"' && b != b'\\')
         }
-        Type::Chan { elem, dir } => {
-            if *dir == codespec_model::ChanDir::Recv {
-                return Err("a receive-only channel parameter cannot be passed".into());
-            }
+        ArgKind::Chan => {
             if arg != "chan" {
                 return Err(format!(
                     "argument {arg:?} for a channel parameter is not `chan`"
                 ));
             }
+            true
+        }
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("argument {arg:?} is not a {} value", kind.name()))
+    }
+}
+
+/// Read a `calls.json` strictly, as [`load_case`] does: unknown fields, another format and an
+/// encoding other than [`canonical`] are refused, and so is a list of no calls.
+pub fn read_calls(path: &Path) -> Result<Calls, Error> {
+    let calls: Calls = strict(path, CALLS_FORMAT)?;
+    if calls.calls.is_empty() {
+        return Err(format!("{}: no calls", path.display()));
+    }
+    Ok(calls)
+}
+
+fn argument(arg: &str, t: &Type, m: &Module) -> Result<Arg, Error> {
+    let kind = match t {
+        Type::Int { .. } => ArgKind::Int,
+        Type::Bool => ArgKind::Bool,
+        Type::String => ArgKind::String,
+        Type::Chan { elem, dir } => {
+            if *dir == codespec_model::ChanDir::Recv {
+                return Err("a receive-only channel parameter cannot be passed".into());
+            }
+            check_argument(arg, ArgKind::Chan)?;
             return Ok(Arg::Chan(go_type(elem, m)?));
         }
         other => return Err(format!("parameter type {} cannot be passed", k(other))),
     };
-    if ok {
-        Ok(Arg::Literal(arg.to_string()))
-    } else {
-        Err(format!("argument {arg:?} is not a {} value", k(t)))
-    }
+    check_argument(arg, kind).map_err(|_| format!("argument {arg:?} is not a {} value", k(t)))?;
+    Ok(Arg::Literal(arg.to_string()))
 }
 
 /// The capacity of each channel the driver passes; a case sends fewer values than this per call.
@@ -760,9 +882,7 @@ pub fn calls_go(m: &Module, calls: &Calls) -> Result<String, Error> {
     if calls.calls.is_empty() {
         return Err("no calls".into());
     }
-    let mut s = String::from(
-        "// Code generated by codespec-conformance from calls.json. DO NOT EDIT.\n\npackage main\n\n",
-    );
+    let mut s = String::from("// Code generated from calls.json. DO NOT EDIT.\n\npackage main\n\n");
     s.push_str("import subject \"codespec.conformance/case/subject\"\n\nfunc run() {\n");
     for c in &calls.calls {
         let f = m
@@ -969,6 +1089,34 @@ pub fn check_case(case: &Case, tools: &Tools, build: &Path, write: bool) -> Resu
             .arg(&passed),
         &format!("{}: codespec pass", case.name),
     )?;
+    let passed = if case.hand_written() {
+        let from_go = Module::from_json(&read(&passed)?)
+            .map_err(|e| format!("{}: case.go read and passed: {e}", case.name))?;
+        let used = features_used(&from_go).map_err(|e| format!("{}: {e}", case.name))?;
+        if used.contains(case.subject()) {
+            return Err(format!(
+                "{}: case.cir.json is written by hand, yet the Go reader reaches {} from \
+                 case.go: read case.cir.json from case.go instead",
+                case.name,
+                case.subject()
+            ));
+        }
+        let hand = work.join("hand.cir.json");
+        run(
+            Command::new(&tools.codespec)
+                .arg("pass")
+                .arg(case.dir.join("case.cir.json"))
+                .arg("--out")
+                .arg(&hand),
+            &format!(
+                "{}: codespec pass of the hand-written case.cir.json",
+                case.name
+            ),
+        )?;
+        hand
+    } else {
+        passed
+    };
     let module_bytes = String::from_utf8(read(&passed)?)
         .map_err(|e| format!("{}: passed module is not UTF-8: {e}", case.name))?;
     let module = Module::from_json(module_bytes.as_bytes())
@@ -1010,6 +1158,30 @@ pub fn check_case(case: &Case, tools: &Tools, build: &Path, write: bool) -> Resu
             .map_err(|e| format!("{}: {e}", expected_path.display()))?;
     }
     Ok(())
+}
+
+/// Read an adapter's `codespec-adapter/1` manifest strictly (`codespec_model::manifest`) and
+/// return its claim; with `read`, the modules a reader produced, every claimed feature must be one
+/// at least one of them uses as [`features_used`] names it, so the claim holds only what the
+/// reader was seen to read. The error names every claimed feature none of them uses.
+pub fn check_manifest(bytes: &[u8], read: &[&Module]) -> Result<BTreeSet<String>, Error> {
+    let m = codespec_model::manifest_from_json(bytes).map_err(|e| e.to_string())?;
+    let claimed = m.claimed();
+    if read.is_empty() {
+        return Ok(claimed);
+    }
+    let mut used = BTreeSet::new();
+    for module in read {
+        used.extend(features_used(module)?);
+    }
+    let missing: Vec<&String> = claimed.difference(&used).collect();
+    if missing.is_empty() {
+        Ok(claimed)
+    } else {
+        Err(format!(
+            "claimed, and no module read uses them: {missing:?}"
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -1094,5 +1266,57 @@ mod tests {
         for a in [r#""a\"b""#, r#""a\\b""#, "\"\u{e9}\"", "abc"] {
             assert!(argument(a, &Type::String, &m).is_err(), "{a}");
         }
+    }
+
+    fn manifest(features: &str) -> Vec<u8> {
+        format!(
+            r#"{{"format":"codespec-adapter/1","role":"reader","lang":"x","version":"1","cir":"cir/1","features":{features}}}"#
+        )
+        .into_bytes()
+    }
+
+    /// The kit's Go driver prints signed integers only (`show`): an unsigned result is refused when
+    /// `calls.go` is generated, not by the driver after the build.
+    #[test]
+    fn an_unsigned_result_is_refused_when_the_calls_are_generated() {
+        let doc = r#"{"format":"cir/1","name":"t","reader":{"language":"go","name":"r","version":"0"},
+            "types":[],"funcs":[{"name":"F","exported":true,"params":[],
+            "results":[{"k":"int","width":"64","signed":false}],
+            "body":[],"pos":"t.go:1"}],"layout":[]}"#;
+        let m = Module::from_json(doc.as_bytes()).unwrap();
+        let calls = Calls {
+            format: CALLS_FORMAT.into(),
+            calls: vec![Call {
+                func: "F".into(),
+                args: vec![],
+            }],
+        };
+        let err = calls_go(&m, &calls).expect_err("an unsigned result is refused");
+        assert!(err.contains("unsigned"), "{err}");
+    }
+
+    #[test]
+    fn a_reader_claim_is_covered_only_by_modules_that_use_each_claimed_feature() {
+        let brk = module(r#"[{"k":"for","body":[{"k":"break","pos":"t.go:2"}],"pos":"t.go:1"}]"#);
+        let claimed = check_manifest(&manifest(r#"["stmt.for", "stmt.break"]"#), &[&brk])
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            claimed.into_iter().collect::<Vec<_>>(),
+            ["stmt.break", "stmt.for"]
+        );
+        let err = check_manifest(&manifest(r#"["stmt.for", "stmt.switch"]"#), &[&brk])
+            .expect_err("stmt.switch is not covered");
+        assert!(
+            err.contains("stmt.switch") && !err.contains("stmt.for"),
+            "{err}"
+        );
+        let unknown = check_manifest(&manifest(r#"["stmt.goto"]"#), &[])
+            .expect_err("an unknown id is refused");
+        assert!(unknown.contains("stmt.goto"), "{unknown}");
+        let foreign = module(
+            r#"[{"k":"foreign","lang":"go","src":"defer f()","reason":"r","pos":"t.go:2"}]"#,
+        );
+        let only_foreign = check_manifest(&manifest(r#"["stmt.foreign"]"#), &[&foreign]);
+        assert!(only_foreign.is_ok(), "{only_foreign:?}");
     }
 }

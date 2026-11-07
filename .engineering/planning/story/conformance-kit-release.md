@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:conformance-kit-release
 kind: story
-status: active
+status: implemented
 title: The kit in releases and the adapter guide
 relations:
 - decomposes: epic:adapter-conformance
@@ -16,10 +16,11 @@ scope:
   path: CHANGELOG.md
 - confidence: cited
   path: website/docs/guides/add-an-adapter.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-06T14:54:25Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-06T21:54:54Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: The kit in releases and the adapter guide
 

@@ -1,0 +1,11 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Squares",
+      "args": [
+        "5"
+      ]
+    }
+  ]
+}

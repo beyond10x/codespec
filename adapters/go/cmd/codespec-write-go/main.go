@@ -4,6 +4,9 @@
 // a message naming its position, and nothing is written.
 //
 //	codespec-write-go <out dir>
+//	codespec-write-go --describe
+//
+// --describe prints the writer's codespec-adapter/1 manifest (describe.go).
 package main
 
 import (
@@ -14,9 +17,16 @@ import (
 	"path/filepath"
 )
 
+// version is the workspace version, as in codespec-read-go.
+const version = "0.3.0"
+
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--describe" {
+		fmt.Print(describe())
+		return
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: codespec-write-go <out dir>")
+		fmt.Fprintln(os.Stderr, "usage: codespec-write-go <out dir> | --describe")
 		os.Exit(2)
 	}
 	if err := run(os.Stdin, os.Args[1]); err != nil {

@@ -77,7 +77,9 @@ To run a written program the kit needs one more program from the adapter's autho
 
 The runner replaces the per-example drivers the harness uses today: one runner per language serves
 every case. This repository ships `codespec-run-go` and `codespec-run-rust`, which also serve as the
-worked examples. A runner cannot pass a case on its own: the module it runs comes from the writer
+worked examples, and `codespec-run-java` and `codespec-run-groovy` (`adapters/jvm/src/codespec/run`),
+which compile a package with javac or groovyc and call its static methods by reflection; the JVM
+runners serve step 1 of the Java and Groovy readers' runs. A runner cannot pass a case on its own: the module it runs comes from the writer
 under test, and the output is compared with the reference's.
 
 ## 5. The claim: a manifest the adapter prints
@@ -90,14 +92,25 @@ $ codespec-write-zig --describe
   "lang": "zig",
   "version": "0.3.1",
   "cir": "cir/1",
-  "features": ["stmt.*", "expr.*", "type.int.*", "sem.int.wrap", "fact.fallible"],
+  "features": ["stmt.*", "expr.*", "type.int", "sem.int.wrap", "fact.fallible"],
   "not": ["type.chan", "stmt.send"]
 }
 ```
 
-`features` may use a trailing `*` per family; `not` subtracts. `codespec` validates the manifest
+`features` and `not` may end an entry in `.*` after an id prefix that names a family (`stmt.*`, `op.*`); a prefix no id has is an unknown family and refused. `not` subtracts. `codespec` validates the manifest
 strictly (unknown ids are refused, so a claim cannot name a feature that does not exist) and
 expands it against `kit.json`.
+
+A reader's claim covers what the reader itself prints, not what `codespec pass` makes of it: the
+module checked against the claim (§ 6, step 3) is the reader's output before any pass. A feature
+only a pass produces is therefore not a reader feature of that reader. `stmt.lookup_else` is one:
+the Go reader reads `v, ok := m[k]; if !ok { … }` to a `let` and an `if`, and the lookup-guard pass
+rewrites them, so `codespec-read-go` does not claim it, while `codespec-read-rust`, which reads
+`let Some(v) = m.get(&k) else { … }` to `lookup_else` itself, could. Counting read followed by pass
+would credit every reader with the pass's work and say nothing about the reader. Facts (`fact.*`)
+are the same case, and a writer feature only (§ 2). `stmt.foreign` is a reader feature: a reader
+claims it when its source for a construct outside `cir/1` reads to a `foreign` statement holding
+that source verbatim, with a refusal.
 
 ## 6. The verdicts
 

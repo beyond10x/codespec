@@ -1,0 +1,2784 @@
+{
+  "format": "cir/1",
+  "name": "fees",
+  "reader": {
+    "language": "groovy",
+    "name": "codespec-read-groovy",
+    "version": "0.3.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Rate",
+      "exported": true,
+      "fields": [
+        {
+          "name": "dailyCents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "graceDays",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "capCents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/domain/fees/Rate.groovy:3"
+    },
+    {
+      "k": "enum",
+      "name": "ItemKind",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "BOOK",
+          "value": {
+            "k": "lit",
+            "value": "\"BOOK\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "DISC",
+          "value": {
+            "k": "lit",
+            "value": "\"DISC\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "TOOL",
+          "value": {
+            "k": "lit",
+            "value": "\"TOOL\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "LateFeeService",
+      "exported": true,
+      "fields": [
+        {
+          "name": "policy",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Rate"
+            }
+          }
+        },
+        {
+          "name": "rates",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "waivers",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "collected",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        },
+        {
+          "name": "assessed",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "waived",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "graced",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "capped",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:7"
+    }
+  ],
+  "consts": [
+    {
+      "name": "MAX_DAYS",
+      "t": {
+        "k": "int",
+        "width": "32",
+        "signed": true
+      },
+      "value": {
+        "k": "lit",
+        "value": "365",
+        "t": {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      },
+      "pos": "grails-app/services/fees/LateFeeService.groovy:9"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "NewRate",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Rate"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Rate",
+                "fields": [
+                  {
+                    "name": "dailyCents",
+                    "value": {
+                      "k": "lit",
+                      "value": "10",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "graceDays",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "capCents",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Rate"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Rate"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/fees/Rate.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Rate"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/fees/Rate.groovy:3"
+        }
+      ],
+      "pos": "grails-app/domain/fees/Rate.groovy:3"
+    },
+    {
+      "name": "daysCharged",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Rate"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "daysLate",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "days"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "daysLate",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Rate"
+                    }
+                  }
+                },
+                "name": "graceDays",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/fees/Rate.groovy:10"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "days",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/fees/Rate.groovy:11"
+        }
+      ],
+      "pos": "grails-app/domain/fees/Rate.groovy:9"
+    },
+    {
+      "name": "capped",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Rate"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "fee",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "&&",
+              "x": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Rate"
+                      }
+                    }
+                  },
+                  "name": "capCents",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "y": {
+                "k": "binop",
+                "op": ">=",
+                "x": {
+                  "k": "var",
+                  "name": "fee",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Rate"
+                      }
+                    }
+                  },
+                  "name": "capCents",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/fees/Rate.groovy:15"
+        }
+      ],
+      "pos": "grails-app/domain/fees/Rate.groovy:14"
+    },
+    {
+      "name": "NewLateFeeService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "LateFeeService",
+                "fields": [
+                  {
+                    "name": "policy",
+                    "value": {
+                      "k": "call",
+                      "name": "NewRate",
+                      "args": [],
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Rate"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "rates",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "map",
+                        "key": {
+                          "k": "string"
+                        },
+                        "elem": {
+                          "k": "int",
+                          "width": "64",
+                          "signed": true
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "waivers",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "collected",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "assessed",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "waived",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "graced",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "capped",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "LateFeeService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "LateFeeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "LateFeeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:7"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:7"
+    },
+    {
+      "name": "code",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "kind",
+          "t": {
+            "k": "named",
+            "name": "ItemKind"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "var",
+            "name": "kind",
+            "t": {
+              "k": "named",
+              "name": "ItemKind"
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "BOOK",
+                  "t": {
+                    "k": "named",
+                    "name": "ItemKind"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"book\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:23"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "DISC",
+                  "t": {
+                    "k": "named",
+                    "name": "ItemKind"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"disc\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:25"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "TOOL",
+                  "t": {
+                    "k": "named",
+                    "name": "ItemKind"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "\"tool\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:27"
+                }
+              ]
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:21"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:29"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:20"
+    },
+    {
+      "name": "putRate",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "kind",
+          "t": {
+            "k": "named",
+            "name": "ItemKind"
+          }
+        },
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "rates",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "code",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "kind",
+                    "t": {
+                      "k": "named",
+                      "name": "ItemKind"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "cents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:33"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "LateFeeService"
+                        }
+                      }
+                    },
+                    "name": "rates",
+                    "t": {
+                      "k": "map",
+                      "key": {
+                        "k": "string"
+                      },
+                      "elem": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:34"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:32"
+    },
+    {
+      "name": "graceFor",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "days",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "policy",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Rate"
+                  }
+                }
+              },
+              "name": "graceDays",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "days",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:38"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "policy",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Rate"
+                  }
+                }
+              },
+              "name": "graceDays",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:39"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:37"
+    },
+    {
+      "name": "capAt",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "policy",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Rate"
+                  }
+                }
+              },
+              "name": "capCents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "cents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:43"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "policy",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Rate"
+                  }
+                }
+              },
+              "name": "capCents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:44"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:42"
+    },
+    {
+      "name": "waive",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "LateFeeService"
+                  }
+                }
+              },
+              "name": "waivers",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "waivers",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:48"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "LateFeeService"
+                  }
+                }
+              },
+              "name": "waivers",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:49"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:47"
+    },
+    {
+      "name": "assess",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "kind",
+          "t": {
+            "k": "named",
+            "name": "ItemKind"
+          }
+        },
+        {
+          "name": "daysLate",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "LateFeeService"
+                  }
+                }
+              },
+              "name": "assessed",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "assessed",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:53"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": ">",
+            "x": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "LateFeeService"
+                  }
+                }
+              },
+              "name": "waivers",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "waivers",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "-",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "LateFeeService"
+                        }
+                      }
+                    },
+                    "name": "waivers",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:55"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "waived",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "LateFeeService"
+                        }
+                      }
+                    },
+                    "name": "waived",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:56"
+            },
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:57"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:54"
+        },
+        {
+          "k": "let",
+          "names": [
+            "days"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "policy",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Rate"
+                  }
+                }
+              },
+              "name": "daysCharged",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "daysLate",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:59"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "days",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "graced",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "LateFeeService"
+                        }
+                      }
+                    },
+                    "name": "graced",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:61"
+            },
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:62"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:60"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": ">",
+            "x": {
+              "k": "var",
+              "name": "days",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "const",
+              "name": "MAX_DAYS",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "days",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "const",
+                  "name": "MAX_DAYS",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:65"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:64"
+        },
+        {
+          "k": "let",
+          "names": [
+            "rate"
+          ],
+          "rhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "rates",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "code",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "kind",
+                    "t": {
+                      "k": "named",
+                      "name": "ItemKind"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:67"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "==",
+            "x": {
+              "k": "var",
+              "name": "rate",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "rate",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "LateFeeService"
+                        }
+                      }
+                    },
+                    "name": "policy",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Rate"
+                      }
+                    }
+                  },
+                  "name": "dailyCents",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:69"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:68"
+        },
+        {
+          "k": "let",
+          "names": [
+            "fee"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:71"
+        },
+        {
+          "k": "let",
+          "names": [
+            "d"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:72"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "d",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "days",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "fee",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "fee",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "rate",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:74"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "d",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "d",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:75"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "method",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "policy",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Rate"
+                    }
+                  }
+                },
+                "name": "capped",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "fee",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "fee",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "this",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "LateFeeService"
+                            }
+                          }
+                        },
+                        "name": "policy",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "Rate"
+                          }
+                        }
+                      },
+                      "name": "capCents",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:77"
+                },
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "this",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "LateFeeService"
+                          }
+                        }
+                      },
+                      "name": "capped",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "binop",
+                      "op": "+",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "this",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "LateFeeService"
+                            }
+                          }
+                        },
+                        "name": "capped",
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "1",
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:78"
+                },
+                {
+                  "k": "break",
+                  "pos": "grails-app/services/fees/LateFeeService.groovy:79"
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:76"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:73"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "LateFeeService"
+                  }
+                }
+              },
+              "name": "collected",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "collected",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "fee",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:82"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "fee",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:83"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:52"
+    },
+    {
+      "name": "rateList",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "out"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "\"\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:87"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "k",
+          "over": {
+            "k": "intrinsic",
+            "name": "sorted_keys",
+            "args": [
+              {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "LateFeeService"
+                    }
+                  }
+                },
+                "name": "rates",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "string"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "out",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "intrinsic",
+                  "name": "sprintf",
+                  "args": [
+                    {
+                      "k": "lit",
+                      "value": "\"%s%s%s%d%s\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "out",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "var",
+                      "name": "k",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "lit",
+                      "value": "\"=\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    {
+                      "k": "index",
+                      "x": {
+                        "k": "field",
+                        "x": {
+                          "k": "var",
+                          "name": "this",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "LateFeeService"
+                            }
+                          }
+                        },
+                        "name": "rates",
+                        "t": {
+                          "k": "map",
+                          "key": {
+                            "k": "string"
+                          },
+                          "elem": {
+                            "k": "int",
+                            "width": "64",
+                            "signed": true
+                          }
+                        }
+                      },
+                      "index": {
+                        "k": "var",
+                        "name": "k",
+                        "t": {
+                          "k": "string"
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    },
+                    {
+                      "k": "lit",
+                      "value": "\";\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "pos": "grails-app/services/fees/LateFeeService.groovy:89"
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:88"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "out",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:91"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:86"
+    },
+    {
+      "name": "stats",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LateFeeService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"assessed %d waived %d graced %d capped %d collected %d\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "assessed",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "waived",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "graced",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "capped",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "LateFeeService"
+                      }
+                    }
+                  },
+                  "name": "collected",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/fees/LateFeeService.groovy:95"
+        }
+      ],
+      "pos": "grails-app/services/fees/LateFeeService.groovy:94"
+    }
+  ],
+  "layout": [
+    "type:Rate",
+    "func:NewRate",
+    "func:Rate.daysCharged",
+    "func:Rate.capped",
+    "type:ItemKind",
+    "type:LateFeeService",
+    "func:NewLateFeeService",
+    "const:MAX_DAYS",
+    "func:LateFeeService.code",
+    "func:LateFeeService.putRate",
+    "func:LateFeeService.graceFor",
+    "func:LateFeeService.capAt",
+    "func:LateFeeService.waive",
+    "func:LateFeeService.assess",
+    "func:LateFeeService.rateList",
+    "func:LateFeeService.stats"
+  ],
+  "facts": {
+    "shared": [
+      "Rate"
+    ],
+    "read_only": [
+      "Rate.daysCharged",
+      "Rate.capped",
+      "LateFeeService.code",
+      "LateFeeService.rateList",
+      "LateFeeService.stats"
+    ],
+    "displays": [
+      "ItemKind"
+    ]
+  }
+}

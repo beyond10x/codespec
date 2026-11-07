@@ -1,0 +1,5 @@
+/// Divides in place.
+pub fn div_by(mut a: i64, b: i64) -> i64 {
+    a /= b;
+    a
+}

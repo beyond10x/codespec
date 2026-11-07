@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Shl",
+      "args": [
+        "3",
+        "4"
+      ]
+    }
+  ]
+}

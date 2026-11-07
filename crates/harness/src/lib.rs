@@ -18,8 +18,8 @@
 //! refused.
 //!
 //! `trace = "inventory"` at the top selects the inventory trace generator, `trace = "series"` the
-//! series one, `trace = "ledger"` the ledger one; without it, or with `trace = "orders"`, the orders
-//! one. Another name is refused.
+//! series one, `trace = "ledger"` the ledger one, `trace = "fees"` the fees one; without it, or
+//! with `trace = "orders"`, the orders one. Another name is refused.
 //!
 //! # Trace
 //!
@@ -124,6 +124,27 @@
 //! | `balances` | `balances` | `balances <text>` |
 //! | `tallied` | `tallied` | `tallied <n>` |
 //! | `count` | `count` | `count <n>` |
+//!
+//! # Fees trace and output
+//!
+//! [`fees_trace`] draws on the same generator. Kinds are `book`, `disc` and `tool`. A quarter of
+//! rates and caps are zero, negative or near a `long` edge, so a fee summed day by day and the
+//! amount collected cross both `long` edges; a fifth of days late, a third of grace periods and a
+//! quarter of waivers are near an `int` edge or the 365-day clamp, so `daysLate - graceDays` and
+//! the waiver count cross both `int` edges. `assess` reaches each branch of `LateFeeService`:
+//! waived, within grace, clamped, capped, charged below the cap. Each command prints one line;
+//! `<n>` is decimal.
+//!
+//! | line | call | output |
+//! |---|---|---|
+//! | `new` | `new LateFeeService()` | `new` |
+//! | `rate <kind> <cents>` | `putRate` | `rate <n>` |
+//! | `grace <days>` | `graceFor`; `days` an `int` | `grace <n>` |
+//! | `cap <cents>` | `capAt` | `cap <n>` |
+//! | `waive <n>` | `waive`; `n` an `int` | `waive <n>` |
+//! | `assess <kind> <days>` | `assess`; `days` an `int` | `assess <n>` |
+//! | `rates` | `rateList` | `rates <text>` |
+//! | `stats` | `stats` | `stats <text>` |
 //!
 //! # Comparison
 //!
@@ -453,6 +474,99 @@ fn ledger_id(r: &mut SplitMix64) -> &'static str {
     }
 }
 
+const FEE_KINDS: &[&str] = &["book", "disc", "tool"];
+/// Rates and caps that are not positive, or whose sums leave `long`.
+const EDGE_CENTS: &[i64] = &[
+    0,
+    -1,
+    1,
+    i64::MAX,
+    i64::MIN,
+    i64::MIN + 1,
+    1 << 62,
+    -(1 << 62),
+];
+/// Days, grace periods and waivers whose difference or sum leaves `int`, or which sit on the
+/// 365-day clamp.
+const EDGE_DAYS: &[i32] = &[
+    i32::MAX,
+    i32::MIN,
+    i32::MIN + 1,
+    1 << 30,
+    -(1 << 30),
+    -1,
+    0,
+    365,
+    366,
+];
+
+/// The `fees` trace of `commands` commands for `seed` (manifest `trace = "fees"`).
+pub fn fees_trace(seed: u64, commands: usize) -> String {
+    let mut r = SplitMix64(seed);
+    let mut out = String::new();
+    for i in 0..commands {
+        let roll = r.below(100);
+        if i == 0 || roll < 2 {
+            out.push_str("new\n");
+            continue;
+        }
+        let line = match roll {
+            2..=11 => {
+                let kind = r.pick(FEE_KINDS);
+                let c = 1 + r.below(50) as i64;
+                format!("rate {kind} {}", cents(&mut r, c))
+            }
+            12..=19 => {
+                let days = if r.below(3) == 0 {
+                    edge_days(&mut r)
+                } else {
+                    r.below(15) as i32
+                };
+                format!("grace {days}")
+            }
+            20..=27 => {
+                let c = r.below(3_000) as i64;
+                format!("cap {}", cents(&mut r, c))
+            }
+            28..=35 => {
+                let n = if r.below(4) == 0 {
+                    edge_days(&mut r)
+                } else {
+                    r.below(3) as i32
+                };
+                format!("waive {n}")
+            }
+            36..=89 => {
+                let kind = r.pick(FEE_KINDS);
+                let days = if r.below(5) == 0 {
+                    edge_days(&mut r)
+                } else {
+                    r.below(66) as i32 - 5
+                };
+                format!("assess {kind} {days}")
+            }
+            90..=94 => "rates".to_string(),
+            _ => "stats".to_string(),
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// `usual`, or with a chance of one in four an edge from [`EDGE_CENTS`].
+fn cents(r: &mut SplitMix64, usual: i64) -> i64 {
+    if r.below(4) == 0 {
+        EDGE_CENTS[r.below(EDGE_CENTS.len() as u64) as usize]
+    } else {
+        usual
+    }
+}
+
+fn edge_days(r: &mut SplitMix64) -> i32 {
+    EDGE_DAYS[r.below(EDGE_DAYS.len() as u64) as usize]
+}
+
 /// `harness.toml`: the implementations of one example, the first the reference.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -476,6 +590,8 @@ pub enum TraceKind {
     Series,
     /// [`ledger_trace`]: the Java `ledger` package.
     Ledger,
+    /// [`fees_trace`]: the Grails `fees` service.
+    Fees,
 }
 
 impl TraceKind {
@@ -486,6 +602,7 @@ impl TraceKind {
             TraceKind::Inventory => inventory_trace(seed, commands),
             TraceKind::Series => series_trace(seed, commands),
             TraceKind::Ledger => ledger_trace(seed, commands),
+            TraceKind::Fees => fees_trace(seed, commands),
         }
     }
 }

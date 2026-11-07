@@ -1,0 +1,23 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Find",
+      "args": [
+        "\"a\""
+      ]
+    },
+    {
+      "func": "Find",
+      "args": [
+        "\"b\""
+      ]
+    },
+    {
+      "func": "Find",
+      "args": [
+        "\"c\""
+      ]
+    }
+  ]
+}

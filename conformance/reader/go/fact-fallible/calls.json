@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Checked",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Checked",
+      "args": [
+        "-3"
+      ]
+    }
+  ]
+}

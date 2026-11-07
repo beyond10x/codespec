@@ -1,0 +1,5 @@
+/// Takes the remainder in place.
+pub fn rem_by(mut a: i64, b: i64) -> i64 {
+    a %= b;
+    a
+}

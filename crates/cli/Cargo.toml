@@ -19,4 +19,7 @@ path = "src/main.rs"
 b10x-codespec-model = { path = "../model" }
 b10x-codespec-harness = { path = "../harness" }
 b10x-codespec-passes = { path = "../passes" }
+b10x-codespec-conformance = { path = "../conformance" }
+serde.workspace = true
+serde_json.workspace = true
 clap.workspace = true

@@ -1,0 +1,115 @@
+{
+  "format": "cir/1",
+  "name": "decl_union",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: Go has no tagged union. The Rust reader reads a Rust enum whose variants carry fields as one. cir/1 has no expression that builds or inspects a union value, so the module declares one beside a function to call.",
+  "types": [
+    {
+      "k": "union",
+      "name": "Shape",
+      "exported": true,
+      "variants": [
+        {
+          "name": "Circle",
+          "fields": [
+            {
+              "name": "Radius",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rect",
+          "fields": [
+            {
+              "name": "W",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "name": "H",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ]
+        },
+        {
+          "name": "Label",
+          "fields": [
+            {
+              "name": "Text",
+              "t": {
+                "k": "string"
+              }
+            }
+          ]
+        }
+      ],
+      "doc": "Shape is a circle, a rectangle or a label.",
+      "pos": "case.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Echo",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "doc": "Echo returns its argument.",
+      "pos": "case.go:12"
+    }
+  ],
+  "layout": [
+    "type:Shape",
+    "func:Echo"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

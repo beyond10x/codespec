@@ -36,6 +36,7 @@ import com.sun.source.util.SourcePositions;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.source.util.TreePathScanner;
+import codespec.jvm.JvmTypes;
 import com.sun.source.util.Trees;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -93,7 +94,8 @@ import javax.tools.ToolProvider;
  *       and returns it.
  *   <li>{@code Optional<T>} as a method result is the comma-ok pair {@code (T, bool)}.
  *   <li>An interface with exactly one implementation in the package stands for that class.
- *   <li>{@code int}, {@code long}, {@code short}, {@code byte} and their boxes are signed integers
+ *   <li>By the JVM type table every JVM reader shares, {@link JvmTypes} under {@code adapters/jvm}:
+ *       {@code int}, {@code long}, {@code short}, {@code byte} and their boxes are signed integers
  *       of 32, 64, 16 and 8 bits; {@code List}/{@code ArrayList} slices; {@code Map}, {@code
  *       HashMap} and {@code TreeMap} maps. A loop over a {@code HashMap}'s keys is a {@code
  *       for_range} over the map, whose order is unspecified, as Java's is; a loop over a {@code
@@ -107,9 +109,19 @@ import javax.tools.ToolProvider;
  *       another name, as Java's is.
  *   <li>{@code String.format} is read only with a literal format of {@code %s} of Strings, {@code
  *       %d} of integers and {@code %%}, which Formatter and {@code sprintf} print alike.
- *   <li>A struct is refused, at each such field, when a field of a reference type has no
- *       initializer and some constructor does not assign it first: Java holds null there, which
- *       no cir/1 zero value is.
+ *   <li>A field of a reference type that has no initializer and that some constructor does not
+ *       assign first holds null until assigned, which no cir/1 zero value of its mapped type is: it
+ *       is a pointer to that type ({@link JvmTypes#unassignedField}), whose zero value is {@code
+ *       nil}; a class of the package is a pointer already. Such a field compared with {@code null}
+ *       is its pointer compared with {@code nil}; assigned {@code null}, {@code nil}; assigned
+ *       another such field, that field's pointer; assigned any other value, a pointer to a fresh
+ *       local holding it, refused through a receiver that is not a name, whose call Java makes
+ *       before the value. Every other read dereferences the pointer. A read Java would print
+ *       (concatenation), unbox or compare (an operator, {@code +=}, {@code ++}) or hand on (a
+ *       return, an argument, a local's initializer, an assignment), and a collection write to
+ *       such a field, are refused at the use, since the written program stops at the nil pointer
+ *       where Java goes on with null. A read as a receiver, where Java throws on null, assumes an
+ *       object is there (README.md, Assumptions).
  *   <li>{@code ==} between two objects other than enum values is refused (identity); against
  *       {@code null} it is a nil check. A static member reached through an expression is refused,
  *       since Java evaluates and drops that expression.
@@ -160,6 +172,8 @@ public final class Reader {
     private TypeElement errorRoot;
     private final Map<TypeElement, String> errorLeaves = new HashMap<>();
     private final Map<VariableElement, String> consts = new HashMap<>();
+    /** The instance fields that hold null until assigned ({@link #nullableFields}), of every struct. */
+    private final Set<VariableElement> unassigned = new HashSet<>();
     private final Map<ExecutableElement, Fn> fns = new HashMap<>();
     /** The constructor function of each struct, explicit or synthesized. */
     private final Map<TypeElement, Fn> ctors = new HashMap<>();
@@ -493,23 +507,22 @@ public final class Reader {
                     continue;
                 }
                 String why = structShape(p);
-                List<VariableTree> nullable = why == null ? nullableFields(p) : List.of();
-                if (why != null || !nullable.isEmpty()) {
+                if (why != null) {
                     structs.remove(te);
                     for (TypeElement i : new ArrayList<>(implOf.keySet())) {
                         if (implOf.get(i).equals(te)) {
                             implOf.remove(i);
                         }
                     }
-                    if (why != null) {
-                        refuseDecl(p.getCompilationUnit(), classTree(p), classTree(p).getModifiers(), te.getSimpleName().toString(), why);
-                    }
-                    for (VariableTree f : nullable) {
-                        refuseDecl(p.getCompilationUnit(), f, f.getModifiers(), te.getSimpleName() + "." + f.getName(),
-                            "field " + f.getName() + " holds null until assigned, which no cir/1 zero value is: give it an"
-                                + " initializer or assign it first in every constructor");
-                    }
+                    refuseDecl(p.getCompilationUnit(), classTree(p), classTree(p).getModifiers(), te.getSimpleName().toString(), why);
                     changed = true;
+                }
+            }
+        }
+        for (TreePath p : decls) {
+            if (structs.contains(element(p))) {
+                for (VariableTree f : nullableFields(p)) {
+                    unassigned.add((VariableElement) trees.getElement(new TreePath(p, f)));
                 }
             }
         }
@@ -663,7 +676,8 @@ public final class Reader {
      * Instance fields of a reference type (anything but a primitive) without an initializer that some
      * constructor does not assign before it does anything else: on such a path a fresh object holds
      * null in the field, and cir/1's zero value of its type ({@code ""}, {@code 0}, an empty slice) is
-     * not null. A class without a constructor of its own assigns nothing.
+     * not null, so the field is read as a pointer ({@link #fieldType}). A class without a constructor
+     * of its own assigns nothing.
      */
     private List<VariableTree> nullableFields(TreePath p) {
         List<TreePath> ctors = new ArrayList<>();
@@ -840,7 +854,7 @@ public final class Reader {
                 }
                 boolean ctor = ee.getKind() == ElementKind.CONSTRUCTOR;
                 String name = ctor ? "New" + te.getSimpleName() : ee.getSimpleName().toString();
-                String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name;
+                String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name + "(…)";
                 String why = null;
                 if (ctor && explicitCtor) {
                     why = "a second constructor: overloading is outside cir/1";
@@ -991,7 +1005,7 @@ public final class Reader {
                 if (!e.getModifiers().contains(Modifier.STATIC)) {
                     Map<String, Object> f = Json.obj();
                     f.put("name", e.getSimpleName().toString());
-                    f.put("t", typeOf(e.asType()));
+                    f.put("t", fieldType((VariableElement) e));
                     fields.add(f);
                 }
             }
@@ -1298,6 +1312,7 @@ public final class Reader {
                 }
                 return propagate(call, name, callee, ctx, pos);
             }
+            refuseUnassigned(ip, "the initializer of local " + name, ESCAPES);
             Map<String, Object> init = expr(ip, ctx);
             Map<String, Object> t = typeOf(trees.getElement(p).asType());
             if ("nil".equals(init.get("k"))) {
@@ -1342,6 +1357,11 @@ public final class Reader {
             }
             case ASSIGNMENT: {
                 AssignmentTree at = (AssignmentTree) e;
+                VariableElement target = unassignedRead(new TreePath(ep, at.getVariable()));
+                if (target != null) {
+                    return assignUnassigned(target, new TreePath(ep, at.getVariable()), new TreePath(ep, at.getExpression()), ctx, pos);
+                }
+                refuseUnassigned(new TreePath(ep, at.getExpression()), "assigned", ESCAPES);
                 Map<String, Object> lhs = place(new TreePath(ep, at.getVariable()), ctx);
                 Map<String, Object> rhs = coerce(expr(new TreePath(ep, at.getExpression()), ctx), type(lhs));
                 return List.of(assign("", lhs, rhs, pos));
@@ -1355,6 +1375,10 @@ public final class Reader {
             case OR_ASSIGNMENT:
             case XOR_ASSIGNMENT: {
                 CompoundAssignmentTree ct = (CompoundAssignmentTree) e;
+                refuseUnassigned(new TreePath(ep, ct.getVariable()), "the target of " + compoundOp(e.getKind()),
+                    "Java unboxes or prints the null" + STOPS);
+                refuseUnassigned(new TreePath(ep, ct.getExpression()), "an operand of " + compoundOp(e.getKind()),
+                    "Java unboxes or prints the null" + STOPS);
                 Map<String, Object> lhs = place(new TreePath(ep, ct.getVariable()), ctx);
                 Map<String, Object> rhs = expr(new TreePath(ep, ct.getExpression()), ctx);
                 String op = compoundOp(e.getKind());
@@ -1373,6 +1397,7 @@ public final class Reader {
             case POSTFIX_DECREMENT:
             case PREFIX_DECREMENT: {
                 UnaryTree ut = (UnaryTree) e;
+                refuseUnassigned(new TreePath(ep, ut.getExpression()), "the target of ++ or --", "Java unboxes the null" + STOPS);
                 Map<String, Object> x = place(new TreePath(ep, ut.getExpression()), ctx);
                 if (!isInt(type(x))) {
                     throw new Unsupported("++ or -- on a " + describe(type(x)));
@@ -1422,6 +1447,41 @@ public final class Reader {
         return st;
     }
 
+    /**
+     * {@code f = v} for a field that holds null until assigned, whose cir/1 field is a pointer: {@code
+     * null} is {@code nil}; another such field of the same type gives its pointer, null or not; any
+     * other value is bound to a fresh local and the field points at it, so no later write to the
+     * value's own name changes the field. Nothing writes through such a pointer, so a pointer two
+     * fields hold is never seen changed through the other.
+     */
+    private List<Object> assignUnassigned(VariableElement target, TreePath lp, TreePath rp, Ctx ctx, String pos) {
+        Map<String, Object> lhs = unassignedPointer(lp, ctx);
+        Map<String, Object> pt = fieldType(target);
+        if (unparen(rp).getLeaf().getKind() == Tree.Kind.NULL_LITERAL) {
+            return List.of(assign("", lhs, nil(pt), pos));
+        }
+        VariableElement source = unassignedRead(rp);
+        if (source != null && fieldType(source).equals(pt)) {
+            return List.of(assign("", lhs, unassignedPointer(rp, ctx), pos));
+        }
+        refuseUnassigned(rp, "assigned to field " + target.getSimpleName() + " of another type", ESCAPES);
+        TreePath recv = unparen(lp).getLeaf() instanceof MemberSelectTree
+            ? unparen(new TreePath(unparen(lp), ((MemberSelectTree) unparen(lp).getLeaf()).getExpression())) : null;
+        if (recv != null && !(recv.getLeaf() instanceof IdentifierTree)) {
+            throw new Unsupported("an assignment to field " + target.getSimpleName() + ", null until assigned, through a receiver"
+                + " that is not a name: Java evaluates the receiver before the value, which the value bound first would not");
+        }
+        Map<String, Object> elem = typeOf(target.asType());
+        Map<String, Object> value = coerce(expr(rp, ctx), elem);
+        String name = ctx.fresh(target.getSimpleName().toString());
+        Map<String, Object> let = Json.obj();
+        let.put("k", "let");
+        let.put("names", new ArrayList<Object>(List.of(name)));
+        let.put("rhs", new ArrayList<Object>(List.of(value)));
+        let.put("pos", pos);
+        return List.of(let, assign("", lhs, unop("&", varRef(name, elem), pt), pos));
+    }
+
     /** An expression that can be assigned to: a local, a field or a list or map element. */
     private Map<String, Object> place(TreePath p, Ctx ctx) {
         Map<String, Object> x = expr(p, ctx);
@@ -1445,7 +1505,7 @@ public final class Reader {
             return;
         }
         String q = qname(e.asType());
-        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !BOXES.containsKey(q)) {
+        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)) {
             return;
         }
         boolean[] checked = {false};
@@ -1686,6 +1746,10 @@ public final class Reader {
         if (!list && !map) {
             return null;
         }
+        refuseUnassigned(recvPath, "written by " + name, "a collection write through the field's pointer is outside the reader's subset");
+        for (ExpressionTree a : mi.getArguments()) {
+            refuseUnassigned(new TreePath(ep, a), "an argument of " + name, "Java stores the null" + STOPS);
+        }
         if (!owned(recvPath, ctx)) {
             throw new Unsupported(name + " on a collection another name may share: a Java collection is one object every"
                 + " name sees changed, a cir/1 slice or map write is not; only a field of this or a local built here and"
@@ -1900,6 +1964,7 @@ public final class Reader {
             return List.of(ret(successResults(ctx, null), pos));
         }
         TreePath ep = new TreePath(p, rt.getExpression());
+        refuseUnassigned(ep, "returned", ESCAPES);
         if (fn.optional) {
             ExpressionTree e = rt.getExpression();
             if (e instanceof MethodInvocationTree) {
@@ -1910,6 +1975,7 @@ public final class Reader {
                     return List.of(ret(List.of(zero(fn.values.get(0)), lit("false", tBool())), pos));
                 }
                 if (owner.equals("java.util.Optional") && m.getSimpleName().contentEquals("of") && args.size() == 1) {
+                    refuseUnassigned(new TreePath(ep, args.get(0)), "returned in an Optional", ESCAPES);
                     Map<String, Object> x = coerce(expr(new TreePath(ep, args.get(0)), ctx), fn.values.get(0));
                     return List.of(ret(List.of(x, lit("true", tBool())), pos));
                 }
@@ -2092,6 +2158,7 @@ public final class Reader {
             case UNARY_PLUS:
             case LOGICAL_COMPLEMENT:
             case BITWISE_COMPLEMENT: {
+                refuseUnassigned(new TreePath(p, ((UnaryTree) e).getExpression()), "an operand of a unary operator", "Java unboxes the null" + STOPS);
                 Map<String, Object> t = typeOf(trees.getTypeMirror(p));
                 Map<String, Object> x = coerce(expr(new TreePath(p, ((UnaryTree) e).getExpression()), ctx), t);
                 String op = e.getKind() == Tree.Kind.UNARY_MINUS ? "-"
@@ -2198,8 +2265,62 @@ public final class Reader {
         f.put("k", "field");
         f.put("x", x);
         f.put("name", name);
-        f.put("t", typeOf(el.asType()));
-        return f;
+        f.put("t", fieldType(el));
+        return derefed(el) ? unop("*", f, typeOf(el.asType())) : f;
+    }
+
+    /**
+     * The cir/1 type of an instance field: its mapped type, or for a field that holds null until
+     * assigned, {@link JvmTypes#unassignedField} of it, a pointer whose zero value is nil.
+     */
+    private Map<String, Object> fieldType(VariableElement el) {
+        Map<String, Object> t = typeOf(el.asType());
+        return unassigned.contains(el) ? JvmTypes.unassignedField(t) : t;
+    }
+
+    /**
+     * Whether a field holds null until assigned and its value is read through a pointer: a String,
+     * box, list, map or enum field; not a class of the package, whose value is a pointer already.
+     */
+    private boolean derefed(VariableElement el) {
+        return unassigned.contains(el) && !fieldType(el).equals(typeOf(el.asType()));
+    }
+
+    /**
+     * The field that holds null until assigned which {@code p} reads through a pointer
+     * ({@link #derefed}), or null when {@code p} reads anything else.
+     */
+    private VariableElement unassignedRead(TreePath p) {
+        p = unparen(p);
+        if (!(p.getLeaf() instanceof IdentifierTree || p.getLeaf() instanceof MemberSelectTree)) {
+            return null;
+        }
+        Element e = trees.getElement(p);
+        return e instanceof VariableElement && e.getKind() == ElementKind.FIELD && derefed((VariableElement) e)
+            ? (VariableElement) e : null;
+    }
+
+    /** The pointer itself of a field {@link #unassignedRead} names: its read without the dereference. */
+    private Map<String, Object> unassignedPointer(TreePath p, Ctx ctx) {
+        Map<String, Object> d = expr(p, ctx);
+        return sub(d, "x");
+    }
+
+    /** How the written program differs where Java takes a null: it dereferences the nil pointer and panics. */
+    private static final String STOPS = ", where the written program stops at the nil pointer";
+
+    /** Why a read that hands the null on (returned, passed, bound, assigned) is refused. */
+    private static final String ESCAPES = "Java hands the null on" + STOPS;
+
+    /**
+     * Refuse {@code p} when it reads a field that holds null until assigned: {@code use} is what the
+     * expression does with it, {@code why} why that is not read.
+     */
+    private void refuseUnassigned(TreePath p, String use, String why) {
+        VariableElement f = unassignedRead(p);
+        if (f != null) {
+            throw new Unsupported("field " + f.getSimpleName() + ", null until assigned, " + use + ": " + why);
+        }
     }
 
     private Map<String, Object> constLit(Object v, Map<String, Object> t) {
@@ -2272,6 +2393,10 @@ public final class Reader {
         }
         if (inPackage(owner)) {
             throw new Unsupported("call of " + owner.getSimpleName() + "." + name + ", which is not read");
+        }
+        for (ExpressionTree a : mi.getArguments()) {
+            refuseUnassigned(new TreePath(p, a), "an argument of " + owner.getSimpleName() + "." + name,
+                "Java hands the null to the library method, which prints, stores or compares it" + STOPS);
         }
         int n = mi.getArguments().size();
         if (on.equals("java.lang.String") && name.equals("format") && m.getModifiers().contains(Modifier.STATIC)) {
@@ -2409,6 +2534,12 @@ public final class Reader {
         String qn = te.getQualifiedName().toString();
         if (structs.contains(te)) {
             Fn fn = ctors.get(te);
+            Element called = trees.getElement(p);
+            boolean synthesized = fns.get(called) == null && called != null && generated(called) && fn.params.isEmpty();
+            if (fns.get(called) != fn && !synthesized || nc.getArguments().size() != fn.params.size()) {
+                throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read: the class"
+                    + " reads one constructor");
+            }
             if (fn.throwsErr && !mayThrow) {
                 throw new Unsupported("a constructor that throws, inside an expression");
             }
@@ -2438,6 +2569,7 @@ public final class Reader {
     private List<Object> args(TreePath p, List<? extends ExpressionTree> as, List<Map<String, Object>> params, Ctx ctx) {
         List<Object> out = new ArrayList<>();
         for (int i = 0; i < as.size(); i++) {
+            refuseUnassigned(new TreePath(p, as.get(i)), "an argument of a call", ESCAPES);
             out.add(coerce(expr(new TreePath(p, as.get(i)), ctx), params.get(i)));
         }
         return out;
@@ -2465,6 +2597,20 @@ public final class Reader {
         }
         TreePath lp = new TreePath(p, b.getLeftOperand());
         TreePath rp = new TreePath(p, b.getRightOperand());
+        // A field that holds null until assigned, against null: whether its pointer is nil. Any other
+        // operator unboxes, prints or compares the object Java holds there, which may be null.
+        boolean leftNull = unparen(lp).getLeaf().getKind() == Tree.Kind.NULL_LITERAL;
+        boolean rightNull = unparen(rp).getLeaf().getKind() == Tree.Kind.NULL_LITERAL;
+        if ((b.getKind() == Tree.Kind.EQUAL_TO || b.getKind() == Tree.Kind.NOT_EQUAL_TO) && (leftNull || rightNull)) {
+            TreePath fp = leftNull ? rp : lp;
+            VariableElement f = unassignedRead(fp);
+            if (f != null) {
+                return binop(binOp(b.getKind()), unassignedPointer(fp, ctx), nil(fieldType(f)), tBool());
+            }
+        }
+        for (TreePath o : List.of(lp, rp)) {
+            refuseUnassigned(o, "an operand of " + binOp(b.getKind()), "Java unboxes the null or compares it as no object" + STOPS);
+        }
         Map<String, Object> x = expr(lp, ctx);
         Map<String, Object> y = expr(rp, ctx);
         String op = binOp(b.getKind());
@@ -2481,7 +2627,7 @@ public final class Reader {
                 if (b.getKind() == Tree.Kind.EQUAL_TO || b.getKind() == Tree.Kind.NOT_EQUAL_TO) {
                     for (TreePath o : List.of(lp, rp)) {
                         String q = qname(trees.getTypeMirror(o));
-                        if (q.equals("java.lang.String") || BOXES.containsKey(q)) {
+                        if (q.equals("java.lang.String") || JvmTypes.isIntegerBox(q)) {
                             throw new Unsupported("== on a String or a boxed number compares references");
                         }
                     }
@@ -2569,6 +2715,7 @@ public final class Reader {
         StringBuilder fmt = new StringBuilder();
         for (TreePath part : parts) {
             refusePrintedNullable(part, ctx);
+            refuseUnassigned(part, "printed by string concatenation", "Java prints null" + STOPS);
             Map<String, Object> x = expr(part, ctx);
             Map<String, Object> t = type(x);
             if (t.equals(tString())) {
@@ -2616,9 +2763,6 @@ public final class Reader {
 
     private static final Map<String, Object> NULL = Map.of("k", "null");
 
-    private static final Map<String, String> BOXES = Map.of(
-        "java.lang.Integer", "32", "java.lang.Long", "64", "java.lang.Short", "16", "java.lang.Byte", "8");
-
     private Map<String, Object> typeOfOrNull(TypeMirror t) {
         try {
             return typeOf(t);
@@ -2627,47 +2771,65 @@ public final class Reader {
         }
     }
 
+    /** The cir/1 type of {@code t}: the JVM type table of {@link JvmTypes}, with the package's own classes. */
     private Map<String, Object> typeOf(TypeMirror t) {
+        if (t.getKind() == TypeKind.NULL) {
+            return NULL;
+        }
+        try {
+            return JvmTypes.map(jvmType(t), this::ownType);
+        } catch (JvmTypes.Outside o) {
+            throw new Unsupported(o.getMessage());
+        }
+    }
+
+    /** {@code t} as the JVM type table describes it, printed as javac prints it. */
+    private static JvmTypes.Type jvmType(TypeMirror t) {
         switch (t.getKind()) {
-            case INT:
-                return tInt("32");
-            case LONG:
-                return tInt("64");
-            case SHORT:
-                return tInt("16");
-            case BYTE:
-                return tInt("8");
             case BOOLEAN:
-                return tBool();
-            case NULL:
-                return NULL;
-            case DECLARED:
-                break;
+            case BYTE:
+            case SHORT:
+            case INT:
+            case LONG:
+            case CHAR:
+            case FLOAT:
+            case DOUBLE:
+                return JvmTypes.Type.primitive(JvmTypes.Primitive.valueOf(t.getKind().name()), t.toString());
+            case DECLARED: {
+                DeclaredType dt = (DeclaredType) t;
+                List<JvmTypes.Type> args = new ArrayList<>();
+                for (TypeMirror a : dt.getTypeArguments()) {
+                    args.add(jvmType(a));
+                }
+                return JvmTypes.Type.declared(((TypeElement) dt.asElement()).getQualifiedName().toString(), args, t.toString());
+            }
             default:
-                throw new Unsupported("type " + t + " is outside the reader's types");
+                return JvmTypes.Type.other(t.toString());
         }
-        DeclaredType dt = (DeclaredType) t;
-        TypeElement te = (TypeElement) dt.asElement();
-        String qn = te.getQualifiedName().toString();
-        List<? extends TypeMirror> args = dt.getTypeArguments();
-        if (qn.equals("java.lang.String")) {
-            return tString();
+    }
+
+    /**
+     * A class of the package: a class as {@code ptr(named)}, an enum as {@code named}, an interface
+     * with one implementation as that class, the checked-exception hierarchy as {@code error}; else
+     * {@code null}, which the table refuses.
+     */
+    private Map<String, Object> ownType(JvmTypes.Type t) {
+        List<TypeElement> own = new ArrayList<>(structs);
+        own.addAll(enums);
+        own.addAll(implOf.keySet());
+        own.addAll(errorLeaves.keySet());
+        if (errorRoot != null) {
+            own.add(errorRoot);
         }
-        if (BOXES.containsKey(qn)) {
-            return tInt(BOXES.get(qn));
+        TypeElement te = null;
+        for (TypeElement e : own) {
+            if (e.getQualifiedName().contentEquals(t.className())) {
+                te = e;
+                break;
+            }
         }
-        if (qn.equals("java.lang.Boolean")) {
-            return tBool();
-        }
-        if ((qn.equals("java.util.List") || qn.equals("java.util.ArrayList")) && args.size() == 1) {
-            return tSlice(typeOf(args.get(0)));
-        }
-        if ((qn.equals("java.util.Map") || qn.equals("java.util.HashMap") || qn.equals("java.util.TreeMap")) && args.size() == 2) {
-            Map<String, Object> m = Json.obj();
-            m.put("k", "map");
-            m.put("key", typeOf(args.get(0)));
-            m.put("elem", typeOf(args.get(1)));
-            return m;
+        if (te == null) {
+            return null;
         }
         if (structs.contains(te)) {
             return tPtr(tNamed(te.getSimpleName().toString()));
@@ -2681,7 +2843,7 @@ public final class Reader {
         if (te.equals(errorRoot) || errorLeaves.containsKey(te)) {
             return tError();
         }
-        throw new Unsupported("type " + t + " is outside the reader's types");
+        return null;
     }
 
     private String enumName(Map<String, Object> t) {

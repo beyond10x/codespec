@@ -1,0 +1,248 @@
+{
+  "format": "cir/1",
+  "name": "type_unit_method",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: the Go reader types a call of a method without results as an empty tuple. The Java and Rust readers type it as unit.",
+  "types": [
+    {
+      "k": "struct",
+      "name": "Counter",
+      "exported": true,
+      "fields": [
+        {
+          "name": "N",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Counter counts.",
+      "pos": "case.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Bump",
+      "exported": true,
+      "recv": {
+        "name": "c",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Counter"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "incr",
+          "x": {
+            "k": "field",
+            "x": {
+              "k": "var",
+              "name": "c",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Counter"
+                }
+              }
+            },
+            "name": "N",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "case.go:13"
+        }
+      ],
+      "doc": "Bump adds one.",
+      "pos": "case.go:12"
+    },
+    {
+      "name": "Count",
+      "exported": true,
+      "params": [
+        {
+          "name": "k",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "c"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Counter",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Counter"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Counter"
+                }
+              }
+            }
+          ],
+          "pos": "case.go:18"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "case.go:19"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "k",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "case.go:19"
+          },
+          "body": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "method",
+                "x": {
+                  "k": "var",
+                  "name": "c",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Counter"
+                    }
+                  }
+                },
+                "name": "Bump",
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "case.go:20"
+            }
+          ],
+          "pos": "case.go:19"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Counter"
+                  }
+                }
+              },
+              "name": "N",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:22"
+        }
+      ],
+      "doc": "Count bumps a counter k times through a method that returns nothing.",
+      "pos": "case.go:17"
+    }
+  ],
+  "layout": [
+    "type:Counter",
+    "func:Counter.Bump",
+    "func:Count"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

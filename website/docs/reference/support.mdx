@@ -1,0 +1,47 @@
+---
+title: Language support
+sidebar_label: Language support
+sidebar_position: 4
+description: Per cir/1 feature and per language, whether codespec reads it from that language and writes it to that language, and what evidence holds each cell.
+---
+
+import SupportMatrix from '@site/src/components/SupportMatrix';
+import matrix from '@site/data/support-matrix.json';
+
+# Language support
+
+Every row is one `cir/1` feature from the closed vocabulary in
+[`schemas/cir-1.features.json`](https://github.com/beyond10x/codespec/blob/main/schemas/cir-1.features.json),
+grouped by family. Every language has two columns: **read** (its reader lifts the feature into
+`cir/1`) and **write** (its writer emits the feature from `cir/1`). A feature id links to its
+conformance case under
+[`conformance/cases`](https://github.com/beyond10x/codespec/tree/main/conformance/cases), the small
+program that decides it; an id without a link has no case yet.
+
+`codespec-docs` generates the matrix from the feature list, each adapter's `--describe` manifest and
+its conformance report, so a cell cannot claim more than a report shows.
+
+<SupportMatrix data={matrix} />
+
+## Reading a cell
+
+Each state has a colour and a symbol, so the matrix reads the same without colour.
+
+| symbol | state | means |
+|---|---|---|
+| ✓ | verified | the adapter claims the feature in its manifest and its conformance report passes |
+| ○ | claimed | the manifest claims the feature; no conformance report, or no case of the report, covers it yet |
+| ✗ | failing | claimed, and the conformance report fails it: a wrong output or a refusal |
+| ⊘ | refused | the manifest does not claim the feature; the adapter refuses it instead of writing it wrong |
+| n/a | n/a | not applicable to this role: a fact is computed by `codespec pass` and read by writers, so no reader can claim it |
+| – | none | there is no adapter for that role in that language |
+
+Point at a cell, or move to it with the arrow keys, to see its feature, language, role and state.
+A cell with a marked corner carries a note: what a refusal leaves out, or the first difference a
+failing report found. The bars above the matrix give each column's share of verified and claimed
+features. The search, the family and the language are kept in the address, so a copied link opens
+the same view.
+
+Every reader cell of a `fact.*` feature is n/a, and coverage counts applicable features only, so a
+reader that handles all 98 of them reaches 100%. How a claim becomes a verdict is in
+[Adapter conformance](https://github.com/beyond10x/codespec/blob/main/docs/conformance.md).

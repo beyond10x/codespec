@@ -1,5 +1,8 @@
-//! The command line of `codespec`, as a clap definition. The binary (`src/main.rs`) runs it; the
-//! documentation generator (`codespec-docs`) walks it for the CLI reference.
+//! The command line of `codespec`, as a clap definition, and the `measure` report. The binary
+//! (`src/main.rs`) runs it; the documentation generator (`codespec-docs`) walks it for the CLI
+//! reference.
+
+pub mod measure;
 
 use std::path::PathBuf;
 
@@ -68,6 +71,68 @@ pub enum Cmd {
         /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
+    },
+    /// Run the conformance kit against the adapter codespec-ROLE-LANG, by the claim its --describe
+    /// manifest prints, and write a codespec-conformance-report/1 to OUT; exit 1 when it does not
+    /// conform. With --check REPORT, run again for the report's adapter and exit 1 naming every
+    /// feature whose entry differs.
+    Conform {
+        /// The adapter's language; selects codespec-ROLE-LANG and the runner codespec-run-LANG.
+        #[arg(long, required_unless_present = "check", conflicts_with = "check")]
+        lang: Option<String>,
+        /// reader or writer.
+        #[arg(
+            long,
+            value_parser = ["reader", "writer"],
+            required_unless_present = "check",
+            conflicts_with = "check"
+        )]
+        role: Option<String>,
+        /// Where the report is written; a missing directory is created.
+        #[arg(long, required_unless_present = "check", conflicts_with = "check")]
+        out: Option<PathBuf>,
+        /// A report to check: run again and compare.
+        #[arg(long)]
+        check: Option<PathBuf>,
+        /// The kit directory: kit.json and cases/.
+        #[arg(long, default_value = "conformance")]
+        kit: PathBuf,
+        /// A reader's corpus: one directory per kit case, its source and calls.json. Defaults to
+        /// KIT/reader/LANG.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        /// Directory holding the adapter, its runner and, for a reader, codespec-write-go and
+        /// codespec-run-go.
+        #[arg(long, env = "CODESPEC_ADAPTERS")]
+        adapters: PathBuf,
+        /// Where each case is written, read and built; emptied first. Defaults to
+        /// target/conform/ROLE-LANG.
+        #[arg(long)]
+        work: Option<PathBuf>,
+        /// Seconds one program (adapter, runner) may run before it is killed and the case
+        /// recorded as `timeout`.
+        #[arg(long, default_value_t = 300)]
+        timeout: u64,
+    },
+    /// Measure a reader's output: counts read and refused functions per artefact by refusal
+    /// category, then the totals and the share read.
+    ///
+    /// An artefact is a source file, the part of a position before its last `:`. A function is
+    /// read when its body holds no `foreign` statement and refused when it holds one; a refusal
+    /// outside every function counts under its file and category, and is a refused function too
+    /// when it refuses a method's declaration (a call shape `T(…)` or `T.m(…)`, such as a Groovy
+    /// hook `T.methodMissing(…)`). A constructor `New<T>` a JVM reader made at its class's position is not
+    /// counted. The category is the text of the refusal's reason before the first `: ` when it is
+    /// one of the Groovy reader's eight (dynamic, closure, groovy-semantics, type, unresolved,
+    /// gorm, spring, unsupported), and uncategorised otherwise. Files and categories are in byte
+    /// order; the same document gives the same bytes.
+    Measure {
+        /// The module to measure: a cir/1 document.
+        module: PathBuf,
+        /// text, a table with one row per artefact; or json, codespec-measure/1 in canonical
+        /// encoding.
+        #[arg(long, value_parser = ["text", "json"], default_value = "text")]
+        format: String,
     },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first

@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Width",
+      "args": [
+        "2",
+        "9"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "RemBy",
+      "args": [
+        "7",
+        "3"
+      ]
+    }
+  ]
+}

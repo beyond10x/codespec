@@ -5,28 +5,37 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 
 /**
  * The reader's tests, run as a plain program:
  *
- * <pre>java -cp &lt;classes&gt; codespec.read.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt;</pre>
+ * <pre>java -cp &lt;classes&gt; codespec.read.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt; &lt;adapters dir&gt;</pre>
  *
- * It prints one line per case and a summary {@code N passed, M failed}, and exits 1 when any case
- * fails.
+ * The adapters directory holds {@code codespec-read-java}, {@code codespec-write-go} and {@code
+ * codespec-run-go}, as {@code task adapters} builds them. It prints one line per case and a summary
+ * {@code N passed, M failed}, and exits 1 when any case fails.
  */
 public final class ReaderTest {
     private final Path root;
     private final Path codespec;
     private final Path work;
+    private final Path adapters;
     private final Path testdata;
 
-    private ReaderTest(Path root, Path codespec, Path work) {
+    private ReaderTest(Path root, Path codespec, Path work, Path adapters) {
         this.root = root;
         this.codespec = codespec;
         this.work = work;
+        this.adapters = adapters;
         this.testdata = root.resolve("adapters/java/testdata");
     }
 
@@ -35,11 +44,11 @@ public final class ReaderTest {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 3) {
-            System.err.println("usage: ReaderTest <repo root> <codespec binary> <work dir>");
+        if (args.length != 4) {
+            System.err.println("usage: ReaderTest <repo root> <codespec binary> <work dir> <adapters dir>");
             System.exit(2);
         }
-        ReaderTest t = new ReaderTest(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]));
+        ReaderTest t = new ReaderTest(Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Path.of(args[3]));
         Files.createDirectories(t.work);
         List<String> names = new ArrayList<>();
         List<Case> cases = new ArrayList<>();
@@ -59,6 +68,10 @@ public final class ReaderTest {
         cases.add(t::aListSizeIsAPlatformLenConvertedToInt32);
         names.add("the_reader_version_is_the_workspace_version");
         cases.add(t::theReaderVersionIsTheWorkspaceVersion);
+        names.add("a_reference_field_some_constructor_leaves_unassigned_reads_as_a_nil_pointer");
+        cases.add(t::aReferenceFieldSomeConstructorLeavesUnassignedReadsAsANilPointer);
+        names.add("a_use_of_an_unassigned_field_where_java_prints_computes_with_or_hands_on_null_is_refused");
+        cases.add(t::aUseOfAnUnassignedFieldWhereJavaHandsOnNullIsRefused);
         names.add("integer_max_value_plus_one_is_int32");
         cases.add(t::integerMaxValuePlusOneIsInt32);
         names.add("a_lambda_is_foreign_with_a_refusal_at_its_line");
@@ -101,6 +114,20 @@ public final class ReaderTest {
         cases.add(t::adversary2_a_collection_changed_inside_a_for_each_over_itself_is_refused);
         names.add("adversary2_a_string_or_boxed_parameter_printed_where_java_prints_null_is_refused");
         cases.add(t::adversary2_a_string_or_boxed_parameter_printed_where_java_prints_null_is_refused);
+        names.add("a_generic_type_outside_the_table_is_refused_with_the_type_named");
+        cases.add(t::aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed);
+        names.add("adversary3_a_package_under_javax_reads_its_own_classes_as_before");
+        cases.add(t::adversary3_a_package_under_javax_reads_its_own_classes_as_before);
+        names.add("adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value");
+        cases.add(t::adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value);
+        names.add("adversary_null_a_read_where_java_goes_on_with_the_null_is_refused");
+        cases.add(t::adversary_null_a_read_where_java_goes_on_with_the_null_is_refused);
+        names.add("adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash");
+        cases.add(t::adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash);
+        names.add("every_kit_case_with_a_java_source_reads_without_refusal_and_prints_its_expected_txt_through_the_go_writer");
+        cases.add(t::everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter);
+        names.add("every_claimed_feature_is_the_subject_of_a_kit_case_with_a_java_source");
+        cases.add(t::everyClaimedFeatureIsTheSubjectOfAKitCaseWithAJavaSource);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -239,6 +266,82 @@ public final class ReaderTest {
             + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int64 + "},\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
     }
 
+    // ---- fields that hold null until assigned ----
+
+    private static final String PTR_STRING = "{\"k\":\"ptr\",\"elem\":{\"k\":\"string\"}}";
+    private static final String PTR_INT32 = "{\"k\":\"ptr\",\"elem\":{\"k\":\"int\",\"width\":\"32\",\"signed\":true}}";
+    private static final String THIS_NOTE = "{\"k\":\"var\",\"name\":\"this\",\"t\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}}";
+
+    /**
+     * {@code testdata/nullable}: a String and an Integer field without an initializer, which no
+     * constructor assigns, read as {@code ptr(string)} and {@code ptr(int32)} with no refusal; a Note
+     * field stays {@code ptr(Note)}; {@code text != null} a comparison of the field itself with
+     * {@code nil}; a read as a receiver a dereference; an assignment a pointer to a fresh local
+     * holding the value, {@code null} a {@code nil}, another such field that field's pointer.
+     */
+    private void aReferenceFieldSomeConstructorLeavesUnassignedReadsAsANilPointer() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("nullable"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        List<Object> fields = list(byName(list(doc.get("types")), "Note").get("fields"));
+        check(same(byName(fields, "text").get("t"), PTR_STRING), "text is " + Json.write(byName(fields, "text").get("t")));
+        check(same(byName(fields, "count").get("t"), PTR_INT32), "count is " + Json.write(byName(fields, "count").get("t")));
+        check(same(byName(fields, "next").get("t"), "{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}"),
+            "next, a class of the package, is " + Json.write(byName(fields, "next").get("t")));
+        String text = "{\"k\":\"field\",\"x\":" + THIS_NOTE + ",\"name\":\"text\",\"t\":" + PTR_STRING + "}";
+        String count = "{\"k\":\"field\",\"x\":" + THIS_NOTE + ",\"name\":\"count\",\"t\":" + PTR_INT32 + "}";
+        Object hasText = returned(funcByKey(doc, "Note.hasText"));
+        check(same(hasText, "{\"k\":\"binop\",\"op\":\"!=\",\"x\":" + text + ",\"y\":{\"k\":\"nil\",\"t\":" + PTR_STRING
+            + "},\"t\":{\"k\":\"bool\"}}"), "hasText returns " + Json.write(hasText));
+        Object hasCount = returned(funcByKey(doc, "Note.hasCount"));
+        check(same(hasCount, "{\"k\":\"binop\",\"op\":\"!=\",\"x\":" + count + ",\"y\":{\"k\":\"nil\",\"t\":" + PTR_INT32
+            + "},\"t\":{\"k\":\"bool\"}}"), "hasCount returns " + Json.write(hasCount));
+        Object holds = returned(funcByKey(doc, "Note.holds"));
+        check(same(holds, "{\"k\":\"binop\",\"op\":\"==\",\"x\":{\"k\":\"unop\",\"op\":\"*\",\"x\":" + text
+            + ",\"t\":{\"k\":\"string\"}},\"y\":{\"k\":\"var\",\"name\":\"s\",\"t\":{\"k\":\"string\"}},\"t\":{\"k\":\"bool\"}}"),
+            "holds returns " + Json.write(holds));
+        List<Object> write = list(funcByKey(doc, "Note.write").get("body"));
+        String pos = "Note.java:" + lineOf(testdata.resolve("nullable/Note.java"), "this.text = t;");
+        check(same(write, "[{\"k\":\"let\",\"names\":[\"text\"],\"rhs\":[{\"k\":\"var\",\"name\":\"t\",\"t\":{\"k\":\"string\"}}],"
+            + "\"pos\":\"" + pos + "\"},{\"k\":\"assign\",\"lhs\":[" + text + "],\"rhs\":[{\"k\":\"unop\",\"op\":\"&\",\"x\":{\"k\":\"var\","
+            + "\"name\":\"text\",\"t\":{\"k\":\"string\"}},\"t\":" + PTR_STRING + "}],\"pos\":\"" + pos + "\"}]"),
+            "write is " + Json.write(write));
+        List<Object> clear = list(funcByKey(doc, "Note.clear").get("body"));
+        check(same(map(clear.get(0)).get("rhs"), "[{\"k\":\"nil\",\"t\":" + PTR_STRING + "}]"), "clear is " + Json.write(clear));
+        List<Object> copy = list(funcByKey(doc, "copyText").get("body"));
+        check(same(map(copy.get(0)).get("rhs"), "[{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"from\",\"t\":{\"k\":\"ptr\","
+            + "\"elem\":{\"k\":\"named\",\"name\":\"Note\"}}},\"name\":\"text\",\"t\":" + PTR_STRING + "}]"), "copyText is " + Json.write(copy));
+    }
+
+    /**
+     * A field that holds null until assigned, printed by concatenation or {@code String.format}, an
+     * operand of an operator, the target of {@code +=} or {@code ++}, an argument of a library method
+     * or the receiver of a collection write: refused at the use. Its receiver use {@code
+     * text.equals(..)}, which throws in Java where the written program stops, is read.
+     */
+    private void aUseOfAnUnassignedFieldWhereJavaHandsOnNullIsRefused() throws Exception {
+        Path dir = testdata.resolve("refuse/null-use");
+        Map<String, Object> doc = Reader.read(dir);
+        Path tag = dir.resolve("Tag.java");
+        List<String> at = refusalPositions(doc);
+        List<String> missing = new ArrayList<>();
+        for (String use : new String[] {
+            "String.format(\"%s\", text)", "count * 2", "count == 3", "count += 1", "count++", "-count",
+            "other.equals(text)", "shade == Shade.DARK", "words.add(w)",
+        }) {
+            String pos = "Tag.java:" + lineOf(tag, use);
+            if (!at.contains(pos)) {
+                missing.add(use + " at " + pos);
+            }
+        }
+        check(missing.isEmpty(), "not refused: " + missing + "; refusals " + at);
+        for (String field : new String[] {"private String text;", "private Integer count;", "private Shade shade;", "private List<String> words;"}) {
+            String pos = "Tag.java:" + lineOf(tag, field);
+            check(!at.contains(pos), "the field itself refused at " + pos);
+        }
+        String hello = "Tag.java:" + lineOf(tag, "text.equals(\"hello\")");
+        check(!at.contains(hello), "the receiver use refused at " + hello);
+    }
+
     // ---- refusals ----
 
     /** The fixture's line marked {@code // refused} is a refusal and a foreign statement. */
@@ -278,6 +381,31 @@ public final class ReaderTest {
         check(refusalPositions(doc).contains(pos), "no refusal at " + pos + ": " + String.valueOf(doc.get("refusals")));
         check(byNameOrNull(list(doc.get("types")), "Derived") == null, "the subclass was read");
         check(byNameOrNull(list(doc.get("types")), "Base") != null, "the base class was not read");
+    }
+
+    /** The reason for {@code Map<String, List<Double>>}: the innermost type the table lacks. */
+    private static final String MAP_OF_DOUBLE_LISTS_REASON = "type java.lang.Double is outside the reader's types";
+    /** The reason for {@code Set<String>}: the type as {@code TypeMirror.toString()} prints it. */
+    private static final String SET_OF_STRINGS_REASON = "type java.util.Set<java.lang.String> is outside the reader's types";
+
+    /**
+     * A parameter type outside the JVM type table (codespec.jvm.JvmTypes) refuses its method with the
+     * reason the reader has always given, byte for byte.
+     */
+    private void aGenericTypeOutsideTheTableIsRefusedWithTheTypeNamed() throws Exception {
+        Path dir = testdata.resolve("refuse/generic-type");
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> got = new ArrayList<>();
+        for (Object r : list(doc.get("refusals"))) {
+            Map<String, Object> m = map(r);
+            got.add(m.get("pos") + " " + m.get("what") + ": " + m.get("reason"));
+        }
+        Path shelf = dir.resolve("Shelf.java");
+        List<String> want = List.of(
+            "Shelf.java:" + lineOf(shelf, "ratings(Map<String, List<Double>>") + " Shelf.ratings(…): " + MAP_OF_DOUBLE_LISTS_REASON,
+            "Shelf.java:" + lineOf(shelf, "tags(Set<String>") + " Shelf.tags(…): " + SET_OF_STRINGS_REASON);
+        check(got.equals(want), "refusals " + got + ", want " + want);
+        check(funcByKeyOrNull(doc, "count") != null, "the method beside them was not read");
     }
 
     // ---- adversary ----
@@ -432,6 +560,207 @@ public final class ReaderTest {
             {"return \"hi \" + name;", "public static String hello(String name)"},
             {"return String.format(\"%d items\", n);", "public static String count(Integer n)"},
         });
+    }
+
+    // ---- adversary pass 3 ----
+
+    /**
+     * Byte-equality of the reader's output: a package named {@code javax.lending} is the package's
+     * own code, and its class, enum, one-implementation interface and exception hierarchy map as they
+     * do in any other package. The reader on the base read it with no refusal and {@code books} as a
+     * slice of {@code *Book}.
+     */
+    private void adversary3_a_package_under_javax_reads_its_own_classes_as_before() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("javax-package"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> library = byNameOrNull(list(doc.get("types")), "Library");
+        check(library != null, "Library was not read");
+        String books = null;
+        for (Object f : list(library.get("fields"))) {
+            if ("books".equals(map(f).get("name"))) {
+                books = Json.write(map(f).get("t")).replaceAll("\\s+", "");
+            }
+        }
+        check("{\"k\":\"slice\",\"elem\":{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Book\"}}}".equals(books),
+            "Library.books is " + books);
+    }
+
+    // ---- adversary: fields that hold null until assigned ----
+
+    private String adversary3Pos(String fixture, String file, String text) throws IOException {
+        return file + ":" + lineOf(testdata.resolve("adversary3/" + fixture + "/" + file), text);
+    }
+
+    /**
+     * Evaluation order: {@code s.pick().label = s.stamp()} calls pick before stamp in Java. Read as
+     * {@code let label = s.stamp(); s.pick().label = &label}, the written program calls stamp first
+     * and returns "value first" where Java returns "receiver first" (Go and Rust both, measured). A
+     * field every constructor assigns keeps Java's order in Go. Refusing the line also passes.
+     */
+    private void adversary_null_an_assignment_to_a_null_until_assigned_field_evaluates_its_receiver_before_its_value() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/null-field-order"));
+        String pos = adversary3Pos("null-field-order", "Shelf.java", "s.pick().label = s.stamp();");
+        if (refusalPositions(doc).contains(pos)) {
+            return;
+        }
+        String body = Json.write(funcByKey(doc, "labelAfterPick").get("body")).replaceAll("\\s+", "");
+        int pick = body.indexOf("\"name\":\"pick\"");
+        int stamp = body.indexOf("\"name\":\"stamp\"");
+        check(pick >= 0 && stamp >= 0, "no call of pick or stamp in " + body);
+        check(pick < stamp, "the value s.stamp() is evaluated before the receiver s.pick() at " + pos + ": " + body);
+    }
+
+    /**
+     * A getter returning the field, a package method's argument and a local's initializer: on a fresh
+     * object Java returns null, "shelved" and "kept"; the written Go and Rust dereference the nil
+     * pointer and panic (measured), with no refusal. Each such read is refused.
+     */
+    private void adversary_null_a_read_where_java_goes_on_with_the_null_is_refused() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/null-field-escape"));
+        List<String> at = refusalPositions(doc);
+        List<String> missing = new ArrayList<>();
+        for (String use : new String[] {"return title;", "return shelved(new Card().title);", "String t = c.title;"}) {
+            String pos = adversary3Pos("null-field-escape", "Card.java", use);
+            if (!at.contains(pos)) {
+                missing.add(use + " at " + pos);
+            }
+        }
+        check(missing.isEmpty(), "read where Java goes on with null and the written program panics: " + missing + "; refusals " + at);
+    }
+
+    /**
+     * A field assigned in only one of two constructors: the class now reads (the field is a
+     * pointer), the second constructor is refused, and {@code new Card(t)} was read against the first
+     * constructor's empty parameter list, an IndexOutOfBoundsException out of the reader.
+     */
+    private void adversary_null_a_call_of_a_refused_second_constructor_is_refused_not_a_crash() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("adversary3/two-constructors"));
+        String use = adversary3Pos("two-constructors", "Card.java", "return new Card(t).title != null;");
+        check(refusalPositions(doc).contains(use), "no refusal at " + use + "; refusals " + refusalPositions(doc));
+    }
+
+    // ---- the conformance kit ----
+
+    private Path kit() {
+        return root.resolve("conformance/cases");
+    }
+
+    /** The kit cases holding {@code java/Case.java}, by name, in name order. */
+    private List<String> javaCases() throws IOException {
+        List<String> out = new ArrayList<>();
+        try (Stream<Path> dirs = Files.list(kit())) {
+            for (Path d : dirs.sorted().toList()) {
+                if (Files.isDirectory(d.resolve("java"))) {
+                    check(Files.isRegularFile(d.resolve("java/Case.java")), d.getFileName() + "/java holds no Case.java");
+                    out.add(d.getFileName().toString());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The subject of a kit case: the first feature its {@code features.json} lists. */
+    private String subject(String kase) throws IOException {
+        Map<String, Object> f = map(Json.parse(Files.readString(kit().resolve(kase).resolve("features.json"))));
+        return (String) list(f.get("features")).get(0);
+    }
+
+    /**
+     * Runs a program to completion with its stdout to {@code out}; a non-zero exit fails, naming
+     * the step and quoting stderr.
+     */
+    private static void run(String step, Path out, Path err, String... cmd) throws Exception {
+        Process p = new ProcessBuilder(cmd).redirectOutput(out.toFile()).redirectError(err.toFile()).start();
+        int code = p.waitFor();
+        if (code != 0) {
+            throw new AssertionError(step + " exited " + code + ": " + Files.readString(err).strip());
+        }
+    }
+
+    /**
+     * One kit case's {@code java/}, as {@code docs/conformance.md} § 6 checks a reader: read through
+     * {@code codespec read --lang java} with no refusal and no foreign statement, its module named as
+     * the case's package, passed, written as Go and run by {@code codespec-run-go} on the case's
+     * {@code calls.json}, printing its {@code expected.txt}. Its subject is claimed. The module and
+     * the subject are left in {@code <work>/kit/<case>/} for {@code task adapters-check}, which
+     * checks the module uses the subject ({@code codespec-conformance features}).
+     */
+    private void kitCase(String kase) throws Exception {
+        Path dir = kit().resolve(kase);
+        Path w = work.resolve("kit").resolve(kase);
+        Files.createDirectories(w);
+        Path read = w.resolve("read.cir.json");
+        Path passed = w.resolve("passed.cir.json");
+        Path log = w.resolve("stdout.txt");
+        Path err = w.resolve("stderr.txt");
+        run("codespec read", log, err, codespec.toString(), "read", "--lang", "java", dir.resolve("java").toString(),
+            "--out", read.toString(), "--adapters", adapters.toString());
+        Map<String, Object> doc = map(Json.parse(Files.readString(read)));
+        if (doc.containsKey("refusals")) {
+            throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
+        }
+        check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
+        String pkg = kase.replace('-', '_');
+        check(pkg.equals(doc.get("name")), "module " + doc.get("name") + ", the case's package is " + pkg);
+        String subject = subject(kase);
+        check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
+        Files.writeString(w.resolve("subject"), subject + "\n", StandardCharsets.UTF_8);
+        run("codespec pass", log, err, codespec.toString(), "pass", read.toString(), "--out", passed.toString());
+        run("codespec write --lang go", log, err, codespec.toString(), "write", "--lang", "go", passed.toString(),
+            "--out", w.resolve("go").toString(), "--adapters", adapters.toString());
+        Path got = w.resolve("output.txt");
+        run("codespec-run-go", got, err, adapters.resolve("codespec-run-go").toString(), "-build",
+            w.resolve("build").toString(), w.resolve("go").toString(), dir.resolve("calls.json").toString());
+        String want = Files.readString(dir.resolve("expected.txt"));
+        String have = Files.readString(got);
+        check(want.equals(have), "printed\n" + have + "expected.txt\n" + want);
+    }
+
+    private void everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter() throws Exception {
+        List<String> kases = javaCases();
+        check(!kases.isEmpty(), "no kit case has a java/ source");
+        ExecutorService pool = Executors.newFixedThreadPool(Math.min(8, Runtime.getRuntime().availableProcessors()));
+        List<Future<?>> runs = new ArrayList<>();
+        try {
+            for (String k : kases) {
+                runs.add(pool.submit(() -> {
+                    kitCase(k);
+                    return null;
+                }));
+            }
+            List<String> failures = new ArrayList<>();
+            for (int i = 0; i < kases.size(); i++) {
+                try {
+                    runs.get(i).get();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    failures.add(kases.get(i) + ": " + e.getCause().getMessage());
+                }
+            }
+            System.out.println("     " + (kases.size() - failures.size()) + " of " + kases.size() + " kit cases with a Java source pass");
+            check(failures.isEmpty(), failures.size() + " kit case(s) failed:\n" + String.join("\n", failures));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * Every claimed feature is the subject of at least one kit case holding {@code java/Case.java},
+     * so {@code codespec conform --role reader --lang java} has a corpus case for it: a claim
+     * without one fails there as {@code no_case}. A feature may be the subject of several cases;
+     * one with a Java source is enough.
+     */
+    private void everyClaimedFeatureIsTheSubjectOfAKitCaseWithAJavaSource() throws Exception {
+        Set<String> covered = new TreeSet<>();
+        for (String kase : javaCases()) {
+            covered.add(subject(kase));
+        }
+        List<String> missing = new ArrayList<>();
+        for (String id : Main.CLAIM) {
+            if (!covered.contains(id)) {
+                missing.add(id);
+            }
+        }
+        check(missing.isEmpty(), "claimed features that are the subject of no kit case with a java/Case.java: " + missing);
     }
 
     // ---- helpers ----

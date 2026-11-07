@@ -23,5 +23,6 @@ syn.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+b10x-codespec-conformance = { path = "../../crates/conformance" }
 b10x-codespec-passes = { path = "../../crates/passes" }
 serde_json.workspace = true

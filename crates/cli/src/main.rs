@@ -1,6 +1,7 @@
 //! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
-//! passes, run reader and writer adapters, and compare implementations of an example on seeded
-//! traces (`harness`).
+//! passes, run reader and writer adapters, compare implementations of an example on seeded traces
+//! (`harness`), run the conformance kit against an adapter (`conform`) and measure how much of a
+//! module a reader read (`measure`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -12,6 +13,10 @@ use std::process::{Command, ExitCode, Stdio};
 
 use clap::Parser as _;
 use codespec_cli::{Cli, Cmd};
+use codespec_conformance::conform::{
+    Reason, Target, Verdict, conform_adapter_within, differences, read_report, report_json,
+    summary_line,
+};
 use codespec_model::{Module, features_json, schema_json};
 
 fn main() -> ExitCode {
@@ -113,6 +118,38 @@ fn run(cmd: Cmd) -> Result<(), String> {
             }
             Ok(())
         }
+        Cmd::Conform {
+            lang,
+            role,
+            out,
+            check,
+            kit,
+            corpus,
+            adapters,
+            work,
+            timeout,
+        } => conform(Conform {
+            lang,
+            role,
+            out,
+            check,
+            kit,
+            corpus,
+            adapters,
+            work,
+            timeout,
+        }),
+        Cmd::Measure { module, format } => {
+            let bytes = std::fs::read(&module).map_err(|e| format!("{}: {e}", module.display()))?;
+            let m = read_module(&bytes, &module.display().to_string())?;
+            let report = codespec_cli::measure::measure(&m);
+            if format == "json" {
+                print!("{}", codespec_cli::measure::json(&report));
+            } else {
+                print!("{}", codespec_cli::measure::text(&report));
+            }
+            Ok(())
+        }
         Cmd::Harness {
             example,
             seeds,
@@ -130,6 +167,107 @@ fn run(cmd: Cmd) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+/// The arguments of `codespec conform`.
+struct Conform {
+    lang: Option<String>,
+    role: Option<String>,
+    out: Option<PathBuf>,
+    check: Option<PathBuf>,
+    kit: PathBuf,
+    corpus: Option<PathBuf>,
+    adapters: PathBuf,
+    work: Option<PathBuf>,
+    timeout: u64,
+}
+
+fn conform(c: Conform) -> Result<(), String> {
+    let old = match &c.check {
+        Some(path) => {
+            let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            Some(read_report(&bytes).map_err(|e| format!("{}: {e}", path.display()))?)
+        }
+        None => None,
+    };
+    let (role, lang) = match &old {
+        Some(r) => (r.adapter.role.clone(), r.adapter.lang.clone()),
+        None => (
+            c.role.expect("clap requires --role without --check"),
+            c.lang.expect("clap requires --lang without --check"),
+        ),
+    };
+    let work = c
+        .work
+        .unwrap_or_else(|| PathBuf::from(format!("target/conform/{role}-{lang}")));
+    let report = conform_adapter_within(
+        &Target {
+            adapters: c.adapters,
+            role,
+            lang,
+            kit: c.kit,
+            corpus: c.corpus,
+            work,
+        },
+        std::time::Duration::from_secs(c.timeout),
+    )?;
+    println!("{}", summary_line(&report));
+    if let (Some(old), Some(path)) = (old, &c.check) {
+        let diff = differences(&old, &report);
+        if diff.is_empty() {
+            println!("{}: current", path.display());
+            return Ok(());
+        }
+        for d in &diff {
+            eprintln!("{d}");
+        }
+        return Err(format!(
+            "{}: stale, {} difference(s); write it again with --out",
+            path.display(),
+            diff.len()
+        ));
+    }
+    let out = c.out.expect("clap requires --out without --check");
+    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    std::fs::write(&out, report_json(&report)).map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("{}: written", out.display());
+    if report.conforms {
+        return Ok(());
+    }
+    for f in report
+        .features
+        .iter()
+        .filter(|f| f.verdict == Verdict::Fail)
+    {
+        let mut why = f.reason.unwrap_or(Reason::NoCase).to_string();
+        if let Some(case) = &f.case {
+            why = format!("{case}: {why}");
+        }
+        if let Some(d) = &f.first_difference {
+            why += &format!(
+                ", line {} expected {:?}, got {:?}",
+                d.line, d.expected, d.got
+            );
+        }
+        eprintln!("FAIL {} (claimed: {}): {why}", f.id, f.claimed);
+    }
+    for b in report
+        .boundary
+        .iter()
+        .filter(|b| b.verdict == Verdict::Fail)
+    {
+        eprintln!(
+            "FAIL boundary {}: {}",
+            b.id,
+            b.detail.as_deref().unwrap_or("")
+        );
+    }
+    Err(format!(
+        "{} {} does not conform",
+        report.adapter.role, report.adapter.lang
+    ))
 }
 
 fn adapter(dir: &Path, role: &str, lang: &str) -> Result<PathBuf, String> {

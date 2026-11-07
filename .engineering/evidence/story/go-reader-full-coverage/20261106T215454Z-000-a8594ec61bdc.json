@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-06T21:54:54Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-full-coverage",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "commit ce18ad5 (wave/series-both-ways)"
+  }
+}

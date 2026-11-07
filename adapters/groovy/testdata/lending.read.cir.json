@@ -1,0 +1,4224 @@
+{
+  "format": "cir/1",
+  "name": "lending",
+  "reader": {
+    "language": "groovy",
+    "name": "codespec-read-groovy",
+    "version": "0.3.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Loan",
+      "exported": true,
+      "fields": [
+        {
+          "name": "lentOnDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "dueDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "returnedDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "status",
+          "t": {
+            "k": "named",
+            "name": "LoanStatus"
+          }
+        }
+      ],
+      "pos": "grails-app/domain/lending/Loan.groovy:3"
+    },
+    {
+      "k": "enum",
+      "name": "LoanStatus",
+      "exported": true,
+      "under": {
+        "k": "string"
+      },
+      "variants": [
+        {
+          "name": "OPEN",
+          "value": {
+            "k": "lit",
+            "value": "\"OPEN\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "RETURNED",
+          "value": {
+            "k": "lit",
+            "value": "\"RETURNED\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "LOST",
+          "value": {
+            "k": "lit",
+            "value": "\"LOST\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "grails-app/domain/lending/LoanStatus.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "Member",
+      "exported": true,
+      "fields": [
+        {
+          "name": "fullName",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "email",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "activeLoans",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "balanceCents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/domain/lending/Member.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "Tool",
+      "exported": true,
+      "fields": [
+        {
+          "name": "name",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "shelf",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        },
+        {
+          "name": "timesLent",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "dailyFeeCents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "CatalogService",
+      "exported": true,
+      "fields": [
+        {
+          "name": "shelfNotes",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "FeeService",
+      "exported": true,
+      "fields": [],
+      "pos": "grails-app/services/lending/FeeService.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "LoanService",
+      "exported": true,
+      "fields": [],
+      "pos": "grails-app/services/lending/LoanService.groovy:3"
+    }
+  ],
+  "consts": [
+    {
+      "name": "DAILY_LATE_FEE_CENTS",
+      "t": {
+        "k": "int",
+        "width": "64",
+        "signed": true
+      },
+      "value": {
+        "k": "lit",
+        "value": "25",
+        "t": {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      },
+      "pos": "grails-app/services/lending/FeeService.groovy:5"
+    },
+    {
+      "name": "LOST_TOOL_FEE_CENTS",
+      "t": {
+        "k": "int",
+        "width": "64",
+        "signed": true
+      },
+      "value": {
+        "k": "lit",
+        "value": "4000",
+        "t": {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      },
+      "pos": "grails-app/services/lending/FeeService.groovy:6"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "NewLoan",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Loan"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Loan",
+                "fields": [
+                  {
+                    "name": "lentOnDay",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "dueDay",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "returnedDay",
+                    "value": {
+                      "k": "lit",
+                      "value": "-1",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "status",
+                    "value": {
+                      "k": "const",
+                      "name": "OPEN",
+                      "t": {
+                        "k": "named",
+                        "name": "LoanStatus"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Loan"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Loan"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Loan"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:3"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Loan.groovy:3"
+    },
+    {
+      "name": "isOverdue",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Loan"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "&&",
+              "x": {
+                "k": "binop",
+                "op": "<",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Loan"
+                      }
+                    }
+                  },
+                  "name": "returnedDay",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "y": {
+                "k": "binop",
+                "op": ">",
+                "x": {
+                  "k": "var",
+                  "name": "today",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Loan"
+                      }
+                    }
+                  },
+                  "name": "dueDay",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:17"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Loan.groovy:16"
+    },
+    {
+      "name": "daysLate",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Loan"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "int end = returnedDay < 0 ? today : returnedDay // expect: refused unsupported",
+          "reason": "unsupported: c ? a : b is outside cir/1",
+          "pos": "grails-app/domain/lending/Loan.groovy:21"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "end",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Loan"
+                  }
+                }
+              },
+              "name": "dueDay",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/domain/lending/Loan.groovy:23"
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:22"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "end",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Loan"
+                    }
+                  }
+                },
+                "name": "dueDay",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:25"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Loan.groovy:20"
+    },
+    {
+      "name": "daysOverdue",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Loan"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "end"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:29"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Loan"
+                  }
+                }
+              },
+              "name": "returnedDay",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "end",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "var",
+                  "name": "today",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/domain/lending/Loan.groovy:31"
+            }
+          ],
+          "else": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "end",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Loan"
+                      }
+                    }
+                  },
+                  "name": "returnedDay",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/domain/lending/Loan.groovy:33"
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:30"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "end",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Loan"
+                  }
+                }
+              },
+              "name": "dueDay",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/domain/lending/Loan.groovy:36"
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:35"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "end",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Loan"
+                    }
+                  }
+                },
+                "name": "dueDay",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Loan.groovy:38"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Loan.groovy:28"
+    },
+    {
+      "name": "NewMember",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Member"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Member",
+                "fields": [
+                  {
+                    "name": "activeLoans",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "balanceCents",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Member"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Member"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Member.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Member"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Member.groovy:3"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Member.groovy:3"
+    },
+    {
+      "name": "canBorrow",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Member"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "limit",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "&&",
+              "x": {
+                "k": "binop",
+                "op": "<",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Member"
+                      }
+                    }
+                  },
+                  "name": "activeLoans",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "limit",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "y": {
+                "k": "binop",
+                "op": "<=",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "this",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Member"
+                      }
+                    }
+                  },
+                  "name": "balanceCents",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Member.groovy:18"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Member.groovy:17"
+    },
+    {
+      "name": "greeting",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Member"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "first",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "lit",
+                "value": "\"Hello, \"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "first",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Member.groovy:22"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Member.groovy:21"
+    },
+    {
+      "name": "NewTool",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Tool",
+                "fields": [
+                  {
+                    "name": "timesLent",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "dailyFeeCents",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Tool"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Tool"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Tool"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:3"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:3"
+    },
+    {
+      "name": "feeFor",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "days",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "long total = dailyFeeCents * days // expect: refused unsupported",
+          "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1",
+          "pos": "grails-app/domain/lending/Tool.groovy:23"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:24"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:22"
+    },
+    {
+      "name": "feeForSpan",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "spanDays",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Tool"
+                    }
+                  }
+                },
+                "name": "dailyFeeCents",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "spanDays",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:28"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:29"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:27"
+    },
+    {
+      "name": "markLent",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Tool"
+                  }
+                }
+              },
+              "name": "timesLent",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Tool"
+                    }
+                  }
+                },
+                "name": "timesLent",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:33"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:32"
+    },
+    {
+      "name": "shelfTag",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "prefix",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "code",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "var",
+                  "name": "prefix",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "\"/\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "t": {
+                  "k": "string"
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "code",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/lending/Tool.groovy:37"
+        }
+      ],
+      "pos": "grails-app/domain/lending/Tool.groovy:36"
+    },
+    {
+      "name": "NewCatalogService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "CatalogService",
+                "fields": [
+                  {
+                    "name": "shelfNotes",
+                    "value": {
+                      "k": "make",
+                      "t": {
+                        "k": "map",
+                        "key": {
+                          "k": "string"
+                        },
+                        "elem": {
+                          "k": "string"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "CatalogService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "CatalogService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "CatalogService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:3"
+    },
+    {
+      "name": "toolById",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "id",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return Tool.get(id) // expect: refused gorm",
+          "reason": "gorm: get on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/CatalogService.groovy:8"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:7"
+    },
+    {
+      "name": "toolNamed",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Tool"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return Tool.findByName(n) // expect: refused gorm",
+          "reason": "gorm: findByName on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/CatalogService.groovy:12"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:11"
+    },
+    {
+      "name": "onShelf",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "shelfName",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Tool"
+            }
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return Tool.withCriteria { // expect: refused gorm\n            eq('shelf', shelfName)\n        }",
+          "reason": "gorm: withCriteria on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/CatalogService.groovy:16"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:15"
+    },
+    {
+      "name": "shelfOf",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "tool",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Tool"
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return tool?.shelf // expect: refused groovy-semantics",
+          "reason": "groovy-semantics: ?. gives null when the receiver is null",
+          "pos": "grails-app/services/lending/CatalogService.groovy:22"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:21"
+    },
+    {
+      "name": "nameOr",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "name",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "fallback",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return name ?: fallback // expect: refused groovy-semantics",
+          "reason": "groovy-semantics: ?: gives the right side when the left is null, empty or zero (Groovy truth)",
+          "pos": "grails-app/services/lending/CatalogService.groovy:26"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:25"
+    },
+    {
+      "name": "names",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "tools",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Tool"
+              }
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "string"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return tools.collect { Tool t -> t.name } // expect: refused closure",
+          "reason": "closure: a closure passed to collect: functions as values are outside cir/1",
+          "pos": "grails-app/services/lending/CatalogService.groovy:30"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:29"
+    },
+    {
+      "name": "countLent",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "tools",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Tool"
+              }
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "lent"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:34"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "tools.each { Tool t -> // expect: refused closure\n            lent = lent + t.timesLent\n        }",
+          "reason": "closure: a closure passed to each: functions as values are outside cir/1",
+          "pos": "grails-app/services/lending/CatalogService.groovy:35"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "lent",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:38"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:33"
+    },
+    {
+      "name": "describe",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "item",
+          "t": {
+            "k": "any"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return item.label() // expect: refused dynamic",
+          "reason": "dynamic: call of label, which the type checker does not resolve: Groovy looks it up at run time",
+          "pos": "grails-app/services/lending/CatalogService.groovy:42"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:41"
+    },
+    {
+      "name": "shelfCount",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return countShelves() // expect: refused dynamic",
+          "reason": "dynamic: call of countShelves, which the type checker does not resolve: Groovy looks it up at run time",
+          "pos": "grails-app/services/lending/CatalogService.groovy:46"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:45"
+    },
+    {
+      "name": "installShelfDefault",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "Tool.metaClass.defaultShelf = \"front\" // expect: refused dynamic",
+          "reason": "dynamic: metaClass: a class changed through its metaclass at run time",
+          "pos": "grails-app/services/lending/CatalogService.groovy:50"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:49"
+    },
+    {
+      "name": "doubled",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "twice"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:54"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "twice",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:55"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:53"
+    },
+    {
+      "name": "sumByShelf",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "perShelf",
+          "t": {
+            "k": "map",
+            "key": {
+              "k": "string"
+            },
+            "elem": {
+              "k": "int",
+              "width": "32",
+              "signed": true
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:59"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "for (String shelf : perShelf.keySet()) { // expect: refused unsupported\n            total = total + perShelf.get(shelf)\n        }",
+          "reason": "unsupported: a TreeMap the reader did not see built with new TreeMap<>() may carry any comparator; sorted_keys is the natural order",
+          "pos": "grails-app/services/lending/CatalogService.groovy:60"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:63"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:58"
+    },
+    {
+      "name": "shelfList",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "CatalogService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "list"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "\"\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:67"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "shelf",
+          "over": {
+            "k": "intrinsic",
+            "name": "sorted_keys",
+            "args": [
+              {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "CatalogService"
+                    }
+                  }
+                },
+                "name": "shelfNotes",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "string"
+                  }
+                }
+              }
+            ],
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "string"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "list",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "binop",
+                    "op": "+",
+                    "x": {
+                      "k": "var",
+                      "name": "list",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    "y": {
+                      "k": "var",
+                      "name": "shelf",
+                      "t": {
+                        "k": "string"
+                      }
+                    },
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "\";\"",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "pos": "grails-app/services/lending/CatalogService.groovy:69"
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:68"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "list",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/CatalogService.groovy:71"
+        }
+      ],
+      "pos": "grails-app/services/lending/CatalogService.groovy:66"
+    },
+    {
+      "name": "NewFeeService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "FeeService",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "FeeService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FeeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FeeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:3"
+    },
+    {
+      "name": "lateFeeCents",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "daysLate",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "daysLate",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:10"
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:9"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "long fee = DAILY_LATE_FEE_CENTS * daysLate // expect: refused unsupported",
+          "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1",
+          "pos": "grails-app/services/lending/FeeService.groovy:12"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "fee",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:13"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:8"
+    },
+    {
+      "name": "lateFeeForDays",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "lateDays",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "lateDays",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:18"
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:17"
+        },
+        {
+          "k": "let",
+          "names": [
+            "fee"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "const",
+                "name": "DAILY_LATE_FEE_CENTS",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "lateDays",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:20"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "fee",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:21"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:16"
+    },
+    {
+      "name": "feeForStatus",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "status",
+          "t": {
+            "k": "named",
+            "name": "LoanStatus"
+          }
+        },
+        {
+          "name": "daysLate",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "switch",
+          "tag": {
+            "k": "var",
+            "name": "status",
+            "t": {
+              "k": "named",
+              "name": "LoanStatus"
+            }
+          },
+          "cases": [
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "OPEN",
+                  "t": {
+                    "k": "named",
+                    "name": "LoanStatus"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "method",
+                      "x": {
+                        "k": "var",
+                        "name": "this",
+                        "t": {
+                          "k": "ptr",
+                          "elem": {
+                            "k": "named",
+                            "name": "FeeService"
+                          }
+                        }
+                      },
+                      "name": "lateFeeCents",
+                      "args": [
+                        {
+                          "k": "var",
+                          "name": "daysLate",
+                          "t": {
+                            "k": "int",
+                            "width": "32",
+                            "signed": true
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/lending/FeeService.groovy:27"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "RETURNED",
+                  "t": {
+                    "k": "named",
+                    "name": "LoanStatus"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/lending/FeeService.groovy:29"
+                }
+              ]
+            },
+            {
+              "values": [
+                {
+                  "k": "const",
+                  "name": "LOST",
+                  "t": {
+                    "k": "named",
+                    "name": "LoanStatus"
+                  }
+                }
+              ],
+              "body": [
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "const",
+                      "name": "LOST_TOOL_FEE_CENTS",
+                      "t": {
+                        "k": "int",
+                        "width": "64",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/lending/FeeService.groovy:31"
+                }
+              ]
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:25"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:33"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:24"
+    },
+    {
+      "name": "sumLateFees",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "loans",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Loan"
+              }
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "total"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:37"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "loan",
+          "over": {
+            "k": "var",
+            "name": "loans",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Loan"
+                }
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "total",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "total",
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "method",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "FeeService"
+                        }
+                      }
+                    },
+                    "name": "lateFeeCents",
+                    "args": [
+                      {
+                        "k": "method",
+                        "x": {
+                          "k": "var",
+                          "name": "loan",
+                          "t": {
+                            "k": "ptr",
+                            "elem": {
+                              "k": "named",
+                              "name": "Loan"
+                            }
+                          }
+                        },
+                        "name": "daysLate",
+                        "args": [
+                          {
+                            "k": "var",
+                            "name": "today",
+                            "t": {
+                              "k": "int",
+                              "width": "32",
+                              "signed": true
+                            }
+                          }
+                        ],
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "int",
+                      "width": "64",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:39"
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:38"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:41"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:36"
+    },
+    {
+      "name": "countOverdue",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "loans",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Loan"
+              }
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "limit",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "count"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:45"
+        },
+        {
+          "k": "let",
+          "names": [
+            "i"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:46"
+        },
+        {
+          "k": "for",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "loans",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Loan"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "binop",
+                "op": ">=",
+                "x": {
+                  "k": "var",
+                  "name": "count",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "limit",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "break",
+                  "pos": "grails-app/services/lending/FeeService.groovy:49"
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:48"
+            },
+            {
+              "k": "if",
+              "cond": {
+                "k": "method",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "loans",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Loan"
+                        }
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Loan"
+                    }
+                  }
+                },
+                "name": "isOverdue",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "today",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "count",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "binop",
+                      "op": "+",
+                      "x": {
+                        "k": "var",
+                        "name": "count",
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "lit",
+                        "value": "1",
+                        "t": {
+                          "k": "int",
+                          "width": "32",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "grails-app/services/lending/FeeService.groovy:52"
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:51"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "lit",
+                    "value": "1",
+                    "t": {
+                      "k": "int",
+                      "width": "32",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "grails-app/services/lending/FeeService.groovy:54"
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:47"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "count",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:56"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:44"
+    },
+    {
+      "name": "receipt",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "memberName",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "toolName",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "line"
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "lit",
+                    "value": "\"Member \"",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "memberName",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "y": {
+                  "k": "lit",
+                  "value": "\" borrowed \"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "t": {
+                  "k": "string"
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "toolName",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:60"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "line",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:61"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:59"
+    },
+    {
+      "name": "splitFeeText",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "parts",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return \"share \" + (cents / parts) // expect: refused groovy-semantics",
+          "reason": "groovy-semantics: integer / integer is a BigDecimal division in Groovy, not a truncating one",
+          "pos": "grails-app/services/lending/FeeService.groovy:65"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:64"
+    },
+    {
+      "name": "overdueLine",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "memberName",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "overdue",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return \"${memberName} overdue: ${overdue}\" // expect: refused groovy-semantics",
+          "reason": "groovy-semantics: a GString value of type bool: only String and integer values are read, as Groovy prints them with toString",
+          "pos": "grails-app/services/lending/FeeService.groovy:69"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:68"
+    },
+    {
+      "name": "loansText",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FeeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "loans",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Loan"
+              }
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "if (loans) { // expect: refused groovy-semantics\n            return \"has loans\"\n        }",
+          "reason": "groovy-semantics: Groovy truth: a value of type []*Loan as a condition is true when it is not null, empty or zero",
+          "pos": "grails-app/services/lending/FeeService.groovy:73"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"no loans\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/FeeService.groovy:76"
+        }
+      ],
+      "pos": "grails-app/services/lending/FeeService.groovy:72"
+    },
+    {
+      "name": "NewLoanService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "LoanService",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "LoanService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "LoanService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/LoanService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "LoanService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/lending/LoanService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:3"
+    },
+    {
+      "name": "dueDayFor",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "lentOnDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return DueDates.dueDay(lentOnDay) // expect: refused unsupported",
+          "reason": "unsupported: call of DueDates.dueDay, which is not read",
+          "pos": "grails-app/services/lending/LoanService.groovy:9"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:8"
+    },
+    {
+      "name": "lend",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "member",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Member"
+            }
+          }
+        },
+        {
+          "name": "tool",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Tool"
+            }
+          }
+        },
+        {
+          "name": "loan",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Loan"
+            }
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "member.addToLoans(loan) // expect: refused gorm",
+          "reason": "gorm: addToLoans on Member: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/LoanService.groovy:13"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "method",
+            "x": {
+              "k": "var",
+              "name": "tool",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Tool"
+                }
+              }
+            },
+            "name": "markLent",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "grails-app/services/lending/LoanService.groovy:14"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "loan.save() // expect: refused gorm",
+          "reason": "gorm: save on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/LoanService.groovy:15"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:12"
+    },
+    {
+      "name": "forget",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "loan",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Loan"
+            }
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "loan.delete() // expect: refused gorm",
+          "reason": "gorm: delete on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/LoanService.groovy:19"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:18"
+    },
+    {
+      "name": "loansOf",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "member",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Member"
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Loan"
+            }
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return Loan.findAllByMember(member) // expect: refused gorm",
+          "reason": "gorm: findAllByMember on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/lending/LoanService.groovy:23"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:22"
+    },
+    {
+      "name": "toolName",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "toolId",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return catalogService.toolById(toolId).name // expect: refused spring",
+          "reason": "spring: call through an injected dependency, catalogService.toolById: Spring sets it at run time",
+          "pos": "grails-app/services/lending/LoanService.groovy:27"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:26"
+    },
+    {
+      "name": "lateFee",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "LoanService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "loan",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Loan"
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return feeService.lateFeeCents(loan.daysLate(today)) // expect: refused spring",
+          "reason": "spring: call through an injected dependency, feeService.lateFeeCents: Spring sets it at run time",
+          "pos": "grails-app/services/lending/LoanService.groovy:31"
+        }
+      ],
+      "pos": "grails-app/services/lending/LoanService.groovy:30"
+    }
+  ],
+  "layout": [
+    "type:Loan",
+    "func:NewLoan",
+    "func:Loan.isOverdue",
+    "func:Loan.daysLate",
+    "func:Loan.daysOverdue",
+    "type:LoanStatus",
+    "type:Member",
+    "func:NewMember",
+    "func:Member.canBorrow",
+    "func:Member.greeting",
+    "type:Tool",
+    "func:NewTool",
+    "func:Tool.feeFor",
+    "func:Tool.feeForSpan",
+    "func:Tool.markLent",
+    "func:Tool.shelfTag",
+    "type:CatalogService",
+    "func:NewCatalogService",
+    "func:CatalogService.toolById",
+    "func:CatalogService.toolNamed",
+    "func:CatalogService.onShelf",
+    "func:CatalogService.shelfOf",
+    "func:CatalogService.nameOr",
+    "func:CatalogService.names",
+    "func:CatalogService.countLent",
+    "func:CatalogService.describe",
+    "func:CatalogService.shelfCount",
+    "func:CatalogService.installShelfDefault",
+    "func:CatalogService.doubled",
+    "func:CatalogService.sumByShelf",
+    "func:CatalogService.shelfList",
+    "type:FeeService",
+    "func:NewFeeService",
+    "const:DAILY_LATE_FEE_CENTS",
+    "const:LOST_TOOL_FEE_CENTS",
+    "func:FeeService.lateFeeCents",
+    "func:FeeService.lateFeeForDays",
+    "func:FeeService.feeForStatus",
+    "func:FeeService.sumLateFees",
+    "func:FeeService.countOverdue",
+    "func:FeeService.receipt",
+    "func:FeeService.splitFeeText",
+    "func:FeeService.overdueLine",
+    "func:FeeService.loansText",
+    "type:LoanService",
+    "func:NewLoanService",
+    "func:LoanService.dueDayFor",
+    "func:LoanService.lend",
+    "func:LoanService.forget",
+    "func:LoanService.loansOf",
+    "func:LoanService.toolName",
+    "func:LoanService.lateFee"
+  ],
+  "refusals": [
+    {
+      "pos": "grails-app/domain/lending/Loan.groovy:10",
+      "what": "Loan.belongsTo",
+      "reason": "gorm: mapping metadata belongsTo"
+    },
+    {
+      "pos": "grails-app/domain/lending/Loan.groovy:12",
+      "what": "Loan.mapping",
+      "reason": "gorm: mapping metadata mapping"
+    },
+    {
+      "pos": "grails-app/domain/lending/Loan.groovy:21",
+      "what": "int end = returnedDay < 0 ? today : returnedDay // expect: refused unsupported",
+      "reason": "unsupported: c ? a : b is outside cir/1"
+    },
+    {
+      "pos": "grails-app/domain/lending/Member.groovy:10",
+      "what": "Member.hasMany",
+      "reason": "gorm: mapping metadata hasMany"
+    },
+    {
+      "pos": "grails-app/domain/lending/Member.groovy:12",
+      "what": "Member.constraints",
+      "reason": "gorm: mapping metadata constraints"
+    },
+    {
+      "pos": "grails-app/domain/lending/Tool.groovy:10",
+      "what": "Tool.hasMany",
+      "reason": "gorm: mapping metadata hasMany"
+    },
+    {
+      "pos": "grails-app/domain/lending/Tool.groovy:12",
+      "what": "Tool.constraints",
+      "reason": "gorm: mapping metadata constraints"
+    },
+    {
+      "pos": "grails-app/domain/lending/Tool.groovy:17",
+      "what": "Tool.mapping",
+      "reason": "gorm: mapping metadata mapping"
+    },
+    {
+      "pos": "grails-app/domain/lending/Tool.groovy:23",
+      "what": "long total = dailyFeeCents * days // expect: refused unsupported",
+      "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1"
+    },
+    {
+      "pos": "grails-app/domain/lending/Tool.groovy:40",
+      "what": "Tool.methodMissing(…)",
+      "reason": "dynamic: methodMissing declared: Groovy calls it at run time for names the class does not declare"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:8",
+      "what": "return Tool.get(id) // expect: refused gorm",
+      "reason": "gorm: get on Tool: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:12",
+      "what": "return Tool.findByName(n) // expect: refused gorm",
+      "reason": "gorm: findByName on Tool: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:16",
+      "what": "return Tool.withCriteria { // expect: refused gorm …",
+      "reason": "gorm: withCriteria on Tool: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:22",
+      "what": "return tool?.shelf // expect: refused groovy-semantics",
+      "reason": "groovy-semantics: ?. gives null when the receiver is null"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:26",
+      "what": "return name ?: fallback // expect: refused groovy-semantics",
+      "reason": "groovy-semantics: ?: gives the right side when the left is null, empty or zero (Groovy truth)"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:30",
+      "what": "return tools.collect { Tool t -> t.name } // expect: refused closure",
+      "reason": "closure: a closure passed to collect: functions as values are outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:35",
+      "what": "tools.each { Tool t -> // expect: refused closure …",
+      "reason": "closure: a closure passed to each: functions as values are outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:42",
+      "what": "return item.label() // expect: refused dynamic",
+      "reason": "dynamic: call of label, which the type checker does not resolve: Groovy looks it up at run time"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:46",
+      "what": "return countShelves() // expect: refused dynamic",
+      "reason": "dynamic: call of countShelves, which the type checker does not resolve: Groovy looks it up at run time"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:50",
+      "what": "Tool.metaClass.defaultShelf = \"front\" // expect: refused dynamic",
+      "reason": "dynamic: metaClass: a class changed through its metaclass at run time"
+    },
+    {
+      "pos": "grails-app/services/lending/CatalogService.groovy:60",
+      "what": "for (String shelf : perShelf.keySet()) { // expect: refused unsupported …",
+      "reason": "unsupported: a TreeMap the reader did not see built with new TreeMap<>() may carry any comparator; sorted_keys is the natural order"
+    },
+    {
+      "pos": "grails-app/services/lending/FeeService.groovy:12",
+      "what": "long fee = DAILY_LATE_FEE_CENTS * daysLate // expect: refused unsupported",
+      "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/lending/FeeService.groovy:65",
+      "what": "return \"share \" + (cents / parts) // expect: refused groovy-semantics",
+      "reason": "groovy-semantics: integer / integer is a BigDecimal division in Groovy, not a truncating one"
+    },
+    {
+      "pos": "grails-app/services/lending/FeeService.groovy:69",
+      "what": "return \"${memberName} overdue: ${overdue}\" // expect: refused groovy-semantics",
+      "reason": "groovy-semantics: a GString value of type bool: only String and integer values are read, as Groovy prints them with toString"
+    },
+    {
+      "pos": "grails-app/services/lending/FeeService.groovy:73",
+      "what": "if (loans) { // expect: refused groovy-semantics …",
+      "reason": "groovy-semantics: Groovy truth: a value of type []*Loan as a condition is true when it is not null, empty or zero"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:5",
+      "what": "LoanService.catalogService",
+      "reason": "spring: injected dependency"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:6",
+      "what": "LoanService.feeService",
+      "reason": "spring: injected dependency"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:9",
+      "what": "return DueDates.dueDay(lentOnDay) // expect: refused unsupported",
+      "reason": "unsupported: call of DueDates.dueDay, which is not read"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:13",
+      "what": "member.addToLoans(loan) // expect: refused gorm",
+      "reason": "gorm: addToLoans on Member: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:15",
+      "what": "loan.save() // expect: refused gorm",
+      "reason": "gorm: save on Loan: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:19",
+      "what": "loan.delete() // expect: refused gorm",
+      "reason": "gorm: delete on Loan: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:23",
+      "what": "return Loan.findAllByMember(member) // expect: refused gorm",
+      "reason": "gorm: findAllByMember on Loan: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:27",
+      "what": "return catalogService.toolById(toolId).name // expect: refused spring",
+      "reason": "spring: call through an injected dependency, catalogService.toolById: Spring sets it at run time"
+    },
+    {
+      "pos": "grails-app/services/lending/LoanService.groovy:31",
+      "what": "return feeService.lateFeeCents(loan.daysLate(today)) // expect: refused spring",
+      "reason": "spring: call through an injected dependency, feeService.lateFeeCents: Spring sets it at run time"
+    },
+    {
+      "pos": "grails-app/services/lending/TransactionalAuditService.groovy:3",
+      "what": "import grails.transaction.Transactional // expect: refused unresolved",
+      "reason": "unresolved: grails.transaction.Transactional"
+    }
+  ]
+}
