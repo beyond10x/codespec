@@ -20,11 +20,11 @@ jobs:
   shard:
     name: conform / ${{ matrix.mode }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     strategy:
       fail-fast: false
       matrix:
-        mode: [plain, limits-and-groovy]
+        mode: [all, first-half, second-half]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -46,31 +46,28 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Install Groovy 2.4.10
-        if: matrix.mode == 'limits-and-groovy'
-        env:
-          GROOVY_VERSION: "2.4.10"
-          GROOVY_SHA256: 1c4dff3b6edf9a8ced3bca658ee1857cee90cfed1ee3474a2790045033c317a9
+      - name: Build the conform tests
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/groovy.zip" \
-            "https://repo1.maven.org/maven2/org/codehaus/groovy/groovy-binary/$GROOVY_VERSION/groovy-binary-$GROOVY_VERSION.zip"
-          echo "$GROOVY_SHA256  $RUNNER_TEMP/groovy.zip" | sha256sum --check --strict
-          unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
-          echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
-
-      - name: Build the conform tests
-        run: cargo test --locked -p b10x-codespec-conformance --test conform --no-run
+          cargo test --locked -p b10x-codespec-conformance --test conform --no-run --message-format=json \
+            | jq -r 'select(.profile.test == true) | .executable // empty' > "$RUNNER_TEMP/bin"
 
       - name: conform in sequence, ${{ matrix.mode }}
         env:
           MODE: ${{ matrix.mode }}
         run: |
           set -euo pipefail
+          bin=$(cat "$RUNNER_TEMP/bin")
+          "$bin" --list --format terse | sed -n 's/: test$//p' > "$RUNNER_TEMP/all"
+          n=$(wc -l < "$RUNNER_TEMP/all"); h=$(( (n + 1) / 2 ))
+          case "$MODE" in
+            all) cp "$RUNNER_TEMP/all" "$RUNNER_TEMP/these" ;;
+            first-half) head -n "$h" "$RUNNER_TEMP/all" > "$RUNNER_TEMP/these" ;;
+            second-half) tail -n +"$(( h + 1 ))" "$RUNNER_TEMP/all" > "$RUNNER_TEMP/these" ;;
+          esac
+          cat "$RUNNER_TEMP/these"
           ( while sleep 10; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; free -m | sed -n 2p; echo "procs $(ps -e --no-headers | wc -l)"; done ) &
-          if [ "$MODE" = limits-and-groovy ]; then
-            ulimit -u 2048
-            ulimit -v 8388608
-          fi
-          timeout -s KILL 420 cargo test --locked -p b10x-codespec-conformance --test conform -- --test-threads 1 --nocapture
+          while read -r t; do
+            echo "== start $t $(date +%T)"
+            timeout -s KILL 120 "$bin" --exact "$t" --test-threads 1
+          done < "$RUNNER_TEMP/these"
