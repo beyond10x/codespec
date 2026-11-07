@@ -6,7 +6,7 @@ status: active
 title: Errors cross every adapter
 relations:
 - informed_by: story:rust-writer-error-propagation
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T18:32:51Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-07T18:38:43Z", actor: "human:timo", revision: 4}
@@ -42,3 +42,6 @@ which hides the form the feature exists for.
   `writer-go.json` and `writer-rust.json` list `sem.error.propagate` as claimed and `pass`.
 - `examples/ledger` has a method that calls a throwing method and lets the exception propagate,
   and `task examples-ledger` is byte-equal over the original Java, the Go and the Rust.
+- The Go reader reads the idiomatic spelling `if err := f(); err != nil { return …, err }` as the
+  propagation form wherever hoisting the init keeps its meaning, so a Go source written as Go is
+  usually written reaches the writers' `?` path.
