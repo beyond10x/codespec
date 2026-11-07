@@ -358,6 +358,11 @@
       "description": "`continue` in a three-clause `for` runs its `post` statement first"
     },
     {
+      "id": "sem.error.propagate",
+      "family": "semantic",
+      "description": "a fallible call whose error the caller returns unchanged"
+    },
+    {
       "id": "sem.int.wrap",
       "family": "semantic",
       "description": "integer arithmetic wraps on overflow, as Go's does"

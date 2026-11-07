@@ -134,6 +134,7 @@
 //! | `type.any` | Rust's dynamic value is `Box<dyn Any>`, a trait object, which the reader does not type; it neither prints nor compares without naming its concrete type again |
 //! | `expr.nil` | the case's subject is a nil slice, and Rust has none: `Vec::new()` is an empty vector and reads as `make`. (`Ok(())` reads as a nil `error`, but that is not the case's subject) |
 //! | `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.tuple`, `type.unit` | no conformance case has the feature as its subject, so nothing holds a claim |
+//! | `sem.error.propagate` | the reader does not read `?`, the form the Rust writer gives a fallible call whose error the caller returns unchanged, and its case has no Rust source |
 
 mod body;
 mod names;

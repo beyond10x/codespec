@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-07T21:16:35Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-writer-error-propagation",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on a0e5e33 (wave/error-propagation): exit 0, 293 Rust tests passed, 0 failed",
+    "reference": "a0e5e33"
+  }
+}

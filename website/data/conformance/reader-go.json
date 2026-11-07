@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "go",
-    "version": "0.3.0",
-    "manifest_sha256": "eb1eb2e7f33221f6fb365a4a1e66d9962d2438b733bca4058f81b8a0d12b1fd6"
+    "version": "0.4.0",
+    "manifest_sha256": "dc70e99aa750a1cfc743c36048593561e42fd8437c85460b6269351a18806a3b"
   },
   "kit": {
-    "version": "0.3.0",
-    "sha256": "a1b739cd5eebf420b816974a9d4a03d1e53a5c9652f49ae5e70fad61beb622d2"
+    "version": "0.4.0",
+    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
   },
   "corpus": {
-    "sha256": "1c1de71d1b41f50ecded865ef85662762854e1ccc87753ebe427b197df47c14f"
+    "sha256": "6bbcc37369a0aa308979acd64125924572ec8113674b15146445405bbdfcface"
   },
-  "codespec": "0.3.0",
+  "codespec": "0.4.0",
   "features": [
     {
       "id": "assign.add",
@@ -580,6 +580,14 @@
       ]
     },
     {
+      "id": "sem.error.propagate",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-error-propagate"
+      ]
+    },
+    {
       "id": "sem.int.wrap",
       "claimed": true,
       "verdict": "pass",
@@ -914,8 +922,8 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 92,
-    "pass": 92,
+    "claimed": 93,
+    "pass": 93,
     "fail": 0,
     "refused_unclaimed": 12,
     "pass_unclaimed": 1,

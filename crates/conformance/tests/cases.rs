@@ -201,6 +201,30 @@ const EDGES: &[Edge] = &[
         uses: &["stmt.switch", "stmt.break", "sem.switch.break"],
         line: "ok 3",
     },
+    Edge {
+        feature: "sem.error.propagate",
+        name: "the callee's error returned unchanged",
+        func: "Through",
+        args: &["-3"],
+        uses: &["stmt.let", "sem.error.propagate"],
+        line: "err negative",
+    },
+    Edge {
+        feature: "sem.error.propagate",
+        name: "the callee's value returned when it succeeds",
+        func: "Through",
+        args: &["3"],
+        uses: &["stmt.let", "sem.error.propagate"],
+        line: "ok 3",
+    },
+    Edge {
+        feature: "sem.error.propagate",
+        name: "an error-only callee's error returned unchanged",
+        func: "Guarded",
+        args: &["-4"],
+        uses: &["stmt.let", "sem.error.propagate"],
+        line: "err negative",
+    },
 ];
 
 #[test]

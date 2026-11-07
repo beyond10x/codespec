@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-writer-error-propagation
 kind: story
-status: draft
+status: implemented
 title: The Rust writer propagates an error from one fallible call into another
 relations:
 - informed_by: story:java-example-ledger
@@ -11,52 +11,120 @@ relations:
 - depends_on: story:codespec-conform
 scope:
 - confidence: cited
-  path: adapters/rust/src/main.rs
+  path: CHANGELOG.md
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/encode.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/front.go
+- confidence: cited
+  path: adapters/rust-read/src/lib.rs
+- confidence: cited
+  path: adapters/rust-read/src/main.rs
 - confidence: cited
   path: adapters/rust/src/write.rs
-- confidence: inferred
+- confidence: cited
   path: adapters/rust/tests/writer.rs
+- confidence: cited
+  path: conformance/cases/sem-error-propagate
+- confidence: cited
+  path: conformance/kit.json
+- confidence: inferred
+  path: conformance/reader
+- confidence: cited
+  path: crates/conformance/src/lib.rs
+- confidence: cited
+  path: crates/conformance/tests/cases.rs
+- confidence: cited
+  path: crates/model/src/features.rs
+- confidence: cited
+  path: docs/conformance.md
+- confidence: cited
+  path: schemas/cir-1.features.json
 - confidence: inferred
   path: website/data/conformance
 - confidence: inferred
   path: website/data/support-matrix.json
-revision: 6
+- confidence: cited
+  path: website/docs/guides/add-an-adapter.md
+revision: 17
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-07T18:21:30Z", actor: "human:timo", revision: 10}
+- {from: "proposed", to: "active", at: "2026-11-07T18:31:10Z", actor: "human:timo", revision: 15}
+- {from: "active", to: "implemented", at: "2026-11-07T21:16:35Z", actor: "human:timo", revision: 17, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust writer propagates an error from one fallible call into another
 
 ## Outcome
 
 `codespec-write-rust` writes a fallible function that calls another fallible function and returns
-its error (`v, err := f(); if err != nil { return …, err }`) as Rust with `?` or an explicit
-`match`, instead of refusing it.
+its error (`v, err := f(); if err != nil { return <zero values>, err }`, or `err := f()` for a
+callee whose only result is the error) as Rust with `?`, instead of refusing it, and the feature has a name and a conformance case so the
+claim is checked like every other.
 
 ## Context
 
-Found while building `examples/ledger` (story java-example-ledger, wave 2, 2026-11-06). A Java call
-that throws reads into this form, so any Java method calling a throwing method hits it. The ledger
-was reshaped so that `Account.post` does not throw. This limitation already existed in the writer:
-a call of a function listed in `fallible` or `comma_ok` is refused
-(`adapters/rust/src/write.rs:2807-2817`, "whose results are a Result or an Option").
+Found while building `examples/ledger` (story java-example-ledger, 2026-11-06). A Java call that
+throws reads into this form, so any Java method calling a throwing method hits it. The ledger was
+reshaped so that `Account.post` does not throw. The writer refuses any call of a function listed in
+`fallible` or `comma_ok` (`adapters/rust/src/write.rs`, `fn callable`, "whose results are a Result
+or an Option").
 
-This story updates the Rust writer's `--describe` manifest claim (`adapters/rust/src/main.rs`, the
-manifest `story:runners-and-manifests` adds) to claim the error-propagation feature it adds, and no
-others.
+Only the `fallible` call is in scope. A `comma_ok` call stays refused. The caller must itself be
+fallible as `crates/passes` defines it (`is_fallible`: every return is the success values with a
+`nil` error, or zero values with an error), so the case and the tests are shaped that way.
+
+The Go and Rust writers claim `sem.*` by wildcard, so adding the id to the vocabulary is what puts
+it in their claims; no `--describe` edit is needed for them. The Rust reader also claims `sem.*`;
+reading the written `?` back is not in this story, so the Rust reader excludes the id.
 
 ## Acceptance
 
-- A writer test: a document in which a fallible function calls another and returns its error is
-  written as Rust that compiles. A test run shows the error reaching the caller unchanged.
-- `codespec-write-rust --describe` claims the added feature; `codespec` validates the manifest
-  strictly.
-- The orders, greeter, inventory, series and ledger outputs are unchanged.
+- `schemas/cir-1.features.json` lists one new semantic feature, `sem.error.propagate` ("a fallible
+  call whose error the caller returns unchanged"), generated from `crates/model/src/features.rs`;
+  `features_used` in `crates/conformance/src/lib.rs` names it where a module calls a function the
+  `fallible` fact lists and returns that call's error unchanged, and its crate-doc table says so;
+  `crates/conformance/tests/cases.rs` lists its edges in `EDGES`, and `docs/conformance.md`'s list
+  of semantic ids names it.
+- `codespec-read-go` reads a comparison of an error with `nil` (`err != nil`, `err == nil`): the
+  `nil` operand takes the other operand's type (`front.go` maps `types.UntypedNil` to `nil`,
+  which today has no `cir/1` form and is refused). A test in `adapters/go/cmd/codespec-read-go/`
+  reads both forms; every checked-in `*.read.cir.json` and `case.cir.json` is byte-unchanged.
+- `conformance/cases/sem-error-propagate/` holds a Go case (`case.go`, `calls.json`) in which a
+  fallible function calls another and returns its error, plus `case.cir.json`, `features.json`
+  (declaring `sem.error.propagate`) and `expected.txt` generated by `task conformance`;
+  `task conformance-cases` is green, and `expected.txt` holds at least one call that ends in the
+  callee's error and one that returns the success value.
+- `adapters/rust/tests/writer.rs` gains a test that writes such a document, builds the crate
+  without warnings, runs it on one failing and one succeeding call and asserts the printed lines:
+  the callee's error text unchanged, and the success value. A second such test does the same for
+  an error-only callee (`err := f(); if err != nil { … }`, the form the Java reader gives a call of
+  a throwing `void` method). The written call uses `?`.
+- `adapters/rust/tests/writer.rs` gains four refusal tests, each asserting a refusal whose reason
+  names the call: (1) the caller wraps the error (`errorf` around it), (2) the caller drops it (the
+  error assigned and not returned), (3) the caller inspects it (compares it to a sentinel before
+  returning), (4) a call of a `comma_ok` function.
+- The Rust reader's manifest (`adapters/rust-read/src/main.rs`) lists `sem.error.propagate` in
+  `not`, and its crate-doc table of unclaimed features (`adapters/rust-read/src/lib.rs`) says why;
+  `adapters/rust-read/tests/cases.rs` is green. All six conformance reports under `website/data/conformance/` (readers go, rust, java,
+  groovy; writers go, rust) say `conforms: true`; `writer-rust.json` and `writer-go.json` list
+  `sem.error.propagate` as `pass`.
+- The orders, greeter, inventory, series, ledger and fees outputs are byte-unchanged
+  (`task examples-check` and each `examples-*` task green), and `task docs-check` is green.
 
 ## Scope
 
+- `crates/model/src/features.rs`, `schemas/cir-1.features.json`: the new semantic id.
+- `crates/conformance/src/lib.rs`: the `features_used` detection and its doc table;
+  `crates/conformance/tests/cases.rs`: the `EDGES` entry; `docs/conformance.md`: the id list.
+- `adapters/go/cmd/codespec-read-go/`: `front.go` (and `encode.go` if needed) for the `nil`
+  comparison, and its test.
+- `adapters/go/cmd/codespec-write-go/`: only if the Go writer does not already write the case
+  correctly (it writes Go's own form, so no change is expected).
+- `conformance/cases/sem-error-propagate/`, `conformance/kit.json`, the reader corpora under
+  `conformance/reader/` that `task docs-generate` regenerates.
 - `adapters/rust/src/write.rs`: the fallible call form; tests in `adapters/rust/tests/writer.rs`.
-- `adapters/rust/src/main.rs`: the `--describe` claim only, after `story:runners-and-manifests`.
-- `website/data/conformance/`: the Rust writer's conformance report is regenerated there
-  (`story:codespec-conform`, hence the edge), since the writer's claims and results change.
-- `website/data/support-matrix.json`: regenerated by `codespec-docs` if `story:support-matrix` has
-  landed; untouched otherwise.
-- Shares `adapters/rust/src/write.rs` and `adapters/rust/src/main.rs` with
-  `story:rust-writer-nil-pointer`; this story depends on it and lands after it.
+- `adapters/rust-read/src/main.rs`: the `not` entry; `adapters/rust-read/src/lib.rs`: its doc row.
+- `website/data/conformance/*.json`, `website/data/support-matrix.json`,
+  `website/docs/guides/add-an-adapter.md` (the conform sample):
+  regenerated by `task docs-generate`, never hand-edited.
+- `CHANGELOG.md`: one entry.

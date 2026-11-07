@@ -2,12 +2,16 @@
 format: aep.planning-md/3
 id: epic:groovy-grails-reader
 kind: epic
-status: draft
+status: implemented
 title: A Groovy and Grails 2.5.6 reader
 summary: Read Grails 2.5.6 services and domain classes with the Groovy 2.4 compiler's inferred types; dynamic code is refused and counted.
 relations:
 - depends_on: epic:java-reader
-revision: 2
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-07T18:21:59Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-07T18:21:59Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-07T18:21:59Z", actor: "human:timo", revision: 5}
 ---
 # Epic: A Groovy and Grails 2.5.6 reader
 
