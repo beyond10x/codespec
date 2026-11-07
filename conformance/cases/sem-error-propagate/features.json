@@ -1,0 +1,27 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "sem.error.propagate",
+    "expr.binop",
+    "expr.call",
+    "expr.errvar",
+    "expr.lit",
+    "expr.nil",
+    "expr.var",
+    "fact.fallible",
+    "op.lt",
+    "op.ne",
+    "stmt.if",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.error",
+    "type.int",
+    "type.tuple"
+  ],
+  "edges": [
+    "the callee's error returned unchanged",
+    "the callee's value returned when it succeeds",
+    "an error-only callee's error returned unchanged"
+  ]
+}

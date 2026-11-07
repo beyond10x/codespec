@@ -157,6 +157,7 @@
 //! | `sem.multi_assign.order` | an `assign` without `op` with more than one target |
 //! | `sem.map.order` | a `for_range` over a map |
 //! | `sem.switch.break` | a `break` whose innermost enclosing loop or switch is a switch |
+//! | `sem.error.propagate` | a `let` whose last name binds the error of a call of a function the `fallible` fact lists (the module's, or the one `codespec pass` would give a module without facts), followed by an `if` that returns that name unchanged as its last result |
 //!
 //! # Conformance runs
 //!
@@ -172,7 +173,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use codespec_model::{Expr, Feature, Module, Stmt, Type, TypeDecl, features_from_json, vocabulary};
+use codespec_model::{
+    Expr, Feature, Module, Stmt, Type, TypeDecl, features_from_json, receiver_type_name, vocabulary,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -420,11 +423,54 @@ enum Breakable {
 struct Walk {
     vocab: Vec<Feature>,
     types: Vec<TypeDecl>,
+    /// The functions `fallible` lists: the module's facts, or the facts `codespec pass` would
+    /// give a module that has none (a reader's output).
+    fallible: Vec<String>,
     out: BTreeSet<String>,
     breakable: Vec<Breakable>,
 }
 
 impl Walk {
+    fn new(m: &Module) -> Walk {
+        let fallible = match &m.facts {
+            Some(f) => f.fallible.clone(),
+            None => codespec_passes::facts(m).fallible,
+        };
+        Walk {
+            vocab: vocabulary(),
+            types: m.types.clone(),
+            fallible,
+            out: BTreeSet::new(),
+            breakable: Vec::new(),
+        }
+    }
+
+    /// `v, err := f(…)` for an `f` that `fallible` lists, followed by an `if` that returns `err`
+    /// unchanged as its last result.
+    fn propagates(&self, s: &Stmt, next: &Stmt) -> bool {
+        let Stmt::Let { names, rhs, .. } = s else {
+            return false;
+        };
+        let (Some(err), [call]) = (names.last(), rhs.as_slice()) else {
+            return false;
+        };
+        let key = match call {
+            Expr::Call { name, .. } => name.clone(),
+            Expr::Method { x, name, .. } => format!("{}.{name}", receiver_type_name(x.t())),
+            _ => return false,
+        };
+        if err == "_" || !self.fallible.contains(&key) {
+            return false;
+        }
+        let Stmt::If { then, .. } = next else {
+            return false;
+        };
+        then.iter().any(|r| {
+            matches!(r, Stmt::Return { results, .. }
+                if matches!(results.last(), Some(Expr::Var { name, .. }) if name == err))
+        })
+    }
+
     /// An integer, or a declared newtype or enum over one.
     fn is_int(&self, t: &Type) -> bool {
         match t {
@@ -550,6 +596,9 @@ impl Walk {
     }
 
     fn body(&mut self, b: &[Stmt]) -> Result<(), Error> {
+        if b.windows(2).any(|w| self.propagates(&w[0], &w[1])) {
+            self.add("sem.error.propagate");
+        }
         b.iter().try_for_each(|s| self.stmt(s))
     }
 
@@ -673,12 +722,7 @@ impl Walk {
 /// each fact whose list is not empty; and the semantic features of the crate doc's table. An
 /// operator or intrinsic the vocabulary has no id for is an error.
 pub fn features_used(m: &Module) -> Result<BTreeSet<String>, Error> {
-    let mut w = Walk {
-        vocab: vocabulary(),
-        types: m.types.clone(),
-        out: BTreeSet::new(),
-        breakable: Vec::new(),
-    };
+    let mut w = Walk::new(m);
     for d in &m.types {
         w.decl(d)?;
     }
@@ -714,12 +758,7 @@ pub fn features_used_by(m: &Module, func: &str) -> Result<BTreeSet<String>, Erro
         .iter()
         .find(|f| f.name == func && f.recv.is_none())
         .ok_or_else(|| format!("no function {func:?}"))?;
-    let mut w = Walk {
-        vocab: vocabulary(),
-        types: m.types.clone(),
-        out: BTreeSet::new(),
-        breakable: Vec::new(),
-    };
+    let mut w = Walk::new(m);
     f.params.iter().for_each(|p| w.ty(&p.t));
     f.results.iter().for_each(|t| w.ty(t));
     w.body(&f.body)?;

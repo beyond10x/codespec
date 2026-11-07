@@ -149,6 +149,10 @@ const SEMANTICS: &[(&str, &str)] = &[
         "sem.switch.break",
         "a `break` inside a `switch` leaves the enclosing loop",
     ),
+    (
+        "sem.error.propagate",
+        "a fallible call whose error the caller returns unchanged",
+    ),
 ];
 
 /// The variant-tagged enums of the model: schema definition, id prefix, family, noun.

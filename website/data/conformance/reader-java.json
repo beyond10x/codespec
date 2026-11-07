@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.3.0",
-    "sha256": "a1b739cd5eebf420b816974a9d4a03d1e53a5c9652f49ae5e70fad61beb622d2"
+    "sha256": "8788947916504234e945653d930bfad8e3d3d473a00d48100f4f5a8006aaf1ac"
   },
   "corpus": {
     "sha256": "0f48dcb5795f049c6a43bf6ea9b567e41ba58905368ea8c37fd3f0ffc27f99a2"
@@ -500,6 +500,12 @@
       ]
     },
     {
+      "id": "sem.error.propagate",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "sem.int.wrap",
       "claimed": true,
       "verdict": "pass",
@@ -806,7 +812,7 @@
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 29,
+    "untested": 30,
     "boundary_fail": 0
   },
   "conforms": true

@@ -15,7 +15,8 @@
 //! | arithmetic, bitwise and shift operators and `++`, `--` on a newtype over an integer | through its inner value: `Celsius(c.0.wrapping_add(1))` | — |
 //! | `x, y := f()`, `x, y = f()` for `f` returning a tuple | `let (x, y) = f();`; an assignment binds the tuple first, then stores each target | — |
 //! | last result `error`, function in `fallible` | `Result<T, Error>`; `Ok(())`, `Ok(x)`, `Ok((x, y))` | `fallible` |
-//! | `(T, bool)`, function in `comma_ok` | `Option<T>` | `comma_ok` |
+//! | `v, err := f(…)` then `if err != nil { return <zero values>, err }` (no `else`), `f` in `fallible`, in a function in `fallible`, `err` used nowhere else | `let v = f(…)?;` (`let (v, w) = …`, `f(…)?;` for `err := f(…)`): both share the one `enum Error`, so the error passes unchanged; any other call of `f` (its error wrapped, dropped, inspected or kept) refused | `fallible` |
+//! | `(T, bool)`, function in `comma_ok` | `Option<T>`; a call of it refused | `comma_ok` |
 //! | an `error` result not in `fallible` | refused | `fallible` |
 //! | method in `read_only` | `&self`, else `&mut self` (a value receiver not read-only is refused) | `read_only` |
 //! | type in `displays` | `impl fmt::Display`, padded so a width applies: its `Error()` / `String()` on a value receiver, else the enum's value or the newtype's inner value; a struct with only a pointer-receiver method has none, and printing it is refused | `displays` |
@@ -1554,6 +1555,10 @@ impl<'a> Writer<'a> {
                 "a pointer to {n}, a name bound more than once in the function"
             )));
         }
+        let propagated = match shape {
+            Shape::Fallible => propagations(self, f),
+            Shape::Plain | Shape::CommaOk => BTreeSet::new(),
+        };
         let cx = Fx {
             w: self,
             f,
@@ -1567,6 +1572,8 @@ impl<'a> Writer<'a> {
             rebound,
             owned: owned_locals(self, f),
             cells,
+            propagated,
+            admitted: std::cell::Cell::new(std::ptr::null()),
         };
         let mut body = prelude;
         body.extend(cx.body(&f.body)?);
@@ -2085,6 +2092,129 @@ fn walk_exprs(body: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     });
 }
 
+/// Every statement list of `body`, `body` itself first: the lists [`Fx::body`] and
+/// [`Fx::block`] write.
+fn walk_blocks<'s>(body: &'s [Stmt], f: &mut dyn FnMut(&'s [Stmt])) {
+    f(body);
+    for s in body {
+        match s {
+            Stmt::If {
+                then, otherwise, ..
+            } => {
+                walk_blocks(then, f);
+                walk_blocks(otherwise, f);
+            }
+            Stmt::ForRange { body, .. } | Stmt::For { body, .. } => walk_blocks(body, f),
+            Stmt::Switch { cases, .. } => cases.iter().for_each(|c| walk_blocks(&c.body, f)),
+            Stmt::LookupElse { then, .. } => walk_blocks(then, f),
+            _ => {}
+        }
+    }
+}
+
+/// A value Go's zero value of its type: what `crates/passes` accepts beside a returned error.
+fn zero_value(e: &Expr) -> bool {
+    match e {
+        Expr::Zero { .. } | Expr::Nil { .. } => true,
+        Expr::Lit { value, .. } => matches!(value.as_str(), "\"\"" | "0" | "false"),
+        Expr::Struct { fields, .. } => fields.is_empty(),
+        _ => false,
+    }
+}
+
+/// The `let` statements of fallible function `f` written with `?`: `v, err := g(…)` (or
+/// `err := g(…)`), `g` listed in `fallible`, directly followed in the same list by
+/// `if err != nil { return <zero values>, err }` without an `else`. `err` must appear nowhere
+/// else in `f`, since the written function never binds it; otherwise none of its calls is
+/// written and each is refused by [`Fx::callable`].
+fn propagations(w: &Writer, f: &Func) -> BTreeSet<*const Stmt> {
+    let n = f.results.len();
+    let returns_err = |s: &Stmt, err: &str| -> bool {
+        let Stmt::If {
+            cond,
+            then,
+            otherwise,
+            ..
+        } = s
+        else {
+            return false;
+        };
+        let is_err = |e: &Expr| matches!(e, Expr::Var { name, .. } if name == err);
+        let compared = matches!(cond, Expr::Binop { op, x, y, .. } if op == "!="
+            && ((is_err(x) && matches!(**y, Expr::Nil { .. }))
+                || (is_err(y) && matches!(**x, Expr::Nil { .. }))));
+        let [Stmt::Return { results, .. }] = then.as_slice() else {
+            return false;
+        };
+        compared
+            && otherwise.is_empty()
+            && results.len() == n
+            && results.last().is_some_and(is_err)
+            && results[..n - 1].iter().all(zero_value)
+    };
+    let callee = |e: &Expr| -> Option<&Func> {
+        match e {
+            Expr::Call { name, .. } => {
+                w.m.funcs
+                    .iter()
+                    .find(|g| g.recv.is_none() && g.name == *name)
+            }
+            Expr::Method { x, name, .. } => {
+                w.method(&format!("{}.{}", receiver_type_name(x.t()), name))
+            }
+            _ => None,
+        }
+    };
+    // Each candidate `let` and the name of its error.
+    let mut found: Vec<(*const Stmt, &str)> = Vec::new();
+    walk_blocks(&f.body, &mut |list| {
+        for pair in list.windows(2) {
+            let Stmt::Let { names, rhs, .. } = &pair[0] else {
+                continue;
+            };
+            let ([call], Some(err)) = (rhs.as_slice(), names.last()) else {
+                continue;
+            };
+            let Some(g) = callee(call) else {
+                continue;
+            };
+            if err != "_"
+                && w.facts.fallible.contains(&g.key())
+                && g.results.last() == Some(&Type::Error)
+                && names.len() == g.results.len()
+                && returns_err(&pair[1], err)
+            {
+                found.push((&pair[0] as *const Stmt, err.as_str()));
+            }
+        }
+    });
+    let mut uses: std::collections::BTreeMap<String, usize> = Default::default();
+    walk_exprs(&f.body, &mut |e| {
+        if let Expr::Var { name, .. } = e {
+            *uses.entry(name.clone()).or_default() += 1;
+        }
+    });
+    let bound_elsewhere = |err: &str| {
+        let mut other = f.params.iter().any(|p| p.name == err)
+            || f.recv.as_ref().is_some_and(|r| r.name == err);
+        walk_stmts(&f.body, &mut |s| match s {
+            Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => other |= name == err,
+            Stmt::ForRange { key, val, .. } => other |= key == err || val == err,
+            _ => {}
+        });
+        other
+    };
+    found
+        .iter()
+        .filter(|(_, err)| {
+            // Two uses per propagation: the comparison with nil and the return.
+            let sites = found.iter().filter(|(_, e)| e == err).count();
+            uses.get(*err).copied().unwrap_or(0) == 2 * sites && !bound_elsewhere(err)
+        })
+        .map(|(s, _)| *s)
+        .collect()
+}
+
 /// The local a write to `e` changes, unless the write goes through shared ownership.
 fn root<'e>(w: &Writer, e: &'e Expr) -> Option<&'e str> {
     match e {
@@ -2169,6 +2299,11 @@ struct Fx<'a, 'f> {
     cells: BTreeSet<String>,
     /// For each enclosing loop, innermost last, the `post` statement a `continue` runs first.
     posts: std::cell::RefCell<Vec<Vec<TokenStream>>>,
+    /// The `let` statements of a fallible call whose error the next statement returns
+    /// unchanged, each written with `?`: see [`propagations`].
+    propagated: BTreeSet<*const Stmt>,
+    /// The one fallible call [`Fx::callable`] admits while a propagation is written.
+    admitted: std::cell::Cell<*const Expr>,
 }
 
 impl Fx<'_, '_> {
@@ -2216,7 +2351,16 @@ impl Fx<'_, '_> {
     /// The function body: a final `return` becomes the tail expression.
     fn body(&self, body: &[Stmt]) -> Result<Vec<TokenStream>, Refuse> {
         let mut out = Vec::new();
+        let mut skip = false;
         for (i, s) in body.iter().enumerate() {
+            if std::mem::take(&mut skip) {
+                continue;
+            }
+            if let Some(p) = self.propagation(s)? {
+                out.push(p);
+                skip = true;
+                continue;
+            }
             if i + 1 == body.len()
                 && let Stmt::Return { results, pos } = s
             {
@@ -2241,10 +2385,61 @@ impl Fx<'_, '_> {
 
     fn block(&self, body: &[Stmt]) -> Result<Vec<TokenStream>, Refuse> {
         let mut out = Vec::new();
+        let mut skip = false;
         for s in body {
+            if std::mem::take(&mut skip) {
+                continue;
+            }
+            if let Some(p) = self.propagation(s)? {
+                out.push(p);
+                skip = true;
+                continue;
+            }
             out.extend(self.stmt(s)?);
         }
         Ok(out)
+    }
+
+    /// `s` written with `?` when [`propagations`] found it: `v, err := f(…)` followed by
+    /// `if err != nil { return <zero values>, err }`, which the caller skips. `None` for any
+    /// other statement.
+    fn propagation(&self, s: &Stmt) -> Result<Option<TokenStream>, Refuse> {
+        if !self.propagated.contains(&(s as *const Stmt)) {
+            return Ok(None);
+        }
+        let Stmt::Let {
+            names, rhs, pos, ..
+        } = s
+        else {
+            unreachable!("propagations holds only `let` statements")
+        };
+        let r = (|| {
+            let values = &names[..names.len() - 1];
+            let call = &rhs[0];
+            if let Some(n) = values.iter().find(|n| self.cells.contains(*n)) {
+                return Err(format!(
+                    "a pointer to {n}, bound to a value of a fallible call"
+                ));
+            }
+            if let Type::Tuple { elems } = call.t()
+                && elems
+                    .iter()
+                    .any(|t| matches!(t, Type::Ptr { .. }) && !self.w.rc(t))
+            {
+                return Err("a local pointer to a type `shared` does not list".into());
+            }
+            self.admitted.set(call as *const Expr);
+            let v = self.val(call);
+            self.admitted.set(std::ptr::null());
+            let v = v?.ts;
+            let bs: Vec<TokenStream> = values.iter().map(|n| self.binding(n)).collect();
+            Ok(match bs.as_slice() {
+                _ if values.iter().all(|n| n == "_") => quote! { #v?; },
+                [b] => quote! { let #b = #v?; },
+                bs => quote! { let (#(#bs),*) = #v?; },
+            })
+        })();
+        r.map(Some).map_err(|e| at(pos, e))
     }
 
     fn stmt(&self, s: &Stmt) -> Result<Vec<TokenStream>, Refuse> {
@@ -3043,7 +3238,7 @@ impl Fx<'_, '_> {
                     .iter()
                     .find(|f| f.recv.is_none() && f.name == *name)
                     .ok_or_else(|| format!("a call of {name}, which is not declared"))?;
-                self.callable(callee)?;
+                self.callable(callee, e)?;
                 let n = self.w.names.func(name);
                 let a = self.args(args, callee)?;
                 Ok(Rx::atom(quote! { #n(#(#a),*) }))
@@ -3054,7 +3249,7 @@ impl Fx<'_, '_> {
                     .w
                     .method(&key)
                     .ok_or_else(|| format!("a call of {key}, which is not declared"))?;
-                self.callable(callee)?;
+                self.callable(callee, e)?;
                 let read_only = self.w.facts.read_only.contains(&key);
                 let n = self.w.names.func(&key);
                 let a = self.args(args, callee)?;
@@ -3277,15 +3472,22 @@ impl Fx<'_, '_> {
         self.w.facts.read_only.iter().any(|k| *k == self.f.key())
     }
 
-    fn callable(&self, callee: &Func) -> R<()> {
+    /// Whether `call`, a call of `callee`, can be written: a fallible callee only as the call
+    /// [`Fx::propagation`] writes with `?`, a comma-ok callee never.
+    fn callable(&self, callee: &Func, call: &Expr) -> R<()> {
         let key = callee.key();
         if self.refused.contains(&key) {
             return Err(format!("calls {key}, which is refused"));
         }
         let listed = |l: &[String]| l.contains(&key);
-        if listed(&self.w.facts.fallible) || listed(&self.w.facts.comma_ok) {
+        if listed(&self.w.facts.comma_ok) {
+            return Err(format!("calls {key}, whose results are an Option"));
+        }
+        if listed(&self.w.facts.fallible) && !std::ptr::eq(call, self.admitted.get()) {
             return Err(format!(
-                "calls {key}, whose results are a Result or an Option"
+                "calls {key}, whose results are a Result, without returning its error \
+                 unchanged at once (`v, err := {key}(…)` then `if err != nil {{ return <zero \
+                 values>, err }}` in a fallible function)"
             ));
         }
         Ok(())
