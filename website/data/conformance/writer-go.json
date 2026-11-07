@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.3.0",
-    "sha256": "a1b739cd5eebf420b816974a9d4a03d1e53a5c9652f49ae5e70fad61beb622d2"
+    "sha256": "8788947916504234e945653d930bfad8e3d3d473a00d48100f4f5a8006aaf1ac"
   },
   "codespec": "0.3.0",
   "features": [
@@ -540,6 +540,14 @@
       ]
     },
     {
+      "id": "sem.error.propagate",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-error-propagate"
+      ]
+    },
+    {
       "id": "sem.int.wrap",
       "claimed": true,
       "verdict": "pass",
@@ -883,8 +891,8 @@
     }
   ],
   "summary": {
-    "claimed": 104,
-    "pass": 104,
+    "claimed": 105,
+    "pass": 105,
     "fail": 0,
     "refused_unclaimed": 1,
     "pass_unclaimed": 0,

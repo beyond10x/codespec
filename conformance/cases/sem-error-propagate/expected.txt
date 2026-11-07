@@ -1,0 +1,4 @@
+err negative
+ok 3
+err negative
+ok 4

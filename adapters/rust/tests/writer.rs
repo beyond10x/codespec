@@ -235,3 +235,383 @@ fn a_local_bound_to_make_carries_its_type_so_the_crate_builds() {
         String::from_utf8_lossy(&o.stderr)
     );
 }
+
+// ----- a fallible call whose error the caller returns unchanged (`sem.error.propagate`) --------
+
+fn int() -> Value {
+    serde_json::json!({"k": "int", "width": "platform", "signed": true})
+}
+
+fn error_t() -> Value {
+    serde_json::json!({"k": "error"})
+}
+
+fn bool_t() -> Value {
+    serde_json::json!({"k": "bool"})
+}
+
+fn var(name: &str, t: Value) -> Value {
+    serde_json::json!({"k": "var", "name": name, "t": t})
+}
+
+fn lit(value: &str, t: Value) -> Value {
+    serde_json::json!({"k": "lit", "value": value, "t": t})
+}
+
+fn nil_error() -> Value {
+    serde_json::json!({"k": "nil", "t": error_t()})
+}
+
+fn negative() -> Value {
+    serde_json::json!({"k": "errvar", "name": "ErrNegative", "t": error_t()})
+}
+
+fn ret(results: Vec<Value>, pos: &str) -> Value {
+    serde_json::json!({"k": "return", "results": results, "pos": pos})
+}
+
+fn func(name: &str, results: Vec<Value>, body: Vec<Value>, pos: &str) -> Value {
+    serde_json::json!({
+        "name": name,
+        "exported": true,
+        "params": [{"name": "n", "t": int()}],
+        "results": results,
+        "body": body,
+        "pos": pos,
+    })
+}
+
+/// `if n < 0 { return <refused> }`.
+fn if_negative(refused: Vec<Value>) -> Value {
+    serde_json::json!({
+        "k": "if",
+        "cond": {"k": "binop", "op": "<", "x": var("n", int()), "y": lit("0", int()), "t": bool_t()},
+        "then": [ret(refused, "p.go:10")],
+        "pos": "p.go:9",
+    })
+}
+
+/// `func Checked(n int) (int, error)`: `ErrNegative` for a negative `n`, else `n`.
+fn checked() -> Value {
+    func(
+        "Checked",
+        vec![int(), error_t()],
+        vec![
+            if_negative(vec![lit("0", int()), negative()]),
+            ret(vec![var("n", int()), nil_error()], "p.go:12"),
+        ],
+        "p.go:8",
+    )
+}
+
+/// `func Valid(n int) error`: `ErrNegative` for a negative `n`, else nil.
+fn valid() -> Value {
+    func(
+        "Valid",
+        vec![error_t()],
+        vec![
+            if_negative(vec![negative()]),
+            ret(vec![nil_error()], "p.go:14"),
+        ],
+        "p.go:13",
+    )
+}
+
+/// `v, err := Checked(n)`.
+fn call_checked() -> Value {
+    serde_json::json!({
+        "k": "let",
+        "names": ["v", "err"],
+        "rhs": [{
+            "k": "call", "name": "Checked", "args": [var("n", int())],
+            "t": {"k": "tuple", "elems": [int(), error_t()]},
+        }],
+        "pos": "p.go:17",
+    })
+}
+
+/// `if <cond> { return 0, <returned> }`.
+fn if_return(cond: Value, returned: Value) -> Value {
+    serde_json::json!({
+        "k": "if",
+        "cond": cond,
+        "then": [ret(vec![lit("0", int()), returned], "p.go:19")],
+        "pos": "p.go:18",
+    })
+}
+
+fn err_compared(op: &str, with: Value) -> Value {
+    serde_json::json!({
+        "k": "binop", "op": op, "x": var("err", error_t()), "y": with, "t": bool_t(),
+    })
+}
+
+/// A module of `Checked`, `Valid` and `Through(n int) (int, error)` with `body`, all three
+/// listed in `fallible`.
+fn propagating(body: Vec<Value>) -> Value {
+    serde_json::json!({
+        "format": "cir/1",
+        "name": "propagate",
+        "reader": {"language": "go", "name": "codespec-read-go", "version": "0.0.0"},
+        "types": [],
+        "errors": [{"name": "ErrNegative", "message": "negative", "pos": "p.go:5"}],
+        "funcs": [
+            checked(),
+            valid(),
+            func("Through", vec![int(), error_t()], body, "p.go:16"),
+        ],
+        "layout": ["error:ErrNegative", "func:Checked", "func:Valid", "func:Through"],
+        "facts": {"shared": [], "fallible": ["Checked", "Valid", "Through"]},
+    })
+}
+
+/// The one refusal of a written module: its function name and its reason.
+fn only_refusal(out: &Path) -> (String, String) {
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    let entries = refusals.as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{refusals}");
+    (
+        entries[0]["name"].as_str().unwrap().to_string(),
+        entries[0]["reason"].as_str().unwrap().to_string(),
+    )
+}
+
+/// Write `doc` with no refusal, check `lib.rs` holds `want`, build it with `-D warnings` beside a
+/// `main` that calls `Through(-3)` and `Through(3)`, run it and return what it printed.
+fn written_through_prints(doc: &Value, name: &str, want: &str) -> String {
+    let (out, lib) = write_ok(doc, name);
+    let refusals = std::fs::read_to_string(out.join("refusals.json")).unwrap();
+    assert_eq!(refusals.trim(), "[]", "{lib}");
+    assert!(
+        squash(&lib).contains(&squash(want)),
+        "{want:?} not in\n{lib}"
+    );
+    std::fs::write(
+        out.join("src/main.rs"),
+        "fn main() {\n    for n in [-3, 3] {\n        match propagate::through(n) {\n            \
+         Ok(v) => println!(\"ok {v}\"),\n            Err(e) => println!(\"err {e}\"),\n        \
+         }\n    }\n}\n",
+    )
+    .unwrap();
+    let target = scratch(&format!("{name}-target"));
+    let o = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(out.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target)
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "cargo build failed:\n{}\n{lib}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let o = Command::new(target.join("debug/propagate"))
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    String::from_utf8(o.stdout).unwrap()
+}
+
+/// `v, err := Checked(n); if err != nil { return 0, err }; return v, nil` is written with `?`,
+/// builds without warnings, and returns `Checked`'s error unchanged or its value.
+#[test]
+fn a_fallible_call_whose_error_the_caller_returns_unchanged_is_written_with_the_question_mark() {
+    let doc = propagating(vec![
+        call_checked(),
+        if_return(err_compared("!=", nil_error()), var("err", error_t())),
+        ret(vec![var("v", int()), nil_error()], "p.go:21"),
+    ]);
+    let printed = written_through_prints(&doc, "propagate", "let v = checked(n)?;");
+    assert_eq!(printed, "err negative\nok 3\n");
+}
+
+/// `err := Valid(n); if err != nil { return 0, err }; return n, nil`: a callee whose only result
+/// is the error (a Java call of a throwing void method reads into this form) is `valid(n)?;`.
+#[test]
+fn a_fallible_call_with_only_an_error_result_is_written_with_the_question_mark() {
+    let doc = propagating(vec![
+        serde_json::json!({
+            "k": "let",
+            "names": ["err"],
+            "rhs": [{"k": "call", "name": "Valid", "args": [var("n", int())], "t": error_t()}],
+            "pos": "p.go:17",
+        }),
+        if_return(err_compared("!=", nil_error()), var("err", error_t())),
+        ret(vec![var("n", int()), nil_error()], "p.go:21"),
+    ]);
+    let printed = written_through_prints(&doc, "propagate-error-only", "valid(n)?;");
+    assert_eq!(printed, "err negative\nok 3\n");
+}
+
+fn refused_naming_the_call(name: &str, doc: &Value, func: &str, callee: &str) {
+    let (out, lib) = write_ok(doc, name);
+    let (refused, reason) = only_refusal(&out);
+    assert_eq!(refused, func, "{reason}\n{lib}");
+    assert!(reason.contains(callee), "{reason}");
+}
+
+#[test]
+fn a_fallible_call_whose_error_the_caller_wraps_is_refused_naming_the_call() {
+    let wrapped = serde_json::json!({
+        "k": "intrinsic", "name": "errorf",
+        "args": [lit("\"through: %w\"", serde_json::json!({"k": "string"})), var("err", error_t())],
+        "t": error_t(),
+    });
+    let doc = propagating(vec![
+        call_checked(),
+        if_return(err_compared("!=", nil_error()), wrapped),
+        ret(vec![var("v", int()), nil_error()], "p.go:21"),
+    ]);
+    refused_naming_the_call("propagate-wraps", &doc, "Through", "Checked");
+}
+
+#[test]
+fn a_fallible_call_whose_error_the_caller_drops_is_refused_naming_the_call() {
+    let doc = propagating(vec![
+        call_checked(),
+        ret(vec![var("v", int()), nil_error()], "p.go:21"),
+    ]);
+    refused_naming_the_call("propagate-drops", &doc, "Through", "Checked");
+}
+
+#[test]
+fn a_fallible_call_whose_error_the_caller_inspects_is_refused_naming_the_call() {
+    let doc = propagating(vec![
+        call_checked(),
+        if_return(err_compared("==", negative()), var("err", error_t())),
+        ret(vec![var("v", int()), nil_error()], "p.go:21"),
+    ]);
+    refused_naming_the_call("propagate-inspects", &doc, "Through", "Checked");
+}
+
+#[test]
+fn a_call_of_a_comma_ok_function_is_refused_naming_the_call() {
+    let positive = func(
+        "Positive",
+        vec![int(), bool_t()],
+        vec![
+            serde_json::json!({
+                "k": "if",
+                "cond": {"k": "binop", "op": ">", "x": var("n", int()), "y": lit("0", int()),
+                         "t": bool_t()},
+                "then": [ret(vec![var("n", int()), lit("true", bool_t())], "p.go:4")],
+                "pos": "p.go:3",
+            }),
+            ret(vec![lit("0", int()), lit("false", bool_t())], "p.go:6"),
+        ],
+        "p.go:2",
+    );
+    let twice = func(
+        "Twice",
+        vec![int()],
+        vec![
+            serde_json::json!({
+                "k": "let",
+                "names": ["v", "ok"],
+                "rhs": [{
+                    "k": "call", "name": "Positive", "args": [var("n", int())],
+                    "t": {"k": "tuple", "elems": [int(), bool_t()]},
+                }],
+                "pos": "p.go:10",
+            }),
+            serde_json::json!({
+                "k": "if",
+                "cond": {"k": "unop", "op": "!", "x": var("ok", bool_t()), "t": bool_t()},
+                "then": [ret(vec![lit("0", int())], "p.go:12")],
+                "pos": "p.go:11",
+            }),
+            ret(vec![var("v", int())], "p.go:14"),
+        ],
+        "p.go:9",
+    );
+    let doc = serde_json::json!({
+        "format": "cir/1",
+        "name": "positive",
+        "reader": {"language": "go", "name": "codespec-read-go", "version": "0.0.0"},
+        "types": [],
+        "funcs": [positive, twice],
+        "layout": ["func:Positive", "func:Twice"],
+        "facts": {"shared": [], "comma_ok": ["Positive"]},
+    });
+    refused_naming_the_call("comma-ok-call", &doc, "Twice", "Positive");
+}
+
+// ----- adversarial: near misses of the propagation pattern -------------------------------------
+
+fn if_return_else(cond: Value, returned: Value) -> Value {
+    let mut s = if_return(cond, returned);
+    s["else"] = serde_json::json!([ret(vec![var("v", int()), nil_error()], "p.go:20")]);
+    s
+}
+
+/// Each near miss of `v, err := Checked(n); if err != nil { return 0, err }` is refused naming
+/// `Checked`: an `else`, `err == nil`, a non-zero value or `v` beside the error, a second
+/// statement in the `then`, a statement between call and check, `err` used again later.
+#[test]
+fn every_near_miss_of_the_propagation_pattern_is_refused_naming_the_call() {
+    let ne = || err_compared("!=", nil_error());
+    let e = || var("err", error_t());
+    let keep = serde_json::json!({
+        "k": "assign", "lhs": [var("_", error_t())], "rhs": [e()], "pos": "p.go:20",
+    });
+    let incr = serde_json::json!({"k": "incr", "x": var("n", int()), "pos": "p.go:17"});
+    let mut two_stmts = if_return(ne(), e());
+    two_stmts["then"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, incr.clone());
+    let mut nonzero = if_return(ne(), e());
+    nonzero["then"][0]["results"][0] = lit("1", int());
+    let mut value_v = if_return(ne(), e());
+    value_v["then"][0]["results"][0] = var("v", int());
+    let tail = || ret(vec![var("v", int()), nil_error()], "p.go:21");
+    let cases: Vec<(&str, Vec<Value>)> = vec![
+        ("nm-else", vec![call_checked(), if_return_else(ne(), e())]),
+        (
+            "nm-eq",
+            vec![
+                call_checked(),
+                if_return(err_compared("==", nil_error()), e()),
+                tail(),
+            ],
+        ),
+        ("nm-nonzero", vec![call_checked(), nonzero, tail()]),
+        ("nm-value", vec![call_checked(), value_v, tail()]),
+        ("nm-two", vec![call_checked(), two_stmts, tail()]),
+        (
+            "nm-between",
+            vec![call_checked(), incr, if_return(ne(), e()), tail()],
+        ),
+        (
+            "nm-kept",
+            vec![call_checked(), if_return(ne(), e()), keep, tail()],
+        ),
+    ];
+    for (name, body) in cases {
+        refused_naming_the_call(name, &propagating(body), "Through", "Checked");
+    }
+}
+
+/// A propagation inside a nested `if` and inside a `switch` case is written with `?` too.
+#[test]
+fn a_propagation_in_a_nested_block_is_written_with_the_question_mark() {
+    let doc = propagating(vec![
+        serde_json::json!({
+            "k": "if",
+            "cond": {"k": "binop", "op": "!=", "x": var("n", int()), "y": lit("100", int()),
+                     "t": bool_t()},
+            "then": [
+                call_checked(),
+                if_return(err_compared("!=", nil_error()), var("err", error_t())),
+                ret(vec![var("v", int()), nil_error()], "p.go:21"),
+            ],
+            "pos": "p.go:16",
+        }),
+        ret(vec![lit("0", int()), nil_error()], "p.go:22"),
+    ]);
+    let printed = written_through_prints(&doc, "propagate-nested", "let v = checked(n)?;");
+    assert_eq!(printed, "err negative\nok 3\n");
+}

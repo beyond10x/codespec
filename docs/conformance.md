@@ -32,7 +32,7 @@ drift-checked by `task check` the way `schemas/cir-1.schema.json` is.
 | intrinsic | `intrinsic.sprintf`, `intrinsic.append`, `intrinsic.len` | the names `Intrinsic` documents |
 | type | `type.int`, `type.map`, `type.chan`, `decl.union` (one id per variant; widths are not separate features) | `Type` (12), `TypeDecl` (4) |
 | fact | `fact.fallible`, `fact.unordered_iteration` | `Facts` fields (7); a writer feature only |
-| semantic | `sem.int.wrap`, `sem.rem.sign`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break` | behaviour two languages disagree on; one id per difference the harness has already met |
+| semantic | `sem.int.wrap`, `sem.rem.sign`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break`, `sem.error.propagate` | behaviour two languages disagree on; one id per difference the harness has already met |
 
 A semantic feature is the important family. `sem.int.wrap` (Go's `int` wraps on overflow),
 `sem.continue.post` (`continue` runs the `post` statement) and `sem.multi_assign.order` (every value

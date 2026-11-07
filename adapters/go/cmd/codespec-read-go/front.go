@@ -781,6 +781,14 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		if !ok1 || !ok2 {
 			return Expr{}, false
 		}
+		// go/types leaves the nil of `err != nil` untyped; cir/1 has no untyped nil, so it takes
+		// the type of the operand it is compared with.
+		untyped := func(e Expr) bool { return e.K == "nil" && e.T != nil && e.T.K == "nil" }
+		if untyped(y) && !untyped(x) {
+			y.T = x.T
+		} else if untyped(x) && !untyped(y) {
+			x.T = y.T
+		}
 		return Expr{K: "binop", Op: e.Op.String(), X: &x, Y: &y, T: t}, true
 	case *ast.CompositeLit:
 		if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {

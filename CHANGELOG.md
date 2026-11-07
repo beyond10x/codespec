@@ -2,6 +2,19 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- The semantic feature `sem.error.propagate`, a fallible call whose error the caller returns
+  unchanged, with the conformance case `sem-error-propagate`. `codespec-write-rust` writes
+  `v, err := f(…)` followed by `if err != nil { return <zero values>, err }` as `let v = f(…)?;`
+  (`f(…)?;` for a callee whose only result is the error) instead of refusing the function; a call of
+  a fallible function whose error is wrapped, dropped or inspected, and any call of a comma-ok
+  function, stay refused, naming the callee. `codespec-read-go` reads `err != nil` and `err == nil`,
+  the `nil` taking the type of the operand it is compared with. `codespec-read-rust` does not claim
+  the feature.
+
 ## 0.3.0
 
 ### Added
