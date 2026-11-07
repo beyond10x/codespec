@@ -19,10 +19,25 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
-  check:
-    name: codespec / task check
+  part:
+    name: check / ${{ matrix.part }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - lint
+          - test b10x-codespec-model b10x-codespec-passes b10x-codespec-harness
+          - test b10x-codespec-cli
+          - test b10x-codespec-conformance
+          - test codespec-docs
+          - test codespec-write-rust
+          - test codespec-read-rust codespec-run-rust
+          - adapters
+          - examples
+          - conformance
+          - docs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -30,6 +45,10 @@ jobs:
 
       - name: Install the Rust toolchain rust-toolchain.toml names
         run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ${{ matrix.part }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -67,50 +86,44 @@ jobs:
           echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
 
-      - name: fmt, clippy and tests
+      - name: ${{ matrix.part }}
         env:
-          CARGO_BUILD_JOBS: 2
+          JDK: ${{ steps.jdk.outputs.path }}
+          PART: ${{ matrix.part }}
         run: |
-          df -h / && free -m
-          cargo fmt --all --check
-          nice -n 10 cargo clippy --workspace --all-targets --locked -- -D warnings
-          nice -n 10 cargo test --workspace --locked
+          set -euo pipefail
+          case "$PART" in
+            lint)
+              cargo fmt --all --check
+              cargo clippy --workspace --all-targets --locked -- -D warnings ;;
+            test\ *)
+              args=()
+              for p in ${PART#test }; do args+=(-p "$p"); done
+              cargo test --locked "${args[@]}" ;;
+            adapters)
+              task adapters-check JDK="$JDK"
+              task groovy-fixture-check JDK="$JDK" ;;
+            examples)
+              for t in examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-series examples-ledger examples-fees harness; do
+                echo "::group::task $t"
+                task "$t" JDK="$JDK"
+                echo "::endgroup::"
+              done ;;
+            conformance)
+              task conformance-cases JDK="$JDK"
+              task conformance-kit JDK="$JDK" ;;
+            docs)
+              task docs-check JDK="$JDK" ;;
+          esac
 
-      - name: adapters-check
+  check:
+    name: codespec / task check
+    if: always()
+    needs: part
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every part of task check passed
         env:
-          JDK: ${{ steps.jdk.outputs.path }}
-          CARGO_BUILD_JOBS: 2
-        run: df -h / && free -m && nice -n 10 task adapters-check JDK="$JDK"
-
-      - name: examples
-        env:
-          JDK: ${{ steps.jdk.outputs.path }}
-          CARGO_BUILD_JOBS: 2
-        run: |
-          df -h / && free -m
-          for t in examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-series examples-ledger examples-fees harness; do
-            echo "::group::task $t"
-            nice -n 10 task "$t" JDK="$JDK"
-            echo "::endgroup::"
-          done
-
-      - name: conformance-cases and conformance-kit
-        env:
-          JDK: ${{ steps.jdk.outputs.path }}
-          CARGO_BUILD_JOBS: 2
-        run: |
-          df -h / && free -m
-          nice -n 10 task conformance-cases JDK="$JDK"
-          nice -n 10 task conformance-kit JDK="$JDK"
-
-      - name: groovy-fixture-check
-        env:
-          JDK: ${{ steps.jdk.outputs.path }}
-          CARGO_BUILD_JOBS: 2
-        run: df -h / && free -m && nice -n 10 task groovy-fixture-check JDK="$JDK"
-
-      - name: docs-check
-        env:
-          JDK: ${{ steps.jdk.outputs.path }}
-          CARGO_BUILD_JOBS: 2
-        run: df -h / && free -m && nice -n 10 task docs-check JDK="$JDK"
+          RESULT: ${{ needs.part.result }}
+        run: test "$RESULT" = success
