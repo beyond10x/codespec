@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "go",
-    "version": "0.3.0",
-    "manifest_sha256": "46955a575ef2cc7dcd0c134a644ae0b532f19c45fc7025ee0461a2436586aaab"
+    "version": "0.4.0",
+    "manifest_sha256": "8cff06888402203a6fbdd6073cd4fff7ef178c2ec7fbe8569d8a7663736a5f7b"
   },
   "kit": {
-    "version": "0.3.0",
-    "sha256": "8788947916504234e945653d930bfad8e3d3d473a00d48100f4f5a8006aaf1ac"
+    "version": "0.4.0",
+    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
   },
-  "codespec": "0.3.0",
+  "codespec": "0.4.0",
   "features": [
     {
       "id": "assign.add",

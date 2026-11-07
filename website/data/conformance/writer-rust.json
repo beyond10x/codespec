@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "rust",
-    "version": "0.3.0",
-    "manifest_sha256": "c2237d4f48d674b6fffdb28ffbdda8fae8d60038657cf9439eaa7b041ff5a5d7"
+    "version": "0.4.0",
+    "manifest_sha256": "c65270fe8504928793c719bf026f18d78f15208a58a1ad121c9ad3b0cb417400"
   },
   "kit": {
-    "version": "0.3.0",
-    "sha256": "8788947916504234e945653d930bfad8e3d3d473a00d48100f4f5a8006aaf1ac"
+    "version": "0.4.0",
+    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
   },
-  "codespec": "0.3.0",
+  "codespec": "0.4.0",
   "features": [
     {
       "id": "assign.add",

@@ -101,7 +101,7 @@ writes this block from the checked-in report `website/data/conformance/writer-go
 ```shell-session
 $ export CODESPEC_ADAPTERS=target/adapters
 $ target/debug/codespec conform --lang go --role writer --out work/go-writer.json
-writer go 0.3.0: conforms; 105 claimed, 105 pass, 0 fail, 1 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
+writer go 0.4.0: conforms; 105 claimed, 105 pass, 0 fail, 1 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
 work/go-writer.json: written
 $ jq -c .summary work/go-writer.json
 {"claimed":105,"pass":105,"fail":0,"refused_unclaimed":1,"pass_unclaimed":0,"untested":0,"boundary_fail":0}
