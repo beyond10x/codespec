@@ -69,6 +69,6 @@ jobs:
         run: |
           set -euo pipefail
           uname -a; cat /etc/os-release | head -2; nproc; free -m; ulimit -a
-          ls -l "$(command -v kill)" "$(command -v yes)" "$(command -v sleep)"
+          type -a kill yes sleep || true
           ( while sleep 10; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; free -m | sed -n 2p; done ) &
           timeout -s KILL 300 cargo test --locked -p b10x-codespec-conformance --test conform -- --exact "$TEST" --test-threads 1 --nocapture
