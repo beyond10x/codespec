@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-writer-error-propagation
 kind: story
-status: active
+status: implemented
 title: The Rust writer propagates an error from one fallible call into another
 relations:
 - informed_by: story:java-example-ledger
@@ -46,10 +46,11 @@ scope:
   path: website/data/support-matrix.json
 - confidence: cited
   path: website/docs/guides/add-an-adapter.md
-revision: 16
+revision: 17
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T18:21:30Z", actor: "human:timo", revision: 10}
 - {from: "proposed", to: "active", at: "2026-11-07T18:31:10Z", actor: "human:timo", revision: 15}
+- {from: "active", to: "implemented", at: "2026-11-07T21:16:35Z", actor: "human:timo", revision: 17, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust writer propagates an error from one fallible call into another
 
