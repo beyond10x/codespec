@@ -46,7 +46,7 @@ scope:
   path: website/data/support-matrix.json
 - confidence: cited
   path: website/docs/guides/add-an-adapter.md
-revision: 15
+revision: 16
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T18:21:30Z", actor: "human:timo", revision: 10}
 - {from: "proposed", to: "active", at: "2026-11-07T18:31:10Z", actor: "human:timo", revision: 15}
@@ -56,8 +56,8 @@ transitions:
 ## Outcome
 
 `codespec-write-rust` writes a fallible function that calls another fallible function and returns
-its error (`v, err := f(); if err != nil { return <zero values>, err }`) as Rust with `?` or an
-explicit `match`, instead of refusing it, and the feature has a name and a conformance case so the
+its error (`v, err := f(); if err != nil { return <zero values>, err }`, or `err := f()` for a
+callee whose only result is the error) as Rust with `?`, instead of refusing it, and the feature has a name and a conformance case so the
 claim is checked like every other.
 
 ## Context
@@ -95,7 +95,9 @@ reading the written `?` back is not in this story, so the Rust reader excludes t
   callee's error and one that returns the success value.
 - `adapters/rust/tests/writer.rs` gains a test that writes such a document, builds the crate
   without warnings, runs it on one failing and one succeeding call and asserts the printed lines:
-  the callee's error text unchanged, and the success value.
+  the callee's error text unchanged, and the success value. A second such test does the same for
+  an error-only callee (`err := f(); if err != nil { … }`, the form the Java reader gives a call of
+  a throwing `void` method). The written call uses `?`.
 - `adapters/rust/tests/writer.rs` gains four refusal tests, each asserting a refusal whose reason
   names the call: (1) the caller wraps the error (`errorf` around it), (2) the caller drops it (the
   error assigned and not returned), (3) the caller inspects it (compares it to a sentinel before
