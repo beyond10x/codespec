@@ -174,6 +174,10 @@ pub struct Exec {
 /// How long one program may run unless the caller says otherwise: 300 seconds.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// How many bytes of a program's stdout, and of its stderr, are kept: 64 MiB. A program that
+/// writes more loses its pipe, so one that prints without end cannot fill memory.
+pub const OUTPUT_LIMIT: u64 = 64 << 20;
+
 /// What came of running a program within a time limit.
 #[derive(Debug, Clone)]
 pub enum Ran {
@@ -260,8 +264,8 @@ impl Program for Process {
         let drain = |r: Option<Box<dyn Read + Send>>| {
             std::thread::spawn(move || {
                 let mut buf = Vec::new();
-                if let Some(mut r) = r {
-                    let _ = r.read_to_end(&mut buf);
+                if let Some(r) = r {
+                    let _ = r.take(OUTPUT_LIMIT).read_to_end(&mut buf);
                 }
                 buf
             })

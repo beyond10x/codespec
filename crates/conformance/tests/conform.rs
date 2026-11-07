@@ -11,8 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use codespec_conformance::conform::{
-    Exec, Process, Program, Ran, Reason, Report, Run, UNKNOWN_KIND, Verdict, claim, conform_reader,
-    conform_writer, conform_writer_within, read_kit, read_report, reader_corpus, report_json,
+    Exec, OUTPUT_LIMIT, Process, Program, Ran, Reason, Report, Run, UNKNOWN_KIND, Verdict, claim,
+    conform_reader, conform_writer, conform_writer_within, read_kit, read_report, reader_corpus,
+    report_json,
 };
 use codespec_conformance::load_cases;
 use codespec_model::Module;
@@ -276,6 +277,23 @@ fn a_writer_that_sleeps_past_a_two_second_limit_fails_with_reason_timeout() {
     assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
     assert!(
         start.elapsed() < Duration::from_secs(10),
+        "{:?}",
+        start.elapsed()
+    );
+}
+
+#[test]
+fn a_program_that_prints_without_end_keeps_only_the_output_limit_and_is_stopped() {
+    let start = Instant::now();
+    let ran = Process(PathBuf::from("yes"))
+        .exec_within(&[], None, Duration::from_secs(60))
+        .unwrap();
+    let Ran::Done(e) = ran else {
+        panic!("yes was not stopped by its closed pipe: {ran:?}")
+    };
+    assert_eq!(e.stdout.len() as u64, OUTPUT_LIMIT);
+    assert!(
+        start.elapsed() < Duration::from_secs(30),
         "{:?}",
         start.elapsed()
     );

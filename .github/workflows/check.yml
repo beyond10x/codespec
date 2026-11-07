@@ -22,7 +22,7 @@ jobs:
   part:
     name: check / ${{ matrix.part }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -100,7 +100,10 @@ jobs:
               args=()
               for p in ${PART#test }; do args+=(-p "$p"); done
               cargo test --locked "${args[@]}" --no-run
-              timeout 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
+              ( while sleep 30; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; echo "procs $(ps -e --no-headers | wc -l)"; done ) &
+              ulimit -u 2048
+              ulimit -v 8388608
+              timeout -k 10 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
             adapters)
               task adapters-check JDK="$JDK"
               task groovy-fixture-check JDK="$JDK" ;;
