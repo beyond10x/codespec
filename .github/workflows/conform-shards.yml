@@ -1,7 +1,9 @@
 name: conform shards
 
-# Temporary: each test of crates/conformance/tests/conform.rs in its own job, to name the one that
-# stops the runner. Removed once it is found.
+# Temporary: the tests of crates/conformance/tests/conform.rs pass one per runner and stop the
+# runner when run in sequence in the check job. These two jobs run them in sequence, one plain and
+# one with the check job's limits and Groovy, to tell an environment cause from an accumulating one.
+# Removed once the cause is found.
 
 on:
   pull_request:
@@ -16,29 +18,13 @@ env:
 
 jobs:
   shard:
-    name: conform / ${{ matrix.test }}
+    name: conform / ${{ matrix.mode }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
-        test:
-          - a_claimed_feature_the_writer_refuses_fails
-          - a_copy_of_the_rust_writer_whose_addition_saturates_fails_sem_int_wrap_at_its_first_line
-          - a_family_wildcard_less_one_id_expands_to_the_other_fifteen_statement_ids
-          - a_feature_that_is_the_subject_of_several_cases_runs_each_and_fails_when_one_fails
-          - a_program_that_prints_without_end_keeps_only_the_output_limit_and_is_stopped
-          - a_reader_that_turns_its_claimed_subject_into_foreign_fails_step_3
-          - a_refusal_listed_in_refusals_json_is_named_by_function_position_and_reason
-          - a_runner_that_prints_the_expected_output_for_an_empty_directory_fails_the_runner_control
-          - a_stub_writer_that_writes_every_case_right_conforms_and_its_report_is_canonical
-          - a_writer_that_sleeps_past_a_two_second_limit_fails_with_reason_timeout
-          - a_writer_that_writes_a_case_twice_with_different_bytes_does_not_conform
-          - a_writer_that_writes_a_module_with_an_unknown_statement_kind_does_not_conform
-          - an_unclaimed_feature_refused_passes_as_refused_and_written_wrong_fails
-          - no_report_field_holds_the_absolute_work_path
-          - the_groovy_corpus_prefers_a_case_s_groovy_source_and_no_other_corpus_reads_it
-          - the_stub_writer_and_runner_conform_untwisted
+        mode: [plain, limits-and-groovy]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -60,15 +46,31 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Install Groovy 2.4.10
+        if: matrix.mode == 'limits-and-groovy'
+        env:
+          GROOVY_VERSION: "2.4.10"
+          GROOVY_SHA256: 1c4dff3b6edf9a8ced3bca658ee1857cee90cfed1ee3474a2790045033c317a9
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/groovy.zip" \
+            "https://repo1.maven.org/maven2/org/codehaus/groovy/groovy-binary/$GROOVY_VERSION/groovy-binary-$GROOVY_VERSION.zip"
+          echo "$GROOVY_SHA256  $RUNNER_TEMP/groovy.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
+          echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
+
       - name: Build the conform tests
         run: cargo test --locked -p b10x-codespec-conformance --test conform --no-run
 
-      - name: ${{ matrix.test }}
+      - name: conform in sequence, ${{ matrix.mode }}
         env:
-          TEST: ${{ matrix.test }}
+          MODE: ${{ matrix.mode }}
         run: |
           set -euo pipefail
-          uname -a; cat /etc/os-release | head -2; nproc; free -m; ulimit -a
-          type -a kill yes sleep || true
-          ( while sleep 10; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; free -m | sed -n 2p; done ) &
-          timeout -s KILL 300 cargo test --locked -p b10x-codespec-conformance --test conform -- --exact "$TEST" --test-threads 1 --nocapture
+          ( while sleep 10; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; free -m | sed -n 2p; echo "procs $(ps -e --no-headers | wc -l)"; done ) &
+          if [ "$MODE" = limits-and-groovy ]; then
+            ulimit -u 2048
+            ulimit -v 8388608
+          fi
+          timeout -s KILL 420 cargo test --locked -p b10x-codespec-conformance --test conform -- --test-threads 1 --nocapture
