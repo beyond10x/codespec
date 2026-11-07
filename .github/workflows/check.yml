@@ -67,8 +67,50 @@ jobs:
           echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
 
-      - name: task check
+      - name: fmt, clippy and tests
+        env:
+          CARGO_BUILD_JOBS: 2
+        run: |
+          df -h / && free -m
+          cargo fmt --all --check
+          nice -n 10 cargo clippy --workspace --all-targets --locked -- -D warnings
+          nice -n 10 cargo test --workspace --locked
+
+      - name: adapters-check
         env:
           JDK: ${{ steps.jdk.outputs.path }}
           CARGO_BUILD_JOBS: 2
-        run: nice -n 10 task check JDK="$JDK"
+        run: df -h / && free -m && nice -n 10 task adapters-check JDK="$JDK"
+
+      - name: examples
+        env:
+          JDK: ${{ steps.jdk.outputs.path }}
+          CARGO_BUILD_JOBS: 2
+        run: |
+          df -h / && free -m
+          for t in examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-series examples-ledger examples-fees harness; do
+            echo "::group::task $t"
+            nice -n 10 task "$t" JDK="$JDK"
+            echo "::endgroup::"
+          done
+
+      - name: conformance-cases and conformance-kit
+        env:
+          JDK: ${{ steps.jdk.outputs.path }}
+          CARGO_BUILD_JOBS: 2
+        run: |
+          df -h / && free -m
+          nice -n 10 task conformance-cases JDK="$JDK"
+          nice -n 10 task conformance-kit JDK="$JDK"
+
+      - name: groovy-fixture-check
+        env:
+          JDK: ${{ steps.jdk.outputs.path }}
+          CARGO_BUILD_JOBS: 2
+        run: df -h / && free -m && nice -n 10 task groovy-fixture-check JDK="$JDK"
+
+      - name: docs-check
+        env:
+          JDK: ${{ steps.jdk.outputs.path }}
+          CARGO_BUILD_JOBS: 2
+        run: df -h / && free -m && nice -n 10 task docs-check JDK="$JDK"
