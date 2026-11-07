@@ -30,7 +30,11 @@ jobs:
           - lint
           - test b10x-codespec-model b10x-codespec-passes b10x-codespec-harness
           - test b10x-codespec-cli
-          - test b10x-codespec-conformance
+          - test b10x-codespec-conformance --lib --bins
+          - test b10x-codespec-conformance --test=adversary2
+          - test b10x-codespec-conformance --test=adversary_conform
+          - test b10x-codespec-conformance --test=cases
+          - test b10x-codespec-conformance --test=conform
           - test codespec-docs
           - test codespec-write-rust
           - test codespec-read-rust codespec-run-rust
@@ -98,7 +102,11 @@ jobs:
               cargo clippy --workspace --all-targets --locked -- -D warnings ;;
             test\ *)
               args=()
-              for p in ${PART#test }; do args+=(-p "$p"); done
+              # A word starting with -- is a cargo target selector (--lib, --test=<name>); any
+              # other word is a package.
+              for p in ${PART#test }; do
+                case "$p" in --*) args+=("$p") ;; *) args+=(-p "$p") ;; esac
+              done
               cargo test --locked "${args[@]}" --no-run
               ( while sleep 30; do echo "== ps $(date +%T)"; ps -eo rss,nlwp,etimes,args --sort=-rss --no-headers | head -5 | cut -c1-160; echo "procs $(ps -e --no-headers | wc -l)"; done ) &
               ulimit -u 2048
