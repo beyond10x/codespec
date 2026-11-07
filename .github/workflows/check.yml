@@ -70,4 +70,5 @@ jobs:
       - name: task check
         env:
           JDK: ${{ steps.jdk.outputs.path }}
-        run: task check JDK="$JDK"
+          CARGO_BUILD_JOBS: 2
+        run: nice -n 10 task check JDK="$JDK"
