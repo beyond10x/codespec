@@ -99,7 +99,8 @@ jobs:
             test\ *)
               args=()
               for p in ${PART#test }; do args+=(-p "$p"); done
-              cargo test --locked "${args[@]}" ;;
+              cargo test --locked "${args[@]}" --no-run
+              timeout 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
             adapters)
               task adapters-check JDK="$JDK"
               task groovy-fixture-check JDK="$JDK" ;;
