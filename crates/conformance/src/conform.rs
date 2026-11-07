@@ -311,17 +311,16 @@ impl Program for Process {
 
 /// Kill a child started in its own process group, and the group, then reap it.
 fn kill_group(child: &mut std::process::Child) {
-    // The shell's own `kill`: a host may have no `kill` program (the GitHub Ubuntu runner has
-    // none), and then only the child would die while its children keep its pipes open.
+    // Signal the group directly: a host may have no `kill` program (the GitHub Ubuntu runner has
+    // none) and shells disagree on `kill`'s arguments (dash reads `--` as a pid), and then only
+    // the child would die while its children keep its pipes open.
     #[cfg(unix)]
-    {
-        let _ = Command::new("sh")
-            .args(["-c", "kill -KILL -- \"-$1\"", "sh"])
-            .arg(child.id().to_string())
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+        // SAFETY: kill(2) takes plain integers and touches no memory of this process; the group
+        // is the one the child leads, started with `process_group(0)`.
+        unsafe {
+            libc::kill(-group, libc::SIGKILL);
+        }
     }
     let _ = child.kill();
     let _ = child.wait();

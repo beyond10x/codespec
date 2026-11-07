@@ -10,6 +10,7 @@ repository = "https://github.com/beyond10x/codespec"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive", "env"] }
+libc = "0.2"
 prettyplease = "0.3"
 proc-macro2 = { version = "1.0", default-features = false }
 quote = { version = "1.0", default-features = false }
