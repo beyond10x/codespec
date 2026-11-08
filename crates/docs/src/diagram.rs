@@ -71,6 +71,7 @@ fn kind(e: &Expr) -> &'static str {
         Expr::Index { .. } => "index",
         Expr::Call { .. } => "call",
         Expr::Method { .. } => "method",
+        Expr::Extern { .. } => "extern",
         Expr::Binop { .. } => "binop",
         Expr::Unop { .. } => "unop",
         Expr::Struct { .. } => "struct",
@@ -109,6 +110,12 @@ fn spell(e: &Expr, depth: usize) -> String {
         Expr::Method {
             x, name, args: a, ..
         } => format!("{}.{name}({})", spell(x, d), args(a, depth)),
+        Expr::Extern {
+            path,
+            name,
+            args: a,
+            ..
+        } => format!("{path}.{name}({})", args(a, depth)),
         Expr::Binop { op, x, y, .. } => format!("{} {op} {}", spell(x, d), spell(y, d)),
         Expr::Unop { op, x, .. } => format!("{op}{}", spell(x, d)),
         Expr::Struct { name, fields, .. } => format!(

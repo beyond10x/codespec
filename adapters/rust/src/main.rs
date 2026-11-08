@@ -47,7 +47,7 @@ fn manifest() -> AdapterManifest {
             "type.*",
             "unop.*",
         ]),
-        not: list(&["stmt.foreign"]),
+        not: list(&["expr.extern", "stmt.foreign"]),
     }
 }
 

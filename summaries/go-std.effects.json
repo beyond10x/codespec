@@ -1,0 +1,221 @@
+{
+  "format": "codespec-effects/1",
+  "language": "go",
+  "externs": [
+    {
+      "path": "math/rand",
+      "name": "Int",
+      "effects": [
+        "rand"
+      ]
+    },
+    {
+      "path": "math/rand",
+      "name": "Intn",
+      "effects": [
+        "rand"
+      ]
+    },
+    {
+      "path": "net",
+      "name": "LookupHost",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Exit",
+      "effects": [
+        "proc"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Getenv",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Getpid",
+      "effects": [
+        "proc"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Getwd",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Hostname",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "LookupEnv",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "ReadFile",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Remove",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Setenv",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Unsetenv",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "WriteFile",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "strconv",
+      "name": "Atoi",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "FormatBool",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "FormatInt",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "Itoa",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "ParseBool",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "ParseInt",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "Quote",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Contains",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Count",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "EqualFold",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "HasPrefix",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "HasSuffix",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Index",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Join",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Repeat",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ReplaceAll",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Split",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ToLower",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ToUpper",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimPrefix",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimSpace",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimSuffix",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Sleep",
+      "effects": [
+        "time"
+      ]
+    }
+  ]
+}

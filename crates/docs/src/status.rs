@@ -21,7 +21,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const VERSION: &str = "0.4.0";
 
 /// The date the list below was last checked against the tree.
-const AS_OF: &str = "2026-11-06";
+const AS_OF: &str = "2026-11-08";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -274,6 +274,24 @@ pub const CAPABILITIES: &[Capability] = &[
         status: "shipped",
         evidence: Some("website/data/conformance/writer-rust.json::conforms"),
         href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Analysis",
+        label: "Extern calls",
+        detail: "A call of a function of another package is an extern call, declared with its signature; the Go reader reads standard library calls so and the Go writer writes them back, the Rust writer refuses them.",
+        status: "shipped",
+        evidence: Some(
+            "adapters/go/cmd/codespec-write-go/extern_test.go::TestExternCaseFixedPoint",
+        ),
+        href: "/docs/reference/cir-1",
+    },
+    Capability {
+        area: "Analysis",
+        label: "Effects report",
+        detail: "codespec effects reports per function the effects it may have (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::examples-effects"),
+        href: "/docs/reference/cli",
     },
 ];
 

@@ -1905,7 +1905,7 @@ fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             walk_expr(x, f);
             walk_expr(y, f);
         }
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().for_each(|a| walk_expr(a, f))
         }
         Expr::Method { x, args, .. } => {
@@ -2030,7 +2030,7 @@ fn only_through(e: &Expr, n: &str) -> bool {
         | Expr::ToError { x, .. } => only_through(x, n),
         Expr::Index { x, index, .. } => only_through(x, n) && only_through(index, n),
         Expr::Binop { x, y, .. } => only_through(x, n) && only_through(y, n),
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().all(|a| only_through(a, n))
         }
         Expr::Method { x, args, .. } => {
@@ -3230,6 +3230,9 @@ impl Fx<'_, '_> {
             Expr::Errvar { .. } | Expr::ToError { .. } => {
                 Err("an error value outside an error result".into())
             }
+            Expr::Extern { path, name, .. } => Err(format!(
+                "extern call {path}.{name}: this writer has no Rust binding for a function outside the module"
+            )),
             Expr::Call { name, args, .. } => {
                 let callee = self
                     .w

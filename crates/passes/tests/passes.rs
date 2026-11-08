@@ -164,6 +164,7 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         consts: vec![],
         errors: vec![],
         funcs,
+        externs: vec![],
         layout: vec![],
         facts: None,
         refusals: vec![],

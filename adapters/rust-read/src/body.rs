@@ -370,7 +370,7 @@ fn root_effects(stmts: &[syn::Stmt], root: &str) -> (bool, Vec<(String, String)>
 /// Whether any part of `e` calls a function or method.
 fn calls(e: &Expr) -> bool {
     let sub: Vec<&Expr> = match e {
-        Expr::Call { .. } | Expr::Method { .. } => return true,
+        Expr::Call { .. } | Expr::Method { .. } | Expr::Extern { .. } => return true,
         Expr::Field { x, .. }
         | Expr::Unop { x, .. }
         | Expr::Conv { x, .. }
@@ -393,7 +393,9 @@ fn children(e: &Expr) -> Vec<&Expr> {
         | Expr::ToError { x, .. } => vec![x],
         Expr::Index { x, index, .. } => vec![x, index],
         Expr::Binop { x, y, .. } => vec![x, y],
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => args.iter().collect(),
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
+            args.iter().collect()
+        }
         Expr::Method { x, args, .. } => std::iter::once(&**x).chain(args).collect(),
         Expr::Struct { fields, .. } => fields.iter().map(|f| &f.value).collect(),
         _ => Vec::new(),

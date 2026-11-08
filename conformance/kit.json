@@ -114,6 +114,11 @@
       "description": "A sentinel error."
     },
     {
+      "id": "expr.extern",
+      "family": "expression",
+      "description": "A call of the function `name` of `path`, declared in the module's `externs`."
+    },
+    {
       "id": "expr.field",
       "family": "expression",
       "description": "the `field` expression"

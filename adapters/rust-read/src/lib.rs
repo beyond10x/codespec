@@ -1266,6 +1266,7 @@ impl Reader {
             consts,
             errors,
             funcs,
+            externs: vec![],
             layout,
             facts: None,
             refusals,

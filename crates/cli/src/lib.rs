@@ -134,6 +134,23 @@ pub enum Cmd {
         #[arg(long, value_parser = ["text", "json"], default_value = "text")]
         format: String,
     },
+    /// Report what each function of a module may do outside its own memory: per function, its
+    /// effects (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) and every reason
+    /// that set may be incomplete, as codespec-effects-report/1.
+    ///
+    /// A function's effects are those of every extern it calls, as the summaries state them, of
+    /// println (stdout), and of every module function or method it calls, to a fixed point. An
+    /// extern no summary names, a foreign statement, a method on a type the module does not
+    /// declare, and a call of a function that has one of these, are each listed as unknown with
+    /// a position, never taken as pure. The same module and summaries give the same bytes.
+    Effects {
+        /// The module to analyse: a cir/1 document.
+        module: PathBuf,
+        /// A codespec-effects/1 summary of functions outside the module; repeat for several.
+        /// Where two name one function, the first counts.
+        #[arg(long = "summaries", value_name = "FILE")]
+        summaries: Vec<PathBuf>,
+    },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
     /// differing line otherwise.

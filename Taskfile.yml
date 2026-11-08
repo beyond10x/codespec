@@ -28,6 +28,7 @@ tasks:
       - task: examples-rust
       - task: examples-greeter
       - task: examples-inventory
+      - task: examples-effects
       - task: examples-series
       - task: examples-ledger
       - task: examples-fees
@@ -187,6 +188,8 @@ tasks:
       - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out adapters/groovy/testdata/lending.read.cir.json --adapters {{.ADAPTERS}}'
       - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy examples/fees/source --out examples/fees/fees.read.cir.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} measure examples/fees/fees.read.cir.json > examples/fees/fees.measure.txt'
+      - '{{.CODESPEC}} read --lang go examples/envcheck/source --out examples/envcheck/envcheck.read.cir.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} effects examples/envcheck/envcheck.read.cir.json --summaries summaries/go-std.effects.json > examples/envcheck/envcheck.effects.json'
       - '{{.CODESPEC}} pass examples/fees/fees.read.cir.json --out examples/fees/fees.cir.json'
       - '{{.CODESPEC}} write --lang go examples/fees/fees.read.cir.json --out examples/fees/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/fees/fees.cir.json --out examples/fees/out/rust --adapters {{.ADAPTERS}}'
@@ -384,6 +387,21 @@ tasks:
       - diff -r target/examples-greeter/rust examples/greeter/out/rust
       - 'test "$(cat target/examples-greeter/rust/refusals.json)" = "[]"'
       - RUSTFLAGS='-D warnings' cargo build --manifest-path target/examples-greeter/rust/Cargo.toml --target-dir target/examples-greeter/build
+
+  examples-effects:
+    desc: Read the envcheck package twice and require both reads byte-equal and equal to envcheck.read.cir.json, then require its effects report from summaries/go-std.effects.json byte-equal on two runs and equal to envcheck.effects.json.
+    deps: [build]
+    cmds:
+      - rm -rf target/examples-effects
+      - mkdir -p target/examples-effects
+      - '{{.CODESPEC}} read --lang go examples/envcheck/source --out target/examples-effects/envcheck.1.json --adapters {{.ADAPTERS}}'
+      - '{{.CODESPEC}} read --lang go examples/envcheck/source --out target/examples-effects/envcheck.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/examples-effects/envcheck.1.json target/examples-effects/envcheck.2.json
+      - cmp target/examples-effects/envcheck.1.json examples/envcheck/envcheck.read.cir.json
+      - '{{.CODESPEC}} effects examples/envcheck/envcheck.read.cir.json --summaries summaries/go-std.effects.json > target/examples-effects/effects.1.json'
+      - '{{.CODESPEC}} effects examples/envcheck/envcheck.read.cir.json --summaries summaries/go-std.effects.json > target/examples-effects/effects.2.json'
+      - cmp target/examples-effects/effects.1.json target/examples-effects/effects.2.json
+      - cmp target/examples-effects/effects.1.json examples/envcheck/envcheck.effects.json
 
   examples-series:
     desc: Read the algorithmic series package twice, pass it, write it as Go and as Rust; read the Rust output back twice, pass it and write it as Go; require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then run the original, the Go output, the Rust output and the Go from the Rust output on 200 seeded traces of 300 commands byte-equal.

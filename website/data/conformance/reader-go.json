@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
+    "sha256": "7a6d75258470de2d52cf6476c194ae84de611a2ebb058950b6324b2b28788c94"
   },
   "corpus": {
-    "sha256": "6bbcc37369a0aa308979acd64125924572ec8113674b15146445405bbdfcface"
+    "sha256": "f9dc785e7cad3ee35042bbbc8eb1d77a8048c903d1d432a4bf811fd4ad1eaaef"
   },
   "codespec": "0.4.0",
   "features": [
@@ -178,6 +178,14 @@
       "verdict": "pass",
       "cases": [
         "expr-errvar"
+      ]
+    },
+    {
+      "id": "expr.extern",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-extern"
       ]
     },
     {
@@ -922,8 +930,8 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 93,
-    "pass": 93,
+    "claimed": 94,
+    "pass": 94,
     "fail": 0,
     "refused_unclaimed": 12,
     "pass_unclaimed": 1,

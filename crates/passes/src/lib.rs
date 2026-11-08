@@ -250,7 +250,7 @@ fn walk_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
             walk_expr(x, f);
             walk_expr(y, f);
         }
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().for_each(|a| walk_expr(a, f))
         }
         Expr::Method { x, args, .. } => {

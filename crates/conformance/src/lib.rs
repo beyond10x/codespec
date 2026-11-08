@@ -553,7 +553,7 @@ impl Walk {
                 self.expr(x)?;
                 self.expr(index)?;
             }
-            Expr::Call { args, .. } => self.exprs(args)?,
+            Expr::Call { args, .. } | Expr::Extern { args, .. } => self.exprs(args)?,
             Expr::Method { x, args, .. } => {
                 self.expr(x)?;
                 self.exprs(args)?;

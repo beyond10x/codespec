@@ -23,6 +23,9 @@ Translating code between languages, or rewriting it within one, needs a represen
 function computes, with one definition and a check that does not depend on anyone's judgement. In
 `cir/1` every expression carries its type, reading is strict, and a translation counts when the
 original and the output produce the same bytes on the same generated inputs.
+`codespec effects` reads the same model as a static analysis: per function, which effects it may
+have (environment, file system, network, clock, …) from summaries of the library functions it
+calls, and every call it cannot account for ([docs/static-analysis.md](docs/static-analysis.md)).
 [Vision](https://beyond10x.github.io/codespec/docs/vision) has the rules and the milestones.
 
 ## Status

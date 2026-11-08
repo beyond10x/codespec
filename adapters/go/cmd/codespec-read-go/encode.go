@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // encode turns the frontend's module into a cir/1 document. Nodes are maps: encoding/json writes
 // their keys sorted and the codespec CLI re-encodes the module canonically after validating it,
@@ -33,6 +36,9 @@ func encode(m *Module) (node, error) {
 			return node{"name": v.Name, "message": v.Message, "pos": v.Pos}
 		})
 	}
+	if ex := e.externs(m.Externs); len(ex) > 0 {
+		doc["externs"] = ex
+	}
 	if len(m.Refusals) > 0 {
 		doc["refusals"] = e.list(len(m.Refusals), func(i int) any {
 			r := m.Refusals[i]
@@ -42,7 +48,36 @@ func encode(m *Module) (node, error) {
 	return doc, e.err
 }
 
-type enc struct{ err error }
+// enc encodes one module; used records every extern a call names, as "path.name".
+type enc struct {
+	err  error
+	used map[string]bool
+}
+
+// externs declares the candidates some encoded call names, sorted by path, then name.
+func (e *enc) externs(cands []Extern) []any {
+	var keep []Extern
+	for _, x := range cands {
+		if e.used[x.Path+"."+x.Name] {
+			keep = append(keep, x)
+		}
+	}
+	sort.Slice(keep, func(i, j int) bool {
+		if keep[i].Path != keep[j].Path {
+			return keep[i].Path < keep[j].Path
+		}
+		return keep[i].Name < keep[j].Name
+	})
+	return e.list(len(keep), func(i int) any {
+		x := keep[i]
+		return node{
+			"path":    x.Path,
+			"name":    x.Name,
+			"params":  e.list(len(x.Params), func(j int) any { return e.typ(x.Params[j]) }),
+			"results": e.list(len(x.Results), func(j int) any { return e.typ(x.Results[j]) }),
+		}
+	})
+}
 
 func (e *enc) fail(format string, a ...any) {
 	if e.err == nil {
@@ -210,6 +245,12 @@ func (e *enc) expr(x Expr) node {
 		n["name"], n["args"] = x.Name, e.exprs(x.Args)
 	case "method":
 		n["x"], n["name"], n["args"] = e.expr(*x.X), x.Name, e.exprs(x.Args)
+	case "extern":
+		if e.used == nil {
+			e.used = map[string]bool{}
+		}
+		e.used[x.Path+"."+x.Name] = true
+		n["path"], n["name"], n["args"] = x.Path, x.Name, e.exprs(x.Args)
 	case "binop":
 		n["op"], n["x"], n["y"] = x.Op, e.expr(*x.X), e.expr(*x.Y)
 	case "unop":

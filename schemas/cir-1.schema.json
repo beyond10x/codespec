@@ -20,6 +20,13 @@
         "$ref": "#/$defs/ErrorVar"
       }
     },
+    "externs": {
+      "description": "Every function outside the module that the module calls, sorted by `path` then `name`,\neach once.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Extern"
+      }
+    },
     "facts": {
       "description": "Whole-module analysis results, written by passes and read by writers.",
       "anyOf": [
@@ -374,6 +381,39 @@
           ]
         },
         {
+          "description": "A call of the function `name` of `path`, declared in the module's `externs`.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "extern"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "path",
+            "name",
+            "args",
+            "t"
+          ]
+        },
+        {
           "description": "`+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`,\n`<`, `<=`, `>` or `>=`.",
           "type": "object",
           "properties": {
@@ -569,6 +609,38 @@
             "t"
           ]
         }
+      ]
+    },
+    "Extern": {
+      "description": "A function outside the module: `name` in the package, crate or class `path`, with its declared\nparameter and result types.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        },
+        "path": {
+          "description": "The import path in the source language's spelling: `os`, `math/rand`, `std::env`.",
+          "type": "string"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "name",
+        "params",
+        "results"
       ]
     },
     "Facts": {

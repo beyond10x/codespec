@@ -51,7 +51,7 @@ Defined by `crates/model/src/lib.rs`; `schemas/cir-1.schema.json` is generated f
 | types | `int {width: platform\|8\|16\|32\|64, signed}`, `bool`, `string`, `error`, `any`, `unit`, `named`, `ptr`, `slice`, `map`, `chan {dir}`, `tuple` |
 | declarations | `struct`, `newtype`, `enum`, `union` |
 | statements | `let`, `var`, `assign`, `incr`, `decr`, `if`, `for_range`, `for`, `break`, `continue`, `switch`, `return`, `expr`, `send`, `lookup_else`, `foreign` |
-| expressions | `lit`, `nil`, `var`, `const`, `errvar`, `field`, `index`, `call`, `method`, `binop`, `unop`, `struct`, `conv`, `make`, `zero`, `intrinsic`, `to_error` |
+| expressions | `lit`, `nil`, `var`, `const`, `errvar`, `field`, `index`, `call`, `method`, `extern`, `binop`, `unop`, `struct`, `conv`, `make`, `zero`, `intrinsic`, `to_error` |
 
 Changes from `cir/0`:
 

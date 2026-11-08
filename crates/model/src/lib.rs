@@ -15,6 +15,7 @@ pub use features::{
     features_from_json, features_json, vocabulary,
 };
 pub mod manifest;
+pub mod walk;
 pub use manifest::{
     ADAPTER_FORMAT, ADAPTER_ROLES, AdapterManifest, ManifestReadError, manifest_from_json,
 };
@@ -40,6 +41,10 @@ pub struct Module {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<ErrorVar>,
     pub funcs: Vec<Func>,
+    /// Every function outside the module that the module calls, sorted by `path` then `name`,
+    /// each once.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub externs: Vec<Extern>,
     /// Source declaration order, `type:<name>`, `const:<name>`, `error:<name>`, `func:<name>` or
     /// `func:<receiver type>.<name>`, for writers that keep it.
     pub layout: Vec<String>,
@@ -221,6 +226,18 @@ pub struct ErrorVar {
 pub struct Param {
     pub name: String,
     pub t: Type,
+}
+
+/// A function outside the module: `name` in the package, crate or class `path`, with its declared
+/// parameter and result types.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Extern {
+    /// The import path in the source language's spelling: `os`, `math/rand`, `std::env`.
+    pub path: String,
+    pub name: String,
+    pub params: Vec<Type>,
+    pub results: Vec<Type>,
 }
 
 /// A function or, with `recv`, a method.
@@ -430,6 +447,13 @@ pub enum Expr {
         args: Vec<Expr>,
         t: Type,
     },
+    /// A call of the function `name` of `path`, declared in the module's `externs`.
+    Extern {
+        path: String,
+        name: String,
+        args: Vec<Expr>,
+        t: Type,
+    },
     /// `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `||`, `==`, `!=`,
     /// `<`, `<=`, `>` or `>=`.
     Binop {
@@ -490,6 +514,7 @@ impl Expr {
             | Expr::Index { t, .. }
             | Expr::Call { t, .. }
             | Expr::Method { t, .. }
+            | Expr::Extern { t, .. }
             | Expr::Binop { t, .. }
             | Expr::Unop { t, .. }
             | Expr::Struct { t, .. }
@@ -541,6 +566,8 @@ pub struct Facts {
 pub enum ReadError {
     Json(serde_json::Error),
     Format(String),
+    /// The document parses, but breaks a rule the types cannot state.
+    Invalid(String),
 }
 
 impl std::fmt::Display for ReadError {
@@ -550,6 +577,7 @@ impl std::fmt::Display for ReadError {
             ReadError::Format(found) => {
                 write!(f, "format is {found:?}, this reader reads {FORMAT:?}")
             }
+            ReadError::Invalid(why) => write!(f, "not a cir/1 module: {why}"),
         }
     }
 }
@@ -564,7 +592,56 @@ impl Module {
         if format != FORMAT {
             return Err(ReadError::Format(format.to_string()));
         }
-        serde_json::from_value(probe).map_err(ReadError::Json)
+        let m: Module = serde_json::from_value(probe).map_err(ReadError::Json)?;
+        m.check_externs().map_err(ReadError::Invalid)?;
+        Ok(m)
+    }
+
+    /// The declaration for the extern `path`.`name`, if the module has one.
+    pub fn extern_decl(&self, path: &str, name: &str) -> Option<&Extern> {
+        self.externs
+            .iter()
+            .find(|x| x.path == path && x.name == name)
+    }
+
+    /// `externs` sorted by `(path, name)` with no repeat, and every extern call declared, with as
+    /// many arguments as its declaration has parameters.
+    fn check_externs(&self) -> Result<(), String> {
+        for w in self.externs.windows(2) {
+            if (&w[0].path, &w[0].name) >= (&w[1].path, &w[1].name) {
+                return Err(format!(
+                    "externs out of order or repeated at {}.{}",
+                    w[1].path, w[1].name
+                ));
+            }
+        }
+        let mut bad = None;
+        let mut check = |e: &Expr| {
+            if let Expr::Extern {
+                path, name, args, ..
+            } = e
+                && bad.is_none()
+            {
+                match self.extern_decl(path, name) {
+                    None => bad = Some(format!("extern call {path}.{name} is not declared")),
+                    Some(d) if d.params.len() != args.len() => {
+                        bad = Some(format!(
+                            "extern call {path}.{name} has {} arguments, its declaration {} parameters",
+                            args.len(),
+                            d.params.len()
+                        ))
+                    }
+                    Some(_) => {}
+                }
+            }
+        };
+        for c in &self.consts {
+            walk::walk_expr(&c.value, &mut check);
+        }
+        for func in &self.funcs {
+            walk::body_exprs(&func.body, &mut check);
+        }
+        bad.map_or(Ok(()), Err)
     }
 
     /// The canonical encoding: two-space indentation, a final newline.

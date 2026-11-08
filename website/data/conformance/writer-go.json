@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
+    "sha256": "7a6d75258470de2d52cf6476c194ae84de611a2ebb058950b6324b2b28788c94"
   },
   "codespec": "0.4.0",
   "features": [
@@ -174,6 +174,14 @@
       "verdict": "pass",
       "cases": [
         "expr-errvar"
+      ]
+    },
+    {
+      "id": "expr.extern",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-extern"
       ]
     },
     {
@@ -891,8 +899,8 @@
     }
   ],
   "summary": {
-    "claimed": 105,
-    "pass": 105,
+    "claimed": 106,
+    "pass": 106,
     "fail": 0,
     "refused_unclaimed": 1,
     "pass_unclaimed": 0,

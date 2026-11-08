@@ -22,6 +22,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `consts` | list of [`ConstDecl`](#constdecl) | no |  |
 | `doc` | `string` | no |  |
 | `errors` | list of [`ErrorVar`](#errorvar) | no | Sentinel errors: module-level error values built from a fixed message. |
+| `externs` | list of [`Extern`](#extern) | no | Every function outside the module that the module calls, sorted by `path` then `name`, each once. |
 | `facts` | [`Facts`](#facts) or null | no | Whole-module analysis results, written by passes and read by writers. |
 | `format` | `string` | yes | Always `cir/1`. |
 | `funcs` | list of [`Func`](#func) | yes |  |
@@ -33,7 +34,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 
 ## Definitions
 
-18 definitions: [`Case`](#case), [`ChanDir`](#chandir), [`ConstDecl`](#constdecl), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`Func`](#func), [`IntWidth`](#intwidth), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`UnionVariant`](#unionvariant), [`Variant`](#variant).
+19 definitions: [`Case`](#case), [`ChanDir`](#chandir), [`ConstDecl`](#constdecl), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`Func`](#func), [`IntWidth`](#intwidth), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`UnionVariant`](#unionvariant), [`Variant`](#variant).
 
 ## Case
 
@@ -67,7 +68,7 @@ A string, one of `"send"`, `"recv"`, `"both"`.
 
 An expression. `t` is the type the reader computed for it.
 
-A tagged union: the field `k` names the kind. 17 kinds.
+A tagged union: the field `k` names the kind. 18 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
@@ -80,6 +81,7 @@ A tagged union: the field `k` names the kind. 17 kinds.
 | `index` | `index`\*: [`Expr`](#expr); `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
 | `call` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | A call of a module function. |
 | `method` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
+| `extern` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `path`\*: `string`; `t`\*: [`Type`](#type) | A call of the function `name` of `path`, declared in the module's `externs`. |
 | `binop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr); `y`\*: [`Expr`](#expr) | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `\|\|`, `==`, `!=`, `<`, `<=`, `>` or `>=`. |
 | `unop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | `!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&` (reference). |
 | `struct` | `fields`\*: list of [`FieldInit`](#fieldinit); `name`\*: `string`; `t`\*: [`Type`](#type) |  |
@@ -88,6 +90,17 @@ A tagged union: the field `k` names the kind. 17 kinds.
 | `zero` | `t`\*: [`Type`](#type) |  |
 | `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match. |
 | `to_error` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A value of an error struct used where an error is expected. |
+
+## Extern
+
+A function outside the module: `name` in the package, crate or class `path`, with its declared parameter and result types.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `params` | list of [`Type`](#type) | yes |  |
+| `path` | `string` | yes | The import path in the source language's spelling: `os`, `math/rand`, `std::env`. |
+| `results` | list of [`Type`](#type) | yes |  |
 
 ## Facts
 

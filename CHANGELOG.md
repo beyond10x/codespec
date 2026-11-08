@@ -2,6 +2,27 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `cir/1` names the functions a module calls outside itself: `Module.externs` declares each one
+  (import path, name, parameter and result types), and the expression `extern` (feature
+  `expr.extern`, conformance case `expr-extern`) calls one. Both are additive; every earlier
+  document reads unchanged. Strict reading refuses an extern call that is not declared or has the
+  wrong number of arguments, and unsorted or repeated declarations.
+- `codespec-read-go` reads a call of a function of another package, not variadic and with `cir/1`
+  types only, as an extern call instead of a `foreign` statement; `codespec-write-go` writes it as a
+  package call with its import. `codespec-write-rust` refuses a function holding one; the Rust,
+  Java and Groovy readers do not claim the feature.
+- `codespec effects <module.cir.json> --summaries <file>…` prints `codespec-effects-report/1`: per
+  function, the effects it may have (`env`, `fs.read`, `fs.write`, `net`, `proc`, `rand`, `stdin`,
+  `stdout`, `time`) from `codespec-effects/1` summaries of the functions outside the module, and
+  every extern without a summary, `foreign` statement or unresolved method listed as `unknown`
+  with its position. `summaries/go-std.effects.json` summarises part of the Go standard library;
+  `examples/envcheck` shows the report and `task examples-effects` holds it. Design:
+  `docs/static-analysis.md`.
+
 ## 0.4.0
 
 ### Added

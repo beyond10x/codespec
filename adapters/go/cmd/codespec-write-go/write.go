@@ -926,6 +926,10 @@ func (w *writer) expr(e Expr) ast.Expr {
 		return &ast.CallExpr{Fun: ident(w.names.free(e.Name)), Args: w.exprs(e.Args)}
 	case "method":
 		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.method(typeNameOf(e.X), e.Name))}, Args: w.exprs(e.Args)}
+	case "extern":
+		// The package is imported under its own name, or under that name with `_` appended where
+		// a name of the module or another import holds it (alias).
+		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: ident(w.alias(e.Path)), Sel: ident(e.Name)}, Args: w.exprs(e.Args)}
 	case "binop":
 		op, ok := tokens[e.Op]
 		if !ok || op.Precedence() == token.LowestPrec {

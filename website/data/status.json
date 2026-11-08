@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-11-06",
+  "asOf": "2026-11-08",
   "format": "b10x-status/1",
   "items": [
     {
@@ -189,6 +189,20 @@
       "detail": "codespec conform writes every case of the kit with codespec-write-rust and runs it with codespec-run-rust, as for the Go writer; a module without facts is refused naming codespec pass.",
       "href": "/docs/guides/add-an-adapter",
       "label": "Rust writer conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Analysis",
+      "detail": "A call of a function of another package is an extern call, declared with its signature; the Go reader reads standard library calls so and the Go writer writes them back, the Rust writer refuses them.",
+      "href": "/docs/reference/cir-1",
+      "label": "Extern calls",
+      "status": "shipped"
+    },
+    {
+      "area": "Analysis",
+      "detail": "codespec effects reports per function the effects it may have (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+      "href": "/docs/reference/cli",
+      "label": "Effects report",
       "status": "shipped"
     }
   ],

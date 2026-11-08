@@ -4,11 +4,11 @@
     "role": "reader",
     "lang": "rust",
     "version": "0.4.0",
-    "manifest_sha256": "36162cc7ad8d6f18032d856208de540f136aaa841778bce3dabc9e46582d49c0"
+    "manifest_sha256": "857c1c405d217cf2299198299655d322993cdbe8eb63eacf822c9c9b10d92864"
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
+    "sha256": "7a6d75258470de2d52cf6476c194ae84de611a2ebb058950b6324b2b28788c94"
   },
   "corpus": {
     "sha256": "ac8e256a1dae8a70ddc110c5c6d8625307e3c6fd1c0a04980caa948c709c7acc"
@@ -172,6 +172,12 @@
       "cases": [
         "expr-errvar"
       ]
+    },
+    {
+      "id": "expr.extern",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.field",
@@ -835,7 +841,7 @@
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 18,
+    "untested": 19,
     "boundary_fail": 0
   },
   "conforms": true

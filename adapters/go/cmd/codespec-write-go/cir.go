@@ -7,17 +7,18 @@ import "encoding/json"
 // carry, and the codespec CLI has validated the document before it reaches this program.
 
 type Module struct {
-	Format string     `json:"format"`
-	Name   string     `json:"name"`
-	Reader Reader     `json:"reader"`
-	Doc    string     `json:"doc"`
-	Types  []TypeDecl `json:"types"`
-	Consts []Const    `json:"consts"`
-	Errors []ErrorVar `json:"errors"`
-	Funcs  []Func     `json:"funcs"`
-	Layout []string   `json:"layout"`
-	Facts  any        `json:"facts"`
-	Refuse any        `json:"refusals"`
+	Format  string     `json:"format"`
+	Name    string     `json:"name"`
+	Reader  Reader     `json:"reader"`
+	Doc     string     `json:"doc"`
+	Types   []TypeDecl `json:"types"`
+	Consts  []Const    `json:"consts"`
+	Errors  []ErrorVar `json:"errors"`
+	Funcs   []Func     `json:"funcs"`
+	Externs any        `json:"externs"`
+	Layout  []string   `json:"layout"`
+	Facts   any        `json:"facts"`
+	Refuse  any        `json:"refusals"`
 }
 
 type Reader struct {
@@ -148,6 +149,7 @@ type Expr struct {
 	K      string      `json:"k"`
 	T      *Type       `json:"t"`
 	Name   string      `json:"name"`
+	Path   string      `json:"path"`
 	Value  string      `json:"value"`
 	Op     string      `json:"op"`
 	X      *Expr       `json:"x"`

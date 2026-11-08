@@ -39,6 +39,9 @@ says where it is going.
   ([Readers, passes and writers](/docs/concepts/pipeline)).
 - **Evidence.** A translation is accepted when the harness finds no differing byte, not when it
   looks right ([The harness](/docs/concepts/harness)).
+- **An analysis.** `codespec effects` reports per function the effects it may have (environment,
+  file system, network, clock, …) from summaries of the library functions it calls, and lists
+  every call it cannot account for as unknown ([CLI reference](/docs/reference/cli)).
 
 ## What it is not
 

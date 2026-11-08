@@ -1,0 +1,16 @@
+[package]
+name = "b10x-codespec-effects"
+description = "Effect summaries of functions outside a cir/1 module, and the effects report over a module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_effects"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+serde.workspace = true
+serde_json.workspace = true

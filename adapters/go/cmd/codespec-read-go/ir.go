@@ -10,7 +10,8 @@ type Module struct {
 	Consts   []ConstDecl `json:"consts,omitempty"`
 	Errors   []ErrorVar  `json:"errors,omitempty"`
 	Funcs    []Func      `json:"funcs"`
-	Layout   []string    `json:"layout"` // source declaration order, for emitters that keep it
+	Externs  []Extern    `json:"externs,omitempty"` // candidates; the encoder emits those a call uses
+	Layout   []string    `json:"layout"`            // source declaration order, for emitters that keep it
 	Refusals []Refusal   `json:"refusals,omitempty"`
 }
 
@@ -68,6 +69,14 @@ type ErrorVar struct {
 	Name    string `json:"name"`
 	Message string `json:"message"`
 	Pos     string `json:"pos"`
+}
+
+// Extern is a function of another package that the module calls.
+type Extern struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Params  []Type `json:"params"`
+	Results []Type `json:"results"`
 }
 
 type Param struct {
@@ -144,6 +153,7 @@ type Stmt struct {
 //	index    X[Y]
 //	call     Name(Args): a module function
 //	method   X.Name(Args)
+//	extern   Path.Name(Args): a function of another package, declared in Externs
 //	binop    X Op Y
 //	unop     Op X     ("!", "-", "*" deref, "&" addr)
 //	struct   Name{Fields}  (Args[i] value of FieldNames[i])
@@ -163,6 +173,7 @@ type Expr struct {
 	K          string   `json:"k"`
 	T          *Type    `json:"t,omitempty"`
 	Name       string   `json:"name,omitempty"`
+	Path       string   `json:"path,omitempty"`
 	Value      string   `json:"value,omitempty"`
 	Op         string   `json:"op,omitempty"`
 	X          *Expr    `json:"x,omitempty"`

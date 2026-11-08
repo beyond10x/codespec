@@ -817,6 +817,69 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 	return Expr{}, false
 }
 
+// externCall reads pkg.Name(args), a call of a function of another package, as an extern call,
+// declaring the extern from the callee's own signature. A variadic callee, or one with a
+// parameter or result type cir/1 has no type for, is outside cir/1.
+func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Type) (Expr, bool) {
+	fn, ok := f.info.Uses[sel].(*types.Func)
+	if !ok || t == nil {
+		return Expr{}, false
+	}
+	sig := fn.Type().(*types.Signature)
+	if sig.Variadic() || sig.TypeParams().Len() > 0 {
+		return Expr{}, false
+	}
+	x := Extern{Path: pn.Imported().Path(), Name: fn.Name()}
+	for i := 0; i < sig.Params().Len(); i++ {
+		p := f.typ(sig.Params().At(i).Type())
+		if hasForeign(p) {
+			return Expr{}, false
+		}
+		x.Params = append(x.Params, p)
+	}
+	for i := 0; i < sig.Results().Len(); i++ {
+		r := f.typ(sig.Results().At(i).Type())
+		if hasForeign(r) {
+			return Expr{}, false
+		}
+		x.Results = append(x.Results, r)
+	}
+	if hasForeign(*t) {
+		return Expr{}, false
+	}
+	f.extern(x)
+	return Expr{K: "extern", Path: x.Path, Name: x.Name, Args: args, T: t}, true
+}
+
+// extern declares x once; the encoder sorts the declarations.
+func (f *front) extern(x Extern) {
+	for _, y := range f.mod.Externs {
+		if y.Path == x.Path && y.Name == x.Name {
+			return
+		}
+	}
+	f.mod.Externs = append(f.mod.Externs, x)
+}
+
+// hasForeign tells whether t, or a type inside it, has no cir/1 form.
+func hasForeign(t Type) bool {
+	if t.K == "foreign" || t.K == "nil" {
+		return true
+	}
+	if t.Key != nil && hasForeign(*t.Key) {
+		return true
+	}
+	if t.Elem != nil && hasForeign(*t.Elem) {
+		return true
+	}
+	for _, e := range t.Elems {
+		if hasForeign(e) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	if e.Ellipsis.IsValid() {
 		return Expr{}, false // a spread call: cir/1 has no spread argument
@@ -850,6 +913,11 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return Expr{K: "call", Name: fun.Name, Args: args, T: t}, true
 		}
 	case *ast.SelectorExpr:
+		if x, ok := fun.X.(*ast.Ident); ok {
+			if pn, ok := f.info.Uses[x].(*types.PkgName); ok {
+				return f.externCall(pn, fun.Sel, args, t)
+			}
+		}
 		if sel := f.info.Selections[fun]; sel != nil && sel.Kind() == types.MethodVal {
 			x, ok := f.expr(fun.X)
 			if !ok {

@@ -41,6 +41,7 @@ fn manifest() -> AdapterManifest {
         ]),
         not: list(&[
             "decl.union",
+            "expr.extern",
             "expr.nil",
             "expr.zero",
             "intrinsic.sorted_keys",

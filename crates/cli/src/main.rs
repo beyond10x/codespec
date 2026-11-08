@@ -150,6 +150,20 @@ fn run(cmd: Cmd) -> Result<(), String> {
             }
             Ok(())
         }
+        Cmd::Effects { module, summaries } => {
+            let bytes = std::fs::read(&module).map_err(|e| format!("{}: {e}", module.display()))?;
+            let m = read_module(&bytes, &module.display().to_string())?;
+            let mut read = Vec::new();
+            for path in &summaries {
+                let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+                read.push(
+                    codespec_effects::summary_from_json(&bytes)
+                        .map_err(|e| format!("{}: {e}", path.display()))?,
+                );
+            }
+            print!("{}", codespec_effects::analyze(&m, &read).to_json());
+            Ok(())
+        }
         Cmd::Harness {
             example,
             seeds,

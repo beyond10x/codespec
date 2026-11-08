@@ -133,6 +133,12 @@
       "id": "expr.errvar"
     },
     {
+      "case": "expr-extern",
+      "description": "A call of the function `name` of `path`, declared in the module's `externs`.",
+      "family": "expression",
+      "id": "expr.extern"
+    },
+    {
       "case": "expr-field",
       "description": "the `field` expression",
       "family": "expression",
@@ -703,6 +709,7 @@
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
+        "expr.extern": "verified",
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -829,6 +836,7 @@
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
+        "expr.extern": "verified",
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -940,6 +948,7 @@
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
+        "expr.extern": "refused",
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -1048,6 +1057,10 @@
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
+        "expr.extern": {
+          "note": "Case expr-extern: the writer refuses it: Banner (case.go:10): extern call strings.Repeat: this writer has no Rust binding for a function outside the module.",
+          "state": "refused"
+        },
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -1162,6 +1175,7 @@
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
+        "expr.extern": "refused",
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -1270,6 +1284,7 @@
         "expr.const": "none",
         "expr.conv": "none",
         "expr.errvar": "none",
+        "expr.extern": "none",
         "expr.field": "none",
         "expr.index": "none",
         "expr.intrinsic": "none",
@@ -1384,6 +1399,7 @@
           "note": "Case expr-errvar: its module does not use the feature.",
           "state": "refused"
         },
+        "expr.extern": "refused",
         "expr.field": "verified",
         "expr.index": "verified",
         "expr.intrinsic": "verified",
@@ -1501,6 +1517,7 @@
         "expr.const": "none",
         "expr.conv": "none",
         "expr.errvar": "none",
+        "expr.extern": "none",
         "expr.field": "none",
         "expr.index": "none",
         "expr.intrinsic": "none",

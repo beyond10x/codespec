@@ -57,6 +57,7 @@ name = "b10x-codespec-cli"
 version = "0.4.0"
 dependencies = [
  "b10x-codespec-conformance",
+ "b10x-codespec-effects",
  "b10x-codespec-harness",
  "b10x-codespec-model",
  "b10x-codespec-passes",
@@ -76,6 +77,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "b10x-codespec-effects"
+version = "0.4.0"
+dependencies = [
+ "b10x-codespec-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

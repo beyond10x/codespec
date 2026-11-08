@@ -13,6 +13,8 @@ the site.
 |---|---|
 | `crates/model` (`b10x-codespec-model`) | the definition of `cir/1`: Rust types, strict reading, canonical JSON, the JSON Schema |
 | `crates/passes` (`b10x-codespec-passes`) | the passes: `lookup-guard` and the facts writers read; rules in its crate doc |
+| `crates/effects` (`b10x-codespec-effects`) | the effect summary format `codespec-effects/1`, the closed effect vocabulary and the effects report `codespec-effects-report/1` that `codespec effects` prints; defined in its crate doc, design in `docs/static-analysis.md` |
+| `summaries/` | checked-in `codespec-effects/1` summaries of standard libraries: `go-std.effects.json` |
 | `crates/harness` (`b10x-codespec-harness`) | the comparison harness: trace format, generator and byte-for-byte comparison, defined in its crate doc |
 | `crates/cli` (`b10x-codespec-cli`, library `codespec_cli`, binary `codespec`) | `validate`, `schema`, `features`, `read`, `pass`, `write`, `conform`, `harness`; runs adapters and validates what crosses to and from them. The clap `Cli` is in `src/lib.rs` so `codespec-docs` can walk it |
 | `crates/docs` (`codespec-docs`) | generates the site's derived files and checks them for drift: `generate`, `generate --check`, `provenance --site <dir> --commit <sha>` |
@@ -82,6 +84,7 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-series` | the Go `series` package read twice (byte-equal, equal to `series.read.cir.json`, no refusal), passed, written as Go (gofmt-clean, vetted) and as Rust (no refusal, built without warnings) equal to the checked-in copies, drivers formatted and linted, the Rust output read back (byte-equal, equal to `series.rust-read.cir.json`, no refusal) and written as Go equal to `out/go-from-rust`, then `codespec harness examples/series --seeds 200 --commands 300` byte-equal over 4 implementations |
 | `examples-ledger` | the Java `ledger` package read twice with `codespec-read-java` (byte-equal, equal to `ledger.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/ledger --seeds 200 --commands 300` byte-equal over the original Java, Go and Rust |
 | `examples-fees` | the Grails `fees` application read twice with `codespec-read-groovy` (byte-equal, equal to `fees.read.cir.json`, no refusal, `codespec measure` equal to `fees.measure.txt`), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/fees --seeds 200 --commands 300` byte-equal over the original Groovy (groovyc 2.4.10 on the JDK), Go and Rust |
+| `examples-effects` | the Go `envcheck` package read twice (byte-equal, equal to `envcheck.read.cir.json`), then `codespec effects` with `summaries/go-std.effects.json` twice byte-equal and equal to `envcheck.effects.json` |
 | `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
 | `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
@@ -148,6 +151,12 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `crates/conformance/tests/conform.rs::a_copy_of_the_rust_writer_whose_addition_saturates_fails_sem_int_wrap_at_its_first_line`;
   `codespec conform --check` names the feature whose case changed:
   `crates/cli/tests/conform.rs::conform_check_passes_on_a_current_report_and_names_the_feature_after_expected_txt_changes`.
+- Strict reading refuses an undeclared extern call:
+  `crates/model/tests/model.rs::an_extern_call_naming_an_undeclared_extern_is_refused`; the Go
+  writer's `expr-extern` output reads back to the same `cir/1`:
+  `adapters/go/cmd/codespec-write-go/extern_test.go::TestExternCaseFixedPoint`.
+- An extern without a summary is `unknown`, never pure, and effects reach every caller:
+  `crates/effects/tests/effects.rs::effects_flow_to_callers_and_unsummarised_externs_are_unknown`.
 - The harness catches a one-token change:
   `crates/cli/tests/harness.rs::a_planted_one_token_change_in_the_rust_output_fails_with_seed_rust_and_first_line`;
   traces are platform-independent: `crates/harness/tests/harness.rs::a_trace_is_pinned_across_platforms`.
