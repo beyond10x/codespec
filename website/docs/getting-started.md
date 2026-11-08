@@ -15,31 +15,35 @@ run. Absolute paths in the output are shortened to `<checkout>`.
 
 A GitHub Release carries one archive per target, `codespec-<tag>-<target>.tar.gz`, for
 `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, plus
-`SHA256SUMS`. Each archive holds `codespec` and the three adapters side by side, so the directory
-you extract it into is the `--adapters` directory. See the
+`SHA256SUMS`. Each archive holds `codespec`, the Go and Rust readers and writers and their runners
+side by side, so the directory you extract it into is the `--adapters` directory. See the
 [releases page](https://github.com/beyond10x/codespec/releases). The commands on this page build
 from source and use `target/debug/codespec` and `target/adapters`.
 
 To build, you need Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
-[go-task](https://taskfile.dev). `task build` builds the `codespec` command into `target/debug/`
-and every adapter into `target/adapters/`:
+[go-task](https://taskfile.dev). The Java and Groovy readers also need a JDK 17 or newer (`JDK` in
+`Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). `task build` builds the `codespec` command into
+`target/debug/` and every adapter into `target/adapters/`:
 
 ```shell-session
 $ git clone https://github.com/beyond10x/codespec && cd codespec
 $ task build
-task: [build] cargo build --locked -p b10x-codespec-cli
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.15s
-task: [adapters] mkdir -p <checkout>/target/adapters
-task: [adapters] cd adapters/go && go build -o <checkout>/target/adapters/ ./cmd/...
-task: [adapters] cargo build --locked -p codespec-write-rust
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.01s
-task: [adapters] cp target/debug/codespec-write-rust <checkout>/target/adapters/
+$ ls target/adapters
+codespec-read-go
+codespec-read-groovy
+codespec-read-java
+codespec-read-rust
+codespec-run-go
+codespec-run-groovy
+codespec-run-java
+codespec-run-rust
+codespec-write-go
+codespec-write-rust
 $ target/debug/codespec --version
-codespec 0.1.2
+codespec 0.6.0
 ```
 
-(`Compiling …` lines omitted.) Set `CODESPEC_ADAPTERS=target/adapters` to drop
-`--adapters target/adapters` from every command.
+Set `CODESPEC_ADAPTERS=target/adapters` to drop `--adapters target/adapters` from every command.
 
 ## Read: Go → cir/1
 
@@ -180,11 +184,11 @@ differing byte. How a difference is reported: [The harness](/docs/concepts/harne
 ## When an adapter is missing
 
 ```shell-session
-$ target/debug/codespec read --lang java examples/orders/source --out try/x.json --adapters target/adapters
-codespec: no read adapter for "java": target/adapters/codespec-read-java does not exist
+$ target/debug/codespec read --lang python examples/orders/source --out try/x.json --adapters target/adapters
+codespec: no read adapter for "python": target/adapters/codespec-read-python does not exist
 ```
 
-Exit status 1. There is no Java reader.
+Exit status 1. There is no Python reader.
 
 ## Next
 

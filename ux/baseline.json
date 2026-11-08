@@ -841,7 +841,7 @@
         "tolerance": 0
       },
       "screen_only.looks": {
-        "value": 2,
+        "value": 1,
         "tolerance": 0
       },
       "screen_only.steps": {

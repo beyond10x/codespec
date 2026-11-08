@@ -3,12 +3,12 @@
   "product": {
     "name": "codespec",
     "mark": "cs",
-    "eyebrow": "Code intermediate representation · 0.1.2",
+    "eyebrow": "Code intermediate representation",
     "promise": [
       "Code as typed data.",
       "Every translation runs against the original."
     ],
-    "lede": "codespec reads a source language into cir/1, a typed and canonical JSON model of what code does inside: types, functions, statements, expressions. Passes rewrite it and compute facts once per module; writers emit Go or Rust from it and decide nothing the facts do not say. A harness runs the original and every output on the same seeded traces and compares them byte for byte. No language model anywhere: what a reader cannot express is kept verbatim and listed as a refusal.",
+    "lede": "codespec reads a source language into cir/1, a typed JSON model of what code does, rewrites it with passes, and writes Go or Rust from it. A harness compares the original and every output byte for byte. codespec effects maps a Go repository down to the syscalls each function may reach.",
     "description": "Read code into cir/1, rewrite it, write Go or Rust from it, and compare the original and the output byte for byte on seeded traces.",
     "actions": [
       {
@@ -21,25 +21,16 @@
         "href": "/docs/examples/greeter"
       },
       {
-        "label": "Vision",
-        "href": "/docs/vision"
-      },
-      {
         "label": "What exists today",
         "href": "/docs/status"
       }
     ],
-    "meta": "Rust CLI and passes · Go and Rust adapters · cir/1 JSON Schema · Apache-2.0",
+    "meta": "Go, Rust, Java and Groovy readers · Go and Rust writers · cir/1 JSON Schema · Apache-2.0",
     "art": {
       "kind": "code-pair",
       "data": "data/greeter-code-pair.json",
       "caption": "Generated from examples/greeter: the Go methods, and the Rust codespec writes from them."
-    },
-    "kpis": [
-      "shipped",
-      "decided",
-      "planned"
-    ]
+    }
   },
   "sections": [
     {
@@ -103,23 +94,16 @@
         {
           "title": "A Rust reader on syn",
           "description": "Rust to cir/1 to Go, held to the same harness.",
-          "status": "decided",
+          "status": "shipped",
           "href": "/docs/vision#milestones"
         },
         {
-          "title": "An algorithmic example",
-          "description": "Loops, switch, slices and arithmetic, held to the same criteria as orders.",
-          "status": "planned",
-          "href": "/docs/vision#milestones"
+          "title": "Down to syscalls",
+          "description": "codespec effects reads a Go repository with every package it imports and reports, per function, the syscalls it may reach and the line that leads there.",
+          "status": "shipped",
+          "href": "/docs/guides/map-a-repository-to-syscalls"
         }
       ]
-    },
-    {
-      "kind": "status",
-      "eyebrow": "Status",
-      "title": "0.1.2. Here is exactly what exists.",
-      "lede": "Shipped means code in the release, held by a named test or gate task.",
-      "items": "data/status.json"
     },
     {
       "kind": "related",

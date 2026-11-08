@@ -38,7 +38,12 @@ function visibleControls(primary: string): Candidate[] {
     if (label) return label.trim();
     const by = e.getAttribute('aria-labelledby');
     if (by) return by.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ').replace(/\s+/g, ' ').trim();
-    const t = (e.textContent ?? '').replace(/\s+/g, ' ').trim();
+    // Text hidden from assistive technology (`aria-hidden`, an icon's svg) is not part of the
+    // accessible name the bot later looks the control up by.
+    const parts: string[] = [];
+    const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement?.closest('svg, [aria-hidden="true"]')) parts.push(n.textContent ?? '');
+    const t = parts.join('').replace(/\s+/g, ' ').trim();
     if (t) return t;
     return (e.getAttribute('title') ?? e.querySelector('img[alt]')?.getAttribute('alt') ?? '').trim();
   };

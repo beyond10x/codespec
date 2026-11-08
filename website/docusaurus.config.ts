@@ -67,6 +67,9 @@ const config: Config = {
   ],
 
   themeConfig: {
+    docs: {
+      sidebar: {autoCollapseCategories: true},
+    },
     navbar: {
       title: 'codespec',
       items: [

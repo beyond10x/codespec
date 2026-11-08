@@ -468,4 +468,41 @@ mod tests {
         let manifest = fs::read_to_string(root().join("Cargo.toml")).unwrap();
         assert!(manifest.contains(&format!("\nversion = \"{VERSION}\"\n")));
     }
+
+    /// Positions of `d.d.d` version strings in `text`.
+    fn versions(text: &str) -> Vec<&str> {
+        let b = text.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if b[i].is_ascii_digit() && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'.')) {
+                let start = i;
+                let mut dots = 0;
+                while i < b.len() && (b[i].is_ascii_digit() || (b[i] == b'.' && i + 1 < b.len() && b[i + 1].is_ascii_digit())) {
+                    dots += usize::from(b[i] == b'.');
+                    i += 1;
+                }
+                if dots == 2 {
+                    out.push(&text[start..i]);
+                }
+            } else {
+                i += 1;
+            }
+        }
+        out
+    }
+
+    // UXF-006: the home page and the Status page state no release of their own; the release a page
+    // shows comes from status.json, and the pasted `--version` output is the workspace version.
+    #[test]
+    fn the_site_states_only_the_workspace_version() {
+        let site = root().join("website");
+        let product = fs::read_to_string(site.join("product.json")).unwrap();
+        assert_eq!(versions(&product), Vec::<&str>::new(), "website/product.json names a release");
+        let status = fs::read_to_string(site.join("docs/status.mdx")).unwrap();
+        assert_eq!(versions(&status), Vec::<&str>::new(), "website/docs/status.mdx names a release; use status.version");
+        let start = fs::read_to_string(site.join("docs/getting-started.md")).unwrap();
+        let after = start.split("$ target/debug/codespec --version\n").nth(1).expect("getting-started.md runs --version");
+        assert_eq!(after.lines().next(), Some(format!("codespec {VERSION}").as_str()), "website/docs/getting-started.md");
+    }
 }

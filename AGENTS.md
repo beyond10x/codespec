@@ -216,7 +216,7 @@ to `main` only.
 1. Bump `version` in `[workspace.package]` of `Cargo.toml` and `const version` in
    `adapters/go/cmd/codespec-read-go/main.go` and `adapters/go/cmd/codespec-write-go/main.go` (it is written into every document as
    `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` and `adapters/groovy/src/codespec/read/groovy/Main.java` likewise, with the `reader.version` in `adapters/groovy/testdata/lending.read.cir.json`, a test checks it), then `task examples`, `task conformance` and `task docs-generate` (it rewrites the conform sample in `website/docs/guides/add-an-adapter.md` from the Go writer report; `VERSION` in
-   `crates/docs/src/status.rs` follows the workspace version, a test checks it, and the test `every_shipped_capability_rests_on_a_test_that_exists` names the version literally: bump both by hand). Move the
+   `crates/docs/src/status.rs` follows the workspace version, a test checks it, and the test `every_shipped_capability_rests_on_a_test_that_exists` names the version literally: bump both by hand; the `codespec --version` output pasted in `website/docs/getting-started.md` is checked against it too). Move the
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.

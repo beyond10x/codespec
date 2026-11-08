@@ -32,3 +32,27 @@
 :root {
   --ifm-navbar-search-input-placeholder-color: var(--ifm-color-emphasis-800);
 }
+
+/* Below 997px the search box sits left of the menu button, so a tap on the button opens the menu
+   (UXF-012). Docusaurus places the search container at the navbar's right padding, over the button. */
+@media (max-width: 996px) {
+  .navbar [class*="navbarSearchContainer"] {
+    right: calc(var(--ifm-navbar-padding-horizontal) + 64px);
+  }
+}
+
+/* Commands, their output and the page outline are set at 14 px or more (UXF-014). */
+.markdown pre code,
+.markdown pre {
+  font-size: 0.9rem;
+}
+
+html .table-of-contents {
+  font-size: 0.875rem;
+}
+
+/* The home page copy starts at the top of the hero instead of centring on the code pair beside it,
+   so the actions are in the first screen at 1366x768 and 1280x720 (UXF-007). */
+main .b10x-hero__copy {
+  align-self: start;
+}
