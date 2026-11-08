@@ -15,5 +15,6 @@ path = "src/main.rs"
 b10x-codespec-cli = { path = "../cli" }
 b10x-codespec-model = { path = "../model" }
 b10x-codespec-conformance = { path = "../conformance" }
+b10x-codespec-effects = { path = "../effects" }
 clap.workspace = true
 serde_json.workspace = true

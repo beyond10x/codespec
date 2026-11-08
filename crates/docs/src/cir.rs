@@ -38,6 +38,15 @@ fn type_of(node: &Value) -> Result<String> {
         }
         return Err(format!("unsupported anyOf {node}"));
     }
+    if let Some(types) = node["type"].as_array() {
+        let non_null: Vec<&Value> = types.iter().filter(|t| *t != "null").collect();
+        if let ([only], 2) = (non_null.as_slice(), types.len()) {
+            let mut inner = node.clone();
+            inner["type"] = (*only).clone();
+            return Ok(format!("{} or null", type_of(&inner)?));
+        }
+        return Err(format!("unsupported schema node {node}"));
+    }
     match node["type"].as_str() {
         Some("array") => Ok(format!("list of {}", type_of(&node["items"])?)),
         Some(simple @ ("string" | "boolean" | "integer" | "number")) => Ok(format!("`{simple}`")),

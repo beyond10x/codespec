@@ -4,11 +4,11 @@
     "role": "reader",
     "lang": "rust",
     "version": "0.4.0",
-    "manifest_sha256": "857c1c405d217cf2299198299655d322993cdbe8eb63eacf822c9c9b10d92864"
+    "manifest_sha256": "e63a27a5e475df171aad99ca6ce7170e6c91034b1feb2b68d4abe32595b76d78"
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "7a6d75258470de2d52cf6476c194ae84de611a2ebb058950b6324b2b28788c94"
+    "sha256": "02744270e9000bd7f3dd57ed1840c12c68a5ea7f34c1da4e5080095243ba4806"
   },
   "corpus": {
     "sha256": "ac8e256a1dae8a70ddc110c5c6d8625307e3c6fd1c0a04980caa948c709c7acc"
@@ -104,12 +104,24 @@
       ]
     },
     {
+      "id": "decl.embedded",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "decl.enum",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "decl-enum"
       ]
+    },
+    {
+      "id": "decl.interface",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "decl.newtype",
@@ -128,7 +140,25 @@
       ]
     },
     {
+      "id": "decl.type_params",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "decl.union",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.var",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.variadic",
       "claimed": false,
       "verdict": "untested",
       "cases": []
@@ -148,6 +178,12 @@
       "cases": [
         "expr-call"
       ]
+    },
+    {
+      "id": "expr.call_value",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.const",
@@ -180,12 +216,42 @@
       "cases": []
     },
     {
+      "id": "expr.extern_method",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.field",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-field"
       ]
+    },
+    {
+      "id": "expr.float",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.func_ref",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.global",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.iface_call",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.index",
@@ -196,12 +262,24 @@
       ]
     },
     {
+      "id": "expr.instantiate",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.intrinsic",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-intrinsic"
       ]
+    },
+    {
+      "id": "expr.lambda",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.lit",
@@ -234,6 +312,12 @@
       "cases": []
     },
     {
+      "id": "expr.spread",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.struct",
       "claimed": true,
       "verdict": "pass",
@@ -248,6 +332,12 @@
       "cases": [
         "expr-to-error"
       ]
+    },
+    {
+      "id": "expr.to_iface",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.unop",
@@ -698,6 +788,12 @@
       "cases": []
     },
     {
+      "id": "type.array",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "type.bool",
       "claimed": true,
       "verdict": "pass",
@@ -722,6 +818,24 @@
       ]
     },
     {
+      "id": "type.extern",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.float",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.func",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "type.int",
       "claimed": true,
       "verdict": "pass",
@@ -744,6 +858,12 @@
       "cases": [
         "type-named"
       ]
+    },
+    {
+      "id": "type.param",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "type.ptr",
@@ -841,7 +961,7 @@
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 19,
+    "untested": 39,
     "boundary_fail": 0
   },
   "conforms": true

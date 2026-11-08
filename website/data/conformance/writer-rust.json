@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "rust",
     "version": "0.4.0",
-    "manifest_sha256": "e227b8b8bd973ba0234bc5bad87dbec880877481f1c29fb86b3b203e9634bf0f"
+    "manifest_sha256": "478a56679bba972821f6a327e865835a4ee19ebe3a7d4b51bda144fa70fa972d"
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "7a6d75258470de2d52cf6476c194ae84de611a2ebb058950b6324b2b28788c94"
+    "sha256": "02744270e9000bd7f3dd57ed1840c12c68a5ea7f34c1da4e5080095243ba4806"
   },
   "codespec": "0.4.0",
   "features": [
@@ -101,6 +101,17 @@
       ]
     },
     {
+      "id": "decl.embedded",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-embedded"
+      ],
+      "case": "decl-embedded",
+      "reason": "refused",
+      "detail": "Run (case.go:21): decl.embedded: field Counter of Tally is embedded: this writer has no Rust form for an embedded field"
+    },
+    {
       "id": "decl.enum",
       "claimed": true,
       "verdict": "pass",
@@ -108,6 +119,17 @@
         "decl-enum",
         "decl-enum-string"
       ]
+    },
+    {
+      "id": "decl.interface",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-interface"
+      ],
+      "case": "decl-interface",
+      "reason": "refused",
+      "detail": "codespec-write-rust: interface Shape (decl.interface): this writer has no Rust mapping for an interface"
     },
     {
       "id": "decl.newtype",
@@ -126,12 +148,45 @@
       ]
     },
     {
+      "id": "decl.type_params",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-generic"
+      ],
+      "case": "decl-generic",
+      "reason": "refused",
+      "detail": "codespec-write-rust: interface Sizer (decl.interface): this writer has no Rust mapping for an interface"
+    },
+    {
       "id": "decl.union",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "decl-union"
       ]
+    },
+    {
+      "id": "decl.var",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-var"
+      ],
+      "case": "decl-var",
+      "reason": "refused",
+      "detail": "greeting (case.go:4): decl.var: this writer has no Rust form for a module-level variable; hits (case.go:7): decl.var: this writer has no Rust form for a module-level variable; Greet (case.go:11): expr.global: module-level variable hits: this writer has no Rust form for a module-level variable; Calls (case.go:17): expr.global: module-level variable hits: this writer has no Rust form for a module-le…"
+    },
+    {
+      "id": "decl.variadic",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-variadic"
+      ],
+      "case": "decl-variadic",
+      "reason": "refused",
+      "detail": "sum (case.go:6): variadic parameter xs (decl.variadic): this writer has no Rust mapping for a variadic function; Sums (case.go:16): a call of sum with 0 arguments for 1 parameters; Joined (case.go:22): extern call path.Join: this writer has no Rust binding for a function outside the module"
     },
     {
       "id": "expr.binop",
@@ -148,6 +203,17 @@
       "cases": [
         "expr-call"
       ]
+    },
+    {
+      "id": "expr.call_value",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-call-value"
+      ],
+      "case": "expr-call-value",
+      "reason": "refused",
+      "detail": "codespec-write-rust: type Rule: a function type func(int) (bool) (type.func): this writer has no Rust mapping for a function value"
     },
     {
       "id": "expr.const",
@@ -185,12 +251,67 @@
       "detail": "Banner (case.go:10): extern call strings.Repeat: this writer has no Rust binding for a function outside the module"
     },
     {
+      "id": "expr.extern_method",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-extern-method"
+      ],
+      "case": "expr-extern-method",
+      "reason": "refused",
+      "detail": "Count (case.go:8): extern type strings.Builder: this writer has no Rust binding for a type outside the module"
+    },
+    {
       "id": "expr.field",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-field"
       ]
+    },
+    {
+      "id": "expr.float",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-float"
+      ],
+      "case": "expr-float",
+      "reason": "refused",
+      "detail": "Over (case.go:5): type.float: this writer has no Rust form for a float"
+    },
+    {
+      "id": "expr.func_ref",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-func-value"
+      ],
+      "case": "expr-func-value",
+      "reason": "refused",
+      "detail": "codespec-write-rust: type Op: a function type func(int) (int) (type.func): this writer has no Rust mapping for a function value"
+    },
+    {
+      "id": "expr.global",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-global"
+      ],
+      "case": "expr-global",
+      "reason": "refused",
+      "detail": "total (case.go:3): decl.var: this writer has no Rust form for a module-level variable; Add (case.go:7): expr.global: module-level variable total: this writer has no Rust form for a module-level variable"
+    },
+    {
+      "id": "expr.iface_call",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-iface-call"
+      ],
+      "case": "expr-iface-call",
+      "reason": "refused",
+      "detail": "emit (case.go:8): extern type io.StringWriter: this writer has no Rust binding for a type outside the module; Twice (case.go:15): extern type strings.Builder: this writer has no Rust binding for a type outside the module"
     },
     {
       "id": "expr.index",
@@ -201,6 +322,17 @@
       ]
     },
     {
+      "id": "expr.instantiate",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-instantiate"
+      ],
+      "case": "expr-instantiate",
+      "reason": "refused",
+      "detail": "codespec-write-rust: generic type Box (decl.type_params): this writer has no Rust mapping for type parameters"
+    },
+    {
       "id": "expr.intrinsic",
       "claimed": true,
       "verdict": "pass",
@@ -208,6 +340,17 @@
         "expr-intrinsic",
         "expr-intrinsic-slice"
       ]
+    },
+    {
+      "id": "expr.lambda",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-lambda"
+      ],
+      "case": "expr-lambda",
+      "reason": "refused",
+      "detail": "Scale (case.go:7): a function literal (expr.lambda): this writer has no Rust mapping for a function value"
     },
     {
       "id": "expr.lit",
@@ -243,6 +386,17 @@
       ]
     },
     {
+      "id": "expr.spread",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-spread"
+      ],
+      "case": "expr-spread",
+      "reason": "refused",
+      "detail": "sum (case.go:6): variadic parameter xs (decl.variadic): this writer has no Rust mapping for a variadic function; Twice (case.go:17): append outside the statement it belongs to; Joined (case.go:24): append outside the statement it belongs to"
+    },
+    {
       "id": "expr.struct",
       "claimed": true,
       "verdict": "pass",
@@ -257,6 +411,17 @@
       "cases": [
         "expr-to-error"
       ]
+    },
+    {
+      "id": "expr.to_iface",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-to-iface"
+      ],
+      "case": "expr-to-iface",
+      "reason": "refused",
+      "detail": "codespec-write-rust: interface Labeler (decl.interface): this writer has no Rust mapping for an interface"
     },
     {
       "id": "expr.unop",
@@ -738,6 +903,17 @@
       ]
     },
     {
+      "id": "type.array",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-array-float"
+      ],
+      "case": "type-array-float",
+      "reason": "refused",
+      "detail": "Weight (case.go:8): type.array: this writer has no Rust form for a fixed-size array; Above (case.go:21): type.array: this writer has no Rust form for a fixed-size array"
+    },
+    {
       "id": "type.bool",
       "claimed": true,
       "verdict": "pass",
@@ -762,6 +938,39 @@
       ]
     },
     {
+      "id": "type.extern",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-extern"
+      ],
+      "case": "type-extern",
+      "reason": "refused",
+      "detail": "codespec-write-rust: type Buffer: extern type strings.Builder: this writer has no Rust binding for a type outside the module"
+    },
+    {
+      "id": "type.float",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-float"
+      ],
+      "case": "type-float",
+      "reason": "refused",
+      "detail": "Third (case.go:7): type.float: this writer has no Rust form for a float"
+    },
+    {
+      "id": "type.func",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-func"
+      ],
+      "case": "type-func",
+      "reason": "refused",
+      "detail": "run (case.go:7): a function type func(int) (int) (type.func): this writer has no Rust mapping for a function value; Apply (case.go:13): twice used as a function value (expr.func_ref): this writer has no Rust mapping for a function value"
+    },
+    {
       "id": "type.int",
       "claimed": true,
       "verdict": "pass",
@@ -784,6 +993,17 @@
       "cases": [
         "type-named"
       ]
+    },
+    {
+      "id": "type.param",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-param"
+      ],
+      "case": "type-param",
+      "reason": "refused",
+      "detail": "second (case.go:3): decl.type_params: this writer has no Rust mapping for type parameters; Second (case.go:8): expr.instantiate: this writer has no Rust mapping for type parameters"
     },
     {
       "id": "type.ptr",
@@ -905,7 +1125,7 @@
     "claimed": 105,
     "pass": 105,
     "fail": 0,
-    "refused_unclaimed": 2,
+    "refused_unclaimed": 22,
     "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0

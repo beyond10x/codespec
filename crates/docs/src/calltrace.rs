@@ -1,0 +1,223 @@
+//! The call-tree page: `codespec trace` from `envcheck.Announce`, run here over the checked-in
+//! `examples/envcheck` document, drawn as a text tree.
+
+use std::path::Path;
+
+use codespec_effects::{Options, Trace, TraceNode, summary_from_json, trace};
+
+use crate::showcase::{module, read};
+use crate::{Result, SOURCE, TREE, front_matter};
+
+/// Where the page lands, relative to the repository root.
+pub const PAGE: &str = "website/docs/examples/call-trace.md";
+
+const ENVCHECK: &str = "examples/envcheck/envcheck.read.cir.json";
+const ENVCHECK_SOURCE: &str = "examples/envcheck/source/envcheck.go";
+const STD: &str = "summaries/go-std.effects.json";
+
+/// One line of the drawing for `n`.
+fn label(n: &TraceNode) -> String {
+    let effects = |e: &[String]| {
+        if e.is_empty() {
+            "pure".to_string()
+        } else {
+            e.join(", ")
+        }
+    };
+    match n {
+        TraceNode::Call { pos, name, .. } => format!("{name}  {pos}"),
+        TraceNode::Ref { pos, name } => format!("{name}  {pos}  (expanded once, elsewhere)"),
+        TraceNode::Cut { pos, name } => format!("{name}  {pos}  (cut: deeper than the depth)"),
+        TraceNode::Dispatch {
+            pos,
+            call,
+            candidates,
+            ..
+        } => format!("dispatch {call}  {pos}  ({} candidates)", candidates.len()),
+        TraceNode::Syscall {
+            pos,
+            name,
+            effects: e,
+        } => {
+            format!("syscall {name} [{}]  {pos}", effects(e))
+        }
+        TraceNode::Extern {
+            pos,
+            name,
+            effects: e,
+        } => format!("{name} [{}]  {pos}", effects(e)),
+        TraceNode::Unknown { pos, reason } => format!("unknown: {reason}  {pos}"),
+        TraceNode::If { pos, cond, .. } => format!("if {cond}  {pos}"),
+        TraceNode::Switch { pos, tag, .. } => match tag {
+            Some(t) => format!("switch {t}  {pos}"),
+            None => format!("switch  {pos}"),
+        },
+        TraceNode::Loop { pos, cond, .. } => format!("loop {cond}  {pos}"),
+        TraceNode::Lambda { pos, .. } => format!("func literal  {pos}"),
+    }
+}
+
+/// A line of the drawing and the lines under it.
+struct Line {
+    text: String,
+    under: Vec<Line>,
+}
+
+fn lines(nodes: &[TraceNode]) -> Vec<Line> {
+    nodes.iter().map(line).collect()
+}
+
+fn line(n: &TraceNode) -> Line {
+    let under = match n {
+        TraceNode::If {
+            then, otherwise, ..
+        } if !otherwise.is_empty() => vec![
+            Line {
+                text: "then".into(),
+                under: lines(then),
+            },
+            Line {
+                text: "else".into(),
+                under: lines(otherwise),
+            },
+        ],
+        TraceNode::Switch { cases, .. } => cases
+            .iter()
+            .map(|c| Line {
+                text: if c.values.is_empty() {
+                    "default".into()
+                } else {
+                    format!("case {}", c.values.join(", "))
+                },
+                under: lines(&c.body),
+            })
+            .collect(),
+        TraceNode::Dispatch { unknown, .. } => {
+            let mut v: Vec<Line> = n.children().into_iter().map(line).collect();
+            v.extend(unknown.iter().map(|u| Line {
+                text: format!("unknown: {u}"),
+                under: Vec::new(),
+            }));
+            v
+        }
+        _ => n.children().into_iter().map(line).collect(),
+    };
+    Line {
+        text: label(n),
+        under,
+    }
+}
+
+fn draw(l: &Line, prefix: &str, out: &mut String) {
+    for (i, c) in l.under.iter().enumerate() {
+        let last = i + 1 == l.under.len();
+        out.push_str(prefix);
+        out.push_str(if last { "└─ " } else { "├─ " });
+        out.push_str(&c.text);
+        out.push('\n');
+        draw(
+            c,
+            &format!("{prefix}{}", if last { "   " } else { "│  " }),
+            out,
+        );
+    }
+}
+
+/// `t` as a text tree, one node per line.
+pub fn text(t: &Trace) -> String {
+    let root = line(&t.root);
+    let mut out = format!("{}\n", root.text);
+    draw(&root, "", &mut out);
+    out
+}
+
+fn envcheck(root: &Path) -> Result<Trace> {
+    let m = module(root, ENVCHECK)?;
+    let std = summary_from_json(read(root, STD)?.as_bytes()).map_err(|e| format!("{STD}: {e}"))?;
+    trace(&[m], &[std], &Options::default(), "envcheck.Announce", 8)
+}
+
+fn page(root: &Path) -> Result<String> {
+    let env = envcheck(root)?;
+    let mut out = front_matter(
+        "Call trees: what one call does, with its branches",
+        "Call trees",
+        "codespec trace draws the call tree from one function: each if, switch and loop with its condition, each call expanded once, dispatch over interfaces, syscalls at the leaves. envcheck's Announce.",
+        3,
+    );
+    out.push_str("# Call trees\n\n");
+    out.push_str(&format!(
+        "Generated by `codespec-docs`: the `envcheck` tree is `codespec trace` run now over [`{ENVCHECK}`]({SOURCE}/{ENVCHECK}) with [`{STD}`]({SOURCE}/{STD}). `task check` fails when this page drifts from it.\n\n"
+    ));
+    out.push_str(
+        "`codespec trace <documents…> --from <path>.<function>` prints `codespec-trace/1`: the call tree from one function over the documents read as one program. It answers *what does this call do, and on which branch*, where `codespec effects` answers *what may it do at all*. Calls are resolved as `codespec effects` resolves them, on the same call graph, with `--from` the only entry for rapid type analysis. The nodes:\n\n\
+| node | what |\n\
+|---|---|\n\
+| `call` | a call of a function of the set, expanded: the tree of its body; `def` is where it is declared |\n\
+| `ref` | a call of a function expanded elsewhere in the tree; each function is expanded once, where it is called fewest calls from `--from` |\n\
+| `cut` | a call of a function more than `--depth` calls (default 8) from `--from` |\n\
+| `dispatch` | a call through an interface or a function value, each candidate of the set under it |\n\
+| `if`, `switch`, `loop` | a branch, with its condition: the `if` condition, the `switch` tag and each case's values, the loop condition or its `range` |\n\
+| `syscall` | a syscall the barrier names, with its effects |\n\
+| `extern` | a call outside the set (or `println`) with the effects its summary states; `pure` is `[]` |\n\
+| `unknown` | a reason the tree may be incomplete there, as `codespec effects` lists it |\n\
+| `lambda` | a function literal, with the tree of its body |\n\n\
+A call's arguments are evaluated before it, so calls in one statement appear in evaluation order: `println(Banner(…))` lists `Banner` before `println`.\n\n",
+    );
+    out.push_str(&format!(
+        "## `envcheck.Announce`\n\n[`envcheck`]({TREE}/examples/envcheck) prints a banner built from the environment ([`{ENVCHECK_SOURCE}`]({SOURCE}/{ENVCHECK_SOURCE})). `Announce` calls `Banner`, which calls `Mode` and `Label`; `Mode` reads `APP_MODE` and branches on it being empty. Without the standard library in the set, `os.Getenv` and the `strings` functions are leaves with the effects `summaries/go-std.effects.json` states.\n\n```text title=\"codespec trace examples/envcheck/envcheck.read.cir.json --summaries summaries/go-std.effects.json --from envcheck.Announce\"\n{}```\n",
+        text(&env)
+    ));
+    Ok(out)
+}
+
+pub fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
+    Ok(vec![(PAGE, page(root)?)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[test]
+    fn the_call_tree_page_holds_the_envcheck_tree() {
+        let generated = outputs(&root()).unwrap();
+        let page = &generated[0].1;
+        for want in [
+            "envcheck.Announce  envcheck.go:31",
+            "if m == \"\"  envcheck.go:14",
+            "os.Getenv [env]  envcheck.go:13",
+            "println [stdout]  envcheck.go:32",
+        ] {
+            assert!(page.contains(want), "the page lacks {want:?}");
+        }
+    }
+
+    #[test]
+    fn a_tree_draws_each_branch_under_its_condition() {
+        let t: Trace = serde_json::from_value(serde_json::json!({
+            "format": "codespec-trace/1", "from": "m.F", "depth": 8, "dispatch": "rta",
+            "root": {"k": "call", "pos": "m.go:1", "name": "m.F", "def": "m.go:1", "body": [
+                {"k": "if", "pos": "m.go:2", "cond": "x > 0",
+                 "then": [{"k": "ref", "pos": "m.go:3", "name": "m.a"}],
+                 "else": [{"k": "cut", "pos": "m.go:5", "name": "m.b"}]},
+                {"k": "syscall", "pos": "m.go:6", "name": "openat", "effects": ["fs.read"]}
+            ]}
+        }))
+        .unwrap();
+        assert_eq!(
+            text(&t),
+            "m.F  m.go:1\n\
+             ├─ if x > 0  m.go:2\n\
+             │  ├─ then\n\
+             │  │  └─ m.a  m.go:3  (expanded once, elsewhere)\n\
+             │  └─ else\n\
+             │     └─ m.b  m.go:5  (cut: deeper than the depth)\n\
+             └─ syscall openat [fs.read]  m.go:6\n"
+        );
+    }
+}

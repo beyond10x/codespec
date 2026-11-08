@@ -22,19 +22,42 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `consts` | list of [`ConstDecl`](#constdecl) | no |  |
 | `doc` | `string` | no |  |
 | `errors` | list of [`ErrorVar`](#errorvar) | no | Sentinel errors: module-level error values built from a fixed message. |
-| `externs` | list of [`Extern`](#extern) | no | Every function outside the module that the module calls, sorted by `path` then `name`, each once. |
+| `externs` | list of [`Extern`](#extern) | no | Every function and method outside the module that the module calls, sorted by `path`, then receiver type name (`""` for a function), then `name`, each once. |
 | `facts` | [`Facts`](#facts) or null | no | Whole-module analysis results, written by passes and read by writers. |
 | `format` | `string` | yes | Always `cir/1`. |
 | `funcs` | list of [`Func`](#func) | yes |  |
-| `layout` | list of `string` | yes | Source declaration order, `type:<name>`, `const:<name>`, `error:<name>`, `func:<name>` or `func:<receiver type>.<name>`, for writers that keep it. |
+| `inits` | list of [`CallRef`](#callref) | no | Every call the initializers of the module's variables make, and every function they use as a value (Go `var hook = syscall.Connect`): run when the module is loaded. |
+| `interfaces` | list of [`Interface`](#interface) | no | Interface types: the module's own, in source order, then every interface of another module that an `iface_call` goes through, sorted by `path`, then `name`, each once. |
+| `layout` | list of `string` | yes | Source declaration order, `type:<name>` (a type or one of the module's own interfaces), `const:<name>`, `error:<name>`, `var:<name>`, `func:<name>` or `func:<receiver type>.<name>`, for writers that keep it. |
+| `linknames` | list of [`Linkname`](#linkname) | no | Every function of the module linked by name to a function of another module (Go `//go:linkname`). |
+| `methods` | list of [`MethodSet`](#methodset) | no | The method set of each named type the module declares, interface types excepted, for dispatching a call through an interface over a set of modules. |
 | `name` | `string` | yes |  |
+| `opaque` | list of [`Opaque`](#opaque) | no | Every function the module declares that is not in `funcs`: a declaration the reader refused, or one without a body in the source language. Each keeps its name, receiver, position, reason and the calls it makes, so the call graph has no hole where it is. |
+| `path` | `string` | no | The module's import path in the source language's spelling (`net/http`), when the reader knows it: the name an `extern` of another module uses for it. |
 | `reader` | [`Reader`](#reader) | yes | Which reader produced this document. |
 | `refusals` | list of [`Refusal`](#refusal) | no | Every construct the reader kept as `foreign` or could not read. |
 | `types` | list of [`TypeDecl`](#typedecl) | yes |  |
+| `vars` | list of [`VarDecl`](#vardecl) | no | Module-level variables, in source order. |
 
 ## Definitions
 
-19 definitions: [`Case`](#case), [`ChanDir`](#chandir), [`ConstDecl`](#constdecl), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`Func`](#func), [`IntWidth`](#intwidth), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`UnionVariant`](#unionvariant), [`Variant`](#variant).
+32 definitions: [`CallRef`](#callref), [`Case`](#case), [`ChanDir`](#chandir), [`ConstArg`](#constarg), [`ConstDecl`](#constdecl), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`FloatBits`](#floatbits), [`ForeignInit`](#foreigninit), [`Func`](#func), [`IfaceMethod`](#ifacemethod), [`IntWidth`](#intwidth), [`Interface`](#interface), [`Linkname`](#linkname), [`MethodEntry`](#methodentry), [`MethodSet`](#methodset), [`MethodSig`](#methodsig), [`Opaque`](#opaque), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`TypeParam`](#typeparam), [`UnionVariant`](#unionvariant), [`VarDecl`](#vardecl), [`Variant`](#variant).
+
+## CallRef
+
+A call a construct makes, named from the source language's own type information where the construct is outside `cir/1` (a `foreign` statement, an [`Opaque`] function). A signature `sig` is the source language's spelling of a function type without parameter names, every named type qualified by its full import path: `func([]byte) (int, error)`.
+
+A tagged union: the field `k` names the kind. 7 kinds.
+
+| `k` | Fields (\* required) | Meaning |
+|---|---|---|
+| `func` | `consts`: list of [`ConstArg`](#constarg); `name`\*: `string`; `path`: `string`; `pos`\*: `string` | A call of the function `name` of the module `path`; `path` empty: this module. |
+| `method` | `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`\*: `string` | A call of the method `name` declared on the named type `recv` of the module `path` (empty: this module), the receiver's type being known. |
+| `iface` | `iface`\*: `string`; `methods`\*: list of [`MethodSig`](#methodsig); `name`\*: `string`; `pos`\*: `string` | A call of the method `name` through a value of the interface `iface` (its spelling, for reading), whose whole method set is `methods`. |
+| `value` | `pos`\*: `string`; `sig`\*: `string` | A call of a function value of the signature `sig`. |
+| `ref` | `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`: `string`; `sig`\*: `string` | The function `name` of `path` (empty: this module), or with `recv` the method, used as a value of the signature `sig`: it may run wherever a value of `sig` is called. |
+| `lambda` | `calls`\*: list of [`CallRef`](#callref); `pos`\*: `string`; `sig`\*: `string` | A function literal of the signature `sig`. Its calls belong to the function that holds it, and it may run wherever a value of `sig` is called. |
+| `new` | `name`\*: `string`; `path`: `string`; `pos`\*: `string` | Not a call: a value of the named type `name` of the module `path` (empty: this module) is made here (a composite literal, `new`, a conversion, a constant or a zero value of that type, or a struct holding one in a field), so a call through an interface may reach its methods. |
 
 ## Case
 
@@ -46,6 +69,15 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 ## ChanDir
 
 A string, one of `"send"`, `"recv"`, `"both"`.
+
+## ConstArg
+
+The argument at `index` (from 0) of a call is the integer constant `value`, in decimal.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `index` | `integer` | yes |  |
+| `value` | `string` | yes |  |
 
 ## ConstDecl
 
@@ -68,20 +100,23 @@ A string, one of `"send"`, `"recv"`, `"both"`.
 
 An expression. `t` is the type the reader computed for it.
 
-A tagged union: the field `k` names the kind. 18 kinds.
+A tagged union: the field `k` names the kind. 27 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
 | `lit` | `t`\*: [`Type`](#type); `value`\*: `string` | A literal in the source language's spelling. |
+| `float` | `t`\*: [`Type`](#type); `value`\*: `string` | A floating-point literal: `value` is the shortest decimal that reads back to the same number of `t`'s width, laid out as [`float_spelling`] gives it. |
 | `nil` | `t`\*: [`Type`](#type) |  |
 | `var` | `name`\*: `string`; `t`\*: [`Type`](#type) | A local, parameter or receiver. |
 | `const` | `name`\*: `string`; `t`\*: [`Type`](#type) | A declared constant or enum variant. |
 | `errvar` | `name`\*: `string`; `t`\*: [`Type`](#type) | A sentinel error. |
+| `global` | `name`\*: `string`; `t`\*: [`Type`](#type) | A module-level variable, declared in the module's `vars`; read, or assigned to on the left of an `assign`. |
 | `field` | `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
 | `index` | `index`\*: [`Expr`](#expr); `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
-| `call` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | A call of a module function. |
+| `call` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type); `targs`: list of [`Type`](#type) | A call of a module function; of a generic one with `targs`, its type arguments written out, as many as it has type parameters. |
 | `method` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) |  |
-| `extern` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `path`\*: `string`; `t`\*: [`Type`](#type) | A call of the function `name` of `path`, declared in the module's `externs`. |
+| `extern` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `path`\*: `string`; `t`\*: [`Type`](#type); `targs`: list of [`Type`](#type) | A call of the function `name` of `path`, declared in the module's `externs`; with `targs`, the type arguments of a generic one, as many as its declaration has type parameters. |
+| `extern_method` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `path`\*: `string`; `recv`\*: [`Expr`](#expr); `t`\*: [`Type`](#type); `targs`: list of [`Type`](#type); `type`\*: `string` | A call of the method `name` of the extern type `type` of `path` on `recv`, declared in the module's `externs` with that receiver type; with `targs`, the type arguments of the method's own type parameters (those of a generic receiver type are `recv`'s type's). |
 | `binop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr); `y`\*: [`Expr`](#expr) | `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `&^` (bit clear), `<<`, `>>`, `&&`, `\|\|`, `==`, `!=`, `<`, `<=`, `>` or `>=`. |
 | `unop` | `op`\*: `string`; `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | `!`, `-`, `+`, `^` (bitwise complement), `<-` (channel receive), `*` (dereference) or `&` (reference). |
 | `struct` | `fields`\*: list of [`FieldInit`](#fieldinit); `name`\*: `string`; `t`\*: [`Type`](#type) |  |
@@ -90,17 +125,26 @@ A tagged union: the field `k` names the kind. 18 kinds.
 | `zero` | `t`\*: [`Type`](#type) |  |
 | `intrinsic` | `args`\*: list of [`Expr`](#expr); `name`\*: `string`; `t`\*: [`Type`](#type) | `sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match. |
 | `to_error` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | A value of an error struct used where an error is expected. |
+| `func_ref` | `name`\*: `string`; `recv`: [`Expr`](#expr) or null; `t`\*: [`Type`](#type) | The module function `name` used as a value or, with `recv`, the method `name` bound to the receiver value `recv`. |
+| `lambda` | `body`\*: list of [`Stmt`](#stmt); `captures`\*: list of `string`; `params`\*: list of [`Param`](#param); `results`\*: list of [`Type`](#type); `t`\*: [`Type`](#type) | A function literal. `captures` names every local, parameter or receiver of the enclosing function it reads or writes, each in scope where the literal stands; inside `body` only `captures` and `params` are in scope. |
+| `call_value` | `args`\*: list of [`Expr`](#expr); `f`\*: [`Expr`](#expr); `t`\*: [`Type`](#type) | A call of the function value `f`. |
+| `spread` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | The slice `x` passed as the variadic last parameter itself (Go `xs...`): only the last argument of a `call`, `method`, `extern` or `extern_method` of a variadic function, or of the `append` intrinsic. |
+| `iface_call` | `args`\*: list of [`Expr`](#expr); `iface`\*: `string`; `name`\*: `string`; `path`: `string`; `recv`\*: [`Expr`](#expr); `t`\*: [`Type`](#type) | A call of the method `name` through `recv`, a value of the interface `iface` of `path` (empty: this module), declared in the module's `interfaces`, or a value of a type parameter that interface constrains: the method of whatever value `recv` holds runs. |
+| `to_iface` | `t`\*: [`Type`](#type); `x`\*: [`Expr`](#expr) | The value `x`, of a concrete type or of another interface, used where a value of the interface `t` is expected. |
 
 ## Extern
 
-A function outside the module: `name` in the package, crate or class `path`, with its declared parameter and result types.
+A function outside the module: `name` in the package, crate or class `path`, with its declared parameter and result types; with `recv`, a method of the extern type `recv` names.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | `string` | yes |  |
 | `params` | list of [`Type`](#type) | yes |  |
 | `path` | `string` | yes | The import path in the source language's spelling: `os`, `math/rand`, `std::env`. |
+| `recv` | [`Type`](#type) or null | no | The receiver of a method: an `extern` type of `path`, or a `ptr` to one. A method of a generic type binds that type's parameters by naming them as `param` type arguments. |
 | `results` | list of [`Type`](#type) | yes |  |
+| `tparams` | list of [`TypeParam`](#typeparam) | no | The function's own type parameters; a call gives as many type arguments. |
+| `variadic` | `boolean` | no | The last of `params`, a slice, is variadic: a call passes zero or more arguments for it, or one `spread` slice. |
 
 ## Facts
 
@@ -120,6 +164,7 @@ Whole-module facts. Writers read these instead of deciding anything themselves.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
+| `embedded` | `boolean` | no | An embedded field (Go): named after its type, a `named` or `extern` type or a `ptr` to one. The reader writes every promoted field access and method call as the explicit path through it, so no consumer needs promotion rules; the mark only keeps how the source declares the field. Only on a struct's fields. |
 | `name` | `string` | yes |  |
 | `t` | [`Type`](#type) | yes |  |
 
@@ -129,6 +174,22 @@ Whole-module facts. Writers read these instead of deciding anything themselves.
 |---|---|---|---|
 | `name` | `string` | yes |  |
 | `value` | [`Expr`](#expr) | yes |  |
+
+## FloatBits
+
+Floating-point width: IEEE 754 binary32 or binary64 (Go `float32`, `float64`).
+
+A string, one of `"32"`, `"64"`.
+
+## ForeignInit
+
+An initializer the reader kept verbatim, in `lang`, because cir/1 cannot express it.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `lang` | `string` | yes |  |
+| `reason` | `string` | yes |  |
+| `src` | `string` | yes |  |
 
 ## Func
 
@@ -144,6 +205,17 @@ A function or, with `recv`, a method.
 | `pos` | `string` | yes |  |
 | `recv` | [`Param`](#param) or null | no |  |
 | `results` | list of [`Type`](#type) | yes |  |
+| `tparams` | list of [`TypeParam`](#typeparam) | no | The function's own type parameters; a call gives as many type arguments. A method of a generic type has none of its own: its receiver's type binds the type's parameters by naming them as `param` type arguments (Go `func (p Pair[T]) First() T`). |
+
+## IfaceMethod
+
+One method of an interface: its name and its parameter and result types.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `params` | list of [`Type`](#type) | yes |  |
+| `results` | list of [`Type`](#type) | yes |  |
 
 ## IntWidth
 
@@ -151,12 +223,76 @@ Integer width. `platform` is the source language's machine-word integer (Go `int
 
 A string, one of `"platform"`, `"8"`, `"16"`, `"32"`, `"64"`.
 
+## Interface
+
+An interface type: the methods a value of it can be called with. A value of the module's own interface `name` has the type `named`; with `path`, the interface of another module, a value of it has the type `extern`.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `doc` | `string` | no |  |
+| `exported` | `boolean` | yes |  |
+| `methods` | list of [`IfaceMethod`](#ifacemethod) | yes | Every method, those of embedded interfaces included, sorted by name, each once. |
+| `name` | `string` | yes |  |
+| `path` | `string` | no | The module declaring it, in the source language's spelling (`io`); empty: this module. |
+| `pos` | `string` | no | Where the module declares it; empty for an interface of another module. |
+
+## Linkname
+
+The function `name` (a [`Func::key`] of this module) is linked to `target`, the function `<path>.<name>` of another module: the one without a body is the other.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `target` | `string` | yes |  |
+
+## MethodEntry
+
+One method of a method set: its name and signature, and the call that runs when it is called, a `method` or, for a method promoted from an embedded interface, an `iface` call.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `sig` | `string` | yes |  |
+| `target` | [`CallRef`](#callref) | yes |  |
+
+## MethodSet
+
+The method set of the named type `t` (with its pointer type's methods), sorted by name.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `methods` | list of [`MethodEntry`](#methodentry) | yes |  |
+| `t` | `string` | yes |  |
+
+## MethodSig
+
+A method's name and signature, as an interface or a method set lists it.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes |  |
+| `sig` | `string` | yes |  |
+
+## Opaque
+
+A function the module declares whose body `cir/1` does not hold.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `calls` | list of [`CallRef`](#callref) | yes | Every call its body makes, in source order; empty for a function without a body. |
+| `name` | `string` | yes |  |
+| `no_body` | `boolean` | no | Declared without a body in the source language: implemented in assembly, or by the function a [`Linkname`] names. |
+| `pos` | `string` | yes |  |
+| `reason` | `string` | yes |  |
+| `recv` | `string` or null | no | The name of the receiver's declared type, for a method. |
+
 ## Param
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | `string` | yes |  |
 | `t` | [`Type`](#type) | yes |  |
+| `variadic` | `boolean` | no | The last parameter of a function takes zero or more arguments, or one `spread` slice; `t` is the slice it is inside the body (Go `...T`). |
 
 ## Reader
 
@@ -197,28 +333,33 @@ A tagged union: the field `k` names the kind. 16 kinds.
 | `expr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
 | `send` | `chan`\*: [`Expr`](#expr); `pos`\*: `string`; `x`\*: [`Expr`](#expr) | `chan <- x`. |
 | `lookup_else` | `index`\*: [`Expr`](#expr); `map`\*: [`Expr`](#expr); `name`\*: `string`; `pos`\*: `string`; `then`\*: list of [`Stmt`](#stmt) | `name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`. |
-| `foreign` | `lang`\*: `string`; `pos`\*: `string`; `reason`\*: `string`; `src`\*: `string` | Source the reader kept verbatim, in `lang`, because cir/1 cannot express it. |
+| `foreign` | `calls`: list of [`CallRef`](#callref) or null; `lang`\*: `string`; `pos`\*: `string`; `reason`\*: `string`; `src`\*: `string` | Source the reader kept verbatim, in `lang`, because cir/1 cannot express it. |
 
 ## Type
 
 A type expression.
 
-A tagged union: the field `k` names the kind. 12 kinds.
+A tagged union: the field `k` names the kind. 17 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
 | `int` | `signed`\*: `boolean`; `width`\*: [`IntWidth`](#intwidth) |  |
+| `float` | `bits`\*: [`FloatBits`](#floatbits) | An IEEE 754 floating-point number of `bits` bits. |
 | `bool` | none |  |
 | `string` | none |  |
 | `error` | none | The source language's error type (Go `error`). |
 | `any` | none | The top type (Go `any`). |
 | `unit` | none |  |
-| `named` | `name`\*: `string` | A type the module declares. |
+| `named` | `name`\*: `string`; `targs`: list of [`Type`](#type) | A type the module declares or one of its own interfaces; with `targs`, the generic type `name` instantiated with them, as many as its declaration has type parameters. |
 | `ptr` | `elem`\*: [`Type`](#type) | A reference to `elem`. |
 | `slice` | `elem`\*: [`Type`](#type) |  |
+| `array` | `elem`\*: [`Type`](#type); `len`\*: `integer` | A fixed-size array of `len` values of `elem`; a value, copied on assignment. |
 | `map` | `elem`\*: [`Type`](#type); `key`\*: [`Type`](#type) |  |
 | `chan` | `dir`\*: [`ChanDir`](#chandir); `elem`\*: [`Type`](#type) |  |
 | `tuple` | `elems`\*: list of [`Type`](#type) |  |
+| `extern` | `name`\*: `string`; `path`\*: `string`; `targs`: list of [`Type`](#type) | An opaque type `name` declared outside the module, in the package, crate or class `path` (Go `sync.Mutex`); its fields and representation are not part of the module. With `targs`, the generic type `name` instantiated with them (Go `atomic.Pointer[T]`). |
+| `func` | `params`\*: list of [`Type`](#type); `results`\*: list of [`Type`](#type) | A function value taking `params` and giving `results`. |
+| `param` | `name`\*: `string` | The type parameter `name` of the enclosing generic declaration: a function's or extern's `tparams`, a type declaration's `tparams`, or one a method's receiver type binds by naming it among its type arguments. |
 
 ## TypeDecl
 
@@ -228,10 +369,19 @@ A tagged union: the field `k` names the kind. 4 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
-| `struct` | `doc`: `string`; `exported`\*: `boolean`; `fields`\*: list of [`Field`](#field); `name`\*: `string`; `pos`\*: `string` |  |
-| `newtype` | `doc`: `string`; `exported`\*: `boolean`; `name`\*: `string`; `pos`\*: `string`; `under`\*: [`Type`](#type) | A basic type given a name. |
+| `struct` | `doc`: `string`; `exported`\*: `boolean`; `fields`\*: list of [`Field`](#field); `name`\*: `string`; `pos`\*: `string`; `tparams`: list of [`TypeParam`](#typeparam) |  |
+| `newtype` | `doc`: `string`; `exported`\*: `boolean`; `name`\*: `string`; `pos`\*: `string`; `tparams`: list of [`TypeParam`](#typeparam); `under`\*: [`Type`](#type) | A type given a name: a basic, function, map or slice type. |
 | `enum` | `doc`: `string`; `exported`\*: `boolean`; `name`\*: `string`; `pos`\*: `string`; `under`\*: [`Type`](#type); `variants`\*: list of [`Variant`](#variant) | A newtype whose values are exactly the declared variants. |
 | `union` | `doc`: `string`; `exported`\*: `boolean`; `name`\*: `string`; `pos`\*: `string`; `variants`\*: list of [`UnionVariant`](#unionvariant) | Tagged variants, each carrying its own fields. |
+
+## TypeParam
+
+A type parameter of a generic function, type or extern: its name and its constraint, an interface every type argument given for it implements: `any`, one of the module's own interfaces (`named`, with type arguments if it is generic) or another module's (`extern`).
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `constraint` | [`Type`](#type) | yes |  |
+| `name` | `string` | yes |  |
 
 ## UnionVariant
 
@@ -239,6 +389,18 @@ A tagged union: the field `k` names the kind. 4 kinds.
 |---|---|---|---|
 | `fields` | list of [`Field`](#field) | yes |  |
 | `name` | `string` | yes |  |
+
+## VarDecl
+
+A module-level variable of type `t`: the zero value of `t`, or the value of `init`, set before any function of the module runs. An initializer outside cir/1 is kept as `foreign` source instead, never both.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `foreign` | [`ForeignInit`](#foreigninit) or null | no |  |
+| `init` | [`Expr`](#expr) or null | no |  |
+| `name` | `string` | yes |  |
+| `pos` | `string` | yes |  |
+| `t` | [`Type`](#type) | yes |  |
 
 ## Variant
 

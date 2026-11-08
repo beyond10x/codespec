@@ -288,10 +288,10 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         area: "Analysis",
         label: "Effects report",
-        detail: "codespec effects reports per function the effects it may have (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+        detail: "codespec effects reports per function the effects it may have (env, fs.read, fs.write, io, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
         status: "shipped",
         evidence: Some("Taskfile.yml::examples-effects"),
-        href: "/docs/reference/cli",
+        href: "/docs/concepts/static-analysis",
     },
 ];
 

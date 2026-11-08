@@ -13,6 +13,8 @@
 //!   (`website/static/img/greeter-cir.svg`), from the checked-in files of `examples/greeter`;
 //! - the algorithmic showcase (`examples/series.md`) and its diagram
 //!   (`website/static/img/series-cir.svg`), from the checked-in files of `examples/series`;
+//! - the call-tree page (`examples/call-trace.md`, [`calltrace`]): `codespec trace` run over the
+//!   checked-in `examples/envcheck` document;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
 //! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go
@@ -31,6 +33,7 @@
 //! `website/docs`.
 #![forbid(unsafe_code)]
 
+mod calltrace;
 mod cir;
 mod cli;
 mod crates;
@@ -206,6 +209,7 @@ fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
     ];
     all.extend(showcase::outputs(root)?);
     all.extend(series::outputs(root)?);
+    all.extend(calltrace::outputs(root)?);
     Ok(all)
 }
 

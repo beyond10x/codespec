@@ -1,8 +1,8 @@
-//! An SVG tree of one `cir/1` module: module, then its types, sentinel errors and functions, each
-//! function's statements, and each statement's expressions, every node labelled with its kind and
-//! its type. Nested expressions are collapsed into one line of source-like text, so the tree stays
-//! five levels deep. The SVG is written by hand (no dependency); the same module gives the same
-//! bytes.
+//! An SVG tree of one `cir/1` module: module, then its types, sentinel errors, variables and
+//! functions, each function's statements, and each statement's expressions, every node labelled
+//! with its kind and its type. Nested expressions are collapsed into one line of source-like text,
+//! so the tree stays five levels deep. The SVG is written by hand (no dependency); the same module
+//! gives the same bytes.
 
 use codespec_model::{Expr, Func, Module, Stmt, Type, TypeDecl};
 
@@ -28,7 +28,18 @@ struct Node {
     label: String,
 }
 
-/// `t` written as Go-like text: `int`, `*Greeter`, `map[string]int`, `(string, error)`.
+/// Type arguments written after a generic type's or function's name: `[int, string]`; empty
+/// without any.
+fn type_args(targs: &[Type]) -> String {
+    if targs.is_empty() {
+        return String::new();
+    }
+    let args: Vec<String> = targs.iter().map(type_text).collect();
+    format!("[{}]", args.join(", "))
+}
+
+/// `t` written as Go-like text: `int`, `*Greeter`, `map[string]int`, `(string, error)`,
+/// `Pair[int]`.
 pub fn type_text(t: &Type) -> String {
     match t {
         Type::Int { width, signed } => {
@@ -48,30 +59,51 @@ pub fn type_text(t: &Type) -> String {
         Type::Error => "error".to_owned(),
         Type::Any => "any".to_owned(),
         Type::Unit => "()".to_owned(),
-        Type::Named { name } => name.clone(),
+        Type::Named { name, targs } => format!("{name}{}", type_args(targs)),
+        Type::Param { name } => name.clone(),
+        Type::Extern { path, name, targs } => format!("{path}.{name}{}", type_args(targs)),
         Type::Ptr { elem } => format!("*{}", type_text(elem)),
         Type::Slice { elem } => format!("[]{}", type_text(elem)),
+        Type::Array { len, elem } => format!("[{len}]{}", type_text(elem)),
+        Type::Float { bits } => {
+            let bits = serde_json::to_value(bits)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            format!("float{bits}")
+        }
         Type::Map { key, elem } => format!("map[{}]{}", type_text(key), type_text(elem)),
         Type::Chan { elem, .. } => format!("chan {}", type_text(elem)),
         Type::Tuple { elems } => format!(
             "({})",
             elems.iter().map(type_text).collect::<Vec<_>>().join(", ")
         ),
+        Type::Func { params, results } => {
+            let list = |ts: &[Type]| ts.iter().map(type_text).collect::<Vec<_>>().join(", ");
+            match results.as_slice() {
+                [] => format!("func({})", list(params)),
+                [one] => format!("func({}) {}", list(params), type_text(one)),
+                _ => format!("func({}) ({})", list(params), list(results)),
+            }
+        }
     }
 }
 
 fn kind(e: &Expr) -> &'static str {
     match e {
         Expr::Lit { .. } => "lit",
+        Expr::Float { .. } => "float",
         Expr::Nil { .. } => "nil",
         Expr::Var { .. } => "var",
         Expr::Const { .. } => "const",
         Expr::Errvar { .. } => "errvar",
+        Expr::Global { .. } => "global",
         Expr::Field { .. } => "field",
         Expr::Index { .. } => "index",
         Expr::Call { .. } => "call",
         Expr::Method { .. } => "method",
         Expr::Extern { .. } => "extern",
+        Expr::ExternMethod { .. } => "extern_method",
         Expr::Binop { .. } => "binop",
         Expr::Unop { .. } => "unop",
         Expr::Struct { .. } => "struct",
@@ -80,6 +112,12 @@ fn kind(e: &Expr) -> &'static str {
         Expr::Zero { .. } => "zero",
         Expr::Intrinsic { .. } => "intrinsic",
         Expr::ToError { .. } => "to_error",
+        Expr::FuncRef { .. } => "func_ref",
+        Expr::Lambda { .. } => "lambda",
+        Expr::CallValue { .. } => "call_value",
+        Expr::Spread { .. } => "spread",
+        Expr::IfaceCall { .. } => "iface_call",
+        Expr::ToIface { .. } => "to_iface",
     }
 }
 
@@ -97,25 +135,43 @@ fn spell(e: &Expr, depth: usize) -> String {
     }
     let d = depth + 1;
     match e {
-        Expr::Lit { value, .. } => value.clone(),
+        Expr::Lit { value, .. } | Expr::Float { value, .. } => value.clone(),
         Expr::Nil { .. } => "nil".to_owned(),
-        Expr::Var { name, .. } | Expr::Const { name, .. } | Expr::Errvar { name, .. } => {
-            name.clone()
-        }
+        Expr::Var { name, .. }
+        | Expr::Const { name, .. }
+        | Expr::Errvar { name, .. }
+        | Expr::Global { name, .. } => name.clone(),
         Expr::Field { x, name, .. } => format!("{}.{name}", spell(x, d)),
         Expr::Index { x, index, .. } => format!("{}[{}]", spell(x, d), spell(index, d)),
-        Expr::Call { name, args: a, .. } | Expr::Intrinsic { name, args: a, .. } => {
-            format!("{name}({})", args(a, depth))
-        }
+        Expr::Call {
+            name,
+            targs,
+            args: a,
+            ..
+        } => format!("{name}{}({})", type_args(targs), args(a, depth)),
+        Expr::Intrinsic { name, args: a, .. } => format!("{name}({})", args(a, depth)),
         Expr::Method {
             x, name, args: a, ..
         } => format!("{}.{name}({})", spell(x, d), args(a, depth)),
         Expr::Extern {
             path,
             name,
+            targs,
             args: a,
             ..
-        } => format!("{path}.{name}({})", args(a, depth)),
+        } => format!("{path}.{name}{}({})", type_args(targs), args(a, depth)),
+        Expr::ExternMethod {
+            recv,
+            name,
+            targs,
+            args: a,
+            ..
+        } => format!(
+            "{}.{name}{}({})",
+            spell(recv, d),
+            type_args(targs),
+            args(a, depth)
+        ),
         Expr::Binop { op, x, y, .. } => format!("{} {op} {}", spell(x, d), spell(y, d)),
         Expr::Unop { op, x, .. } => format!("{op}{}", spell(x, d)),
         Expr::Struct { name, fields, .. } => format!(
@@ -130,6 +186,22 @@ fn spell(e: &Expr, depth: usize) -> String {
         Expr::Make { t } => format!("make({})", type_text(t)),
         Expr::Zero { t } => format!("zero {}", type_text(t)),
         Expr::ToError { x, .. } => format!("to_error({})", spell(x, d)),
+        Expr::FuncRef { name, recv, .. } => match recv {
+            Some(r) => format!("{}.{name}", spell(r, d)),
+            None => name.clone(),
+        },
+        Expr::Lambda { captures, t, .. } => {
+            format!("{} {{…}} [{}]", type_text(t), captures.join(", "))
+        }
+        Expr::CallValue { f, args: a, .. } => format!("{}({})", spell(f, d), args(a, depth)),
+        Expr::Spread { x, .. } => format!("{}...", spell(x, d)),
+        Expr::IfaceCall {
+            recv,
+            name,
+            args: a,
+            ..
+        } => format!("{}.{name}({})", spell(recv, d), args(a, depth)),
+        Expr::ToIface { x, t } => format!("to_iface({}, {})", spell(x, d), type_text(t)),
     }
 }
 
@@ -339,6 +411,16 @@ fn nodes(m: &Module) -> Vec<Node> {
             });
         }
     }
+    if !m.vars.is_empty() {
+        group(&mut out, format!("vars ({})", m.vars.len()));
+        for v in &m.vars {
+            out.push(Node {
+                depth: 2,
+                level: "decl",
+                label: format!("{} {}", v.name, type_text(&v.t)),
+            });
+        }
+    }
     group(&mut out, format!("funcs ({})", m.funcs.len()));
     for f in &m.funcs {
         out.push(Node {
@@ -542,7 +624,8 @@ mod tests {
                 key: Box::new(Type::String),
                 elem: Box::new(Type::Ptr {
                     elem: Box::new(Type::Named {
-                        name: "Order".to_owned()
+                        name: "Order".to_owned(),
+                        targs: Vec::new(),
                     })
                 })
             }),

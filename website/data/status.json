@@ -200,8 +200,8 @@
     },
     {
       "area": "Analysis",
-      "detail": "codespec effects reports per function the effects it may have (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
-      "href": "/docs/reference/cli",
+      "detail": "codespec effects reports per function the effects it may have (env, fs.read, fs.write, io, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+      "href": "/docs/concepts/static-analysis",
       "label": "Effects report",
       "status": "shipped"
     }

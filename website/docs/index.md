@@ -41,7 +41,8 @@ says where it is going.
   looks right ([The harness](/docs/concepts/harness)).
 - **An analysis.** `codespec effects` reports per function the effects it may have (environment,
   file system, network, clock, …) from summaries of the library functions it calls, and lists
-  every call it cannot account for as unknown ([CLI reference](/docs/reference/cli)).
+  every call it cannot account for as unknown; over a whole repository read with its imports, the
+  syscalls each function may reach ([Static analysis](/docs/concepts/static-analysis)).
 
 ## What it is not
 
@@ -71,3 +72,5 @@ says where it is going.
 - [Showcase: series](/docs/examples/series): an algorithm with loops, `switch` and overflowing
   arithmetic, its `cir/1` drawn as a tree, and the Rust written from each construct.
 - [Translate a Go package to Rust](/docs/guides/translate-go-to-rust).
+- [Map a repository to syscalls](/docs/guides/map-a-repository-to-syscalls): read a Go repository
+  with every package it imports and report the syscalls each function may reach.
