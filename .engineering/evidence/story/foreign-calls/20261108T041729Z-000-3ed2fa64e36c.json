@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-08T04:17:29Z",
+  "actor": "human:timo",
+  "artifact": "story:foreign-calls",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task build && task check on feat/whole-repo-to-syscalls 19e4db3 (gate-merged.log, exit 0) after merging the unit"
+  }
+}

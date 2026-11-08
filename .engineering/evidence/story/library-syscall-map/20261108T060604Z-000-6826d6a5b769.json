@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-08T06:06:04Z",
+  "actor": "human:timo",
+  "artifact": "story:library-syscall-map",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task build && task check on feat/whole-repo-to-syscalls 626c526 with the measured example regenerated outside the repository, exit 0",
+    "reference": "scratch gate-b3.log"
+  }
+}

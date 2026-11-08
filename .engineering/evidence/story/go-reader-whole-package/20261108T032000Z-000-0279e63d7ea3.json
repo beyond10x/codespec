@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-08T03:20:00Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-whole-package",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task build && task check (target/gate3.log, exit 0); go test ./... in adapters/go incl. TestAPackageIsReadWithEachDeclarationOutsideCir1RefusedOnItsOwn; scripts/read-repo.sh on the measured third-party library: 6 of 6 packages ok"
+  }
+}
