@@ -1,0 +1,24 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.func_ref",
+    "decl.newtype",
+    "decl.struct",
+    "expr.binop",
+    "expr.call_value",
+    "expr.conv",
+    "expr.field",
+    "expr.lit",
+    "expr.struct",
+    "expr.var",
+    "fact.read_only",
+    "op.add",
+    "op.mul",
+    "sem.int.wrap",
+    "stmt.let",
+    "stmt.return",
+    "type.func",
+    "type.int",
+    "type.named"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Compose",
+      "args": [
+        "3",
+        "4"
+      ]
+    },
+    {
+      "func": "Compose",
+      "args": [
+        "-5",
+        "1"
+      ]
+    }
+  ]
+}

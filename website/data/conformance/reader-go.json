@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "go",
-    "version": "0.4.0",
-    "manifest_sha256": "dc70e99aa750a1cfc743c36048593561e42fd8437c85460b6269351a18806a3b"
+    "version": "0.5.0",
+    "manifest_sha256": "a68642125a690b004744e1fedeb6d51e217da41ecf36adfc0985e61808849372"
   },
   "kit": {
-    "version": "0.4.0",
-    "sha256": "8efff2e12e8ee070da0c7019dbd10d0cf23b5562900088427ca3c5a014b81bf8"
+    "version": "0.5.0",
+    "sha256": "f81de62acb27384ff70afd95d8fb60841fa7da7a3bad2c0912864a9ddb8a17f6"
   },
   "corpus": {
-    "sha256": "6bbcc37369a0aa308979acd64125924572ec8113674b15146445405bbdfcface"
+    "sha256": "b5630117d4ead5bc03cb828754c290a1f56077b9c890d70747185799d28e3061"
   },
-  "codespec": "0.4.0",
+  "codespec": "0.5.0",
   "features": [
     {
       "id": "assign.add",
@@ -104,12 +104,28 @@
       ]
     },
     {
+      "id": "decl.embedded",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-embedded"
+      ]
+    },
+    {
       "id": "decl.enum",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "decl-enum",
         "decl-enum-string"
+      ]
+    },
+    {
+      "id": "decl.interface",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-interface"
       ]
     },
     {
@@ -129,6 +145,14 @@
       ]
     },
     {
+      "id": "decl.type_params",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-generic"
+      ]
+    },
+    {
       "id": "decl.union",
       "claimed": false,
       "verdict": "refused",
@@ -139,6 +163,22 @@
       "step": 3,
       "reason": "subject_missing",
       "detail": "the module does not use decl.union outside a foreign statement"
+    },
+    {
+      "id": "decl.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-var"
+      ]
+    },
+    {
+      "id": "decl.variadic",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-variadic"
+      ]
     },
     {
       "id": "expr.binop",
@@ -154,6 +194,14 @@
       "verdict": "pass",
       "cases": [
         "expr-call"
+      ]
+    },
+    {
+      "id": "expr.call_value",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-call-value"
       ]
     },
     {
@@ -181,11 +229,59 @@
       ]
     },
     {
+      "id": "expr.extern",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-extern"
+      ]
+    },
+    {
+      "id": "expr.extern_method",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-extern-method"
+      ]
+    },
+    {
       "id": "expr.field",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-field"
+      ]
+    },
+    {
+      "id": "expr.float",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-float"
+      ]
+    },
+    {
+      "id": "expr.func_ref",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-func-value"
+      ]
+    },
+    {
+      "id": "expr.global",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-global"
+      ]
+    },
+    {
+      "id": "expr.iface_call",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-iface-call"
       ]
     },
     {
@@ -197,12 +293,28 @@
       ]
     },
     {
+      "id": "expr.instantiate",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-instantiate"
+      ]
+    },
+    {
       "id": "expr.intrinsic",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-intrinsic",
         "expr-intrinsic-slice"
+      ]
+    },
+    {
+      "id": "expr.lambda",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-lambda"
       ]
     },
     {
@@ -239,6 +351,14 @@
       ]
     },
     {
+      "id": "expr.spread",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-spread"
+      ]
+    },
+    {
       "id": "expr.struct",
       "claimed": true,
       "verdict": "pass",
@@ -252,6 +372,14 @@
       "verdict": "pass",
       "cases": [
         "expr-to-error"
+      ]
+    },
+    {
+      "id": "expr.to_iface",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-iface"
       ]
     },
     {
@@ -771,6 +899,14 @@
       ]
     },
     {
+      "id": "type.array",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-array-float"
+      ]
+    },
+    {
       "id": "type.bool",
       "claimed": true,
       "verdict": "pass",
@@ -795,6 +931,30 @@
       ]
     },
     {
+      "id": "type.extern",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-extern"
+      ]
+    },
+    {
+      "id": "type.float",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-float"
+      ]
+    },
+    {
+      "id": "type.func",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-func"
+      ]
+    },
+    {
       "id": "type.int",
       "claimed": true,
       "verdict": "pass",
@@ -816,6 +976,14 @@
       "verdict": "pass",
       "cases": [
         "type-named"
+      ]
+    },
+    {
+      "id": "type.param",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-param"
       ]
     },
     {
@@ -922,8 +1090,8 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 93,
-    "pass": 93,
+    "claimed": 114,
+    "pass": 114,
     "fail": 0,
     "refused_unclaimed": 12,
     "pass_unclaimed": 1,

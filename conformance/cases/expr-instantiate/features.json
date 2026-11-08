@@ -1,0 +1,18 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.instantiate",
+    "decl.struct",
+    "decl.type_params",
+    "expr.call",
+    "expr.field",
+    "expr.struct",
+    "expr.var",
+    "stmt.let",
+    "stmt.return",
+    "type.any",
+    "type.int",
+    "type.named",
+    "type.param"
+  ]
+}

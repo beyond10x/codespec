@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-08T05:32:45Z",
+  "actor": "human:timo",
+  "artifact": "story:cir1-variadic",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task build && task check on feat/whole-repo-to-syscalls 4320124, exit 0",
+    "reference": "scratch gate-b2.log"
+  }
+}

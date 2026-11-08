@@ -481,7 +481,7 @@ impl Reader {
                         Some((cell, ia)) if cell == "RefCell" && ia.len() == 1 => {
                             let elem = self.ty(ia[0], self_ty)?;
                             match &elem {
-                                Type::Named { name }
+                                Type::Named { name, .. }
                                     if matches!(self.decls.get(name), Some(Decl::Struct(_))) =>
                                 {
                                     Ok(Type::Ptr {
@@ -504,7 +504,10 @@ impl Reader {
                         })
                     }
                     ("Self", []) => match self_ty {
-                        Some(s) => Ok(Type::Named { name: s.into() }),
+                        Some(s) => Ok(Type::Named {
+                            targs: Vec::new(),
+                            name: s.into(),
+                        }),
                         None => Err("`Self` outside an impl".into()),
                     },
                     ("Option" | "Result", _) => Err(format!(
@@ -513,7 +516,10 @@ impl Reader {
                     (n, []) if self.error_enum.as_ref().is_some_and(|(e, _)| e == n) => {
                         Ok(Type::Error)
                     }
-                    (n, []) if self.decls.contains_key(n) => Ok(Type::Named { name: n.into() }),
+                    (n, []) if self.decls.contains_key(n) => Ok(Type::Named {
+                        targs: Vec::new(),
+                        name: n.into(),
+                    }),
                     (n, []) if self.known.contains(n) => {
                         Err(format!("type {n}, which the reader could not map"))
                     }
@@ -590,7 +596,10 @@ impl Reader {
             match a {
                 syn::FnArg::Receiver(r) => {
                     let ty = impl_ty.ok_or("`self` outside an impl")?;
-                    let named = Type::Named { name: ty.into() };
+                    let named = Type::Named {
+                        targs: Vec::new(),
+                        name: ty.into(),
+                    };
                     recv = Some(match &r.kind {
                         syn::ReceiverKind::Value => named,
                         syn::ReceiverKind::Reference(..) => {
@@ -969,6 +978,7 @@ impl Reader {
                     let exported = is_pub(&s.vis);
                     match self.decls.get(&n) {
                         Some(Decl::Struct(fields)) => types.push(TypeDecl::Struct {
+                            tparams: Vec::new(),
                             name: n.clone(),
                             exported,
                             fields: fields
@@ -976,12 +986,14 @@ impl Reader {
                                 .map(|fi| Field {
                                     name: fi.go.clone(),
                                     t: fi.t.clone(),
+                                    embedded: false,
                                 })
                                 .collect(),
                             doc: d,
                             pos,
                         }),
                         Some(Decl::Newtype(under)) => types.push(TypeDecl::Newtype {
+                            tparams: Vec::new(),
                             name: n.clone(),
                             exported,
                             under: under.clone(),
@@ -1061,7 +1073,11 @@ impl Reader {
                                         None => format!("_{i}"),
                                     };
                                     match self.ty(&fl.ty, Some(&n)) {
-                                        Ok(t) => fields.push(Field { name: fname, t }),
+                                        Ok(t) => fields.push(Field {
+                                            name: fname,
+                                            t,
+                                            embedded: false,
+                                        }),
                                         Err(r) => bad = Some(r),
                                     }
                                 }
@@ -1265,10 +1281,18 @@ impl Reader {
             types,
             consts,
             errors,
+            vars: vec![],
             funcs,
+            externs: vec![],
             layout,
             facts: None,
             refusals,
+            path: String::new(),
+            opaque: vec![],
+            methods: vec![],
+            linknames: vec![],
+            inits: vec![],
+            interfaces: vec![],
         }
     }
 

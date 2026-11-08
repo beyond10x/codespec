@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-11-06",
+  "asOf": "2026-11-08",
   "format": "b10x-status/1",
   "items": [
     {
@@ -190,8 +190,22 @@
       "href": "/docs/guides/add-an-adapter",
       "label": "Rust writer conforms to the kit",
       "status": "shipped"
+    },
+    {
+      "area": "Analysis",
+      "detail": "A call of a function of another package is an extern call, declared with its signature; the Go reader reads standard library calls so and the Go writer writes them back, the Rust writer refuses them.",
+      "href": "/docs/reference/cir-1",
+      "label": "Extern calls",
+      "status": "shipped"
+    },
+    {
+      "area": "Analysis",
+      "detail": "codespec effects reports per function the effects it may have (env, fs.read, fs.write, io, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+      "href": "/docs/concepts/static-analysis",
+      "label": "Effects report",
+      "status": "shipped"
     }
   ],
   "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",
-  "version": "0.4.0"
+  "version": "0.5.0"
 }

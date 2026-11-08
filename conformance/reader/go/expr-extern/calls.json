@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Banner",
+      "args": [
+        "\"ab\"",
+        "3"
+      ]
+    },
+    {
+      "func": "Banner",
+      "args": [
+        "\"x\"",
+        "0"
+      ]
+    }
+  ]
+}

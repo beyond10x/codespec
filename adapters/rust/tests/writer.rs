@@ -615,3 +615,143 @@ fn a_propagation_in_a_nested_block_is_written_with_the_question_mark() {
     let printed = written_through_prints(&doc, "propagate-nested", "let v = checked(n)?;");
     assert_eq!(printed, "err negative\nok 3\n");
 }
+
+/// A function holding a function type, a function value, a lambda or a call of a function value
+/// is refused, its reason naming the feature; the writer still exits 0.
+#[test]
+fn a_function_holding_a_function_value_is_refused_naming_the_feature() {
+    let case = |name: &str| -> Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases")
+            .join(name)
+            .join("case.cir.json");
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    };
+    for (name, func, feature) in [
+        ("type-func", "run", "(type.func)"),
+        ("type-func", "Apply", "(expr.func_ref)"),
+        ("expr-lambda", "Scale", "(expr.lambda)"),
+    ] {
+        let (out, _) = write_ok(&case(name), &format!("func-value-{name}"));
+        let refusals: Value =
+            serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+        let entry = refusals
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == func)
+            .unwrap_or_else(|| panic!("{name}: {func} not refused: {refusals}"));
+        let reason = entry["reason"].as_str().unwrap();
+        assert!(reason.contains(feature), "{name}: {func}: {reason}");
+    }
+    // A type declaration over a function type cannot be written: the module is refused whole.
+    let o = write(
+        case("expr-func-value").to_string().as_bytes(),
+        &scratch("func-value-newtype"),
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        !o.status.success() && stderr.contains("type Op") && stderr.contains("(type.func)"),
+        "{stderr}"
+    );
+}
+
+/// A module declaring an interface is refused whole naming `decl.interface`. A function calling
+/// through another module's interface is refused for that interface's `extern` type, which its
+/// signature or expressions always hold before the call is reached; the writer still exits 0.
+#[test]
+fn a_declared_interface_and_a_call_through_another_modules_interface_are_refused() {
+    let case = |name: &str| -> Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases")
+            .join(name)
+            .join("case.cir.json");
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    };
+    let (out, _) = write_ok(&case("expr-iface-call"), "iface-call");
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    let entry = refusals
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "emit")
+        .unwrap_or_else(|| panic!("emit not refused: {refusals}"));
+    let reason = entry["reason"].as_str().unwrap();
+    assert!(reason.contains("io.StringWriter"), "{reason}");
+    let o = write(
+        case("decl-interface").to_string().as_bytes(),
+        &scratch("iface-decl"),
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        !o.status.success()
+            && stderr.contains("interface Shape")
+            && stderr.contains("(decl.interface)"),
+        "{stderr}"
+    );
+}
+
+/// A generic function is refused naming `decl.type_params`, and a function calling one with type
+/// arguments naming `expr.instantiate`; the writer still exits 0. A module declaring a generic
+/// type is refused whole naming `decl.type_params`.
+#[test]
+fn a_generic_function_and_a_call_with_type_arguments_are_refused_naming_the_feature() {
+    let case = || -> Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases/expr-call/case.cir.json");
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    };
+    let int = serde_json::json!({"k": "int", "width": "platform", "signed": true});
+    let mut doc = case();
+    let funcs = doc["funcs"].as_array_mut().unwrap();
+    let twice = funcs.iter_mut().find(|f| f["name"] == "twice").unwrap();
+    twice["tparams"] = serde_json::json!([{"name": "T", "constraint": {"k": "any"}}]);
+    let mut calls = 0;
+    fn targs(v: &mut Value, int: &Value, calls: &mut usize) {
+        match v {
+            Value::Object(o) => {
+                if o.get("k").and_then(Value::as_str) == Some("call") {
+                    o.insert("targs".into(), serde_json::json!([int]));
+                    *calls += 1;
+                }
+                o.values_mut().for_each(|x| targs(x, int, calls));
+            }
+            Value::Array(a) => a.iter_mut().for_each(|x| targs(x, int, calls)),
+            _ => {}
+        }
+    }
+    targs(&mut doc["funcs"], &int, &mut calls);
+    assert_eq!(calls, 2, "Quad calls twice twice");
+    let (out, _) = write_ok(&doc, "generic-func");
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    for (func, feature) in [("twice", "decl.type_params"), ("Quad", "expr.instantiate")] {
+        let entry = refusals
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == func)
+            .unwrap_or_else(|| panic!("{func} not refused: {refusals}"));
+        let reason = entry["reason"].as_str().unwrap();
+        assert!(reason.contains(feature), "{func}: {reason}");
+    }
+    let mut doc = case();
+    doc["types"] = serde_json::json!([{
+        "k": "struct", "name": "Box", "exported": true,
+        "tparams": [{"name": "T", "constraint": {"k": "any"}}],
+        "fields": [{"name": "v", "t": {"k": "param", "name": "T"}}], "pos": "case.go:2"
+    }]);
+    doc["layout"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, serde_json::json!("type:Box"));
+    let o = write(doc.to_string().as_bytes(), &scratch("generic-type"));
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        !o.status.success()
+            && stderr.contains("generic type Box")
+            && stderr.contains("(decl.type_params)"),
+        "{stderr}"
+    );
+}

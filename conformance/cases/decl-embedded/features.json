@@ -1,0 +1,28 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "decl.embedded",
+    "decl.struct",
+    "expr.binop",
+    "expr.field",
+    "expr.lit",
+    "expr.method",
+    "expr.struct",
+    "expr.unop",
+    "expr.var",
+    "op.add",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.expr",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.named",
+    "type.ptr",
+    "unop.ref"
+  ]
+}

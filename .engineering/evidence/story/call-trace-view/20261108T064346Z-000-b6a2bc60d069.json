@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-08T06:43:46Z",
+  "actor": "human:timo",
+  "artifact": "story:call-trace-view",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task build && task check on feat/whole-repo-to-syscalls 5dcc2fb, exit 0 (rerun; the first run failed in the Go adapter build with internal/profilerecord not in std, not reproduced)",
+    "reference": "scratch gate-b4b.log"
+  }
+}

@@ -27,8 +27,210 @@ Every change a user of `codespec` or of `cir/1` would notice.
   or occurs in the function body outside the `if` except in another such `if` declaring it with the
   same type, where no function literal captures it and its address is never taken; the first of
   those reads as the declaration, each later one as an assignment. So
-  `if err := f(); err != nil { return 0, err }` reaches the Rust writer's `?`. Every other `if` with
-  an init statement stays `foreign` with its refusal.
+  `if err := f(); err != nil { return 0, err }` reaches the Rust writer's `?`. Inside a function
+  literal the same holds with the literal's body in place of the function's, so the names stay
+  scoped to the literal. An init whose call or condition holds a type outside `cir/1` is not
+  hoisted. Every other `if` with an init statement stays `foreign` with its refusal.
+
+## 0.5.0
+
+### Added
+
+- `examples/netcheck`, a worked example of the static analysis: a Go module with a TCP server, a
+  client, an interface with two implementations, a generic function and a variadic call, read
+  with the 72 standard library packages it imports. `task examples-netcheck` runs `codespec
+  effects` (`rta` from both `main` functions, and `cha`), `codespec reach` and `codespec trace`
+  over the set twice, byte-equal, and writes the checked-in reports and the call paths to
+  `connect` and `accept4` (`codespec-docs netcheck`). `cargo test -p codespec-docs` checks facts
+  on them: only the server reaches `accept4`, the client reaches `connect`, `Answer` has no effect
+  and no syscall, `Prober.Probe` has 1 candidate with `rta` and 2 with `cha`. The site gains the
+  generated page "netcheck: down to syscalls", the netcheck trees on the Call trees page, and the
+  example in the static analysis concept page and the syscalls guide.
+- `codespec trace <documents…> --from <path>.<function>` prints `codespec-trace/1`, the call tree
+  from one function over a set: each `if`, `switch` and loop a branch node with its condition,
+  each call expanded once where it is called fewest calls from `--from` (a repeat is a `ref`
+  node), a call through an interface or a function value a `dispatch` node listing its
+  candidates, syscalls and summarised externs at the leaves, a `cut` node past `--depth`
+  (default 8). Calls are resolved on the call graph `codespec effects` uses, with `--from` the
+  only entry for rapid type analysis. The site's Call trees page draws the tree of
+  `envcheck.Announce`.
+- `cir/1` has variadic functions and spread arguments: a function's last parameter may be marked
+  `variadic` (a slice inside the body), an extern may be declared `variadic`, and the expression
+  `spread {x}` passes the slice `x` as the last argument of a call of one or of `append` (features
+  `decl.variadic`, `expr.spread`; conformance cases `decl-variadic`, `expr-spread`). Additive;
+  every earlier document reads unchanged. Strict reading refuses a spread anywhere else or to a
+  callee whose last parameter is not variadic, a variadic parameter that is not the last or not a
+  slice, and a variadic extern call with fewer arguments than its fixed parameters.
+  `codespec-read-go` reads variadic functions and methods, variadic calls of other packages
+  (`slog.Info`, `errors.Join`, a method of `*slog.Logger`) as extern calls, and `f(xs...)` as a
+  spread; `fmt.Sprintf`, `fmt.Errorf` and `fmt.Println` stay intrinsics unless called with a
+  spread. `codespec-write-go` writes them back; `codespec-write-rust` refuses a function holding
+  them; the Rust reader and writer list both features under `not`.
+- `cir/1` names the functions a module calls outside itself: `Module.externs` declares each one
+  (import path, name, parameter and result types), and the expression `extern` (feature
+  `expr.extern`, conformance case `expr-extern`) calls one. Both are additive; every earlier
+  document reads unchanged. Strict reading refuses an extern call that is not declared or has the
+  wrong number of arguments, and unsorted or repeated declarations.
+- `codespec-read-go` reads a call of a function of another package, not variadic and with `cir/1`
+  types only, as an extern call instead of a `foreign` statement; `codespec-write-go` writes it as a
+  package call with its import. `codespec-write-rust` refuses a function holding one; the Rust,
+  Java and Groovy readers do not claim the feature.
+- `cir/1` has extern types and extern method calls: the type `extern {path, name}` (feature
+  `type.extern`, conformance case `type-extern`) is an opaque type of another package, such as
+  Go's `sync.Mutex`, and the expression `extern_method {path, type, name, recv, args}` (feature
+  `expr.extern_method`, case `expr-extern-method`) calls a method of one. An extern declares a
+  method with the new optional `recv`; `externs` sort by path, receiver type name (empty for a
+  function), then name. Additive; every earlier document reads unchanged. Strict reading refuses
+  an undeclared extern method call, a wrong argument count, and a receiver that is not an extern
+  type of the declaration's path. `codespec-read-go` reads a type of another package as `extern`,
+  so a struct with such a field is declared, and a method call on one as `extern_method`; a field
+  of a struct of another package stays `foreign`. `codespec-write-go` writes both back;
+  `codespec-write-rust` refuses a function holding them. `codespec effects` looks an extern method
+  up in a summary as `<type>.<method>`.
+- `codespec effects <module.cir.json> --summaries <file>…` prints `codespec-effects-report/1`: per
+  function, the effects it may have (`env`, `fs.read`, `fs.write`, `net`, `proc`, `rand`, `stdin`,
+  `stdout`, `time`) from `codespec-effects/1` summaries of the functions outside the module, and
+  every extern without a summary, `foreign` statement or unresolved method listed as `unknown`
+  with its position. `summaries/go-std.effects.json` summarises part of the Go standard library;
+  `examples/envcheck` shows the report and `task examples-effects` holds it. Design:
+  `docs/static-analysis.md`.
+- `cir/1` has fixed-size arrays and floating-point numbers: the types `array {len, elem}` and
+  `float {bits: 32|64}` and the float literal `float` (features `type.array`, `type.float`,
+  `expr.float`; conformance cases `type-array-float`, `type-float`, `expr-float`). A float
+  literal's `value` is the shortest decimal that reads back to the same number, plain when its
+  exponent is between -7 and 21, else `<digits>e<exp>`; strict reading refuses one that is not a
+  finite number of its type's width or is spelled otherwise. Additive; every earlier document
+  reads unchanged. `codespec-read-go` reads Go arrays, `float32`, `float64`, their literals,
+  constants and arithmetic; `uintptr` and `unsafe.Pointer` stay outside `cir/1`.
+  `codespec-write-go` writes them back; `codespec-write-rust` refuses a function holding one,
+  naming the feature, and the Rust reader does not claim them.
+- `cir/1` has module-level variables: `Module.vars` declares each one (name, type, an optional
+  initializer `init`, or `foreign` source for an initializer outside `cir/1`), and the expression
+  `global` (features `decl.var`, `expr.global`; conformance cases `decl-var`, `expr-global`) reads
+  one or, on the left of an `assign`, sets it. Additive; every earlier document reads unchanged.
+  Strict reading refuses a `global` naming no declared var and a var with both `init` and
+  `foreign`. `codespec-read-go` reads package-level `var` declarations other than
+  `errors.New(<literal>)` sentinels as vars, an initializer it cannot express kept as `foreign`
+  with a refusal; a variable of a type outside `cir/1`, the blank variable and variables set from
+  one multi-value expression stay refused. `codespec-write-go` writes them back;
+  `codespec-write-rust` refuses each var and every function holding a `global`, naming the
+  feature, and the Rust reader does not claim them.
+- `cir/1` has function values: the type `func {params, results}` (feature `type.func`), a module
+  function or a bound method used as a value (`expr.func_ref`), a function literal naming the
+  outer locals it captures (`expr.lambda`) and a call of a function value (`expr.call_value`);
+  conformance cases `type-func`, `expr-func-value`, `expr-lambda`, `expr-call-value`. A `newtype`
+  may be over a func, map or slice type. All additive; every earlier document reads unchanged.
+  Strict reading refuses a lambda capturing a name that is not in scope where it stands.
+- `codespec-read-go` reads function types, function literals, method values, calls of function
+  values, and named func, map and slice types as newtypes; an interface declaration is refused as
+  one. `codespec-write-go` writes them back. `codespec-write-rust` refuses a function holding one;
+  the Rust reader and writer list the four ids under `not`. `codespec effects` counts the calls in
+  a lambda's body toward the function holding it and dispatches a call of a function value over
+  every `func_ref` and `lambda` of its signature (an `unknown` when there is none); the `read_only` fact is not given to a method holding a function value.
+- `cir/1` keeps the call graph whole where a body is outside it, additively: a `foreign` statement
+  lists the calls its source makes (`calls`), and `Module.opaque` holds every function the reader
+  refused or that has no body, with its receiver, position, reason and calls. A call is a
+  `CallRef`: a function, a method, a call through an interface (with the interface's method set),
+  a call of a function value, a function used as a value, or a function literal (its calls are
+  the holder's too); a constant integer argument is kept. `Module.path` is the import path;
+  `Module.methods` the method set of each named type, `Module.linknames` every `//go:linkname` and
+  `Module.inits` the calls of the variable initializers, written only for a module with an import
+  path. A `foreign` statement without `calls` means
+  its calls are unknown. Strict reading refuses an opaque function named twice or like a function.
+- `codespec-read-go` writes all of it from `go/types`, and the import path from `GOROOT` or the
+  `go.mod` above the package (`CODESPEC_READ_GO_IMPORT_PATH` overrides it).
+- `codespec effects a.cir.json b.cir.json …` reads several documents as one program: an extern
+  naming the `path` of a document of the set is a call of its function, a document wins over a
+  summary of the same function (the report's `notes` say so), a call through an interface reaches
+  every method of the set with the interface's method set and a call of a function value every
+  function, method or literal of the set used as a value of its signature (`dispatch` counts the
+  candidates). `--barrier summaries/go-linux-amd64.barrier.json` (format `codespec-barrier/1`)
+  names the functions that take a syscall number, the body-less runtime functions and the
+  assembly-only packages, and maps
+  each of the 385 linux/amd64 syscalls to effects, `read` and `write` to the new effect `io`; a
+  report entry then lists its `syscalls` and, for each syscall and effect, the positions of its own
+  calls that lead there. A body-less function is resolved through `//go:linkname`. `--report`
+  limits the report to some modules, `--roots` counts the `unknown` reasons each function reaches.
+- In a set, a `cir/1` `extern_method` is a call of the method of that type in the document with its
+  path (a summary names it `<type>.<method>`), and `func_ref`, `lambda` and `call_value` take part
+  in the dispatch like the `ref`, `lambda` and `value` calls a `foreign` statement lists: a
+  `cir/1` function type is spelled as the Go reader spells a signature, so both meet.
+- `scripts/read-repo.sh --deps` reads every package a repository imports, the standard library
+  included, in parallel.
+- `cir/1` marks embedded struct fields: a `Field` may carry `embedded: true` (feature
+  `decl.embedded`, conformance case `decl-embedded`), skipped when false, so every earlier document
+  reads unchanged. An embedded field is named after its type, a named or extern type or a pointer
+  to one; strict reading refuses one that is not, and a struct naming an embedded field twice.
+  `codespec-read-go` reads a struct with an embedded field instead of refusing it, and writes every
+  promoted field access, method call and method value as the explicit path through the embedded
+  fields (`s.Lock()` on a struct embedding `sync.Mutex` reads as `s.Mutex.Lock()`), so no consumer
+  needs promotion rules; a field promoted from a struct of another package stays `foreign`.
+  `codespec-write-go` writes the field back as embedded. `codespec-write-rust` refuses a function
+  reaching through an embedded field, naming the feature; the Rust reader and writer list
+  `decl.embedded` under `not`.
+- `codespec reach <documents…> [--entry <path>.<func>…] [--exported <module>…]` prints
+  `codespec-reach-report/1`: per module, the functions the entries reach (by a call, a use as a
+  value, or as a candidate of a dispatch) and those they do not. Without entries, `main.main`;
+  every Go `init` and every module's variable initializers always count.
+- Rapid type analysis: `codespec effects` and `codespec reach` take `--dispatch cha|rta`; with
+  `rta`, a call through an interface reaches only the types that code reached from the entries
+  makes, and a function value call only the values that code uses. `rta` is the default with
+  `--entry` or `--exported`, `cha` without. The `cir/1` call list gains `new {path, name}` (a
+  value of a named type is made here); additive. `codespec-read-go` lists it, for a module with an
+  import path, at a composite literal, `new`, `make` of a slice, a conversion, a constant and a
+  `var` zero value of a named type, and for each named type held by value in a field.
+- `cir/1` has interfaces: `Module.interfaces` declares each interface type with its whole method
+  set (feature `decl.interface`, conformance case `decl-interface`), the module's own in source
+  order and those of other modules a call goes through after them, sorted by path and name; a
+  value of one has the type `named` (the module's own) or `extern` (another module's). The
+  expression `iface_call {path?, iface, name, recv, args}` (`expr.iface_call`, case
+  `expr-iface-call`) calls a method through one, and `to_iface {x}` (`expr.to_iface`, case
+  `expr-to-iface`) converts a value to one explicitly. Additive; every earlier document reads
+  unchanged. Strict reading refuses a call through an undeclared interface, naming a method the
+  interface does not have or with the wrong argument count, unsorted or repeated declarations,
+  an interface that is also a type, and a `to_iface` to a type that is not an interface.
+- `codespec-read-go` reads an interface declaration (an interface with a type set, a variadic
+  method or a method of a type outside `cir/1` stays refused, with that reason), a method call on
+  a value of a named interface type as `iface_call`, and makes the implicit conversion to a
+  named interface at an assignment, argument, return, struct field and conversion explicit with
+  `to_iface`. `codespec-write-go` writes them back. `codespec-write-rust` refuses a function
+  holding an interface call or conversion and a module declaring an interface, naming the
+  feature; the Rust reader and writer list the three ids under `not`. `codespec effects`
+  dispatches an `iface_call` over every type of the set whose method set holds the declared
+  interface's methods, as it does an `iface` call a `foreign` statement lists; the `read_only`
+  fact is not given to a method calling through an interface on, or with, its receiver.
+- `cir/1` has type parameters: a `struct`, `newtype`, function or extern declares
+  `tparams [{name, constraint}]`, each constraint an interface (`any`, the module's own `named`
+  interface or another module's `extern` one; feature `decl.type_params`, conformance case
+  `decl-generic`); a method of a generic type binds the type's parameters through its receiver's
+  type arguments. The type `param {name}` (`type.param`) names one. `named` and `extern` types
+  carry `targs` for an instance of a generic type, and `call`, `extern` and `extern_method` carry
+  `targs`, the type arguments of a generic callee written out (`expr.instantiate`). An
+  `iface_call` may go through a value of a type parameter, by the interface constraining it.
+  Additive; every earlier document reads unchanged. Strict reading refuses a type parameter out
+  of scope, a constraint that is not an interface, a parameter declared twice, and a call or type
+  use whose type arguments do not match its declaration's type parameters in number.
+- `codespec-read-go` reads generic types, functions and methods, writes the inferred type
+  arguments of every call out from `Info.Instances`, reads a method call on a value of a type
+  parameter as an `iface_call` through its constraint, and declares generic externs and methods of
+  another package's generic types (`atomic.Pointer[T].Load`). A constraint with a type set
+  (`~int | ~string`, `comparable`), a generic interface and an instantiated generic function used
+  as a value stay refused, with that reason; a type alias is refused as `type alias`.
+  `codespec-write-go` writes them back. `codespec-write-rust` refuses a function holding a type
+  parameter or type arguments and a module declaring a generic type, naming the feature; the Rust
+  reader and writer list the three ids under `not`.
+
+### Fixed
+
+- Strict reading (`Module::from_json`, so `codespec read`, `validate` and every command reading a
+  module) admits a document nested up to 512 levels deep, where serde_json stopped at 128 with
+  "recursion limit exceeded" (a long `+` chain, as in `golang.org/x/net/idna`); a deeper one is
+  refused by name before it is parsed, never a stack overflow.
+- `codespec-read-go` refuses, as one declaration with its reason, a struct embedding a type
+  through an alias or embedding `error`, instead of writing an embedded field `cir/1` refuses
+  (`crypto/internal/rand`, `encoding/json/jsontext`, `net/http`); and gives a type declared inside
+  a function no `cir/1` name, so a call through a local interface is `foreign` instead of an
+  `iface_call` to an undeclared interface (`crypto/tls`). The five packages read.
 
 ## 0.4.0
 

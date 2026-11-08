@@ -219,6 +219,14 @@ func (w *writer) decls() ([]piece, error) {
 		k := "type:" + td.Name
 		byKey[k], order = func() []piece { return w.typeDecl(td) }, append(order, k)
 	}
+	for i := range m.Interfaces {
+		in := &m.Interfaces[i]
+		if in.Path != "" {
+			continue // another package's: declared there
+		}
+		k := "type:" + in.Name
+		byKey[k], order = func() []piece { return w.ifaceDecl(in) }, append(order, k)
+	}
 	for i := range m.Consts {
 		c := &m.Consts[i]
 		k := "const:" + c.Name
@@ -228,6 +236,11 @@ func (w *writer) decls() ([]piece, error) {
 		e := &m.Errors[i]
 		k := "error:" + e.Name
 		byKey[k], order = func() []piece { return []piece{{node: w.errorDecl(e)}} }, append(order, k)
+	}
+	for i := range m.Vars {
+		v := &m.Vars[i]
+		k := "var:" + v.Name
+		byKey[k], order = func() []piece { return []piece{{node: w.varDecl(v)}} }, append(order, k)
 	}
 	for i := range m.Funcs {
 		f := &m.Funcs[i]
@@ -270,11 +283,19 @@ func (w *writer) typ(t Type) ast.Expr {
 	case "unit":
 		return &ast.StructType{Fields: &ast.FieldList{}}
 	case "named":
-		return ident(w.names.decl(t.Name))
+		return w.instantiate(ident(w.names.decl(t.Name)), t.Targs)
+	case "extern":
+		return w.instantiate(&ast.SelectorExpr{X: ident(w.alias(t.Path)), Sel: ident(t.Name)}, t.Targs)
+	case "param":
+		return ident(t.Name)
 	case "ptr":
 		return &ast.StarExpr{X: w.typ(*t.Elem)}
 	case "slice":
 		return &ast.ArrayType{Elt: w.typ(*t.Elem)}
+	case "array":
+		return &ast.ArrayType{Len: &ast.BasicLit{Kind: token.INT, Value: strconv.FormatInt(t.Len, 10)}, Elt: w.typ(*t.Elem)}
+	case "float":
+		return ident("float" + t.Bits)
 	case "map":
 		return &ast.MapType{Key: w.typ(*t.Key), Value: w.typ(*t.Elem)}
 	case "chan":
@@ -283,19 +304,43 @@ func (w *writer) typ(t Type) ast.Expr {
 	case "tuple":
 		w.refuse("a tuple type outside a function's results has no Go form")
 		return ident("any")
+	case "func":
+		return w.funcType(nil, t.Params, t.Results)
 	}
 	w.refuse("type %q has no Go form", t.K)
 	return ident("any")
 }
 
+// embeddedName is the name Go gives a field embedding t as written: the type's name, through one
+// pointer; "" for a type Go cannot embed.
+func (w *writer) embeddedName(t Type) string {
+	if t.K == "ptr" && t.Elem != nil {
+		t = *t.Elem
+	}
+	switch t.K {
+	case "named":
+		return w.names.decl(t.Name)
+	case "extern":
+		return t.Name
+	}
+	return ""
+}
+
 func (w *writer) typeDecl(td *TypeDecl) []piece {
 	w.pos = td.Pos
-	spec := &ast.TypeSpec{Name: ident(w.names.decl(td.Name))}
+	spec := &ast.TypeSpec{Name: ident(w.names.decl(td.Name)), TypeParams: w.typeParams(td.Tparams)}
 	decl := &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{spec}}
 	switch td.K {
 	case "struct":
 		fl := &ast.FieldList{}
 		for _, f := range td.Fields {
+			if f.Embedded && w.embeddedName(f.T) == w.names.field(td.Name, f.Name) {
+				// Go names an embedded field after its type; every promoted access is already the
+				// explicit path through it. A field whose type is written under another name stays
+				// a named field, which every access reaches the same way.
+				fl.List = append(fl.List, &ast.Field{Type: w.typ(f.T)})
+				continue
+			}
 			fl.List = append(fl.List, &ast.Field{Names: []*ast.Ident{ident(w.names.field(td.Name, f.Name))}, Type: w.typ(f.T)})
 		}
 		spec.Type = &ast.StructType{Fields: fl}
@@ -353,7 +398,7 @@ var (
 	goRune   = Type{K: "int", Width: "32", Signed: true}
 	goBool   = Type{K: "bool"}
 	goString = Type{K: "string"}
-	goFloat  = Type{K: "float"}
+	goFloat  = Type{K: "float", Bits: "64"}
 )
 
 func sameType(a, b Type) bool { return reflect.DeepEqual(a, b) }
@@ -399,6 +444,8 @@ func (w *writer) defaultType(e Expr) (d Type, ok, nilType bool) {
 	case "lit":
 		d, ok = litDefault(e.Value)
 		return d, ok, false
+	case "float":
+		return goFloat, true, false
 	case "nil":
 		return Type{}, false, true
 	case "const":
@@ -408,11 +455,13 @@ func (w *writer) defaultType(e Expr) (d Type, ok, nilType bool) {
 		switch e.T.K {
 		case "int":
 			return goInt, true, false
+		case "float":
+			return goFloat, true, false
 		case "bool":
 			return goBool, true, false
 		case "string":
 			return goString, true, false
-		case "error", "any", "ptr", "slice", "map", "chan":
+		case "error", "any", "ptr", "slice", "map", "chan", "func":
 			return Type{}, false, true
 		}
 	case "unop":
@@ -469,6 +518,28 @@ func (w *writer) errorDecl(e *ErrorVar) ast.Decl {
 	}}}
 }
 
+// varDecl writes `var name T`, `var name T = init`, or a foreign Go initializer verbatim; the type
+// is always written, so an untyped initializer takes the declared type.
+func (w *writer) varDecl(v *Var) ast.Decl {
+	w.pos = v.Pos
+	spec := &ast.ValueSpec{Names: []*ast.Ident{ident(w.names.decl(v.Name))}, Type: w.typ(v.T)}
+	switch {
+	case v.Init != nil:
+		spec.Values = []ast.Expr{w.expr(*v.Init)}
+	case v.Foreign != nil && v.Foreign.Lang != "go":
+		w.refuse("foreign initializer of %s in %q cannot be written as Go (%s)", v.Name, v.Foreign.Lang, v.Foreign.Reason)
+	case v.Foreign != nil:
+		x, err := parser.ParseExpr(v.Foreign.Src)
+		if err != nil {
+			w.refuse("foreign Go initializer of %s does not parse: %v", v.Name, err)
+			break
+		}
+		stripPositions(x)
+		spec.Values = []ast.Expr{x}
+	}
+	return &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{spec}}
+}
+
 func (w *writer) funcDecl(f *Func) ast.Decl {
 	w.fn = f
 	w.pos = f.Pos
@@ -476,7 +547,11 @@ func (w *writer) funcDecl(f *Func) ast.Decl {
 	params := &ast.FieldList{}
 	for _, p := range f.Params {
 		w.used[p.Name] = true
-		params.List = append(params.List, &ast.Field{Names: []*ast.Ident{ident(p.Name)}, Type: w.typ(p.T)})
+		t := w.typ(p.T)
+		if p.Variadic && p.T.K == "slice" && p.T.Elem != nil {
+			t = &ast.Ellipsis{Elt: w.typ(*p.T.Elem)}
+		}
+		params.List = append(params.List, &ast.Field{Names: []*ast.Ident{ident(p.Name)}, Type: t})
 	}
 	var results *ast.FieldList
 	if len(f.Results) > 0 {
@@ -485,7 +560,7 @@ func (w *writer) funcDecl(f *Func) ast.Decl {
 			results.List = append(results.List, &ast.Field{Type: w.typ(t)})
 		}
 	}
-	d := &ast.FuncDecl{Name: ident(w.names.funcOf(f)), Type: &ast.FuncType{Params: params, Results: results}}
+	d := &ast.FuncDecl{Name: ident(w.names.funcOf(f)), Type: &ast.FuncType{TypeParams: w.typeParams(f.Tparams), Params: params, Results: results}}
 	if f.Recv != nil {
 		w.used[f.Recv.Name] = true
 		d.Recv = &ast.FieldList{List: []*ast.Field{{Names: []*ast.Ident{ident(f.Recv.Name)}, Type: w.typ(f.Recv.T)}}}
@@ -518,6 +593,9 @@ func (w *writer) moduleNames() []string {
 	}
 	for _, e := range m.Errors {
 		out = append(out, w.names.decl(e.Name))
+	}
+	for _, v := range m.Vars {
+		out = append(out, w.names.decl(v.Name))
 	}
 	for _, f := range m.Funcs {
 		if f.Recv == nil {
@@ -553,6 +631,12 @@ func collect(body []Stmt, used map[string]bool, foreign, clauses bool) {
 		for i := range e.Fields {
 			ex(&e.Fields[i].Value)
 		}
+		ex(e.Recv)
+		ex(e.F)
+		for _, p := range e.Params {
+			used[p.Name] = true
+		}
+		collect(e.Body, used, foreign, clauses)
 	}
 	for i := range body {
 		s := &body[i]
@@ -912,20 +996,28 @@ func (w *writer) expr(e Expr) ast.Expr {
 		}
 		stripPositions(x)
 		return x
+	case "float":
+		return w.floatLit(e.Value)
 	case "nil":
 		return ident("nil")
 	case "var":
 		return ident(e.Name)
-	case "const", "errvar":
+	case "const", "errvar", "global":
 		return ident(w.names.decl(e.Name))
 	case "field":
 		return &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.field(typeNameOf(e.X), e.Name))}
 	case "index":
 		return &ast.IndexExpr{X: primary(w.expr(*e.X)), Index: w.expr(*e.Index)}
 	case "call":
-		return &ast.CallExpr{Fun: ident(w.names.free(e.Name)), Args: w.exprs(e.Args)}
+		return w.call(w.instantiate(ident(w.names.free(e.Name)), e.Targs), e.Args)
 	case "method":
-		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.method(typeNameOf(e.X), e.Name))}, Args: w.exprs(e.Args)}
+		return w.call(&ast.SelectorExpr{X: primary(w.expr(*e.X)), Sel: ident(w.names.method(typeNameOf(e.X), e.Name))}, e.Args)
+	case "extern":
+		// The package is imported under its own name, or under that name with `_` appended where
+		// a name of the module or another import holds it (alias).
+		return w.call(w.instantiate(&ast.SelectorExpr{X: ident(w.alias(e.Path)), Sel: ident(e.Name)}, e.Targs), e.Args)
+	case "extern_method":
+		return w.call(&ast.SelectorExpr{X: primary(w.expr(*e.Recv)), Sel: ident(e.Name)}, e.Args)
 	case "binop":
 		op, ok := tokens[e.Op]
 		if !ok || op.Precedence() == token.LowestPrec {
@@ -946,13 +1038,13 @@ func (w *writer) expr(e Expr) ast.Expr {
 		}
 		return &ast.UnaryExpr{Op: op, X: x}
 	case "struct":
-		lit := &ast.CompositeLit{Type: ident(w.names.decl(e.Name))}
+		lit := &ast.CompositeLit{Type: w.named(e.Name, e.T)}
 		for _, f := range e.Fields {
 			lit.Elts = append(lit.Elts, &ast.KeyValueExpr{Key: ident(w.names.field(e.Name, f.Name)), Value: w.expr(f.Value)})
 		}
 		return lit
 	case "conv":
-		return &ast.CallExpr{Fun: ident(w.names.decl(e.Name)), Args: []ast.Expr{w.expr(*e.X)}}
+		return &ast.CallExpr{Fun: w.named(e.Name, e.T), Args: []ast.Expr{w.expr(*e.X)}}
 	case "make":
 		if e.T.K != "map" && e.T.K != "slice" {
 			w.refuse("make of a %s has no Go form", e.T.K)
@@ -974,7 +1066,7 @@ func (w *writer) expr(e Expr) ast.Expr {
 		if in[0] != "" {
 			fun = &ast.SelectorExpr{X: ident(w.alias(in[0])), Sel: ident(in[1])}
 		}
-		call := &ast.CallExpr{Fun: fun, Args: w.exprs(e.Args)}
+		call := w.call(fun, e.Args)
 		// Go's len is an int; a len of another integer type (a Rust reader's `len() as i64`)
 		// is converted to that type.
 		if e.Name == "len" && e.T != nil && !(e.T.K == "int" && e.T.Width == "platform" && e.T.Signed) {
@@ -983,34 +1075,110 @@ func (w *writer) expr(e Expr) ast.Expr {
 		return call
 	case "to_error":
 		return w.expr(*e.X)
+	case "func_ref":
+		if e.Recv == nil {
+			return ident(w.names.free(e.Name))
+		}
+		return &ast.SelectorExpr{X: primary(w.expr(*e.Recv)), Sel: ident(w.names.method(typeNameOf(e.Recv), e.Name))}
+	case "lambda":
+		return w.lambda(e)
+	case "call_value":
+		return w.call(primary(w.expr(*e.F)), e.Args)
+	case "iface_call":
+		return &ast.CallExpr{Fun: &ast.SelectorExpr{X: primary(w.expr(*e.Recv)), Sel: ident(e.Name)}, Args: w.exprs(e.Args)}
+	case "to_iface":
+		// Go converts a value to an interface where it is assigned, passed or returned.
+		return w.expr(*e.X)
 	}
 	w.refuse("expression %q has no Go form", e.K)
 	return ident("nil")
+}
+
+// call writes fun(args); a `spread` last argument is written as the slice followed by `...`. A
+// spread anywhere else has no Go form.
+func (w *writer) call(fun ast.Expr, args []Expr) *ast.CallExpr {
+	c := &ast.CallExpr{Fun: fun}
+	for i, a := range args {
+		if a.K == "spread" && a.X != nil {
+			if i != len(args)-1 {
+				w.refuse("a spread argument that is not the last has no Go form")
+			}
+			c.Args = append(c.Args, w.expr(*a.X))
+			c.Ellipsis = 1 // a marker position: valid, so the printer writes `...`
+			continue
+		}
+		c.Args = append(c.Args, w.expr(a))
+	}
+	return c
 }
 
 func (w *writer) zero(t Type) ast.Expr {
 	switch t.K {
 	case "int":
 		return &ast.BasicLit{Kind: token.INT, Value: "0"}
+	case "float":
+		return &ast.BasicLit{Kind: token.FLOAT, Value: "0.0"}
+	case "array":
+		return &ast.CompositeLit{Type: w.typ(t)}
 	case "bool":
 		return ident("false")
 	case "string":
 		return &ast.BasicLit{Kind: token.STRING, Value: `""`}
-	case "error", "any", "ptr", "slice", "map", "chan":
+	case "error", "any", "ptr", "slice", "map", "chan", "func":
 		return ident("nil")
+	case "extern":
+		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{w.typ(t)}}}
+	case "param":
+		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{w.typ(t)}}}
 	case "unit":
 		return &ast.CompositeLit{Type: w.typ(t)}
 	case "named":
 		td := w.types[t.Name]
 		switch {
+		case td == nil && w.isIface(t.Name):
+			return ident("nil")
 		case td == nil:
 		case td.K == "struct":
-			return &ast.CompositeLit{Type: ident(w.names.decl(t.Name))}
+			return &ast.CompositeLit{Type: w.typ(t)}
 		case td.K == "newtype" || td.K == "enum":
-			return &ast.CallExpr{Fun: ident(w.names.decl(t.Name)), Args: []ast.Expr{w.zero(*td.Under)}}
+			return &ast.CallExpr{Fun: w.typ(t), Args: []ast.Expr{w.zero(*td.Under)}}
 		}
-		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{ident(w.names.decl(t.Name))}}}
+		return &ast.StarExpr{X: &ast.CallExpr{Fun: ident("new"), Args: []ast.Expr{w.typ(t)}}}
 	}
 	w.refuse("the zero value of a %s has no Go form", t.K)
 	return ident("nil")
+}
+
+// funcType is a Go function type; with names, its parameters are named, as a literal's are.
+func (w *writer) funcType(names []string, params, results []Type) *ast.FuncType {
+	ft := &ast.FuncType{Params: &ast.FieldList{}}
+	for i, p := range params {
+		f := &ast.Field{Type: w.typ(p)}
+		if names != nil {
+			f.Names = []*ast.Ident{ident(names[i])}
+		}
+		ft.Params.List = append(ft.Params.List, f)
+	}
+	if len(results) > 0 {
+		ft.Results = &ast.FieldList{}
+		for _, r := range results {
+			ft.Results.List = append(ft.Results.List, &ast.Field{Type: w.typ(r)})
+		}
+	}
+	return ft
+}
+
+// lambda writes a function literal. No loop outside it is the target of a break inside it.
+func (w *writer) lambda(e Expr) ast.Expr {
+	var names []string
+	var params []Type
+	for _, p := range e.Params {
+		names = append(names, p.Name)
+		params = append(params, p.T)
+	}
+	breaks, pos := w.breaks, w.pos
+	w.breaks = nil
+	body := w.stmts(e.Body)
+	w.breaks, w.pos = breaks, pos
+	return &ast.FuncLit{Type: w.funcType(names, params, e.Results), Body: &ast.BlockStmt{List: body}}
 }

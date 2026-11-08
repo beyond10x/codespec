@@ -27,7 +27,7 @@ drift-checked by `task check` the way `schemas/cir-1.schema.json` is.
 | family | ids (examples) | source in the model |
 |---|---|---|
 | statement | `stmt.for`, `stmt.break`, `stmt.switch`, `stmt.lookup_else` | `Stmt` variants (16) |
-| expression | `expr.binop`, `expr.make`, `expr.intrinsic` | `Expr` variants (17) |
+| expression | `expr.binop`, `expr.make`, `expr.intrinsic` | `Expr` variants (18) |
 | operator | `op.add`, `op.rem`, `op.shl`, `unop.neg`, `assign.add` (`+=`), `assign.and_not` (`&^=`) | the `op` strings `Binop`, `Unop` and `Assign` document; each operator id carries its operator string in an `op` field |
 | intrinsic | `intrinsic.sprintf`, `intrinsic.append`, `intrinsic.len` | the names `Intrinsic` documents |
 | type | `type.int`, `type.map`, `type.chan`, `decl.union` (one id per variant; widths are not separate features) | `Type` (12), `TypeDecl` (4) |

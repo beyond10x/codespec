@@ -1,0 +1,22 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.iface_call",
+    "decl.interface",
+    "expr.call",
+    "expr.extern_method",
+    "expr.to_iface",
+    "expr.unop",
+    "expr.var",
+    "stmt.expr",
+    "stmt.return",
+    "stmt.var",
+    "type.error",
+    "type.extern",
+    "type.int",
+    "type.ptr",
+    "type.string",
+    "type.tuple",
+    "unop.ref"
+  ]
+}

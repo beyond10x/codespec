@@ -1,0 +1,222 @@
+{
+  "format": "cir/1",
+  "name": "expr_to_iface",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Tag",
+      "exported": true,
+      "fields": [
+        {
+          "name": "text",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "pos": "case.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Label",
+      "exported": true,
+      "recv": {
+        "name": "t",
+        "t": {
+          "k": "named",
+          "name": "Tag"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "lit",
+                  "value": "\"<\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "y": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "t",
+                    "t": {
+                      "k": "named",
+                      "name": "Tag"
+                    }
+                  },
+                  "name": "text",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                "t": {
+                  "k": "string"
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "\">\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "pos": "case.go:11"
+    },
+    {
+      "name": "Label",
+      "exported": true,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "l",
+          "t": {
+            "k": "named",
+            "name": "Labeler"
+          },
+          "pos": "case.go:17"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "l",
+              "t": {
+                "k": "named",
+                "name": "Labeler"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "to_iface",
+              "x": {
+                "k": "struct",
+                "name": "Tag",
+                "fields": [
+                  {
+                    "name": "text",
+                    "value": {
+                      "k": "var",
+                      "name": "s",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Tag"
+                }
+              },
+              "t": {
+                "k": "named",
+                "name": "Labeler"
+              }
+            }
+          ],
+          "pos": "case.go:18"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "iface_call",
+              "iface": "Labeler",
+              "name": "Label",
+              "recv": {
+                "k": "var",
+                "name": "l",
+                "t": {
+                  "k": "named",
+                  "name": "Labeler"
+                }
+              },
+              "args": [],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:19"
+        }
+      ],
+      "doc": "Label converts a Tag holding s to a Labeler by assignment and calls through it.",
+      "pos": "case.go:16"
+    }
+  ],
+  "layout": [
+    "type:Labeler",
+    "type:Tag",
+    "func:Tag.Label",
+    "func:Label"
+  ],
+  "facts": {
+    "shared": [],
+    "read_only": [
+      "Tag.Label"
+    ]
+  },
+  "interfaces": [
+    {
+      "name": "Labeler",
+      "exported": true,
+      "methods": [
+        {
+          "name": "Label",
+          "params": [],
+          "results": [
+            {
+              "k": "string"
+            }
+          ]
+        }
+      ],
+      "pos": "case.go:3"
+    }
+  ]
+}

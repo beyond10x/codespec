@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Fill",
+      "args": [
+        "\"ab\"",
+        "3"
+      ]
+    },
+    {
+      "func": "Fill",
+      "args": [
+        "\"x\"",
+        "0"
+      ]
+    }
+  ]
+}

@@ -69,14 +69,24 @@
       "description": "`^=`: bitwise exclusive or, assigned to the left-hand side"
     },
     {
+      "id": "decl.embedded",
+      "family": "type",
+      "description": "A struct field embedded in its struct (Go), named after its type; the reader writes every promoted field access and method call as the explicit path through it."
+    },
+    {
       "id": "decl.enum",
       "family": "type",
       "description": "A newtype whose values are exactly the declared variants."
     },
     {
+      "id": "decl.interface",
+      "family": "type",
+      "description": "An interface type: the method signatures a value of it can be called with."
+    },
+    {
       "id": "decl.newtype",
       "family": "type",
-      "description": "A basic type given a name."
+      "description": "A type given a name: a basic, function, map or slice type."
     },
     {
       "id": "decl.struct",
@@ -84,9 +94,24 @@
       "description": "the `struct` type declaration"
     },
     {
+      "id": "decl.type_params",
+      "family": "type",
+      "description": "Type parameters of a generic function, type or extern, each constrained by an interface; a method of a generic type binds its type's parameters through its receiver."
+    },
+    {
       "id": "decl.union",
       "family": "type",
       "description": "Tagged variants, each carrying its own fields."
+    },
+    {
+      "id": "decl.var",
+      "family": "type",
+      "description": "A module-level variable: a type and an optional initializer."
+    },
+    {
+      "id": "decl.variadic",
+      "family": "type",
+      "description": "A function or extern whose last parameter, a slice, takes zero or more arguments."
     },
     {
       "id": "expr.binop",
@@ -96,7 +121,12 @@
     {
       "id": "expr.call",
       "family": "expression",
-      "description": "A call of a module function."
+      "description": "A call of a module function; of a generic one with `targs`, its type arguments written out, as many as it has type parameters."
+    },
+    {
+      "id": "expr.call_value",
+      "family": "expression",
+      "description": "A call of the function value `f`."
     },
     {
       "id": "expr.const",
@@ -114,9 +144,39 @@
       "description": "A sentinel error."
     },
     {
+      "id": "expr.extern",
+      "family": "expression",
+      "description": "A call of the function `name` of `path`, declared in the module's `externs`; with `targs`, the type arguments of a generic one, as many as its declaration has type parameters."
+    },
+    {
+      "id": "expr.extern_method",
+      "family": "expression",
+      "description": "A call of the method `name` of the extern type `type` of `path` on `recv`, declared in the module's `externs` with that receiver type; with `targs`, the type arguments of the method's own type parameters (those of a generic receiver type are `recv`'s type's)."
+    },
+    {
       "id": "expr.field",
       "family": "expression",
       "description": "the `field` expression"
+    },
+    {
+      "id": "expr.float",
+      "family": "expression",
+      "description": "A floating-point literal: `value` is the shortest decimal that reads back to the same number of `t`'s width, laid out as [`float_spelling`] gives it."
+    },
+    {
+      "id": "expr.func_ref",
+      "family": "expression",
+      "description": "The module function `name` used as a value or, with `recv`, the method `name` bound to the receiver value `recv`."
+    },
+    {
+      "id": "expr.global",
+      "family": "expression",
+      "description": "A module-level variable, declared in the module's `vars`; read, or assigned to on the left of an `assign`."
+    },
+    {
+      "id": "expr.iface_call",
+      "family": "expression",
+      "description": "A call of the method `name` through `recv`, a value of the interface `iface` of `path` (empty: this module), declared in the module's `interfaces`, or a value of a type parameter that interface constrains: the method of whatever value `recv` holds runs."
     },
     {
       "id": "expr.index",
@@ -124,9 +184,19 @@
       "description": "the `index` expression"
     },
     {
+      "id": "expr.instantiate",
+      "family": "expression",
+      "description": "Type arguments written out on a call of a generic function or a use of a generic type, one per type parameter."
+    },
+    {
       "id": "expr.intrinsic",
       "family": "expression",
       "description": "`sprintf`, `errorf`, `println`, `append`, `len` or `sorted_keys`. `sorted_keys` takes a map and gives its keys as a slice in ascending order: integers numerically, strings by UTF-16 code unit, as Java's String.compareTo orders them, which byte order does not always match."
+    },
+    {
+      "id": "expr.lambda",
+      "family": "expression",
+      "description": "A function literal. `captures` names every local, parameter or receiver of the enclosing function it reads or writes, each in scope where the literal stands; inside `body` only `captures` and `params` are in scope."
     },
     {
       "id": "expr.lit",
@@ -149,6 +219,11 @@
       "description": "the `nil` expression"
     },
     {
+      "id": "expr.spread",
+      "family": "expression",
+      "description": "The slice `x` passed as the variadic last parameter itself (Go `xs...`): only the last argument of a `call`, `method`, `extern` or `extern_method` of a variadic function, or of the `append` intrinsic."
+    },
+    {
       "id": "expr.struct",
       "family": "expression",
       "description": "the `struct` expression"
@@ -157,6 +232,11 @@
       "id": "expr.to_error",
       "family": "expression",
       "description": "A value of an error struct used where an error is expected."
+    },
+    {
+      "id": "expr.to_iface",
+      "family": "expression",
+      "description": "The value `x`, of a concrete type or of another interface, used where a value of the interface `t` is expected."
     },
     {
       "id": "expr.unop",
@@ -473,6 +553,11 @@
       "description": "The top type (Go `any`)."
     },
     {
+      "id": "type.array",
+      "family": "type",
+      "description": "A fixed-size array of `len` values of `elem`; a value, copied on assignment."
+    },
+    {
       "id": "type.bool",
       "family": "type",
       "description": "the `bool` type"
@@ -488,6 +573,21 @@
       "description": "The source language's error type (Go `error`)."
     },
     {
+      "id": "type.extern",
+      "family": "type",
+      "description": "An opaque type `name` declared outside the module, in the package, crate or class `path` (Go `sync.Mutex`); its fields and representation are not part of the module. With `targs`, the generic type `name` instantiated with them (Go `atomic.Pointer[T]`)."
+    },
+    {
+      "id": "type.float",
+      "family": "type",
+      "description": "An IEEE 754 floating-point number of `bits` bits."
+    },
+    {
+      "id": "type.func",
+      "family": "type",
+      "description": "A function value taking `params` and giving `results`."
+    },
+    {
       "id": "type.int",
       "family": "type",
       "description": "the `int` type"
@@ -500,7 +600,12 @@
     {
       "id": "type.named",
       "family": "type",
-      "description": "A type the module declares."
+      "description": "A type the module declares or one of its own interfaces; with `targs`, the generic type `name` instantiated with them, as many as its declaration has type parameters."
+    },
+    {
+      "id": "type.param",
+      "family": "type",
+      "description": "The type parameter `name` of the enclosing generic declaration: a function's or extern's `tparams`, a type declaration's `tparams`, or one a method's receiver type binds by naming it among its type arguments."
     },
     {
       "id": "type.ptr",

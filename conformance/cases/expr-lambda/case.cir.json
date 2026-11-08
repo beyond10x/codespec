@@ -1,0 +1,280 @@
+{
+  "format": "cir/1",
+  "name": "expr_lambda",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Scale",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "k",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "calls"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "let",
+          "names": [
+            "mul"
+          ],
+          "rhs": [
+            {
+              "k": "lambda",
+              "params": [
+                {
+                  "name": "x",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "results": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              ],
+              "captures": [
+                "calls",
+                "k"
+              ],
+              "body": [
+                {
+                  "k": "incr",
+                  "x": {
+                    "k": "var",
+                    "name": "calls",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "pos": "case.go:8"
+                },
+                {
+                  "k": "return",
+                  "results": [
+                    {
+                      "k": "binop",
+                      "op": "*",
+                      "x": {
+                        "k": "var",
+                        "name": "x",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "y": {
+                        "k": "var",
+                        "name": "k",
+                        "t": {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      },
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "case.go:9"
+                }
+              ],
+              "t": {
+                "k": "func",
+                "params": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                ],
+                "results": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:7"
+        },
+        {
+          "k": "let",
+          "names": [
+            "r"
+          ],
+          "rhs": [
+            {
+              "k": "call_value",
+              "f": {
+                "k": "var",
+                "name": "mul",
+                "t": {
+                  "k": "func",
+                  "params": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ],
+                  "results": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ]
+                }
+              },
+              "args": [
+                {
+                  "k": "call_value",
+                  "f": {
+                    "k": "var",
+                    "name": "mul",
+                    "t": {
+                      "k": "func",
+                      "params": [
+                        {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      ],
+                      "results": [
+                        {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      ]
+                    }
+                  },
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "var",
+                "name": "r",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "calls",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Scale multiplies n by k twice through a function literal that captures k, and adds how often\nthe literal ran, counted in a captured local it writes.",
+      "pos": "case.go:5"
+    }
+  ],
+  "layout": [
+    "func:Scale"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

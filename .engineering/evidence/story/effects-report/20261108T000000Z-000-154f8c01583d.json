@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-08T00:00:00Z",
+  "actor": "human:timo",
+  "artifact": "story:effects-report",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (worktree wt-14f008a890d7, uncommitted)"
+  }
+}

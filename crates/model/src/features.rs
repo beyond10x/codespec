@@ -6,10 +6,10 @@
 //! read from [`schema_json`](crate::schema_json), and fact ids are the fields of
 //! [`Facts`](crate::Facts), so a variant or fact added to the model adds its id and the
 //! drift-checked `schemas/cir-1.features.json` no longer matches until it is regenerated.
-//! Operators, compound assignments, intrinsics and semantic differences are not variants; they are
-//! the constant lists below, each id with a one-line description. The operator and intrinsic
-//! lists are checked against the names the model documents on `Expr::Binop`, `Expr::Unop`,
-//! `Stmt::Assign` and `Expr::Intrinsic`.
+//! Operators, compound assignments, intrinsics, semantic differences and module declarations other
+//! than types (`decl.var`) are not variants; they are the constant lists below, each id with a
+//! one-line description. The operator and intrinsic lists are checked against the names the
+//! model documents on `Expr::Binop`, `Expr::Unop`, `Stmt::Assign` and `Expr::Intrinsic`.
 //!
 //! # The format `codespec-features/1`
 //!
@@ -155,6 +155,45 @@ const SEMANTICS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Module declarations that are not type declarations, so no `TypeDecl` variant: `decl.` ids in
+/// the `type` family, beside the type declarations. `decl.variadic` is a property of a function
+/// or extern declaration, `Param::variadic` and `Extern::variadic`.
+const MODULE_DECLS: &[(&str, &str)] = &[
+    (
+        "decl.interface",
+        "An interface type: the method signatures a value of it can be called with.",
+    ),
+    (
+        "decl.var",
+        "A module-level variable: a type and an optional initializer.",
+    ),
+    (
+        "decl.variadic",
+        "A function or extern whose last parameter, a slice, takes zero or more arguments.",
+    ),
+];
+
+/// Marks on a declaration that are not declarations of their own, so no `TypeDecl` variant: `decl.`
+/// ids in the `type` family, beside the type declarations.
+const DECL_MARKS: &[(&str, &str)] = &[
+    (
+        "decl.embedded",
+        "A struct field embedded in its struct (Go), named after its type; the reader writes every promoted field access and method call as the explicit path through it.",
+    ),
+    (
+        "decl.type_params",
+        "Type parameters of a generic function, type or extern, each constrained by an interface; a method of a generic type binds its type's parameters through its receiver.",
+    ),
+];
+
+/// Marks on an expression or type use that are not variants of their own: `expr.` ids in the
+/// `expression` family. `expr.instantiate` is a property of a call (`Expr::Call`, `Expr::Extern`,
+/// `Expr::ExternMethod`) or a type use (`Type::Named`, `Type::Extern`) carrying `targs`.
+const EXPR_MARKS: &[(&str, &str)] = &[(
+    "expr.instantiate",
+    "Type arguments written out on a call of a generic function or a use of a generic type, one per type parameter.",
+)];
+
 /// The variant-tagged enums of the model: schema definition, id prefix, family, noun.
 const TAGGED: &[(&str, &str, &str, &str)] = &[
     ("Stmt", "stmt", "statement", "statement"),
@@ -233,6 +272,30 @@ pub fn vocabulary() -> Vec<Feature> {
         out.push(feature(
             format!("intrinsic.{name}"),
             "intrinsic",
+            None,
+            (*what).to_string(),
+        ));
+    }
+    for (id, what) in MODULE_DECLS {
+        out.push(feature(
+            (*id).to_string(),
+            "type",
+            None,
+            (*what).to_string(),
+        ));
+    }
+    for (id, what) in DECL_MARKS {
+        out.push(feature(
+            (*id).to_string(),
+            "type",
+            None,
+            (*what).to_string(),
+        ));
+    }
+    for (id, what) in EXPR_MARKS {
+        out.push(feature(
+            (*id).to_string(),
+            "expression",
             None,
             (*what).to_string(),
         ));

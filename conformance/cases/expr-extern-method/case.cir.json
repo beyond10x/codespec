@@ -1,0 +1,238 @@
+{
+  "format": "cir/1",
+  "name": "expr_extern_method",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Count",
+      "exported": true,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "b",
+          "t": {
+            "k": "extern",
+            "path": "strings",
+            "name": "Builder"
+          },
+          "pos": "case.go:8"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "case.go:9"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "case.go:9"
+          },
+          "body": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "extern_method",
+                "path": "strings",
+                "type": "Builder",
+                "name": "WriteString",
+                "recv": {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "extern",
+                    "path": "strings",
+                    "name": "Builder"
+                  }
+                },
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "tuple",
+                  "elems": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    },
+                    {
+                      "k": "error"
+                    }
+                  ]
+                }
+              },
+              "pos": "case.go:10"
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern_method",
+              "path": "strings",
+              "type": "Builder",
+              "name": "Len",
+              "recv": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "extern",
+                  "path": "strings",
+                  "name": "Builder"
+                }
+              },
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:12"
+        }
+      ],
+      "doc": "Count writes s into a builder of the standard library n times and gives its length: calls of\nmethods of a type of another package.",
+      "pos": "case.go:7"
+    }
+  ],
+  "externs": [
+    {
+      "path": "strings",
+      "name": "Len",
+      "recv": {
+        "k": "ptr",
+        "elem": {
+          "k": "extern",
+          "path": "strings",
+          "name": "Builder"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ]
+    },
+    {
+      "path": "strings",
+      "name": "WriteString",
+      "recv": {
+        "k": "ptr",
+        "elem": {
+          "k": "extern",
+          "path": "strings",
+          "name": "Builder"
+        }
+      },
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "func:Count"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

@@ -33,6 +33,8 @@
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
+//! | an embedded field (`decl.embedded`) read, written or set in a struct literal | the function refused; the struct is written with it as an ordinary field | — |
+//! | type parameters (`decl.type_params`), a type parameter (`type.param`) or type arguments (`expr.instantiate`) in a function | the function refused, naming the feature; a module declaring a generic type refused whole | — |
 //! | an assignment with a call in its target (`s.pick().f = g()`, `xs[next()] = g()`) and a call in its value | refused: Go calls the target's first, and the value is bound first here | — |
 //! | a constant that cannot be written | left out and listed; each function reading it refused | — |
 //!
@@ -65,7 +67,8 @@
 use std::collections::BTreeSet;
 
 use codespec_model::{
-    ChanDir, Expr, Facts, Field, Func, IntWidth, Module, Stmt, Type, TypeDecl, receiver_type_name,
+    ChanDir, Expr, Facts, Field, FloatBits, Func, IntWidth, Module, Stmt, Type, TypeDecl,
+    receiver_type_name,
 };
 use proc_macro2::{Ident, Literal, Span, TokenStream, TokenTree};
 use quote::{ToTokens, quote};
@@ -140,6 +143,13 @@ pub fn write(m: &Module) -> Result<Written, String> {
             }
         }
     }
+    for v in &m.vars {
+        refused.push(Refusal {
+            name: v.name.clone(),
+            pos: v.pos.clone(),
+            reason: "decl.var: this writer has no Rust form for a module-level variable".into(),
+        });
+    }
     if let Some(init) = m
         .funcs
         .iter()
@@ -159,6 +169,28 @@ pub fn write(m: &Module) -> Result<Written, String> {
                     init.pos.clone()
                 },
                 reason: reason.into(),
+            });
+        }
+    }
+    for f in &m.funcs {
+        if let Some(why) = through_embedded(m, &f.body)
+            && !refused.iter().any(|r| r.name == f.key())
+        {
+            refused.push(Refusal {
+                name: f.key(),
+                pos: f.pos.clone(),
+                reason: format!(
+                    "decl.embedded: {why}: this writer has no Rust form for an embedded field"
+                ),
+            });
+        }
+        if let Some(id) = generic_feature(f)
+            && !refused.iter().any(|r| r.name == f.key())
+        {
+            refused.push(Refusal {
+                name: f.key(),
+                pos: f.pos.clone(),
+                reason: format!("{id}: this writer has no Rust mapping for type parameters"),
             });
         }
     }
@@ -192,11 +224,21 @@ pub fn write(m: &Module) -> Result<Written, String> {
     while i < m.layout.len() {
         let entry = &m.layout[i];
         if let Some(name) = entry.strip_prefix("type:") {
+            if m.interface_decl("", name).is_some() {
+                return Err(format!(
+                    "interface {name} (decl.interface): this writer has no Rust mapping for an interface"
+                ));
+            }
             let decl = m
                 .types
                 .iter()
                 .find(|t| t.name() == name)
                 .ok_or_else(|| format!("layout names type {name}, which is not declared"))?;
+            if !decl.tparams().is_empty() {
+                return Err(format!(
+                    "generic type {name} (decl.type_params): this writer has no Rust mapping for type parameters"
+                ));
+            }
             items.extend(w.type_decl(decl, &refused_names)?);
         } else if let Some(name) = entry.strip_prefix("const:") {
             if let Some(ts) = consts.get(name) {
@@ -304,7 +346,7 @@ fn nullable_pointers(w: &Writer) -> BTreeSet<String> {
             Type::Ptr { .. } => {
                 out.insert(type_name(t));
             }
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if !seen.insert(name.clone()) {
                     return;
                 }
@@ -780,7 +822,7 @@ impl<'a> Writer<'a> {
     fn shared(&self, t: &Type) -> bool {
         match t {
             Type::Ptr { elem } => match &**elem {
-                Type::Named { name } => self.facts.shared.iter().any(|s| s == name),
+                Type::Named { name, .. } => self.facts.shared.iter().any(|s| s == name),
                 _ => false,
             },
             _ => false,
@@ -795,7 +837,7 @@ impl<'a> Writer<'a> {
             return false;
         };
         let record = match &**elem {
-            Type::Named { name } => matches!(
+            Type::Named { name, .. } => matches!(
                 self.decl(name),
                 Some(TypeDecl::Struct { .. } | TypeDecl::Union { .. })
             ),
@@ -829,7 +871,7 @@ impl<'a> Writer<'a> {
     fn pointer_field(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
         match t {
             Type::Ptr { .. } => true,
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if !seen.insert(name.clone()) {
                     return false;
                 }
@@ -854,7 +896,7 @@ impl<'a> Writer<'a> {
                 self.holds_shared(key, seen) || self.holds_shared(elem, seen)
             }
             Type::Tuple { elems } => elems.iter().any(|e| self.holds_shared(e, seen)),
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if !seen.insert(name.clone()) {
                     return false;
                 }
@@ -878,7 +920,7 @@ impl<'a> Writer<'a> {
     fn shares_storage(&self, t: &Type, seen: &mut BTreeSet<String>) -> bool {
         match t {
             Type::Slice { .. } | Type::Map { .. } => true,
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if !seen.insert(name.clone()) {
                     return false;
                 }
@@ -959,7 +1001,17 @@ impl<'a> Writer<'a> {
             Type::Error => quote! { Error },
             Type::Unit => quote! { () },
             Type::Any => quote! { Rc<dyn std::any::Any> },
-            Type::Named { name } => {
+            Type::Named { name, targs } if !targs.is_empty() => {
+                return Err(format!(
+                    "type {name} with type arguments (expr.instantiate): this writer has no Rust mapping for type parameters"
+                ));
+            }
+            Type::Param { name } => {
+                return Err(format!(
+                    "type parameter {name} (type.param): this writer has no Rust mapping for type parameters"
+                ));
+            }
+            Type::Named { name, .. } => {
                 if self.decl(name).is_none() {
                     return Err(format!("type {name} is not declared"));
                 }
@@ -1008,6 +1060,25 @@ impl<'a> Writer<'a> {
                 }
             }
             Type::Tuple { .. } => return Err("a tuple outside a result list".into()),
+            Type::Float { .. } => {
+                return Err("type.float: this writer has no Rust form for a float".into());
+            }
+            Type::Array { .. } => {
+                return Err(
+                    "type.array: this writer has no Rust form for a fixed-size array".into(),
+                );
+            }
+            Type::Extern { path, name, .. } => {
+                return Err(format!(
+                    "extern type {path}.{name}: this writer has no Rust binding for a type outside the module"
+                ));
+            }
+            Type::Func { .. } => {
+                return Err(format!(
+                    "a function type {} (type.func): this writer has no Rust mapping for a function value",
+                    type_name(t)
+                ));
+            }
         })
     }
 
@@ -1015,7 +1086,7 @@ impl<'a> Writer<'a> {
     fn ordered_key(&self, t: &Type) -> bool {
         match t {
             Type::Int { .. } | Type::Bool | Type::String => true,
-            Type::Named { name } => match self.decl(name) {
+            Type::Named { name, .. } => match self.decl(name) {
                 Some(TypeDecl::Enum { .. }) => true,
                 Some(TypeDecl::Newtype { under, .. }) => basic(under),
                 _ => false,
@@ -1027,7 +1098,7 @@ impl<'a> Writer<'a> {
     fn is_copy(&self, t: &Type) -> bool {
         match t {
             Type::Int { .. } | Type::Bool | Type::Unit => true,
-            Type::Named { name } => match self.decl(name) {
+            Type::Named { name, .. } => match self.decl(name) {
                 Some(TypeDecl::Enum { .. }) => true,
                 Some(TypeDecl::Newtype { under, .. }) => self.is_copy(under),
                 _ => false,
@@ -1041,7 +1112,7 @@ impl<'a> Writer<'a> {
             Type::Int { .. } | Type::Bool | Type::String | Type::Unit => true,
             Type::Error => self.error_eq(seen),
             Type::Any => false,
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if !seen.insert(name.clone()) {
                     return true;
                 }
@@ -1059,7 +1130,13 @@ impl<'a> Writer<'a> {
             }
             Type::Ptr { elem } | Type::Slice { elem } => self.eq(elem, seen),
             Type::Map { key, elem } => self.eq(key, seen) && self.eq(elem, seen),
-            Type::Chan { .. } | Type::Tuple { .. } => false,
+            Type::Chan { .. }
+            | Type::Tuple { .. }
+            | Type::Float { .. }
+            | Type::Array { .. }
+            | Type::Extern { .. }
+            | Type::Func { .. }
+            | Type::Param { .. } => false,
         }
     }
 
@@ -1071,6 +1148,7 @@ impl<'a> Writer<'a> {
             .all(|d| {
                 self.eq(
                     &Type::Named {
+                        targs: Vec::new(),
                         name: d.name().to_string(),
                     },
                     seen,
@@ -1104,6 +1182,7 @@ impl<'a> Writer<'a> {
                 let doc = outer_doc(doc);
                 let v = vis(*exported);
                 let derives = self.derives(&Type::Named {
+                    targs: Vec::new(),
                     name: name.to_string(),
                 });
                 let fs = fields
@@ -1196,6 +1275,7 @@ impl<'a> Writer<'a> {
                 let doc = outer_doc(doc);
                 let v = vis(*exported);
                 let derives = self.derives(&Type::Named {
+                    targs: Vec::new(),
                     name: name.to_string(),
                 });
                 let vs = variants
@@ -1323,11 +1403,15 @@ impl<'a> Writer<'a> {
             .map(|n| self.names.ty(n))
             .collect();
         let mut seen = BTreeSet::new();
-        let eq = self
-            .facts
-            .messages
-            .iter()
-            .all(|n| self.eq(&Type::Named { name: n.clone() }, &mut seen));
+        let eq = self.facts.messages.iter().all(|n| {
+            self.eq(
+                &Type::Named {
+                    targs: Vec::new(),
+                    name: n.clone(),
+                },
+                &mut seen,
+            )
+        });
         let derives = if eq {
             quote! { #[derive(Debug, Clone, PartialEq)] }
         } else {
@@ -1501,6 +1585,12 @@ impl<'a> Writer<'a> {
                 quote! { &mut self }
             });
         }
+        if let Some(p) = f.params.iter().find(|p| p.variadic) {
+            return Err(at(format!(
+                "variadic parameter {} (decl.variadic): this writer has no Rust mapping for a variadic function",
+                p.name
+            )));
+        }
         for p in &f.params {
             let t = self.ty(&p.t).map_err(at)?;
             let n = if p.name == "_" || !used.contains(&p.name) {
@@ -1605,7 +1695,7 @@ impl<'a> Writer<'a> {
                 _ => Err(format!("bool literal {value}")),
             },
             Type::Int { .. } => self.int_lit(value, t),
-            Type::Named { name } => match self.decl(name) {
+            Type::Named { name, .. } => match self.decl(name) {
                 Some(TypeDecl::Newtype { under, .. }) => {
                     let inner = self.lit(value, under)?.ts;
                     let n = self.names.ty(name);
@@ -1688,7 +1778,7 @@ impl<'a> Writer<'a> {
             Type::Slice { .. } => quote! { Vec::new() },
             Type::Map { .. } => quote! { BTreeMap::new() },
             Type::Ptr { .. } if self.nullable(t) => quote! { None },
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 let n = self.names.ty(name);
                 match self.decl(name) {
                     Some(TypeDecl::Struct { fields, .. }) => {
@@ -1718,6 +1808,39 @@ impl<'a> Writer<'a> {
     }
 }
 
+/// The feature id of the first generic construct `f` holds: its own type parameters
+/// (`decl.type_params`), a type parameter in a type (`type.param`), or type arguments on a call or
+/// a type (`expr.instantiate`); `None` for a function with none.
+fn generic_feature(f: &Func) -> Option<&'static str> {
+    fn scan(v: &serde_json::Value, param: &mut bool, inst: &mut bool) {
+        match v {
+            serde_json::Value::Object(o) => {
+                *param |= o.get("k").and_then(|k| k.as_str()) == Some("param");
+                *inst |= o.contains_key("targs");
+                o.values().for_each(|x| scan(x, param, inst));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| scan(x, param, inst)),
+            _ => {}
+        }
+    }
+    if !f.tparams.is_empty() {
+        return Some("decl.type_params");
+    }
+    let (mut param, mut inst) = (false, false);
+    scan(
+        &serde_json::to_value(f).expect("a function always serializes"),
+        &mut param,
+        &mut inst,
+    );
+    if param {
+        Some("type.param")
+    } else if inst {
+        Some("expr.instantiate")
+    } else {
+        None
+    }
+}
+
 fn basic(t: &Type) -> bool {
     matches!(t, Type::Int { .. } | Type::Bool | Type::String)
 }
@@ -1739,14 +1862,26 @@ fn type_name(t: &Type) -> String {
         Type::Error => "error".into(),
         Type::Any => "any".into(),
         Type::Unit => "unit".into(),
-        Type::Named { name } => name.clone(),
+        Type::Named { name, .. } => name.clone(),
+        Type::Extern { path, name, .. } => format!("{path}.{name}"),
+        Type::Param { name } => name.clone(),
         Type::Ptr { elem } => format!("*{}", type_name(elem)),
         Type::Slice { elem } => format!("[]{}", type_name(elem)),
+        Type::Array { len, elem } => format!("[{len}]{}", type_name(elem)),
+        Type::Float { bits } => match bits {
+            FloatBits::W32 => "float32".into(),
+            FloatBits::W64 => "float64".into(),
+        },
         Type::Map { key, elem } => format!("map[{}]{}", type_name(key), type_name(elem)),
         Type::Chan { elem, .. } => format!("chan {}", type_name(elem)),
         Type::Tuple { elems } => format!(
             "({})",
             elems.iter().map(type_name).collect::<Vec<_>>().join(", ")
+        ),
+        Type::Func { params, results } => format!(
+            "func({}) ({})",
+            params.iter().map(type_name).collect::<Vec<_>>().join(", "),
+            results.iter().map(type_name).collect::<Vec<_>>().join(", ")
         ),
     }
 }
@@ -1905,10 +2040,10 @@ fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             walk_expr(x, f);
             walk_expr(y, f);
         }
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().for_each(|a| walk_expr(a, f))
         }
-        Expr::Method { x, args, .. } => {
+        Expr::Method { x, args, .. } | Expr::ExternMethod { recv: x, args, .. } => {
             walk_expr(x, f);
             args.iter().for_each(|a| walk_expr(a, f));
         }
@@ -2030,10 +2165,10 @@ fn only_through(e: &Expr, n: &str) -> bool {
         | Expr::ToError { x, .. } => only_through(x, n),
         Expr::Index { x, index, .. } => only_through(x, n) && only_through(index, n),
         Expr::Binop { x, y, .. } => only_through(x, n) && only_through(y, n),
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().all(|a| only_through(a, n))
         }
-        Expr::Method { x, args, .. } => {
+        Expr::Method { x, args, .. } | Expr::ExternMethod { recv: x, args, .. } => {
             only_through(x, n) && args.iter().all(|a| only_through(a, n))
         }
         Expr::Struct { fields, .. } => fields.iter().all(|fi| only_through(&fi.value, n)),
@@ -2082,6 +2217,48 @@ fn moves(f: &Func) -> BTreeSet<String> {
         }
     }
     out
+}
+
+/// The first embedded field `body` reads, writes or sets in a struct literal, spelled `field <name>
+/// of <struct>`; `None` when there is none.
+fn through_embedded(m: &Module, body: &[Stmt]) -> Option<String> {
+    let embedded = |owner: &str, field: &str| {
+        m.types.iter().any(|d| match d {
+            TypeDecl::Struct { name, fields, .. } => {
+                name == owner && fields.iter().any(|f| f.embedded && f.name == field)
+            }
+            _ => false,
+        })
+    };
+    let mut found = None;
+    walk_exprs(body, &mut |e| {
+        if found.is_some() {
+            return;
+        }
+        let hit = match e {
+            Expr::Field { x, name, .. } => {
+                let owner = match x.t() {
+                    Type::Ptr { elem } => &**elem,
+                    t => t,
+                };
+                match owner {
+                    Type::Named { name: owner, .. } if embedded(owner, name) => {
+                        Some((owner.clone(), name.clone()))
+                    }
+                    _ => None,
+                }
+            }
+            Expr::Struct { name, fields, .. } => fields
+                .iter()
+                .find(|f| embedded(name, &f.name))
+                .map(|f| (name.clone(), f.name.clone())),
+            _ => None,
+        };
+        if let Some((owner, field)) = hit {
+            found = Some(format!("field {field} of {owner} is embedded"));
+        }
+    });
+    found
 }
 
 fn walk_exprs(body: &[Stmt], f: &mut dyn FnMut(&Expr)) {
@@ -3138,7 +3315,7 @@ impl Fx<'_, '_> {
                 Ok(quote! { Error::#v })
             }
             Expr::ToError { x, .. } => match x.t() {
-                Type::Named { name } if self.w.is_error_struct(name) => {
+                Type::Named { name, .. } if self.w.is_error_struct(name) => {
                     let v = self.w.names.error(name);
                     let x = self.val(x)?.ts;
                     Ok(quote! { Error::#v(#x) })
@@ -3161,7 +3338,7 @@ impl Fx<'_, '_> {
         let c = self.place(chan)?.recv();
         let v = self.val(x)?.ts;
         let msg = if matches!(**elem, Type::Any) {
-            let Type::Named { name } = x.t() else {
+            let Type::Named { name, .. } = x.t() else {
                 return Err(format!("a {} sent on a channel of `any`", type_name(x.t())));
             };
             if !self.w.facts.messages.iter().any(|m| m == name) {
@@ -3201,13 +3378,16 @@ impl Fx<'_, '_> {
                 }
             }
             Expr::Lit { value, t } => self.w.lit(value, t),
+            Expr::Float { value, .. } => Err(format!(
+                "expr.float: float literal {value}: this writer has no Rust form for a float"
+            )),
             Expr::Nil { t } => match t {
                 Type::Slice { .. } | Type::Map { .. } => self.w.zero(t),
                 Type::Ptr { .. } if self.w.nullable(t) => self.w.zero(t),
                 _ => Err(format!("nil of type {}", type_name(t))),
             },
             Expr::Const { name, t } => {
-                if let Type::Named { name: tn } = t
+                if let Type::Named { name: tn, .. } = t
                     && let Some(TypeDecl::Enum { variants, .. }) = self.w.decl(tn)
                     && variants.iter().any(|v| v.name == *name)
                 {
@@ -3230,6 +3410,38 @@ impl Fx<'_, '_> {
             Expr::Errvar { .. } | Expr::ToError { .. } => {
                 Err("an error value outside an error result".into())
             }
+            Expr::Global { name, .. } => Err(format!(
+                "expr.global: module-level variable {name}: this writer has no Rust form for a module-level variable"
+            )),
+            Expr::FuncRef { name, .. } => Err(format!(
+                "{name} used as a function value (expr.func_ref): this writer has no Rust mapping for a function value"
+            )),
+            Expr::Lambda { .. } => Err(
+                "a function literal (expr.lambda): this writer has no Rust mapping for a function value".into(),
+            ),
+            Expr::CallValue { .. } => Err(
+                "a call of a function value (expr.call_value): this writer has no Rust mapping for a function value".into(),
+            ),
+            Expr::Spread { .. } => Err(
+                "a spread argument (expr.spread): this writer has no Rust mapping for a variadic call".into(),
+            ),
+            Expr::IfaceCall { iface, name, .. } => Err(format!(
+                "a call {iface}.{name} through an interface (expr.iface_call): this writer has no Rust mapping for an interface"
+            )),
+            Expr::ToIface { .. } => Err(
+                "a value converted to an interface (expr.to_iface): this writer has no Rust mapping for an interface".into(),
+            ),
+            Expr::Extern { path, name, .. } => Err(format!(
+                "extern call {path}.{name}: this writer has no Rust binding for a function outside the module"
+            )),
+            Expr::ExternMethod {
+                path,
+                type_name,
+                name,
+                ..
+            } => Err(format!(
+                "extern method call {path}.{type_name}.{name}: this writer has no Rust binding for a method outside the module"
+            )),
             Expr::Call { name, args, .. } => {
                 let callee = self
                     .w
@@ -3388,7 +3600,7 @@ impl Fx<'_, '_> {
                 Ok(Rx::atom(quote! { #n { #(#fs),* } }))
             }
             Expr::Conv { name, x, .. } => {
-                if let Type::Named { name: from } = x.t()
+                if let Type::Named { name: from, .. } = x.t()
                     && from == name
                 {
                     return self.val(x);
@@ -3516,7 +3728,7 @@ impl Fx<'_, '_> {
     fn comparable(&self, t: &Type) -> R<()> {
         match t {
             Type::Int { .. } | Type::Bool | Type::String => Ok(()),
-            Type::Named { name } => match self.w.decl(name) {
+            Type::Named { name, .. } => match self.w.decl(name) {
                 Some(TypeDecl::Enum { .. } | TypeDecl::Newtype { .. }) => Ok(()),
                 Some(TypeDecl::Struct { .. }) if self.w.pointer_field(t, &mut BTreeSet::new()) => {
                     Err(format!(
@@ -3533,7 +3745,7 @@ impl Fx<'_, '_> {
 
     /// A newtype over an integer type: its Rust name and the integer type.
     fn int_newtype(&self, t: &Type) -> Option<(Ident, Type)> {
-        let Type::Named { name } = t else {
+        let Type::Named { name, .. } = t else {
             return None;
         };
         match self.w.decl(name) {
@@ -3595,7 +3807,7 @@ impl Fx<'_, '_> {
                 if op != "==" && op != "!=" {
                     let ordered = match x.t() {
                         Type::Int { .. } | Type::String => true,
-                        Type::Named { name } => matches!(
+                        Type::Named { name, .. } => matches!(
                             self.w.decl(name),
                             Some(TypeDecl::Newtype { under, .. }) if basic(under)
                         ),
@@ -3883,8 +4095,8 @@ impl Fx<'_, '_> {
             Type::Bool => 't',
             Type::String => 's',
             Type::Error => 's',
-            Type::Named { name } if self.w.render(name, self.refused).is_some() => 's',
-            Type::Named { name } => {
+            Type::Named { name, .. } if self.w.render(name, self.refused).is_some() => 's',
+            Type::Named { name, .. } => {
                 return Err(format!(
                     "{name} formatted, but it has no rendering: `displays` does not list it, or only a pointer receiver renders it"
                 ));

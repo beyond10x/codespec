@@ -172,37 +172,29 @@ func F() (n int) {
 `)
 }
 
-// An embedded field is read as a field named after its type, so a promoted field stops resolving.
-// The reader now refuses such a struct, so this asserts the refusal instead of a compiling round
-// trip: the struct is listed as a refusal and is not read as a struct with a field named A.
+// An embedded field was once read as a field named after its type, so a promoted field stopped
+// resolving. It is read as a field marked embedded and the promoted b.X as b.A.X, so the round trip
+// compiles, and nothing is refused.
 func TestAdversaryEmbeddedFieldPromotionCompiles(t *testing.T) {
-	doc := readSource(t, "em", `package em
+	src := `package em
 
 type A struct{ X int }
 
 type B struct{ A }
 
 func F(b B) int { return b.X }
-`)
+`
+	doc := readSource(t, "em", src)
 	var m struct {
-		Types    []struct{ Name string }
 		Refusals []struct{ What, Reason string }
 	}
 	if err := json.Unmarshal(doc, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, td := range m.Types {
-		if td.Name == "B" {
-			t.Errorf("struct B with an embedded field was read as a struct")
-		}
+	if len(m.Refusals) != 0 {
+		t.Errorf("refusals %+v", m.Refusals)
 	}
-	refused := false
-	for _, r := range m.Refusals {
-		refused = refused || (r.What == "B" && strings.Contains(r.Reason, "embedded"))
-	}
-	if !refused {
-		t.Errorf("no refusal names the embedded field of B: %+v", m.Refusals)
-	}
+	roundTrip(t, "em", src)
 }
 
 // append(a, b...) is read as the intrinsic append(a, b); the spread is gone.

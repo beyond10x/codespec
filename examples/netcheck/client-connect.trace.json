@@ -1,0 +1,169 @@
+{
+  "format": "codespec-trace/1",
+  "from": "example.com/netcheck/cmd/client.main",
+  "depth": 16,
+  "dispatch": "rta",
+  "root": {
+    "k": "call",
+    "pos": "main.go:11",
+    "name": "example.com/netcheck/cmd/client.main",
+    "def": "main.go:11",
+    "body": [
+      {
+        "k": "call",
+        "pos": "main.go:12",
+        "name": "example.com/netcheck.CheckAll",
+        "def": "netcheck.go:77",
+        "body": [
+          {
+            "k": "lambda",
+            "pos": "netcheck.go:78",
+            "body": [
+              {
+                "k": "dispatch",
+                "pos": "netcheck.go:78",
+                "call": "example.com/netcheck.Prober.Probe",
+                "candidates": [
+                  {
+                    "k": "call",
+                    "pos": "netcheck.go:78",
+                    "name": "example.com/netcheck.TCPProber.Probe",
+                    "def": "netcheck.go:28",
+                    "body": [
+                      {
+                        "k": "call",
+                        "pos": "netcheck.go:29",
+                        "name": "net.Dial",
+                        "def": "dial.go:473",
+                        "body": [
+                          {
+                            "k": "call",
+                            "pos": "dial.go:475",
+                            "name": "net.Dialer.Dial",
+                            "def": "dial.go:507",
+                            "body": [
+                              {
+                                "k": "call",
+                                "pos": "dial.go:508",
+                                "name": "net.Dialer.DialContext",
+                                "def": "dial.go:529",
+                                "body": [
+                                  {
+                                    "k": "call",
+                                    "pos": "dial.go:560",
+                                    "name": "net.sysDialer.dialParallel",
+                                    "def": "dial.go:659",
+                                    "body": [
+                                      {
+                                        "k": "call",
+                                        "pos": "dial.go:661",
+                                        "name": "net.sysDialer.dialSerial",
+                                        "def": "dial.go:733",
+                                        "body": [
+                                          {
+                                            "k": "call",
+                                            "pos": "dial.go:760",
+                                            "name": "net.sysDialer.dialSingle",
+                                            "def": "dial.go:777",
+                                            "body": [
+                                              {
+                                                "k": "call",
+                                                "pos": "dial.go:799",
+                                                "name": "net.sysDialer.dialUDP",
+                                                "def": "udpsock_posix.go:213",
+                                                "body": [
+                                                  {
+                                                    "k": "call",
+                                                    "pos": "udpsock_posix.go:220",
+                                                    "name": "net.internetSocket",
+                                                    "def": "ipsock_posix.go:165",
+                                                    "body": [
+                                                      {
+                                                        "k": "call",
+                                                        "pos": "ipsock_posix.go:173",
+                                                        "name": "net.socket",
+                                                        "def": "sock_posix.go:18",
+                                                        "body": [
+                                                          {
+                                                            "k": "call",
+                                                            "pos": "sock_posix.go:67",
+                                                            "name": "net.netFD.dial",
+                                                            "def": "sock_posix.go:89",
+                                                            "body": [
+                                                              {
+                                                                "k": "if",
+                                                                "pos": "sock_posix.go:117",
+                                                                "cond": "raddr != nil",
+                                                                "then": [
+                                                                  {
+                                                                    "k": "call",
+                                                                    "pos": "sock_posix.go:121",
+                                                                    "name": "net.netFD.connect",
+                                                                    "def": "fd_unix.go:43",
+                                                                    "body": [
+                                                                      {
+                                                                        "k": "dispatch",
+                                                                        "pos": "fd_unix.go:47",
+                                                                        "call": "func value func(int, syscall.Sockaddr) error",
+                                                                        "candidates": [
+                                                                          {
+                                                                            "k": "call",
+                                                                            "pos": "fd_unix.go:47",
+                                                                            "name": "syscall.Connect",
+                                                                            "def": "syscall_unix.go:295",
+                                                                            "body": [
+                                                                              {
+                                                                                "k": "call",
+                                                                                "pos": "syscall_unix.go:300",
+                                                                                "name": "syscall.connect",
+                                                                                "def": "zsyscall_linux_amd64.go:1421",
+                                                                                "body": [
+                                                                                  {
+                                                                                    "k": "syscall",
+                                                                                    "pos": "zsyscall_linux_amd64.go:1422",
+                                                                                    "name": "connect",
+                                                                                    "effects": [
+                                                                                      "net"
+                                                                                    ]
+                                                                                  }
+                                                                                ]
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

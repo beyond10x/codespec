@@ -15,7 +15,10 @@ fn int() -> Type {
 }
 
 fn named(n: &str) -> Type {
-    Type::Named { name: n.into() }
+    Type::Named {
+        targs: Vec::new(),
+        name: n.into(),
+    }
 }
 
 fn ptr(t: Type) -> Type {
@@ -115,6 +118,7 @@ fn if_not(ok: &str, then: Vec<Stmt>, n: u32) -> Stmt {
 
 fn func(name: &str, params: Vec<Param>, results: Vec<Type>, body: Vec<Stmt>) -> Func {
     Func {
+        tparams: Vec::new(),
         name: name.into(),
         exported: true,
         recv: None,
@@ -131,22 +135,32 @@ fn method(recv: Type, name: &str, results: Vec<Type>, body: Vec<Stmt>) -> Func {
         recv: Some(Param {
             name: "s".into(),
             t: recv,
+            variadic: false,
         }),
         ..func(name, vec![], results, body)
     }
 }
 
 fn param(n: &str, t: Type) -> Param {
-    Param { name: n.into(), t }
+    Param {
+        name: n.into(),
+        t,
+        variadic: false,
+    }
 }
 
 fn strukt(name: &str, fields: Vec<(&str, Type)>) -> TypeDecl {
     TypeDecl::Struct {
+        tparams: Vec::new(),
         name: name.into(),
         exported: true,
         fields: fields
             .into_iter()
-            .map(|(n, t)| codespec_model::Field { name: n.into(), t })
+            .map(|(n, t)| codespec_model::Field {
+                name: n.into(),
+                t,
+                embedded: false,
+            })
             .collect(),
         doc: String::new(),
         pos: p(1),
@@ -166,10 +180,18 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         types,
         consts: vec![],
         errors: vec![],
+        vars: vec![],
         funcs,
+        externs: vec![],
         layout: vec![],
         facts: None,
         refusals: vec![],
+        path: String::new(),
+        opaque: vec![],
+        methods: vec![],
+        linknames: vec![],
+        inits: vec![],
+        interfaces: vec![],
     }
 }
 
@@ -354,6 +376,7 @@ fn adversary_read_only_omits_a_shared_receiver_passed_to_a_writing_function() {
         vec![],
         vec![Stmt::Expr {
             x: Expr::Call {
+                targs: Vec::new(),
                 name: "zero".into(),
                 args: vec![s()],
                 t: Type::Unit,

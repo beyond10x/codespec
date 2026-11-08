@@ -1,0 +1,2187 @@
+{
+  "format": "codespec-effects-report/1",
+  "module": "75 modules",
+  "funcs": [
+    {
+      "path": "example.com/netcheck",
+      "name": "TCP",
+      "pos": "netcheck.go:23",
+      "effects": [],
+      "unknown": []
+    },
+    {
+      "path": "example.com/netcheck",
+      "name": "TCPProber.Probe",
+      "pos": "netcheck.go:28",
+      "effects": [
+        "env",
+        "fs.read",
+        "fs.write",
+        "io",
+        "net",
+        "proc",
+        "time"
+      ],
+      "unknown": [
+        {
+          "pos": "netcheck.go:29",
+          "reason": "calls net.Dial which is incomplete"
+        },
+        {
+          "pos": "netcheck.go:33",
+          "reason": "calls io.WriteString which is incomplete"
+        },
+        {
+          "pos": "netcheck.go:35",
+          "reason": "calls net.conn.Close which is incomplete"
+        },
+        {
+          "pos": "netcheck.go:38",
+          "reason": "calls bufio.Reader.ReadString which is incomplete"
+        },
+        {
+          "pos": "netcheck.go:39",
+          "reason": "calls net.conn.Close which is incomplete"
+        }
+      ],
+      "syscalls": [
+        {
+          "name": "bind",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "clock_gettime",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "clone",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "close",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "connect",
+          "at": [
+            "netcheck.go:29"
+          ]
+        },
+        {
+          "name": "epoll_create1",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "epoll_ctl",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "epoll_pwait",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "eventfd2",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "exit_group",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "fchmodat",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "fchmodat2",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "fcntl",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "fstat",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "futex",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "getpeername",
+          "at": [
+            "netcheck.go:29"
+          ]
+        },
+        {
+          "name": "getpid",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "getsockname",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "getsockopt",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "gettid",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "listen",
+          "at": [
+            "netcheck.go:29"
+          ]
+        },
+        {
+          "name": "lseek",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "madvise",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "mmap",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "mprotect",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "munmap",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "nanosleep",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "newfstatat",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "openat",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "pidfd_open",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "pidfd_send_signal",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "pipe2",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "prctl",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "read",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "recvfrom",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "rt_sigaction",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "rt_sigprocmask",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "sched_yield",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "sendto",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "setsockopt",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "socket",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "tgkill",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "timer_create",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "timer_delete",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "timer_settime",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "uname",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "wait4",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "waitid",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        },
+        {
+          "name": "write",
+          "at": [
+            "netcheck.go:29",
+            "netcheck.go:33",
+            "netcheck.go:35",
+            "netcheck.go:38",
+            "netcheck.go:39"
+          ]
+        }
+      ],
+      "dispatch": [
+        {
+          "pos": "netcheck.go:35",
+          "call": "net.Conn.Close",
+          "candidates": 1
+        },
+        {
+          "pos": "netcheck.go:39",
+          "call": "net.Conn.Close",
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck",
+      "name": "FixedProber.Probe",
+      "pos": "netcheck.go:49",
+      "effects": [],
+      "unknown": [
+        {
+          "pos": "netcheck.go:50",
+          "reason": "calls Count which is incomplete"
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck",
+      "name": "Answer",
+      "pos": "netcheck.go:54",
+      "effects": [],
+      "unknown": []
+    },
+    {
+      "path": "example.com/netcheck",
+      "name": "Count",
+      "pos": "netcheck.go:66",
+      "effects": [],
+      "unknown": [
+        {
+          "pos": "netcheck.go:69",
+          "reason": "function value with no candidate in the set: func(T) bool"
+        }
+      ],
+      "dispatch": [
+        {
+          "pos": "netcheck.go:69",
+          "call": "func value func(T) bool",
+          "candidates": 0
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck",
+      "name": "CheckAll",
+      "pos": "netcheck.go:77",
+      "effects": [
+        "env",
+        "fs.read",
+        "fs.write",
+        "io",
+        "net",
+        "proc",
+        "time"
+      ],
+      "unknown": [
+        {
+          "pos": "netcheck.go:78",
+          "reason": "calls Count which is incomplete"
+        },
+        {
+          "pos": "netcheck.go:78",
+          "reason": "calls TCPProber.Probe which is incomplete"
+        }
+      ],
+      "syscalls": [
+        {
+          "name": "bind",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "clock_gettime",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "clone",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "close",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "connect",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "epoll_create1",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "epoll_ctl",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "epoll_pwait",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "eventfd2",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "exit_group",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "fchmodat",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "fchmodat2",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "fcntl",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "fstat",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "futex",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "getpeername",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "getpid",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "getsockname",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "getsockopt",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "gettid",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "listen",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "lseek",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "madvise",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "mmap",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "mprotect",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "munmap",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "nanosleep",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "newfstatat",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "openat",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "pidfd_open",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "pidfd_send_signal",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "pipe2",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "prctl",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "read",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "recvfrom",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "rt_sigaction",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "rt_sigprocmask",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "sched_yield",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "sendto",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "setsockopt",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "socket",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "tgkill",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "timer_create",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "timer_delete",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "timer_settime",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "uname",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "wait4",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "waitid",
+          "at": [
+            "netcheck.go:78"
+          ]
+        },
+        {
+          "name": "write",
+          "at": [
+            "netcheck.go:78"
+          ]
+        }
+      ],
+      "dispatch": [
+        {
+          "pos": "netcheck.go:78",
+          "call": "example.com/netcheck.Prober.Probe",
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck/cmd/client",
+      "name": "main",
+      "pos": "main.go:11",
+      "effects": [
+        "env",
+        "fs.read",
+        "fs.write",
+        "io",
+        "net",
+        "proc",
+        "stdout",
+        "time"
+      ],
+      "unknown": [
+        {
+          "pos": "main.go:12",
+          "reason": "calls example.com/netcheck.CheckAll which is incomplete"
+        },
+        {
+          "pos": "main.go:13",
+          "reason": "calls fmt.Println which is incomplete"
+        }
+      ],
+      "syscalls": [
+        {
+          "name": "bind",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "clock_gettime",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "clone",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "close",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "connect",
+          "at": [
+            "main.go:12"
+          ]
+        },
+        {
+          "name": "epoll_create1",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "epoll_ctl",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "epoll_pwait",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "eventfd2",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "exit_group",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "fchmodat",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "fchmodat2",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "fcntl",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "fstat",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "futex",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "getpeername",
+          "at": [
+            "main.go:12"
+          ]
+        },
+        {
+          "name": "getpid",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "getsockname",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "getsockopt",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "gettid",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "listen",
+          "at": [
+            "main.go:12"
+          ]
+        },
+        {
+          "name": "lseek",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "madvise",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "mmap",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "mprotect",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "munmap",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "nanosleep",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "newfstatat",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "openat",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "pidfd_open",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "pidfd_send_signal",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "pipe2",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "prctl",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "read",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "recvfrom",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "rt_sigaction",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "rt_sigprocmask",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "sched_yield",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "sendto",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "setsockopt",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "socket",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "tgkill",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "timer_create",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "timer_delete",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "timer_settime",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "uname",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "wait4",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "waitid",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        },
+        {
+          "name": "write",
+          "at": [
+            "main.go:12",
+            "main.go:13"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck/cmd/server",
+      "name": "main",
+      "pos": "main.go:13",
+      "effects": [
+        "env",
+        "fs.read",
+        "fs.write",
+        "io",
+        "net",
+        "proc",
+        "stdout",
+        "time"
+      ],
+      "unknown": [
+        {
+          "pos": "main.go:14",
+          "reason": "calls net.Listen which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls fmt.Println which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls io/fs.PathError.Error which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls net.OpError.Error which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls os.SyscallError.Error which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls runtime.TypeAssertionError.Error which is incomplete"
+        },
+        {
+          "pos": "main.go:16",
+          "reason": "calls vendor/golang.org/x/net/dns/dnsmessage.nestedError.Error which is incomplete"
+        },
+        {
+          "pos": "main.go:20",
+          "reason": "calls net.TCPListener.Accept which is incomplete"
+        },
+        {
+          "pos": "main.go:20",
+          "reason": "calls net.UnixListener.Accept which is incomplete"
+        },
+        {
+          "pos": "main.go:24",
+          "reason": "calls serve which is incomplete"
+        }
+      ],
+      "syscalls": [
+        {
+          "name": "accept4",
+          "at": [
+            "main.go:20"
+          ]
+        },
+        {
+          "name": "bind",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "clock_gettime",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "clone",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "close",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "connect",
+          "at": [
+            "main.go:14"
+          ]
+        },
+        {
+          "name": "epoll_create1",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "epoll_ctl",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "epoll_pwait",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "eventfd2",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "exit_group",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "fchmodat",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "fchmodat2",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "fcntl",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "fstat",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "futex",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "getpeername",
+          "at": [
+            "main.go:14"
+          ]
+        },
+        {
+          "name": "getpid",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "getsockname",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "getsockopt",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "gettid",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "listen",
+          "at": [
+            "main.go:14"
+          ]
+        },
+        {
+          "name": "lseek",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "madvise",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "mmap",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "mprotect",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "munmap",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "nanosleep",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "newfstatat",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "openat",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "pidfd_open",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "pidfd_send_signal",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "pipe2",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "prctl",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "read",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "recvfrom",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "rt_sigaction",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "rt_sigprocmask",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "sched_yield",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "sendto",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "setsockopt",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "socket",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "tgkill",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "timer_create",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "timer_delete",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "timer_settime",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "uname",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "wait4",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "waitid",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        },
+        {
+          "name": "write",
+          "at": [
+            "main.go:14",
+            "main.go:16",
+            "main.go:20",
+            "main.go:24"
+          ]
+        }
+      ],
+      "dispatch": [
+        {
+          "pos": "main.go:16",
+          "call": "error.Error",
+          "candidates": 29
+        },
+        {
+          "pos": "main.go:20",
+          "call": "net.Listener.Accept",
+          "candidates": 2
+        }
+      ]
+    },
+    {
+      "path": "example.com/netcheck/cmd/server",
+      "name": "serve",
+      "pos": "main.go:29",
+      "effects": [
+        "env",
+        "fs.read",
+        "fs.write",
+        "io",
+        "net",
+        "proc",
+        "time"
+      ],
+      "unknown": [
+        {
+          "pos": "main.go:30",
+          "reason": "calls bufio.Reader.ReadString which is incomplete"
+        },
+        {
+          "pos": "main.go:32",
+          "reason": "calls io.WriteString which is incomplete"
+        },
+        {
+          "pos": "main.go:34",
+          "reason": "calls net.conn.Close which is incomplete"
+        }
+      ],
+      "syscalls": [
+        {
+          "name": "bind",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "clock_gettime",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "clone",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "close",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "epoll_create1",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "epoll_ctl",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "epoll_pwait",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "eventfd2",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "exit_group",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "fchmodat",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "fchmodat2",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "fcntl",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "fstat",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "futex",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "getpid",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "getsockname",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "getsockopt",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "gettid",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "lseek",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "madvise",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "mmap",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "mprotect",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "munmap",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "nanosleep",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "newfstatat",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "openat",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "pidfd_open",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "pidfd_send_signal",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "pipe2",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "prctl",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "read",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "recvfrom",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "rt_sigaction",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "rt_sigprocmask",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "sched_yield",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "sendto",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "setsockopt",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "socket",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "tgkill",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "timer_create",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "timer_delete",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "timer_settime",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "uname",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "wait4",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "waitid",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        },
+        {
+          "name": "write",
+          "at": [
+            "main.go:30",
+            "main.go:32",
+            "main.go:34"
+          ]
+        }
+      ],
+      "dispatch": [
+        {
+          "pos": "main.go:34",
+          "call": "net.Conn.Close",
+          "candidates": 1
+        }
+      ]
+    }
+  ]
+}

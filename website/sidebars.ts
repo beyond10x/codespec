@@ -12,19 +12,19 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Examples',
       collapsed: false,
-      items: ['examples/greeter', 'examples/series'],
+      items: ['examples/greeter', 'examples/series', 'examples/call-trace', 'examples/netcheck'],
     },
     {
       type: 'category',
       label: 'Concepts',
       collapsed: false,
-      items: ['concepts/cir-1', 'concepts/pipeline', 'concepts/harness'],
+      items: ['concepts/cir-1', 'concepts/pipeline', 'concepts/harness', 'concepts/static-analysis'],
     },
     {
       type: 'category',
       label: 'Guides',
       collapsed: false,
-      items: ['guides/translate-go-to-rust', 'guides/add-an-adapter'],
+      items: ['guides/translate-go-to-rust', 'guides/add-an-adapter', 'guides/map-a-repository-to-syscalls'],
     },
     {
       type: 'category',

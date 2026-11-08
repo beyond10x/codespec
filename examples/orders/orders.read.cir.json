@@ -4,7 +4,7 @@
   "reader": {
     "language": "go",
     "name": "codespec-read-go",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "doc": "Package orders takes, pays, ships and cancels customer orders.",
   "types": [
@@ -2258,7 +2258,15 @@
           "lang": "go",
           "src": "go func() {\n\tfor _, o := range s.orders {\n\t\tfmt.Println(o.ID)\n\t}\n}()",
           "reason": "goroutine: concurrency is outside cir/1",
-          "pos": "orders.go:132"
+          "pos": "orders.go:132",
+          "calls": [
+            {
+              "k": "func",
+              "path": "fmt",
+              "name": "Println",
+              "pos": "orders.go:134"
+            }
+          ]
         }
       ],
       "pos": "orders.go:131"

@@ -18,10 +18,10 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.4.0";
+pub const VERSION: &str = "0.5.0";
 
 /// The date the list below was last checked against the tree.
-const AS_OF: &str = "2026-11-06";
+const AS_OF: &str = "2026-11-08";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -275,6 +275,24 @@ pub const CAPABILITIES: &[Capability] = &[
         evidence: Some("website/data/conformance/writer-rust.json::conforms"),
         href: "/docs/guides/add-an-adapter",
     },
+    Capability {
+        area: "Analysis",
+        label: "Extern calls",
+        detail: "A call of a function of another package is an extern call, declared with its signature; the Go reader reads standard library calls so and the Go writer writes them back, the Rust writer refuses them.",
+        status: "shipped",
+        evidence: Some(
+            "adapters/go/cmd/codespec-write-go/extern_test.go::TestExternCaseFixedPoint",
+        ),
+        href: "/docs/reference/cir-1",
+    },
+    Capability {
+        area: "Analysis",
+        label: "Effects report",
+        detail: "codespec effects reports per function the effects it may have (env, fs.read, fs.write, io, net, proc, rand, stdin, stdout, time) from summaries of the functions outside the module, and lists every call or statement it cannot account for as unknown.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::examples-effects"),
+        href: "/docs/concepts/static-analysis",
+    },
 ];
 
 /// Whether `source`, the text of `file`, defines the check `name`.
@@ -386,7 +404,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.4.0\""));
+        assert!(document.contains("\"version\": \"0.5.0\""));
     }
 
     #[test]

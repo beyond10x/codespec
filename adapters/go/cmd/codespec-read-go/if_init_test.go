@@ -344,11 +344,12 @@ func Run(ps []*error) error {
 
 // The condition is outside cir/1. The init is read in front as `let err = F()`, and then the
 // whole if, init included, is kept foreign: the read now calls F twice and declares err twice,
-// and the refusal names the condition, not the init.
+// and the refusal names the condition, not the init. (A literal with named results: a plain
+// literal now reads as a lambda.)
 func TestIfInitAnIfWhoseConditionIsOutsideCir1DoesNotAlsoHoistItsInit(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
 func Run() error {
-	if err := F(); func() bool { return err != nil }() {
+	if err := F(); func() (b bool) { return err != nil }() {
 		return err
 	}
 	return nil
@@ -568,7 +569,8 @@ func Run() *error {
 `)
 }
 
-// The second init's call is outside cir/1 (errors.Join), so that if stays foreign with its
+// The second init's call is outside cir/1 (a call of a literal with named results; errors.Join,
+// the call this case first used, now reads as an extern), so that if stays foreign with its
 // init in its text; err then occurs outside the first if too, which stays foreign as well.
 func TestIfInitAnInitOutsideCir1KeepsEveryIfSharingItsNameForeign(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
@@ -576,7 +578,7 @@ func Run() error {
 	if err := F(); err != nil {
 		return err
 	}
-	if err := errors.Join(F()); err != nil {
+	if err := func() (e error) { return F() }(); err != nil {
 		return err
 	}
 	return nil
@@ -586,5 +588,295 @@ func Run() error {
 	if len(m.Refusals) != 2 || m.Refusals[0].Pos != want[0] || m.Refusals[1].Pos != want[1] ||
 		m.Refusals[0].Reason != "if with an init statement" || m.Refusals[1].Reason != "if with an init statement" {
 		t.Fatalf("refusals %v, want one at each of %v for the if with an init statement", m.Refusals, want)
+	}
+}
+
+// ifInitLambda returns the first lambda in body, searching statements and their expressions.
+func ifInitLambda(body []Stmt) *Expr {
+	var inExpr func(e *Expr) *Expr
+	inExpr = func(e *Expr) *Expr {
+		if e == nil {
+			return nil
+		}
+		if e.K == "lambda" {
+			return e
+		}
+		for _, p := range []*Expr{e.X, e.Y} {
+			if l := inExpr(p); l != nil {
+				return l
+			}
+		}
+		for i := range e.Args {
+			if l := inExpr(&e.Args[i]); l != nil {
+				return l
+			}
+		}
+		return nil
+	}
+	var inStmts func(ss []Stmt) *Expr
+	inStmts = func(ss []Stmt) *Expr {
+		for i := range ss {
+			s := &ss[i]
+			for _, p := range []*Expr{s.X, s.Cond} {
+				if l := inExpr(p); l != nil {
+					return l
+				}
+			}
+			for _, list := range [][]Expr{s.Rhs, s.Results} {
+				for j := range list {
+					if l := inExpr(&list[j]); l != nil {
+						return l
+					}
+				}
+			}
+			for _, b := range [][]Stmt{s.Then, s.Else, s.Body} {
+				if l := inStmts(b); l != nil {
+					return l
+				}
+			}
+		}
+		return nil
+	}
+	return inStmts(body)
+}
+
+// An if with an init inside a function literal is hoisted within the literal's body, as the
+// two-statement form inside the literal reads; the literal's own err is not a capture.
+func TestIfInitInsideAFunctionLiteralIsHoistedWithinTheLiteral(t *testing.T) {
+	m := sameButPos(t, ifInitPrelude+`
+func Run() error {
+	check := func() error {
+		if err := F(); err != nil {
+			return err
+		}
+		return nil
+	}
+	return check()
+}
+`, ifInitPrelude+`
+func Run() error {
+	check := func() error {
+		err := F()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return check()
+}
+`)
+	l := ifInitLambda(ifInitRun(t, m).Body)
+	if l == nil || len(l.Body) != 3 || l.Body[0].K != "let" || l.Body[1].K != "if" || len(l.Captures) != 0 {
+		t.Fatalf("lambda %+v", l)
+	}
+}
+
+// The name an init inside a literal declares is scoped to the literal: hoisting it there leaves
+// the enclosing function's own err, which Run returns, untouched and uncaptured.
+func TestIfInitInsideAFunctionLiteralDoesNotTouchTheEnclosingName(t *testing.T) {
+	m := sameButPos(t, ifInitPrelude+`
+func Run() error {
+	err := F()
+	check := func() error {
+		if err := G(); err != nil {
+			return err
+		}
+		return nil
+	}
+	if check() != nil {
+		return nil
+	}
+	return err
+}
+`, ifInitPrelude+`
+func Run() error {
+	err := F()
+	check := func() error {
+		err := G()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if check() != nil {
+		return nil
+	}
+	return err
+}
+`)
+	run := ifInitRun(t, m)
+	if got := ifInitAssignsTo(run.Body, "err"); len(got) != 0 {
+		t.Fatalf("an assignment to err: %+v", got)
+	}
+	if l := ifInitLambda(run.Body); l == nil || len(l.Captures) != 0 || l.Body[0].K != "let" {
+		t.Fatalf("lambda %+v", l)
+	}
+}
+
+// Inside a literal, an init name used elsewhere in the literal keeps that if foreign, as in a
+// function body.
+func TestIfInitInsideAFunctionLiteralWhoseNameIsUsedOutsideStaysForeign(t *testing.T) {
+	m := loadSource(t, ifInitPrelude+`
+func Run() error {
+	check := func() error {
+		err := F()
+		if err := G(); err != nil {
+			return err
+		}
+		return err
+	}
+	return check()
+}
+`)
+	if len(m.Refusals) != 1 || m.Refusals[0].Pos != ifInitLine(4) || m.Refusals[0].Reason != "if with an init statement" {
+		t.Fatalf("refusals %v, want one at %s for the if with an init statement", m.Refusals, ifInitLine(4))
+	}
+}
+
+// A literal inside a hoisted if captures the hoisted name: one variable, as Go has, read as the
+// two-statement form reads.
+func TestIfInitALiteralCapturingAHoistedNameCapturesIt(t *testing.T) {
+	m := sameButPos(t, ifInitPrelude+`
+func Run() error {
+	if err := F(); err != nil {
+		get := func() error { return err }
+		return get()
+	}
+	return nil
+}
+`, ifInitPrelude+`
+func Run() error {
+	err := F()
+	if err != nil {
+		get := func() error { return err }
+		return get()
+	}
+	return nil
+}
+`)
+	run := ifInitRun(t, m)
+	if run.Body[0].K != "let" {
+		t.Fatalf("body %+v", run.Body)
+	}
+	if l := ifInitLambda(run.Body); l == nil || !reflect.DeepEqual(l.Captures, []string{"err"}) {
+		t.Fatalf("lambda %+v", l)
+	}
+}
+
+// Planning reads the condition and init of each candidate before the body is read; that read
+// leaves nothing behind: a literal in the condition refuses its defer once, not twice.
+func TestIfInitPlanningLeavesNoRefusalOfItsOwn(t *testing.T) {
+	m := loadSource(t, ifInitPrelude+`
+func Run() error {
+	if err := G(); func() bool { defer G(); return err != nil }() {
+		return err
+	}
+	return nil
+}
+`)
+	if len(m.Refusals) != 1 || m.Refusals[0].Reason != "defer is outside cir/1" {
+		t.Fatalf("refusals %v, want the defer's alone", m.Refusals)
+	}
+	if run := ifInitRun(t, m); run.Body[0].K != "let" {
+		t.Fatalf("body %+v", run.Body)
+	}
+}
+
+// Planning declares no extern: an extern call only in the text of a foreign if is not declared.
+func TestIfInitPlanningDeclaresNoExtern(t *testing.T) {
+	prelude := strings.Replace(ifInitPrelude, `import "errors"`, "import (\n\t\"errors\"\n\t\"os\"\n)", 1)
+	m := loadSource(t, prelude+`
+func Run() error {
+	err := F()
+	if err := os.Remove("x"); err != nil {
+		return err
+	}
+	return err
+}
+`)
+	for _, x := range m.Externs {
+		if x.Name == "Remove" {
+			t.Fatalf("os.Remove declared though only foreign text calls it; refusals %v", m.Refusals)
+		}
+	}
+}
+
+// An init of a type outside cir/1 is not hoisted: the if stays foreign with its init in its
+// text, never a foreign declaration in front of an if that names it.
+func TestIfInitAnInitOfATypeOutsideCir1StaysForeign(t *testing.T) {
+	m := loadSource(t, `package p
+
+import "unsafe"
+
+type g struct{ mu unsafe.Pointer }
+
+var cur *g
+
+func pick() *g { return cur }
+
+func Run() int {
+	if gp := pick(); gp != nil {
+		return 1
+	}
+	return 0
+}
+`)
+	if _, err := encode(m); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	run := ifInitRun(t, m)
+	if len(run.Body) != 2 || run.Body[0].K != "foreign" || !strings.HasPrefix(run.Body[0].Src, "if gp := pick()") {
+		b, _ := json.MarshalIndent(run.Body, "", " ")
+		t.Fatalf("body, refusals %v:\n%s", m.Refusals, b)
+	}
+}
+
+// Reading a literal plans its body and then restores the enclosing function's plan: the ifs of
+// Run after the literal are still hoisted, the second as an assignment to the first's err, and the
+// literal's own e stays a declaration inside it.
+func TestIfInitAfterAFunctionLiteralTheEnclosingPlanIsRestored(t *testing.T) {
+	m := sameButPos(t, ifInitPrelude+`
+func Run() error {
+	if err := F(); err != nil {
+		return err
+	}
+	check := func() error {
+		if e := G(); e != nil {
+			return e
+		}
+		return nil
+	}
+	if err := G(); err != nil {
+		return err
+	}
+	return check()
+}
+`, ifInitPrelude+`
+func Run() error {
+	err := F()
+	if err != nil {
+		return err
+	}
+	check := func() error {
+		e := G()
+		if e != nil {
+			return e
+		}
+		return nil
+	}
+	err = G()
+	if err != nil {
+		return err
+	}
+	return check()
+}
+`)
+	run := ifInitRun(t, m)
+	if len(run.Body) != 6 || run.Body[0].K != "let" || run.Body[3].K != "assign" || run.Body[4].K != "if" {
+		b, _ := json.MarshalIndent(run.Body, "", " ")
+		t.Fatalf("body:\n%s", b)
+	}
+	if l := ifInitLambda(run.Body); l == nil || len(l.Body) != 3 || l.Body[0].K != "let" {
+		t.Fatalf("lambda %+v", l)
 	}
 }

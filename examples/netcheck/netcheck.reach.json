@@ -1,0 +1,41 @@
+{
+  "format": "codespec-reach-report/1",
+  "dispatch": "rta",
+  "entries": [
+    "example.com/netcheck/cmd/server.main",
+    "example.com/netcheck/cmd/client.main"
+  ],
+  "modules": [
+    {
+      "path": "example.com/netcheck",
+      "name": "netcheck",
+      "reached": [
+        "Answer",
+        "CheckAll",
+        "Count",
+        "TCP",
+        "TCPProber.Probe"
+      ],
+      "unreached": [
+        "FixedProber.Probe"
+      ]
+    },
+    {
+      "path": "example.com/netcheck/cmd/client",
+      "name": "main",
+      "reached": [
+        "main"
+      ],
+      "unreached": []
+    },
+    {
+      "path": "example.com/netcheck/cmd/server",
+      "name": "main",
+      "reached": [
+        "main",
+        "serve"
+      ],
+      "unreached": []
+    }
+  ]
+}

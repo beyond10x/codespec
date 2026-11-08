@@ -43,7 +43,11 @@
 //!
 //!   A method also writes when it calls a method that is not read-only on a value rooted at the
 //!   receiver, or passes the receiver or an alias to any call as an argument whose type holds a
-//!   reference by the same rule.
+//!   reference by the same rule. A function value holds a reference (it may capture one), and a
+//!   method holding a `lambda`, a `func_ref` or a `call_value` anywhere writes: what a function
+//!   value does is not followed. An interface value holds a reference, and an `iface_call` on a
+//!   value rooted at the receiver, or given one as an argument whose type holds a reference,
+//!   writes: the method that runs is not followed.
 //! - `displays`: the receiver types of methods `Error() string` and `String() string`, and every
 //!   enum or newtype over `string`.
 //! - `unordered_iteration`: positions of `for_range` statements over a map.
@@ -163,6 +167,10 @@ fn may_read(body: &[Stmt], name: &str) -> bool {
                 if matches!(e, Expr::Var { name: n, .. } if n == name) {
                     found = true;
                 }
+                if matches!(e, Expr::Lambda { captures, .. } if captures.iter().any(|c| c == name))
+                {
+                    found = true;
+                }
             })
         });
     });
@@ -229,35 +237,53 @@ fn stmt_exprs<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
     }
 }
 
-/// `e` and every expression inside it, pre-order.
+/// `e` and every expression inside it, pre-order, including those of a lambda's body.
 fn walk_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
     f(e);
     match e {
         Expr::Lit { .. }
+        | Expr::Float { .. }
         | Expr::Nil { .. }
         | Expr::Var { .. }
         | Expr::Const { .. }
         | Expr::Errvar { .. }
+        | Expr::Global { .. }
         | Expr::Make { .. }
         | Expr::Zero { .. } => {}
         Expr::Field { x, .. } | Expr::Unop { x, .. } | Expr::Conv { x, .. } => walk_expr(x, f),
-        Expr::ToError { x, .. } => walk_expr(x, f),
+        Expr::ToError { x, .. } | Expr::Spread { x, .. } | Expr::ToIface { x, .. } => {
+            walk_expr(x, f)
+        }
         Expr::Index { x, index, .. } => {
             walk_expr(x, f);
             walk_expr(index, f);
+        }
+        Expr::IfaceCall { recv, args, .. } => {
+            walk_expr(recv, f);
+            args.iter().for_each(|a| walk_expr(a, f));
         }
         Expr::Binop { x, y, .. } => {
             walk_expr(x, f);
             walk_expr(y, f);
         }
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => {
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().for_each(|a| walk_expr(a, f))
         }
-        Expr::Method { x, args, .. } => {
+        Expr::Method { x, args, .. } | Expr::ExternMethod { recv: x, args, .. } => {
             walk_expr(x, f);
             args.iter().for_each(|a| walk_expr(a, f));
         }
         Expr::Struct { fields, .. } => fields.iter().for_each(|fi| walk_expr(&fi.value, f)),
+        Expr::FuncRef { recv, .. } => recv.iter().for_each(|r| walk_expr(r, f)),
+        Expr::Lambda { body, .. } => {
+            walk_stmts(body, &mut |s| stmt_exprs(s, &mut |e| walk_expr(e, f)))
+        }
+        Expr::CallValue {
+            f: callee, args, ..
+        } => {
+            walk_expr(callee, f);
+            args.iter().for_each(|a| walk_expr(a, f));
+        }
     }
 }
 
@@ -265,12 +291,21 @@ fn walk_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
 fn walk_type<'a>(t: &'a Type, f: &mut dyn FnMut(&'a Type)) {
     f(t);
     match t {
-        Type::Ptr { elem } | Type::Slice { elem } | Type::Chan { elem, .. } => walk_type(elem, f),
+        Type::Ptr { elem }
+        | Type::Slice { elem }
+        | Type::Chan { elem, .. }
+        | Type::Array { elem, .. } => walk_type(elem, f),
         Type::Map { key, elem } => {
             walk_type(key, f);
             walk_type(elem, f);
         }
         Type::Tuple { elems } => elems.iter().for_each(|e| walk_type(e, f)),
+        Type::Func { params, results } => {
+            params.iter().chain(results).for_each(|e| walk_type(e, f))
+        }
+        Type::Named { targs, .. } | Type::Extern { targs, .. } => {
+            targs.iter().for_each(|e| walk_type(e, f))
+        }
         _ => {}
     }
 }
@@ -297,7 +332,24 @@ fn module_types<'a>(m: &'a Module, f: &mut dyn FnMut(&'a Type)) {
             if let Stmt::Var { t, .. } = s {
                 walk_type(t, f);
             }
-            stmt_exprs(s, &mut |e| walk_expr(e, &mut |e| walk_type(e.t(), f)));
+            stmt_exprs(s, &mut |e| {
+                walk_expr(e, &mut |e| {
+                    walk_type(e.t(), f);
+                    if let Expr::Call { targs, .. }
+                    | Expr::Extern { targs, .. }
+                    | Expr::ExternMethod { targs, .. } = e
+                    {
+                        targs.iter().for_each(|t| walk_type(t, f));
+                    }
+                    if let Expr::Lambda { body, .. } = e {
+                        walk_stmts(body, &mut |s| {
+                            if let Stmt::Var { t, .. } = s {
+                                walk_type(t, f);
+                            }
+                        });
+                    }
+                })
+            });
         });
     }
 }
@@ -305,7 +357,7 @@ fn module_types<'a>(m: &'a Module, f: &mut dyn FnMut(&'a Type)) {
 fn pointee(t: &Type) -> Option<&str> {
     match t {
         Type::Ptr { elem } => match &**elem {
-            Type::Named { name } => Some(name),
+            Type::Named { name, .. } => Some(name),
             _ => None,
         },
         _ => None,
@@ -375,10 +427,16 @@ fn shared(m: &Module) -> Vec<String> {
         held.extend(fields.into_iter().filter_map(pointee));
     }
     module_types(m, &mut |t| match t {
-        Type::Slice { elem } | Type::Chan { elem, .. } => held.extend(pointee(elem)),
+        Type::Slice { elem } | Type::Chan { elem, .. } | Type::Array { elem, .. } => {
+            held.extend(pointee(elem))
+        }
         Type::Map { key, elem } => {
             held.extend(pointee(key));
             held.extend(pointee(elem));
+        }
+        // A generic type may store a value of each type argument in a field.
+        Type::Named { targs, .. } | Type::Extern { targs, .. } => {
+            held.extend(targs.iter().filter_map(pointee))
         }
         _ => {}
     });
@@ -394,7 +452,7 @@ fn messages(m: &Module) -> Vec<String> {
             if let Stmt::Send { chan, x, .. } = s
                 && let Type::Chan { elem, .. } = chan.t()
                 && **elem == Type::Any
-                && let Type::Named { name } = match x.t() {
+                && let Type::Named { name, .. } = match x.t() {
                     Type::Ptr { elem } => &**elem,
                     t => t,
                 }
@@ -479,6 +537,9 @@ fn root(e: &Expr) -> Option<&str> {
     match e {
         Expr::Var { name, .. } => Some(name),
         Expr::Field { x, .. } | Expr::Index { x, .. } | Expr::Method { x, .. } => root(x),
+        // A slice passed spread aliases what it is read from.
+        Expr::Spread { x, .. } => root(x),
+        Expr::IfaceCall { recv: x, .. } | Expr::ToIface { x, .. } => root(x),
         Expr::Unop { op, x, .. } if op == "*" || op == "&" => root(x),
         _ => None,
     }
@@ -506,10 +567,14 @@ impl Aliasing<'_> {
                 Some(n) if top && n != self.recv_type => !self.shared.iter().any(|s| s == n),
                 _ => true,
             },
-            Type::Slice { .. } | Type::Map { .. } | Type::Chan { .. } => true,
+            Type::Slice { .. } | Type::Map { .. } | Type::Chan { .. } | Type::Func { .. } => true,
+            // Opaque: what an extern value holds is not part of the module.
+            Type::Extern { .. } => true,
             Type::Tuple { elems } => elems.iter().any(|e| self.refers(e, top, seen)),
-            Type::Named { name } if name == self.recv_type => true,
-            Type::Named { name } => {
+            Type::Named { name, .. } if name == self.recv_type => true,
+            // An interface value may hold a pointer.
+            Type::Named { name, .. } if self.m.interface_decl("", name).is_some() => true,
+            Type::Named { name, .. } => {
                 if seen.contains(&name.as_str()) {
                     return false;
                 }
@@ -607,6 +672,20 @@ fn writes_directly(func: &Func, aliases: &[String], al: &Aliasing) -> bool {
             walk_expr(e, &mut |e| {
                 if let Expr::Call { args, .. } | Expr::Method { args, .. } = e {
                     writes |= args.iter().any(|a| rooted(a) && al.holds(a.t()));
+                }
+                // An extern method may write its receiver; the module cannot see whether it does.
+                if let Expr::ExternMethod { recv, .. } = e {
+                    writes |= rooted(recv);
+                }
+                // A call through an interface runs a method the module does not name: it may
+                // write its receiver or any argument that holds a reference.
+                if let Expr::IfaceCall { recv, args, .. } = e {
+                    writes |= rooted(recv) || args.iter().any(|a| rooted(a) && al.holds(a.t()));
+                }
+                // What a lambda's body or a function value writes is not followed: either may
+                // write through the receiver, so the method is taken to write.
+                if let Expr::Lambda { .. } | Expr::CallValue { .. } | Expr::FuncRef { .. } = e {
+                    writes = true;
                 }
             })
         });

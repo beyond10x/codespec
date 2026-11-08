@@ -1,0 +1,787 @@
+{
+  "format": "cir/1",
+  "name": "type_array_float",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Weight",
+      "exported": true,
+      "params": [
+        {
+          "name": "i",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "w",
+          "t": {
+            "k": "array",
+            "len": 3,
+            "elem": {
+              "k": "float",
+              "bits": "64"
+            }
+          },
+          "pos": "case.go:8"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.1",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "binop",
+                "op": "*",
+                "x": {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "w",
+                    "t": {
+                      "k": "array",
+                      "len": 3,
+                      "elem": {
+                        "k": "float",
+                        "bits": "64"
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "lit",
+                    "value": "0",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                },
+                "y": {
+                  "k": "float",
+                  "value": "3",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "0.25",
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "/",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "w",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "float",
+                      "bits": "64"
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "4",
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "var",
+          "name": "h",
+          "t": {
+            "k": "array",
+            "len": 3,
+            "elem": {
+              "k": "float",
+              "bits": "32"
+            }
+          },
+          "pos": "case.go:12"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "h",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.1",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "h",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "h",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "float",
+                      "bits": "32"
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "3",
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "h",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "h",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "float",
+                      "bits": "32"
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "1e-8",
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "intrinsic",
+              "name": "sprintf",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"%v %v\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "w",
+                    "t": {
+                      "k": "array",
+                      "len": 3,
+                      "elem": {
+                        "k": "float",
+                        "bits": "64"
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                },
+                {
+                  "k": "index",
+                  "x": {
+                    "k": "var",
+                    "name": "h",
+                    "t": {
+                      "k": "array",
+                      "len": 3,
+                      "elem": {
+                        "k": "float",
+                        "bits": "32"
+                      }
+                    }
+                  },
+                  "index": {
+                    "k": "var",
+                    "name": "i",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:16"
+        }
+      ],
+      "doc": "Weight keeps three weights in a fixed-size array of 64-bit floats and three in one of 32-bit\nfloats, sets them from float literals and float arithmetic, and formats the pair at i.",
+      "pos": "case.go:7"
+    },
+    {
+      "name": "Above",
+      "exported": true,
+      "params": [
+        {
+          "name": "i",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "w",
+          "t": {
+            "k": "array",
+            "len": 3,
+            "elem": {
+              "k": "float",
+              "bits": "64"
+            }
+          },
+          "pos": "case.go:21"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.25",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:22"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.5",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:23"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "w",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "1e21",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:24"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": ">",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "w",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "float",
+                      "bits": "64"
+                    }
+                  }
+                },
+                "index": {
+                  "k": "var",
+                  "name": "i",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "0.5",
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:25"
+        }
+      ],
+      "doc": "Above tells whether the weight at i is greater than half.",
+      "pos": "case.go:20"
+    }
+  ],
+  "layout": [
+    "func:Weight",
+    "func:Above"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

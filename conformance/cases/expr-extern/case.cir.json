@@ -1,0 +1,142 @@
+{
+  "format": "cir/1",
+  "name": "expr_extern",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Banner",
+      "exported": true,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "extern",
+                "path": "strings",
+                "name": "Repeat",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "s",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "string"
+                }
+              },
+              "y": {
+                "k": "extern",
+                "path": "strconv",
+                "name": "Itoa",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        }
+      ],
+      "doc": "Banner repeats s n times and appends n: two calls of standard library functions.",
+      "pos": "case.go:9"
+    }
+  ],
+  "externs": [
+    {
+      "path": "strconv",
+      "name": "Itoa",
+      "params": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ]
+    },
+    {
+      "path": "strings",
+      "name": "Repeat",
+      "params": [
+        {
+          "k": "string"
+        },
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "func:Banner"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

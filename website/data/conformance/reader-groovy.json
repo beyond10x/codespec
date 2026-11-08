@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "groovy",
-    "version": "0.4.0",
-    "manifest_sha256": "dbbe12a769a9e929a44685430f090bc200bd126497e0f3e0f1e640915acf53a2"
+    "version": "0.5.0",
+    "manifest_sha256": "bee551ecb8add2ea6f20a9c0ac753466628bd7c00889051d98af1b6ca8e43912"
   },
   "kit": {
-    "version": "0.4.0",
-    "sha256": "8efff2e12e8ee070da0c7019dbd10d0cf23b5562900088427ca3c5a014b81bf8"
+    "version": "0.5.0",
+    "sha256": "f81de62acb27384ff70afd95d8fb60841fa7da7a3bad2c0912864a9ddb8a17f6"
   },
   "corpus": {
     "sha256": "b290f8fac79093119b5534f46a7816ccd0db6b1be7253ac04fc33533365a79e5"
   },
-  "codespec": "0.4.0",
+  "codespec": "0.5.0",
   "features": [
     {
       "id": "assign.add",
@@ -98,12 +98,24 @@
       ]
     },
     {
+      "id": "decl.embedded",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "decl.enum",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "decl-enum-string"
       ]
+    },
+    {
+      "id": "decl.interface",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "decl.newtype",
@@ -120,7 +132,25 @@
       ]
     },
     {
+      "id": "decl.type_params",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "decl.union",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.var",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "decl.variadic",
       "claimed": false,
       "verdict": "untested",
       "cases": []
@@ -140,6 +170,12 @@
       "cases": [
         "expr-call"
       ]
+    },
+    {
+      "id": "expr.call_value",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.const",
@@ -170,12 +206,48 @@
       "detail": "the module does not use expr.errvar outside a foreign statement"
     },
     {
+      "id": "expr.extern",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.extern_method",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.field",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-field"
       ]
+    },
+    {
+      "id": "expr.float",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.func_ref",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.global",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.iface_call",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.index",
@@ -186,12 +258,24 @@
       ]
     },
     {
+      "id": "expr.instantiate",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.intrinsic",
       "claimed": true,
       "verdict": "pass",
       "cases": [
         "expr-intrinsic-slice"
       ]
+    },
+    {
+      "id": "expr.lambda",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "expr.lit",
@@ -230,6 +314,12 @@
       "detail": "the module does not use expr.nil outside a foreign statement"
     },
     {
+      "id": "expr.spread",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "expr.struct",
       "claimed": true,
       "verdict": "pass",
@@ -239,6 +329,12 @@
     },
     {
       "id": "expr.to_error",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "expr.to_iface",
       "claimed": false,
       "verdict": "untested",
       "cases": []
@@ -687,6 +783,12 @@
       "cases": []
     },
     {
+      "id": "type.array",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "type.bool",
       "claimed": true,
       "verdict": "pass",
@@ -713,6 +815,24 @@
       "detail": "the module does not use type.error outside a foreign statement"
     },
     {
+      "id": "type.extern",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.float",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
+      "id": "type.func",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "type.int",
       "claimed": true,
       "verdict": "pass",
@@ -735,6 +855,12 @@
       "cases": [
         "type-named"
       ]
+    },
+    {
+      "id": "type.param",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
     },
     {
       "id": "type.ptr",
@@ -834,7 +960,7 @@
     "fail": 0,
     "refused_unclaimed": 5,
     "pass_unclaimed": 0,
-    "untested": 29,
+    "untested": 50,
     "boundary_fail": 0
   },
   "conforms": true

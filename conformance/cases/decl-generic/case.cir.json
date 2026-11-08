@@ -1,0 +1,475 @@
+{
+  "format": "cir/1",
+  "name": "decl_generic",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Item",
+      "exported": true,
+      "fields": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "case.go:8"
+    },
+    {
+      "k": "struct",
+      "name": "Pair",
+      "exported": true,
+      "tparams": [
+        {
+          "name": "T",
+          "constraint": {
+            "k": "any"
+          }
+        }
+      ],
+      "fields": [
+        {
+          "name": "a",
+          "t": {
+            "k": "param",
+            "name": "T"
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "param",
+            "name": "T"
+          }
+        }
+      ],
+      "doc": "Pair holds two values of one type.",
+      "pos": "case.go:17"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Size",
+      "exported": true,
+      "recv": {
+        "name": "i",
+        "t": {
+          "k": "named",
+          "name": "Item"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "named",
+                  "name": "Item"
+                }
+              },
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "pos": "case.go:12"
+    },
+    {
+      "name": "First",
+      "exported": true,
+      "recv": {
+        "name": "p",
+        "t": {
+          "k": "named",
+          "name": "Pair",
+          "targs": [
+            {
+              "k": "param",
+              "name": "T"
+            }
+          ]
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "param",
+          "name": "T"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "p",
+                "t": {
+                  "k": "named",
+                  "name": "Pair",
+                  "targs": [
+                    {
+                      "k": "param",
+                      "name": "T"
+                    }
+                  ]
+                }
+              },
+              "name": "a",
+              "t": {
+                "k": "param",
+                "name": "T"
+              }
+            }
+          ],
+          "pos": "case.go:23"
+        }
+      ],
+      "pos": "case.go:22"
+    },
+    {
+      "name": "sum",
+      "exported": false,
+      "tparams": [
+        {
+          "name": "T",
+          "constraint": {
+            "k": "named",
+            "name": "Sizer"
+          }
+        }
+      ],
+      "params": [
+        {
+          "name": "x",
+          "t": {
+            "k": "param",
+            "name": "T"
+          }
+        },
+        {
+          "name": "y",
+          "t": {
+            "k": "param",
+            "name": "T"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "iface_call",
+                "iface": "Sizer",
+                "name": "Size",
+                "recv": {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "param",
+                    "name": "T"
+                  }
+                },
+                "args": [],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "iface_call",
+                "iface": "Sizer",
+                "name": "Size",
+                "recv": {
+                  "k": "var",
+                  "name": "y",
+                  "t": {
+                    "k": "param",
+                    "name": "T"
+                  }
+                },
+                "args": [],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:27"
+        }
+      ],
+      "pos": "case.go:26"
+    },
+    {
+      "name": "Sizes",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "p"
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Pair",
+              "fields": [
+                {
+                  "name": "a",
+                  "value": {
+                    "k": "struct",
+                    "name": "Item",
+                    "fields": [
+                      {
+                        "name": "n",
+                        "value": {
+                          "k": "var",
+                          "name": "n",
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  }
+                },
+                {
+                  "name": "b",
+                  "value": {
+                    "k": "struct",
+                    "name": "Item",
+                    "fields": [
+                      {
+                        "name": "n",
+                        "value": {
+                          "k": "binop",
+                          "op": "+",
+                          "x": {
+                            "k": "var",
+                            "name": "n",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "y": {
+                            "k": "lit",
+                            "value": "1",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          },
+                          "t": {
+                            "k": "int",
+                            "width": "platform",
+                            "signed": true
+                          }
+                        }
+                      }
+                    ],
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Pair",
+                "targs": [
+                  {
+                    "k": "named",
+                    "name": "Item"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:32"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "sum",
+              "targs": [
+                {
+                  "k": "named",
+                  "name": "Item"
+                }
+              ],
+              "args": [
+                {
+                  "k": "method",
+                  "x": {
+                    "k": "var",
+                    "name": "p",
+                    "t": {
+                      "k": "named",
+                      "name": "Pair",
+                      "targs": [
+                        {
+                          "k": "named",
+                          "name": "Item"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "First",
+                  "args": [],
+                  "t": {
+                    "k": "named",
+                    "name": "Item"
+                  }
+                },
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "p",
+                    "t": {
+                      "k": "named",
+                      "name": "Pair",
+                      "targs": [
+                        {
+                          "k": "named",
+                          "name": "Item"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "b",
+                  "t": {
+                    "k": "named",
+                    "name": "Item"
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:33"
+        }
+      ],
+      "doc": "Sizes makes a pair of items of size n and n+1 and sums their sizes through Sizer.",
+      "pos": "case.go:31"
+    }
+  ],
+  "layout": [
+    "type:Sizer",
+    "type:Item",
+    "func:Item.Size",
+    "type:Pair",
+    "func:Pair.First",
+    "func:sum",
+    "func:Sizes"
+  ],
+  "facts": {
+    "shared": [],
+    "read_only": [
+      "Item.Size",
+      "Pair.First"
+    ]
+  },
+  "interfaces": [
+    {
+      "name": "Sizer",
+      "exported": true,
+      "methods": [
+        {
+          "name": "Size",
+          "params": [],
+          "results": [
+            {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          ]
+        }
+      ],
+      "doc": "Sizer has a size.",
+      "pos": "case.go:4"
+    }
+  ]
+}

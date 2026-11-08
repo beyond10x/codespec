@@ -33,6 +33,44 @@ fn read_module(bytes: &[u8], what: &str) -> Result<Module, String> {
     Module::from_json(bytes).map_err(|e| format!("{what}: {e}"))
 }
 
+fn read_set(paths: &[PathBuf]) -> Result<Vec<Module>, String> {
+    let mut set = Vec::with_capacity(paths.len());
+    for p in paths {
+        let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+        set.push(read_module(&bytes, &p.display().to_string())?);
+    }
+    Ok(set)
+}
+
+fn read_barrier(path: Option<&Path>) -> Result<Option<codespec_effects::Barrier>, String> {
+    let Some(path) = path else { return Ok(None) };
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    codespec_effects::barrier_from_json(&bytes)
+        .map(Some)
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn read_summaries(paths: &[PathBuf]) -> Result<Vec<codespec_effects::Summary>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            codespec_effects::summary_from_json(&bytes)
+                .map_err(|e| format!("{}: {e}", path.display()))
+        })
+        .collect()
+}
+
+/// `cha` or `rta` as given; unset, rta when there are entries and cha otherwise.
+fn dispatch_mode(given: Option<&str>, with_entries: bool) -> codespec_effects::DispatchMode {
+    match given {
+        Some("rta") => codespec_effects::DispatchMode::Rta,
+        Some(_) => codespec_effects::DispatchMode::Cha,
+        None if with_entries => codespec_effects::DispatchMode::Rta,
+        None => codespec_effects::DispatchMode::Cha,
+    }
+}
+
 fn run(cmd: Cmd) -> Result<(), String> {
     match cmd {
         Cmd::Validate { file, canonical } => {
@@ -148,6 +186,73 @@ fn run(cmd: Cmd) -> Result<(), String> {
             } else {
                 print!("{}", codespec_cli::measure::text(&report));
             }
+            Ok(())
+        }
+        Cmd::Effects {
+            modules,
+            summaries,
+            barrier,
+            report,
+            roots,
+            entry,
+            exported,
+            dispatch,
+        } => {
+            let set = read_set(&modules)?;
+            let barrier = read_barrier(barrier.as_deref())?;
+            let read = read_summaries(&summaries)?;
+            let with_entries = !entry.is_empty() || !exported.is_empty();
+            let opts = codespec_effects::Options {
+                barrier: barrier.as_ref(),
+                report,
+                roots,
+                entries: entry,
+                exported,
+                dispatch: dispatch_mode(dispatch.as_deref(), with_entries),
+            };
+            codespec_effects::check_entries(&set, &opts)?;
+            print!(
+                "{}",
+                codespec_effects::analyze_set(&set, &read, &opts).to_json()
+            );
+            Ok(())
+        }
+        Cmd::Reach {
+            modules,
+            entry,
+            exported,
+            dispatch,
+            report,
+        } => {
+            let set = read_set(&modules)?;
+            let opts = codespec_effects::Options {
+                report,
+                entries: entry,
+                exported,
+                dispatch: dispatch_mode(Some(&dispatch), true),
+                ..Default::default()
+            };
+            print!("{}", codespec_effects::reach(&set, &opts)?.to_json());
+            Ok(())
+        }
+        Cmd::Trace {
+            modules,
+            from,
+            depth,
+            summaries,
+            barrier,
+            dispatch,
+        } => {
+            let set = read_set(&modules)?;
+            let barrier = read_barrier(barrier.as_deref())?;
+            let read = read_summaries(&summaries)?;
+            let opts = codespec_effects::Options {
+                barrier: barrier.as_ref(),
+                dispatch: dispatch_mode(Some(&dispatch), true),
+                ..Default::default()
+            };
+            let t = codespec_effects::trace(&set, &read, &opts, &from, depth)?;
+            print!("{}", t.to_json());
             Ok(())
         }
         Cmd::Harness {

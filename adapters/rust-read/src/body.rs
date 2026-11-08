@@ -370,7 +370,10 @@ fn root_effects(stmts: &[syn::Stmt], root: &str) -> (bool, Vec<(String, String)>
 /// Whether any part of `e` calls a function or method.
 fn calls(e: &Expr) -> bool {
     let sub: Vec<&Expr> = match e {
-        Expr::Call { .. } | Expr::Method { .. } => return true,
+        Expr::Call { .. }
+        | Expr::Method { .. }
+        | Expr::Extern { .. }
+        | Expr::ExternMethod { .. } => return true,
         Expr::Field { x, .. }
         | Expr::Unop { x, .. }
         | Expr::Conv { x, .. }
@@ -393,8 +396,12 @@ fn children(e: &Expr) -> Vec<&Expr> {
         | Expr::ToError { x, .. } => vec![x],
         Expr::Index { x, index, .. } => vec![x, index],
         Expr::Binop { x, y, .. } => vec![x, y],
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } => args.iter().collect(),
-        Expr::Method { x, args, .. } => std::iter::once(&**x).chain(args).collect(),
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
+            args.iter().collect()
+        }
+        Expr::Method { x, args, .. } | Expr::ExternMethod { recv: x, args, .. } => {
+            std::iter::once(&**x).chain(args).collect()
+        }
         Expr::Struct { fields, .. } => fields.iter().map(|f| &f.value).collect(),
         _ => Vec::new(),
     }
@@ -739,6 +746,7 @@ impl<'r> Fx<'r> {
             src,
             reason,
             pos,
+            calls: None,
         }
     }
 
@@ -751,7 +759,7 @@ impl<'r> Fx<'r> {
             Type::Int { .. } => lit("0"),
             Type::Bool => lit("false"),
             Type::String => lit("\"\""),
-            Type::Named { name } => match self.r.decls.get(name) {
+            Type::Named { name, .. } => match self.r.decls.get(name) {
                 Some(Decl::Struct(_)) => Expr::Struct {
                     name: name.clone(),
                     fields: Vec::new(),
@@ -1974,7 +1982,7 @@ impl<'r> Fx<'r> {
         // An exhaustive match over an enum: its last arm is Go's default, so a `switch` that must
         // return has one.
         if !has_default
-            && let Type::Named { name } = &tt
+            && let Type::Named { name, .. } = &tt
             && let Some(Decl::Enum { variants, .. }) = self.r.decls.get(name)
             && variants.iter().all(|v| covered.contains(v))
             && let Some(last) = cases.last_mut()
@@ -2211,7 +2219,7 @@ impl<'r> Fx<'r> {
                 let t = if n.suffix().is_empty() {
                     match want {
                         Some(t @ Type::Int { .. }) => t.clone(),
-                        Some(t @ Type::Named { name })
+                        Some(t @ Type::Named { name, .. })
                             if matches!(
                                 self.r.decls.get(name),
                                 Some(Decl::Newtype(Type::Int { .. }))
@@ -2277,7 +2285,10 @@ impl<'r> Fx<'r> {
                 {
                     return Ok(Expr::Const {
                         name: v.clone(),
-                        t: Type::Named { name: t },
+                        t: Type::Named {
+                            targs: Vec::new(),
+                            name: t,
+                        },
                     });
                 }
                 if let Some((e, vs)) = &self.r.error_enum
@@ -2541,6 +2552,7 @@ impl<'r> Fx<'r> {
                 if let Some(sig) = self.r.sigs.get(&(None, n.clone())).cloned() {
                     let args = self.args(&sig, &c.args)?;
                     let x = Expr::Call {
+                        targs: Vec::new(),
                         name: sig.go.clone(),
                         args,
                         t: sig.value_type(),
@@ -2555,7 +2567,10 @@ impl<'r> Fx<'r> {
                     return Ok(V::E(Expr::Conv {
                         name: n.clone(),
                         x: Box::new(x),
-                        t: Type::Named { name: n.clone() },
+                        t: Type::Named {
+                            targs: Vec::new(),
+                            name: n.clone(),
+                        },
                     }));
                 }
                 Err(format!("a call of `{n}`, which the crate does not declare"))
@@ -2623,7 +2638,13 @@ impl<'r> Fx<'r> {
                 {
                     return match (vs.get(f), c.args.len()) {
                         (Some(ErrVariant::Struct(s)), 1) => {
-                            let x = self.val(&c.args[0], Some(&Type::Named { name: s.clone() }))?;
+                            let x = self.val(
+                                &c.args[0],
+                                Some(&Type::Named {
+                                    targs: Vec::new(),
+                                    name: s.clone(),
+                                }),
+                            )?;
                             Ok(V::E(Expr::ToError {
                                 x: Box::new(x),
                                 t: Type::Error,
@@ -2655,15 +2676,20 @@ impl<'r> Fx<'r> {
                     };
                 }
                 if self.r.message_enums.contains(&t) && c.args.len() == 1 {
-                    return Ok(V::E(
-                        self.val(&c.args[0], Some(&Type::Named { name: f.clone() }))?,
-                    ));
+                    return Ok(V::E(self.val(
+                        &c.args[0],
+                        Some(&Type::Named {
+                            targs: Vec::new(),
+                            name: f.clone(),
+                        }),
+                    )?));
                 }
                 if let Some(sig) = self.r.sigs.get(&(Some(t.clone()), f.clone())).cloned()
                     && sig.recv.is_none()
                 {
                     let args = self.args(&sig, &c.args)?;
                     let x = Expr::Call {
+                        targs: Vec::new(),
                         name: sig.go.clone(),
                         args,
                         t: sig.value_type(),
@@ -2681,7 +2707,7 @@ impl<'r> Fx<'r> {
     fn shares_storage(&self, t: &Type, seen: &mut Vec<String>) -> bool {
         match t {
             Type::Slice { .. } | Type::Map { .. } => true,
-            Type::Named { name } => {
+            Type::Named { name, .. } => {
                 if seen.contains(name) {
                     return false;
                 }
@@ -2825,10 +2851,10 @@ impl<'r> Fx<'r> {
                 t,
             })),
             (Type::Int { .. }, "to_string", 0) => Ok(V::E(self.sprintf("%d", x))),
-            (Type::Named { name }, "to_string", 0) if self.r.displays.contains(name) => {
+            (Type::Named { name, .. }, "to_string", 0) if self.r.displays.contains(name) => {
                 Ok(V::E(self.sprintf("%s", x)))
             }
-            (Type::Named { name }, "clone", 0) => {
+            (Type::Named { name, .. }, "clone", 0) => {
                 if self.shares_storage(&t, &mut Vec::new()) {
                     return Err(format!(
                         "a clone of {name}, which holds a slice or map Go would share"
@@ -2899,7 +2925,10 @@ impl<'r> Fx<'r> {
         Ok(Expr::Struct {
             name: name.clone(),
             fields,
-            t: Type::Named { name },
+            t: Type::Named {
+                targs: Vec::new(),
+                name,
+            },
         })
     }
 
@@ -3052,7 +3081,7 @@ impl<'r> Fx<'r> {
                     cases.push(Case { values, body });
                 }
                 if !has_default
-                    && let Type::Named { name } = &tt
+                    && let Type::Named { name, .. } = &tt
                     && let Some(Decl::Enum { variants, .. }) = self.r.decls.get(name)
                     && variants.iter().all(|v| covered.contains(v))
                     && let Some(last) = cases.last_mut()
@@ -3130,6 +3159,7 @@ pub(crate) fn func(
         params.push(Param {
             name: go,
             t: t.clone(),
+            variadic: false,
         });
     }
     let recv = match (&sig.recv, recv_name) {
@@ -3141,6 +3171,7 @@ pub(crate) fn func(
             Some(Param {
                 name: n,
                 t: t.clone(),
+                variadic: false,
             })
         }
         _ => None,
@@ -3149,6 +3180,7 @@ pub(crate) fn func(
     let body = fx.block(&block.stmts, true);
     (
         Func {
+            tparams: Vec::new(),
             name: sig.go.clone(),
             exported: sig.go.chars().next().is_some_and(|c| c.is_uppercase()),
             recv,
@@ -3261,7 +3293,10 @@ pub(crate) fn display(r: &Reader, t: &str, im: &syn::ItemImpl) -> R<Option<(Func
             "{t} has a method {go} of its own beside its Display"
         ));
     }
-    let named = Type::Named { name: t.into() };
+    let named = Type::Named {
+        targs: Vec::new(),
+        name: t.into(),
+    };
     let mut fx = Fx::new(r, Some(t), vec![Type::String], Shape::Plain);
     let rn = names::receiver(t);
     fx.recv = Some((rn.clone(), named.clone()));
@@ -3269,9 +3304,14 @@ pub(crate) fn display(r: &Reader, t: &str, im: &syn::ItemImpl) -> R<Option<(Func
     let pos = r.pos(im.span());
     Ok(Some((
         Func {
+            tparams: Vec::new(),
             name: go.into(),
             exported: true,
-            recv: Some(Param { name: rn, t: named }),
+            recv: Some(Param {
+                name: rn,
+                t: named,
+                variadic: false,
+            }),
             params: Vec::new(),
             results: vec![Type::String],
             body,

@@ -1,0 +1,412 @@
+{
+  "format": "cir/1",
+  "name": "decl_interface",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Square",
+      "exported": true,
+      "fields": [
+        {
+          "name": "side",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "case.go:8"
+    },
+    {
+      "k": "struct",
+      "name": "Rect",
+      "exported": true,
+      "fields": [
+        {
+          "name": "w",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "h",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "case.go:16"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Area",
+      "exported": true,
+      "recv": {
+        "name": "s",
+        "t": {
+          "k": "named",
+          "name": "Square"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "named",
+                    "name": "Square"
+                  }
+                },
+                "name": "side",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "s",
+                  "t": {
+                    "k": "named",
+                    "name": "Square"
+                  }
+                },
+                "name": "side",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "pos": "case.go:12"
+    },
+    {
+      "name": "Area",
+      "exported": true,
+      "recv": {
+        "name": "r",
+        "t": {
+          "k": "named",
+          "name": "Rect"
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "r",
+                  "t": {
+                    "k": "named",
+                    "name": "Rect"
+                  }
+                },
+                "name": "w",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "r",
+                  "t": {
+                    "k": "named",
+                    "name": "Rect"
+                  }
+                },
+                "name": "h",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:22"
+        }
+      ],
+      "pos": "case.go:21"
+    },
+    {
+      "name": "area",
+      "exported": false,
+      "params": [
+        {
+          "name": "s",
+          "t": {
+            "k": "named",
+            "name": "Shape"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "iface_call",
+              "iface": "Shape",
+              "name": "Area",
+              "recv": {
+                "k": "var",
+                "name": "s",
+                "t": {
+                  "k": "named",
+                  "name": "Shape"
+                }
+              },
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:26"
+        }
+      ],
+      "pos": "case.go:25"
+    },
+    {
+      "name": "Areas",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "call",
+                "name": "area",
+                "args": [
+                  {
+                    "k": "to_iface",
+                    "x": {
+                      "k": "struct",
+                      "name": "Square",
+                      "fields": [
+                        {
+                          "name": "side",
+                          "value": {
+                            "k": "var",
+                            "name": "n",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "named",
+                        "name": "Square"
+                      }
+                    },
+                    "t": {
+                      "k": "named",
+                      "name": "Shape"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "call",
+                "name": "area",
+                "args": [
+                  {
+                    "k": "to_iface",
+                    "x": {
+                      "k": "struct",
+                      "name": "Rect",
+                      "fields": [
+                        {
+                          "name": "w",
+                          "value": {
+                            "k": "var",
+                            "name": "n",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        },
+                        {
+                          "name": "h",
+                          "value": {
+                            "k": "lit",
+                            "value": "2",
+                            "t": {
+                              "k": "int",
+                              "width": "platform",
+                              "signed": true
+                            }
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "named",
+                        "name": "Rect"
+                      }
+                    },
+                    "t": {
+                      "k": "named",
+                      "name": "Shape"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:31"
+        }
+      ],
+      "doc": "Areas sums, through Shape, the area of a square of side n and of a rectangle n by 2.",
+      "pos": "case.go:30"
+    }
+  ],
+  "layout": [
+    "type:Shape",
+    "type:Square",
+    "func:Square.Area",
+    "type:Rect",
+    "func:Rect.Area",
+    "func:area",
+    "func:Areas"
+  ],
+  "facts": {
+    "shared": [],
+    "read_only": [
+      "Square.Area",
+      "Rect.Area"
+    ]
+  },
+  "interfaces": [
+    {
+      "name": "Shape",
+      "exported": true,
+      "methods": [
+        {
+          "name": "Area",
+          "params": [],
+          "results": [
+            {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          ]
+        }
+      ],
+      "doc": "Shape has an area.",
+      "pos": "case.go:4"
+    }
+  ]
+}

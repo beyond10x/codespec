@@ -1,0 +1,99 @@
+{
+  "format": "codespec-trace/1",
+  "from": "example.com/netcheck/cmd/server.main",
+  "depth": 8,
+  "dispatch": "rta",
+  "root": {
+    "k": "call",
+    "pos": "main.go:13",
+    "name": "example.com/netcheck/cmd/server.main",
+    "def": "main.go:13",
+    "body": [
+      {
+        "k": "loop",
+        "pos": "main.go:19",
+        "cond": "true",
+        "body": [
+          {
+            "k": "dispatch",
+            "pos": "main.go:20",
+            "call": "net.Listener.Accept",
+            "candidates": [
+              {
+                "k": "call",
+                "pos": "main.go:20",
+                "name": "net.TCPListener.Accept",
+                "def": "tcpsock.go:383",
+                "body": [
+                  {
+                    "k": "call",
+                    "pos": "tcpsock.go:387",
+                    "name": "net.TCPListener.accept",
+                    "def": "tcpsock_posix.go:158",
+                    "body": [
+                      {
+                        "k": "call",
+                        "pos": "tcpsock_posix.go:159",
+                        "name": "net.netFD.accept",
+                        "def": "fd_unix.go:148",
+                        "body": [
+                          {
+                            "k": "call",
+                            "pos": "fd_unix.go:149",
+                            "name": "internal/poll.FD.Accept",
+                            "def": "fd_unix.go:599",
+                            "body": [
+                              {
+                                "k": "call",
+                                "pos": "fd_unix.go:609",
+                                "name": "internal/poll.accept",
+                                "def": "sock_cloexec.go:16",
+                                "body": [
+                                  {
+                                    "k": "dispatch",
+                                    "pos": "sock_cloexec.go:17",
+                                    "call": "func value func(int, int) (int, syscall.Sockaddr, error)",
+                                    "candidates": [
+                                      {
+                                        "k": "call",
+                                        "pos": "sock_cloexec.go:17",
+                                        "name": "syscall.Accept4",
+                                        "def": "syscall_linux.go:691",
+                                        "body": [
+                                          {
+                                            "k": "call",
+                                            "pos": "syscall_linux.go:694",
+                                            "name": "syscall.accept4",
+                                            "def": "zsyscall_linux_amd64.go:1400",
+                                            "body": [
+                                              {
+                                                "k": "syscall",
+                                                "pos": "zsyscall_linux_amd64.go:1401",
+                                                "name": "accept4",
+                                                "effects": [
+                                                  "net"
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "decl.type_params",
+    "decl.interface",
+    "decl.struct",
+    "expr.binop",
+    "expr.call",
+    "expr.field",
+    "expr.iface_call",
+    "expr.instantiate",
+    "expr.lit",
+    "expr.method",
+    "expr.struct",
+    "expr.var",
+    "fact.read_only",
+    "op.add",
+    "sem.int.wrap",
+    "stmt.let",
+    "stmt.return",
+    "type.any",
+    "type.int",
+    "type.named",
+    "type.param"
+  ]
+}

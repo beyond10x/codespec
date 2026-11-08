@@ -1,0 +1,90 @@
+{
+  "format": "codespec-effects-report/1",
+  "module": "envcheck",
+  "funcs": [
+    {
+      "name": "Mode",
+      "pos": "envcheck.go:12",
+      "effects": [
+        "env"
+      ],
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:13"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Label",
+      "pos": "envcheck.go:21",
+      "effects": [],
+      "unknown": []
+    },
+    {
+      "name": "Banner",
+      "pos": "envcheck.go:26",
+      "effects": [
+        "env"
+      ],
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:27"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Announce",
+      "pos": "envcheck.go:31",
+      "effects": [
+        "env",
+        "stdout"
+      ],
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:32"
+          ]
+        },
+        {
+          "name": "stdout",
+          "at": [
+            "envcheck.go:32"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Save",
+      "pos": "envcheck.go:36",
+      "effects": [
+        "env",
+        "fs.write"
+      ],
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:37"
+          ]
+        },
+        {
+          "name": "fs.write",
+          "at": [
+            "envcheck.go:37"
+          ]
+        }
+      ]
+    }
+  ]
+}

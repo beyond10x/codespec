@@ -1,0 +1,416 @@
+{
+  "format": "cir/1",
+  "name": "decl_embedded",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.5.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Counter",
+      "exported": true,
+      "fields": [
+        {
+          "name": "N",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Counter counts.",
+      "pos": "case.go:4"
+    },
+    {
+      "k": "struct",
+      "name": "Tally",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Counter",
+          "t": {
+            "k": "named",
+            "name": "Counter"
+          },
+          "embedded": true
+        },
+        {
+          "name": "Step",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Tally embeds a Counter: its field N and its method Bump are promoted to Tally.",
+      "pos": "case.go:15"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Bump",
+      "exported": true,
+      "recv": {
+        "name": "c",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Counter"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "step",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Counter"
+                  }
+                }
+              },
+              "name": "N",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "c",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Counter"
+                    }
+                  }
+                },
+                "name": "N",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "step",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Counter"
+                  }
+                }
+              },
+              "name": "N",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        }
+      ],
+      "doc": "Bump adds step to the count and gives the new count.",
+      "pos": "case.go:9"
+    },
+    {
+      "name": "Run",
+      "exported": true,
+      "params": [
+        {
+          "name": "step",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "k",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "t"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Tally",
+                "fields": [
+                  {
+                    "name": "Step",
+                    "value": {
+                      "k": "var",
+                      "name": "step",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Tally"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Tally"
+                }
+              }
+            }
+          ],
+          "pos": "case.go:22"
+        },
+        {
+          "k": "for",
+          "init": {
+            "k": "let",
+            "names": [
+              "i"
+            ],
+            "rhs": [
+              {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "pos": "case.go:23"
+          },
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "var",
+              "name": "k",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "post": {
+            "k": "incr",
+            "x": {
+              "k": "var",
+              "name": "i",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "pos": "case.go:23"
+          },
+          "body": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "method",
+                "x": {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "t",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "Tally"
+                      }
+                    }
+                  },
+                  "name": "Counter",
+                  "t": {
+                    "k": "named",
+                    "name": "Counter"
+                  }
+                },
+                "name": "Bump",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "t",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Tally"
+                        }
+                      }
+                    },
+                    "name": "Step",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "pos": "case.go:24"
+            }
+          ],
+          "pos": "case.go:23"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "t",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Tally"
+                    }
+                  }
+                },
+                "name": "Counter",
+                "t": {
+                  "k": "named",
+                  "name": "Counter"
+                }
+              },
+              "name": "N",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:26"
+        }
+      ],
+      "doc": "Run bumps a tally by step k times through the promoted method and gives the promoted count.",
+      "pos": "case.go:21"
+    }
+  ],
+  "layout": [
+    "type:Counter",
+    "func:Counter.Bump",
+    "type:Tally",
+    "func:Run"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

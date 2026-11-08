@@ -20,6 +20,13 @@
         "$ref": "#/$defs/ErrorVar"
       }
     },
+    "externs": {
+      "description": "Every function and method outside the module that the module calls, sorted by `path`, then\nreceiver type name (`\"\"` for a function), then `name`, each once.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Extern"
+      }
+    },
     "facts": {
       "description": "Whole-module analysis results, written by passes and read by writers.",
       "anyOf": [
@@ -41,14 +48,53 @@
         "$ref": "#/$defs/Func"
       }
     },
+    "inits": {
+      "description": "Every call the initializers of the module's variables make, and every function they use\nas a value (Go `var hook = syscall.Connect`): run when the module is loaded.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CallRef"
+      }
+    },
+    "interfaces": {
+      "description": "Interface types: the module's own, in source order, then every interface of another\nmodule that an `iface_call` goes through, sorted by `path`, then `name`, each once.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Interface"
+      }
+    },
     "layout": {
-      "description": "Source declaration order, `type:<name>`, `const:<name>`, `error:<name>`, `func:<name>` or\n`func:<receiver type>.<name>`, for writers that keep it.",
+      "description": "Source declaration order, `type:<name>` (a type or one of the module's own interfaces),\n`const:<name>`, `error:<name>`, `var:<name>`,\n`func:<name>` or `func:<receiver type>.<name>`, for writers that keep it.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
+    "linknames": {
+      "description": "Every function of the module linked by name to a function of another module (Go\n`//go:linkname`).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Linkname"
+      }
+    },
+    "methods": {
+      "description": "The method set of each named type the module declares, interface types excepted, for\ndispatching a call through an interface over a set of modules.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MethodSet"
+      }
+    },
     "name": {
+      "type": "string"
+    },
+    "opaque": {
+      "description": "Every function the module declares that is not in `funcs`: a declaration the reader\nrefused, or one without a body in the source language. Each keeps its name, receiver,\nposition, reason and the calls it makes, so the call graph has no hole where it is.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Opaque"
+      }
+    },
+    "path": {
+      "description": "The module's import path in the source language's spelling (`net/http`), when the reader\nknows it: the name an `extern` of another module uses for it.",
       "type": "string"
     },
     "reader": {
@@ -67,6 +113,13 @@
       "items": {
         "$ref": "#/$defs/TypeDecl"
       }
+    },
+    "vars": {
+      "description": "Module-level variables, in source order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VarDecl"
+      }
     }
   },
   "additionalProperties": false,
@@ -79,6 +132,213 @@
     "layout"
   ],
   "$defs": {
+    "CallRef": {
+      "description": "A call a construct makes, named from the source language's own type information where the\nconstruct is outside `cir/1` (a `foreign` statement, an [`Opaque`] function). A signature `sig`\nis the source language's spelling of a function type without parameter names, every named\ntype qualified by its full import path: `func([]byte) (int, error)`.",
+      "oneOf": [
+        {
+          "description": "A call of the function `name` of the module `path`; `path` empty: this module.",
+          "type": "object",
+          "properties": {
+            "consts": {
+              "description": "The arguments that are integer constants, with their values.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ConstArg"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "func"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "pos"
+          ]
+        },
+        {
+          "description": "A call of the method `name` declared on the named type `recv` of the module `path`\n(empty: this module), the receiver's type being known.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "method"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "recv": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "recv",
+            "name",
+            "pos"
+          ]
+        },
+        {
+          "description": "A call of the method `name` through a value of the interface `iface` (its spelling, for\nreading), whose whole method set is `methods`.",
+          "type": "object",
+          "properties": {
+            "iface": {
+              "type": "string"
+            },
+            "k": {
+              "type": "string",
+              "const": "iface"
+            },
+            "methods": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/MethodSig"
+              }
+            },
+            "name": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "iface",
+            "name",
+            "methods",
+            "pos"
+          ]
+        },
+        {
+          "description": "A call of a function value of the signature `sig`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "value"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "sig": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "sig",
+            "pos"
+          ]
+        },
+        {
+          "description": "The function `name` of `path` (empty: this module), or with `recv` the method, used as a\nvalue of the signature `sig`: it may run wherever a value of `sig` is called.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "ref"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "recv": {
+              "type": "string"
+            },
+            "sig": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "sig",
+            "pos"
+          ]
+        },
+        {
+          "description": "A function literal of the signature `sig`. Its calls belong to the function that holds\nit, and it may run wherever a value of `sig` is called.",
+          "type": "object",
+          "properties": {
+            "calls": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CallRef"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "lambda"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "sig": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "sig",
+            "calls",
+            "pos"
+          ]
+        },
+        {
+          "description": "Not a call: a value of the named type `name` of the module `path` (empty: this module) is\nmade here (a composite literal, `new`, a conversion, a constant or a zero value of that\ntype, or a struct holding one in a field), so a call through an interface may reach its\nmethods.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "new"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "pos"
+          ]
+        }
+      ]
+    },
     "Case": {
       "type": "object",
       "properties": {
@@ -108,6 +368,25 @@
         "send",
         "recv",
         "both"
+      ]
+    },
+    "ConstArg": {
+      "description": "The argument at `index` (from 0) of a call is the integer constant `value`, in decimal.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "value"
       ]
     },
     "ConstDecl": {
@@ -164,6 +443,28 @@
             "k": {
               "type": "string",
               "const": "lit"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "value",
+            "t"
+          ]
+        },
+        {
+          "description": "A floating-point literal: `value` is the shortest decimal that reads back to the same\nnumber of `t`'s width, laid out as [`float_spelling`] gives it.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "float"
             },
             "t": {
               "$ref": "#/$defs/Type"
@@ -263,6 +564,28 @@
           ]
         },
         {
+          "description": "A module-level variable, declared in the module's `vars`; read, or assigned to on the left\nof an `assign`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "global"
+            },
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t"
+          ]
+        },
+        {
           "type": "object",
           "properties": {
             "k": {
@@ -313,7 +636,7 @@
           ]
         },
         {
-          "description": "A call of a module function.",
+          "description": "A call of a module function; of a generic one with `targs`, its type arguments written\nout, as many as it has type parameters.",
           "type": "object",
           "properties": {
             "args": {
@@ -331,6 +654,12 @@
             },
             "t": {
               "$ref": "#/$defs/Type"
+            },
+            "targs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
             }
           },
           "additionalProperties": false,
@@ -369,6 +698,92 @@
             "k",
             "x",
             "name",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "description": "A call of the function `name` of `path`, declared in the module's `externs`; with `targs`,\nthe type arguments of a generic one, as many as its declaration has type parameters.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "extern"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "targs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "path",
+            "name",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "description": "A call of the method `name` of the extern type `type` of `path` on `recv`, declared in the\nmodule's `externs` with that receiver type; with `targs`, the type arguments of the\nmethod's own type parameters (those of a generic receiver type are `recv`'s type's).",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "extern_method"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "recv": {
+              "$ref": "#/$defs/Expr"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "targs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "path",
+            "type",
+            "name",
+            "recv",
             "args",
             "t"
           ]
@@ -568,7 +983,252 @@
             "x",
             "t"
           ]
+        },
+        {
+          "description": "The module function `name` used as a value or, with `recv`, the method `name` bound to\nthe receiver value `recv`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "func_ref"
+            },
+            "name": {
+              "type": "string"
+            },
+            "recv": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Expr"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name",
+            "t"
+          ]
+        },
+        {
+          "description": "A function literal. `captures` names every local, parameter or receiver of the enclosing\nfunction it reads or writes, each in scope where the literal stands; inside `body` only\n`captures` and `params` are in scope.",
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stmt"
+              }
+            },
+            "captures": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "k": {
+              "type": "string",
+              "const": "lambda"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Param"
+              }
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "params",
+            "results",
+            "captures",
+            "body",
+            "t"
+          ]
+        },
+        {
+          "description": "A call of the function value `f`.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "f": {
+              "$ref": "#/$defs/Expr"
+            },
+            "k": {
+              "type": "string",
+              "const": "call_value"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "f",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "description": "The slice `x` passed as the variadic last parameter itself (Go `xs...`): only the last\nargument of a `call`, `method`, `extern` or `extern_method` of a variadic function, or of\nthe `append` intrinsic.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "spread"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "t"
+          ]
+        },
+        {
+          "description": "A call of the method `name` through `recv`, a value of the interface `iface` of `path`\n(empty: this module), declared in the module's `interfaces`, or a value of a type\nparameter that interface constrains: the method of whatever value `recv` holds runs.",
+          "type": "object",
+          "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Expr"
+              }
+            },
+            "iface": {
+              "type": "string"
+            },
+            "k": {
+              "type": "string",
+              "const": "iface_call"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "recv": {
+              "$ref": "#/$defs/Expr"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "iface",
+            "name",
+            "recv",
+            "args",
+            "t"
+          ]
+        },
+        {
+          "description": "The value `x`, of a concrete type or of another interface, used where a value of the\ninterface `t` is expected.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "to_iface"
+            },
+            "t": {
+              "$ref": "#/$defs/Type"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
+            "t"
+          ]
         }
+      ]
+    },
+    "Extern": {
+      "description": "A function outside the module: `name` in the package, crate or class `path`, with its declared\nparameter and result types; with `recv`, a method of the extern type `recv` names.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        },
+        "path": {
+          "description": "The import path in the source language's spelling: `os`, `math/rand`, `std::env`.",
+          "type": "string"
+        },
+        "recv": {
+          "description": "The receiver of a method: an `extern` type of `path`, or a `ptr` to one. A method of a\ngeneric type binds that type's parameters by naming them as `param` type arguments.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Type"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        },
+        "tparams": {
+          "description": "The function's own type parameters; a call gives as many type arguments.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TypeParam"
+          }
+        },
+        "variadic": {
+          "description": "The last of `params`, a slice, is variadic: a call passes zero or more arguments for it,\nor one `spread` slice.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "name",
+        "params",
+        "results"
       ]
     },
     "Facts": {
@@ -633,6 +1293,10 @@
     "Field": {
       "type": "object",
       "properties": {
+        "embedded": {
+          "description": "An embedded field (Go): named after its type, a `named` or `extern` type or a `ptr` to\none. The reader writes every promoted field access and method call as the explicit path\nthrough it, so no consumer needs promotion rules; the mark only keeps how the source\ndeclares the field. Only on a struct's fields.",
+          "type": "boolean"
+        },
         "name": {
           "type": "string"
         },
@@ -660,6 +1324,35 @@
       "required": [
         "name",
         "value"
+      ]
+    },
+    "FloatBits": {
+      "description": "Floating-point width: IEEE 754 binary32 or binary64 (Go `float32`, `float64`).",
+      "type": "string",
+      "enum": [
+        "32",
+        "64"
+      ]
+    },
+    "ForeignInit": {
+      "description": "An initializer the reader kept verbatim, in `lang`, because cir/1 cannot express it.",
+      "type": "object",
+      "properties": {
+        "lang": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "src": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lang",
+        "src",
+        "reason"
       ]
     },
     "Func": {
@@ -705,6 +1398,13 @@
           "items": {
             "$ref": "#/$defs/Type"
           }
+        },
+        "tparams": {
+          "description": "The function's own type parameters; a call gives as many type arguments. A method of a\ngeneric type has none of its own: its receiver's type binds the type's parameters by\nnaming them as `param` type arguments (Go `func (p Pair[T]) First() T`).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TypeParam"
+          }
         }
       },
       "additionalProperties": false,
@@ -715,6 +1415,33 @@
         "results",
         "body",
         "pos"
+      ]
+    },
+    "IfaceMethod": {
+      "description": "One method of an interface: its name and its parameter and result types.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "params",
+        "results"
       ]
     },
     "IntWidth": {
@@ -728,6 +1455,157 @@
         "64"
       ]
     },
+    "Interface": {
+      "description": "An interface type: the methods a value of it can be called with. A value of the module's own\ninterface `name` has the type `named`; with `path`, the interface of another module, a value\nof it has the type `extern`.",
+      "type": "object",
+      "properties": {
+        "doc": {
+          "type": "string"
+        },
+        "exported": {
+          "type": "boolean"
+        },
+        "methods": {
+          "description": "Every method, those of embedded interfaces included, sorted by name, each once.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/IfaceMethod"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "description": "The module declaring it, in the source language's spelling (`io`); empty: this module.",
+          "type": "string"
+        },
+        "pos": {
+          "description": "Where the module declares it; empty for an interface of another module.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "exported",
+        "methods"
+      ]
+    },
+    "Linkname": {
+      "description": "The function `name` (a [`Func::key`] of this module) is linked to `target`, the function\n`<path>.<name>` of another module: the one without a body is the other.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "target"
+      ]
+    },
+    "MethodEntry": {
+      "description": "One method of a method set: its name and signature, and the call that runs when it is called,\na `method` or, for a method promoted from an embedded interface, an `iface` call.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sig": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/CallRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sig",
+        "target"
+      ]
+    },
+    "MethodSet": {
+      "description": "The method set of the named type `t` (with its pointer type's methods), sorted by name.",
+      "type": "object",
+      "properties": {
+        "methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MethodEntry"
+          }
+        },
+        "t": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "t",
+        "methods"
+      ]
+    },
+    "MethodSig": {
+      "description": "A method's name and signature, as an interface or a method set lists it.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sig": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sig"
+      ]
+    },
+    "Opaque": {
+      "description": "A function the module declares whose body `cir/1` does not hold.",
+      "type": "object",
+      "properties": {
+        "calls": {
+          "description": "Every call its body makes, in source order; empty for a function without a body.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CallRef"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "no_body": {
+          "description": "Declared without a body in the source language: implemented in assembly, or by the\nfunction a [`Linkname`] names.",
+          "type": "boolean"
+        },
+        "pos": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "recv": {
+          "description": "The name of the receiver's declared type, for a method.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "pos",
+        "reason",
+        "calls"
+      ]
+    },
     "Param": {
       "type": "object",
       "properties": {
@@ -736,6 +1614,10 @@
         },
         "t": {
           "$ref": "#/$defs/Type"
+        },
+        "variadic": {
+          "description": "The last parameter of a function takes zero or more arguments, or one `spread` slice; `t`\nis the slice it is inside the body (Go `...T`).",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -1232,6 +2114,16 @@
           "description": "Source the reader kept verbatim, in `lang`, because cir/1 cannot express it.",
           "type": "object",
           "properties": {
+            "calls": {
+              "description": "Every call the source makes, in source order, when the reader lists them; absent when\nit does not, and then the calls are unknown.",
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/$defs/CallRef"
+              }
+            },
             "k": {
               "type": "string",
               "const": "foreign"
@@ -1282,6 +2174,24 @@
             "k",
             "width",
             "signed"
+          ]
+        },
+        {
+          "description": "An IEEE 754 floating-point number of `bits` bits.",
+          "type": "object",
+          "properties": {
+            "bits": {
+              "$ref": "#/$defs/FloatBits"
+            },
+            "k": {
+              "type": "string",
+              "const": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "bits"
           ]
         },
         {
@@ -1352,7 +2262,7 @@
           ]
         },
         {
-          "description": "A type the module declares.",
+          "description": "A type the module declares or one of its own interfaces; with `targs`, the generic type\n`name` instantiated with them, as many as its declaration has type parameters.",
           "type": "object",
           "properties": {
             "k": {
@@ -1361,6 +2271,12 @@
             },
             "name": {
               "type": "string"
+            },
+            "targs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
             }
           },
           "additionalProperties": false,
@@ -1401,6 +2317,30 @@
           "additionalProperties": false,
           "required": [
             "k",
+            "elem"
+          ]
+        },
+        {
+          "description": "A fixed-size array of `len` values of `elem`; a value, copied on assignment.",
+          "type": "object",
+          "properties": {
+            "elem": {
+              "$ref": "#/$defs/Type"
+            },
+            "k": {
+              "type": "string",
+              "const": "array"
+            },
+            "len": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "len",
             "elem"
           ]
         },
@@ -1465,6 +2405,80 @@
             "k",
             "elems"
           ]
+        },
+        {
+          "description": "An opaque type `name` declared outside the module, in the package, crate or class `path`\n(Go `sync.Mutex`); its fields and representation are not part of the module. With\n`targs`, the generic type `name` instantiated with them (Go `atomic.Pointer[T]`).",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "extern"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "targs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "path",
+            "name"
+          ]
+        },
+        {
+          "description": "A function value taking `params` and giving `results`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "func"
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Type"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "params",
+            "results"
+          ]
+        },
+        {
+          "description": "The type parameter `name` of the enclosing generic declaration: a function's or extern's\n`tparams`, a type declaration's `tparams`, or one a method's receiver type binds by naming\nit among its type arguments.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "param"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "name"
+          ]
         }
       ]
     },
@@ -1495,6 +2509,13 @@
             },
             "pos": {
               "type": "string"
+            },
+            "tparams": {
+              "description": "The type parameters of a generic struct, which its fields may name as `param` types.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TypeParam"
+              }
             }
           },
           "additionalProperties": false,
@@ -1507,7 +2528,7 @@
           ]
         },
         {
-          "description": "A basic type given a name.",
+          "description": "A type given a name: a basic, function, map or slice type.",
           "type": "object",
           "properties": {
             "doc": {
@@ -1525,6 +2546,13 @@
             },
             "pos": {
               "type": "string"
+            },
+            "tparams": {
+              "description": "The type parameters of a generic newtype, which `under` may name as `param` types.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TypeParam"
+              }
             },
             "under": {
               "$ref": "#/$defs/Type"
@@ -1617,6 +2645,23 @@
         }
       ]
     },
+    "TypeParam": {
+      "description": "A type parameter of a generic function, type or extern: its name and its constraint, an\ninterface every type argument given for it implements: `any`, one of the module's own\ninterfaces (`named`, with type arguments if it is generic) or another module's (`extern`).",
+      "type": "object",
+      "properties": {
+        "constraint": {
+          "$ref": "#/$defs/Type"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "constraint"
+      ]
+    },
     "UnionVariant": {
       "type": "object",
       "properties": {
@@ -1634,6 +2679,47 @@
       "required": [
         "name",
         "fields"
+      ]
+    },
+    "VarDecl": {
+      "description": "A module-level variable of type `t`: the zero value of `t`, or the value of `init`, set before\nany function of the module runs. An initializer outside cir/1 is kept as `foreign` source\ninstead, never both.",
+      "type": "object",
+      "properties": {
+        "foreign": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ForeignInit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "init": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "pos": {
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/Type"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "t",
+        "pos"
       ]
     },
     "Variant": {

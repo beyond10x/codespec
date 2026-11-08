@@ -1,0 +1,25 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.array",
+    "expr.binop",
+    "expr.float",
+    "expr.index",
+    "expr.intrinsic",
+    "expr.lit",
+    "expr.var",
+    "intrinsic.sprintf",
+    "op.add",
+    "op.div",
+    "op.gt",
+    "op.mul",
+    "op.sub",
+    "stmt.assign",
+    "stmt.return",
+    "stmt.var",
+    "type.bool",
+    "type.float",
+    "type.int",
+    "type.string"
+  ]
+}

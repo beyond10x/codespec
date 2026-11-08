@@ -42,7 +42,7 @@ rect { stroke-width: 1; }
 <path class="edge" d="M58 1052V1110H76"/>
 <path class="edge" d="M58 1052V1146H76"/>
 <rect class="module" x="16" y="16" width="421.5" height="28" rx="5"/>
-<text x="26" y="34">module greeter · cir/1 · read by codespec-read-go 0.4.0</text>
+<text x="26" y="34">module greeter · cir/1 · read by codespec-read-go 0.5.0</text>
 <rect class="group" x="46" y="52" width="85.7" height="28" rx="5"/>
 <text x="56" y="70">types (1)</text>
 <rect class="decl" x="76" y="88" width="319.3" height="28" rx="5"/>
