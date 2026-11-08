@@ -134,22 +134,112 @@ pub enum Cmd {
         #[arg(long, value_parser = ["text", "json"], default_value = "text")]
         format: String,
     },
-    /// Report what each function of a module may do outside its own memory: per function, its
-    /// effects (env, fs.read, fs.write, net, proc, rand, stdin, stdout, time) and every reason
-    /// that set may be incomplete, as codespec-effects-report/1.
+    /// Report what each function of one module, or of several read as one program, may do outside
+    /// its own memory: per function, its effects (env, fs.read, fs.write, io, net, proc, rand,
+    /// stdin, stdout, time), with a barrier the syscalls it reaches, where each comes from, and
+    /// every reason that set may be incomplete, as codespec-effects-report/1.
     ///
     /// A function's effects are those of every extern it calls, as the summaries state them, of
-    /// println (stdout), and of every module function or method it calls, to a fixed point. An
-    /// extern no summary names, a foreign statement, a method on a type the module does not
-    /// declare, and a call of a function that has one of these, are each listed as unknown with
-    /// a position, never taken as pure. The same module and summaries give the same bytes.
+    /// println (stdout), of every syscall it reaches, and of every function or method it calls,
+    /// to a fixed point over all modules given. An extern naming the import path of a module
+    /// given is a call of that module's function; a call through an interface or a function
+    /// value reaches every function of the set that could stand there. An extern no summary
+    /// names, a foreign statement whose calls are not listed, a method on a type no module
+    /// declares, a function without a body the barrier does not resolve, and a call of a
+    /// function that has one of these, are each listed as unknown with a position, never taken
+    /// as pure. The same modules, summaries and barrier give the same bytes.
     Effects {
-        /// The module to analyse: a cir/1 document.
-        module: PathBuf,
-        /// A codespec-effects/1 summary of functions outside the module; repeat for several.
+        /// The modules to analyse, cir/1 documents, read as one program.
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// A codespec-effects/1 summary of functions outside the modules; repeat for several.
         /// Where two name one function, the first counts.
         #[arg(long = "summaries", value_name = "FILE")]
         summaries: Vec<PathBuf>,
+        /// A codespec-barrier/1 document: the functions that enter the operating system and
+        /// what each syscall does.
+        #[arg(long, value_name = "FILE")]
+        barrier: Option<PathBuf>,
+        /// Report only the module with this import path or name; repeat for several. All when
+        /// absent.
+        #[arg(long = "report", value_name = "MODULE")]
+        report: Vec<String>,
+        /// Also count, per reported function, the unknown reasons of every function it reaches.
+        #[arg(long)]
+        roots: bool,
+        /// An entry function, `<path>.<name>` or `<path>.<type>.<method>`; repeat for several.
+        /// With an entry, dispatch defaults to rta.
+        #[arg(long = "entry", value_name = "FUNC")]
+        entry: Vec<String>,
+        /// A module, by import path or name, whose every exported function is an entry; repeat
+        /// for several.
+        #[arg(long = "exported", value_name = "MODULE")]
+        exported: Vec<String>,
+        /// How a call through an interface or a function value is resolved: cha, every
+        /// candidate of the set (the default without entries); rta, only the types the code
+        /// reached from the entries makes and the function values it uses (the default with
+        /// entries).
+        #[arg(long, value_parser = ["cha", "rta"])]
+        dispatch: Option<String>,
+    },
+    /// List, per module, the functions the entry functions reach and those they do not, as
+    /// codespec-reach-report/1: the tree-shaking result and the dead-code report.
+    ///
+    /// A function is reached by a call, by being used as a value, or as a candidate of a call
+    /// through an interface or a function value. The entries are every --entry, every exported
+    /// function of each --exported module, or when neither is given `main.main`; every Go init
+    /// function and every module's variable initializers are entries too. An entry naming no
+    /// function of the set is refused. The same modules give the same bytes.
+    Reach {
+        /// The modules to analyse, cir/1 documents, read as one program.
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// An entry function, `<path>.<name>` or `<path>.<type>.<method>`; repeat for several.
+        #[arg(long = "entry", value_name = "FUNC")]
+        entry: Vec<String>,
+        /// A module, by import path or name, whose every exported function is an entry.
+        #[arg(long = "exported", value_name = "MODULE")]
+        exported: Vec<String>,
+        /// cha: every candidate of the set; rta (default): only types made and function values
+        /// used by reached code.
+        #[arg(long, value_parser = ["cha", "rta"], default_value = "rta")]
+        dispatch: String,
+        /// List only the module with this import path or name; repeat for several.
+        #[arg(long = "report", value_name = "MODULE")]
+        report: Vec<String>,
+    },
+    /// Print the call tree from one function as codespec-trace/1: its statements, each if, switch
+    /// and loop a branch node with its condition, each call expanded into the callee's tree, a
+    /// call through an interface or a function value a dispatch node listing every candidate,
+    /// syscalls and summarised externs at the leaves.
+    ///
+    /// Calls are resolved as `codespec effects` resolves them, over all modules given, with
+    /// --from the only entry for rta. Each function is expanded once, where it is called fewest
+    /// calls from --from; every other call of it is a ref node. A function more than --depth calls
+    /// from --from is a cut node. Whatever `codespec effects` lists as unknown is an unknown node
+    /// where it occurs. --from naming no function of the set is refused. The same modules,
+    /// summaries and barrier give the same bytes.
+    Trace {
+        /// The modules to analyse, cir/1 documents, read as one program.
+        #[arg(required = true)]
+        modules: Vec<PathBuf>,
+        /// The function the tree starts from, `<path>.<name>` or `<path>.<type>.<method>`.
+        #[arg(long, value_name = "FUNC")]
+        from: String,
+        /// How many calls deep functions are expanded.
+        #[arg(long, default_value_t = 8)]
+        depth: usize,
+        /// A codespec-effects/1 summary of functions outside the modules; repeat for several.
+        #[arg(long = "summaries", value_name = "FILE")]
+        summaries: Vec<PathBuf>,
+        /// A codespec-barrier/1 document: the functions that enter the operating system and
+        /// what each syscall does.
+        #[arg(long, value_name = "FILE")]
+        barrier: Option<PathBuf>,
+        /// cha: every candidate of the set; rta (default): only types made and function values
+        /// used by code reached from --from.
+        #[arg(long, value_parser = ["cha", "rta"], default_value = "rta")]
+        dispatch: String,
     },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first

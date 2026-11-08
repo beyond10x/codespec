@@ -8,7 +8,15 @@
       "effects": [
         "env"
       ],
-      "unknown": []
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:13"
+          ]
+        }
+      ]
     },
     {
       "name": "Label",
@@ -22,7 +30,15 @@
       "effects": [
         "env"
       ],
-      "unknown": []
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:27"
+          ]
+        }
+      ]
     },
     {
       "name": "Announce",
@@ -31,16 +47,42 @@
         "env",
         "stdout"
       ],
-      "unknown": []
+      "unknown": [],
+      "effect_sites": [
+        {
+          "name": "env",
+          "at": [
+            "envcheck.go:32"
+          ]
+        },
+        {
+          "name": "stdout",
+          "at": [
+            "envcheck.go:32"
+          ]
+        }
+      ]
     },
     {
       "name": "Save",
       "pos": "envcheck.go:36",
-      "effects": [],
-      "unknown": [
+      "effects": [
+        "env",
+        "fs.write"
+      ],
+      "unknown": [],
+      "effect_sites": [
         {
-          "pos": "envcheck.go:37",
-          "reason": "foreign statement"
+          "name": "env",
+          "at": [
+            "envcheck.go:37"
+          ]
+        },
+        {
+          "name": "fs.write",
+          "at": [
+            "envcheck.go:37"
+          ]
         }
       ]
     }
