@@ -891,6 +891,182 @@ fn a_match_guard_other_than_v_if_v_equals_e_is_kept_as_foreign() {
     assert_foreign(&m, "F", "lib.rs:2", "guard");
 }
 
+/// `codespec-write-rust`, built once with cargo into the workspace's `target/`.
+fn rust_writer() -> PathBuf {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let o = std::process::Command::new(cargo)
+        .args(["build", "--quiet", "--locked", "-p", "codespec-write-rust"])
+        .current_dir(root())
+        .output()
+        .expect("cargo starts");
+    assert!(
+        o.status.success(),
+        "cargo build codespec-write-rust: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    root().join("target/debug/codespec-write-rust")
+}
+
+#[test]
+fn the_writers_question_mark_output_for_the_propagate_case_reads_back_to_the_passed_document() {
+    let case = root().join("conformance/cases/sem-error-propagate/case.cir.json");
+    let out = root().join("target/rust-read-propagate/rust");
+    if out.exists() {
+        std::fs::remove_dir_all(&out).unwrap();
+    }
+    let w = std::process::Command::new(rust_writer())
+        .arg(&out)
+        .stdin(std::fs::File::open(&case).unwrap())
+        .output()
+        .expect("the Rust writer starts");
+    assert!(w.status.success(), "{}", String::from_utf8_lossy(&w.stderr));
+    let src = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
+    assert!(src.contains("checked(n)?"), "{src}");
+    assert!(src.contains("valid(n)?;"), "{src}");
+    let read = codespec_read_rust::read_crate(&out).expect("the reader accepts the output");
+    assert!(read.refusals.is_empty(), "refusals: {:?}", read.refusals);
+    let passed = codespec_passes::run(&read);
+    let mut got: Value = serde_json::from_str(&passed.to_json()).unwrap();
+    let mut want: Value = serde_json::from_slice(&std::fs::read(&case).unwrap()).unwrap();
+    for v in [&mut got, &mut want] {
+        v.as_object_mut().unwrap().remove("reader");
+        strip_pos(v);
+    }
+    platform_int_reads_as_64(&mut want);
+    errors_at_the_error_enum(&mut want);
+    if let Some(d) = first_difference(&want, &got, "$") {
+        panic!("round trip differs at {d}\n{src}");
+    }
+}
+
+#[test]
+fn an_error_only_call_with_question_mark_as_a_statement_reads_as_the_error_only_propagation() {
+    let m = read(
+        "use std::fmt;\n\
+         #[derive(Debug, Clone, PartialEq, Eq)]\n\
+         pub enum Error {\n\
+         \x20   Negative,\n\
+         }\n\
+         impl fmt::Display for Error {\n\
+         \x20   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n\
+         \x20       match self {\n\
+         \x20           Error::Negative => write!(f, \"negative\"),\n\
+         \x20       }\n\
+         \x20   }\n\
+         }\n\
+         impl std::error::Error for Error {}\n\
+         pub fn valid(n: i64) -> Result<(), Error> {\n\
+         \x20   if n < 0i64 {\n\
+         \x20       return Err(Error::Negative);\n\
+         \x20   }\n\
+         \x20   Ok(())\n\
+         }\n\
+         pub fn guarded(n: i64) -> Result<(i64, bool), Error> {\n\
+         \x20   valid(n)?;\n\
+         \x20   Ok((n, true))\n\
+         }\n",
+    );
+    assert!(m.refusals.is_empty(), "refusals: {:?}", m.refusals);
+    let g = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "Guarded")
+        .expect("Guarded");
+    let [let_, check, _] = g.body.as_slice() else {
+        panic!("{:?}", g.body)
+    };
+    let Stmt::Let { names, rhs, pos } = let_ else {
+        panic!("{let_:?}")
+    };
+    assert_eq!(names, &["err"]);
+    assert_eq!(pos, "lib.rs:21");
+    assert!(
+        matches!(rhs.as_slice(), [codespec_model::Expr::Call { name, t: codespec_model::Type::Error, .. }] if name == "Valid"),
+        "{rhs:?}"
+    );
+    let mut v: Value = serde_json::to_value(check).unwrap();
+    strip_pos(&mut v);
+    let int64 = serde_json::json!({"k": "int", "width": "64", "signed": true});
+    let err = serde_json::json!({"k": "var", "name": "err", "t": {"k": "error"}});
+    assert_eq!(
+        v,
+        serde_json::json!({
+            "k": "if",
+            "cond": {"k": "binop", "op": "!=", "x": err, "y": {"k": "nil", "t": {"k": "error"}}, "t": {"k": "bool"}},
+            "then": [{"k": "return", "results": [
+                {"k": "lit", "value": "0", "t": int64},
+                {"k": "lit", "value": "false", "t": {"k": "bool"}},
+                err,
+            ]}],
+        })
+    );
+}
+
+/// A crate with the closed error enum, a fallible `checked` and a comma-ok `find`, then `rest`.
+fn with_fallible(rest: &str) -> Module {
+    read(&format!(
+        "use std::fmt;\n\
+         #[derive(Debug, Clone, PartialEq, Eq)]\n\
+         pub enum Error {{\n\
+         \x20   Negative,\n\
+         }}\n\
+         impl fmt::Display for Error {{\n\
+         \x20   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {{\n\
+         \x20       match self {{\n\
+         \x20           Error::Negative => write!(f, \"negative\"),\n\
+         \x20       }}\n\
+         \x20   }}\n\
+         }}\n\
+         impl std::error::Error for Error {{}}\n\
+         pub fn checked(n: i64) -> Result<i64, Error> {{\n\
+         \x20   if n < 0i64 {{\n\
+         \x20       return Err(Error::Negative);\n\
+         \x20   }}\n\
+         \x20   Ok(n)\n\
+         }}\n\
+         pub fn find(n: i64) -> Option<i64> {{\n\
+         \x20   if n < 0i64 {{\n\
+         \x20       return None;\n\
+         \x20   }}\n\
+         \x20   Some(n)\n\
+         }}\n\
+         {rest}"
+    ))
+}
+
+#[test]
+fn a_question_mark_on_an_option_is_kept_as_foreign_with_a_refusal_at_its_line() {
+    let m = with_fallible(
+        "pub fn f(n: i64) -> Option<i64> {\n\
+         \x20   let v = find(n)?;\n\
+         \x20   Some(v)\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:27", "`?`");
+}
+
+#[test]
+fn a_question_mark_on_a_call_outside_the_crate_is_kept_as_foreign_with_a_refusal_at_its_line() {
+    let m = with_fallible(
+        "pub fn f(s: &str) -> Result<i64, Error> {\n\
+         \x20   let v: i64 = s.parse()?;\n\
+         \x20   Ok(v)\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:27", "`?`");
+}
+
+#[test]
+fn a_question_mark_in_a_function_that_does_not_return_a_result_is_kept_as_foreign() {
+    let m = with_fallible(
+        "pub fn f(n: i64) -> i64 {\n\
+         \x20   let v = checked(n)?;\n\
+         \x20   v\n\
+         }\n",
+    );
+    assert_foreign(&m, "F", "lib.rs:27", "`?`");
+}
+
 #[test]
 fn a_guard_whose_body_reads_the_bound_value_is_kept_as_foreign() {
     let m = read(

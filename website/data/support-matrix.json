@@ -985,7 +985,7 @@
         "op.sub": "verified",
         "op.xor": "verified",
         "sem.continue.post": "verified",
-        "sem.error.propagate": "refused",
+        "sem.error.propagate": "verified",
         "sem.int.wrap": "verified",
         "sem.map.order": "verified",
         "sem.multi_assign.order": "verified",
