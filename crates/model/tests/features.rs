@@ -26,9 +26,9 @@ fn the_vocabulary_has_one_id_per_model_variant_and_fact() {
     let ids: Vec<String> = vocabulary().into_iter().map(|f| f.id).collect();
     let count = |prefix: &str| ids.iter().filter(|i| i.starts_with(prefix)).count();
     assert_eq!(count("stmt."), 16, "statement kinds");
-    assert_eq!(count("expr."), 18, "expression kinds");
-    assert_eq!(count("type."), 12, "type kinds");
-    assert_eq!(count("decl."), 4, "declaration kinds");
+    assert_eq!(count("expr."), 28, "expression kinds");
+    assert_eq!(count("type."), 17, "type kinds");
+    assert_eq!(count("decl."), 9, "declaration kinds");
     assert_eq!(count("fact."), 7, "facts");
 }
 

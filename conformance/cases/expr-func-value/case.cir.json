@@ -1,0 +1,401 @@
+{
+  "format": "cir/1",
+  "name": "expr_func_value",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [
+    {
+      "k": "newtype",
+      "name": "Op",
+      "exported": true,
+      "under": {
+        "k": "func",
+        "params": [
+          {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        ],
+        "results": [
+          {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        ]
+      },
+      "doc": "Op maps an int to an int.",
+      "pos": "case.go:4"
+    },
+    {
+      "k": "struct",
+      "name": "Counter",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Step",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Counter adds its step.",
+      "pos": "case.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Add",
+      "exported": true,
+      "recv": {
+        "name": "c",
+        "t": {
+          "k": "named",
+          "name": "Counter"
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "c",
+                  "t": {
+                    "k": "named",
+                    "name": "Counter"
+                  }
+                },
+                "name": "Step",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "doc": "Add gives n plus the step.",
+      "pos": "case.go:12"
+    },
+    {
+      "name": "double",
+      "exported": false,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:17"
+        }
+      ],
+      "pos": "case.go:16"
+    },
+    {
+      "name": "Compose",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "k",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "f"
+          ],
+          "rhs": [
+            {
+              "k": "conv",
+              "name": "Op",
+              "x": {
+                "k": "func_ref",
+                "name": "double",
+                "t": {
+                  "k": "func",
+                  "params": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ],
+                  "results": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ]
+                }
+              },
+              "t": {
+                "k": "named",
+                "name": "Op"
+              }
+            }
+          ],
+          "pos": "case.go:23"
+        },
+        {
+          "k": "let",
+          "names": [
+            "c"
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Counter",
+              "fields": [
+                {
+                  "name": "Step",
+                  "value": {
+                    "k": "var",
+                    "name": "k",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Counter"
+              }
+            }
+          ],
+          "pos": "case.go:24"
+        },
+        {
+          "k": "let",
+          "names": [
+            "g"
+          ],
+          "rhs": [
+            {
+              "k": "func_ref",
+              "name": "Add",
+              "recv": {
+                "k": "var",
+                "name": "c",
+                "t": {
+                  "k": "named",
+                  "name": "Counter"
+                }
+              },
+              "t": {
+                "k": "func",
+                "params": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                ],
+                "results": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:25"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call_value",
+              "f": {
+                "k": "var",
+                "name": "g",
+                "t": {
+                  "k": "func",
+                  "params": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ],
+                  "results": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ]
+                }
+              },
+              "args": [
+                {
+                  "k": "call_value",
+                  "f": {
+                    "k": "var",
+                    "name": "f",
+                    "t": {
+                      "k": "named",
+                      "name": "Op"
+                    }
+                  },
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:26"
+        }
+      ],
+      "doc": "Compose applies the function double, then the method Add of a counter of step k, to n: one\nmodule function and one method used as values.",
+      "pos": "case.go:22"
+    }
+  ],
+  "layout": [
+    "type:Op",
+    "type:Counter",
+    "func:Counter.Add",
+    "func:double",
+    "func:Compose"
+  ],
+  "facts": {
+    "shared": [],
+    "read_only": [
+      "Counter.Add"
+    ]
+  }
+}

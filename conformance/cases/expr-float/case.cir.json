@@ -1,0 +1,154 @@
+{
+  "format": "cir/1",
+  "name": "expr_float",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Over",
+      "exported": true,
+      "params": [
+        {
+          "name": "big",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "x",
+          "t": {
+            "k": "float",
+            "bits": "64"
+          },
+          "pos": "case.go:5"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "x",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.25",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              }
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "big",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "float",
+                  "value": "1.5e300",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "pos": "case.go:8"
+            }
+          ],
+          "pos": "case.go:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": ">",
+              "x": {
+                "k": "binop",
+                "op": "/",
+                "x": {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                },
+                "y": {
+                  "k": "float",
+                  "value": "4",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "0.5",
+                "t": {
+                  "k": "float",
+                  "bits": "64"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        }
+      ],
+      "doc": "Over tells whether a quarter of a float literal is more than half.",
+      "pos": "case.go:4"
+    }
+  ],
+  "layout": [
+    "func:Over"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

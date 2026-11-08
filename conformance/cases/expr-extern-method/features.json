@@ -1,0 +1,23 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.extern_method",
+    "expr.binop",
+    "expr.lit",
+    "expr.var",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.expr",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "stmt.var",
+    "type.bool",
+    "type.error",
+    "type.extern",
+    "type.int",
+    "type.string",
+    "type.tuple"
+  ]
+}

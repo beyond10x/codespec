@@ -1,0 +1,18 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.lambda",
+    "expr.binop",
+    "expr.call_value",
+    "expr.lit",
+    "expr.var",
+    "op.add",
+    "op.mul",
+    "sem.int.wrap",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "type.func",
+    "type.int"
+  ]
+}

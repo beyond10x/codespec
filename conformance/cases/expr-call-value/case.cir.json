@@ -1,0 +1,215 @@
+{
+  "format": "cir/1",
+  "name": "expr_call_value",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Rule",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Check",
+          "t": {
+            "k": "func",
+            "params": [
+              {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            ],
+            "results": [
+              {
+                "k": "bool"
+              }
+            ]
+          }
+        }
+      ],
+      "doc": "Rule holds a check as a function value.",
+      "pos": "case.go:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "positive",
+      "exported": false,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": ">",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        }
+      ],
+      "pos": "case.go:8"
+    },
+    {
+      "name": "Allowed",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "r"
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Rule",
+              "fields": [
+                {
+                  "name": "Check",
+                  "value": {
+                    "k": "func_ref",
+                    "name": "positive",
+                    "t": {
+                      "k": "func",
+                      "params": [
+                        {
+                          "k": "int",
+                          "width": "platform",
+                          "signed": true
+                        }
+                      ],
+                      "results": [
+                        {
+                          "k": "bool"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Rule"
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call_value",
+              "f": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "r",
+                  "t": {
+                    "k": "named",
+                    "name": "Rule"
+                  }
+                },
+                "name": "Check",
+                "t": {
+                  "k": "func",
+                  "params": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ],
+                  "results": [
+                    {
+                      "k": "bool"
+                    }
+                  ]
+                }
+              },
+              "args": [
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Allowed calls the function value a rule holds in a field on n.",
+      "pos": "case.go:13"
+    }
+  ],
+  "layout": [
+    "type:Rule",
+    "func:positive",
+    "func:Allowed"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

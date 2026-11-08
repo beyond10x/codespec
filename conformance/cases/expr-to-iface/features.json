@@ -1,0 +1,21 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.to_iface",
+    "decl.interface",
+    "decl.struct",
+    "expr.binop",
+    "expr.field",
+    "expr.iface_call",
+    "expr.lit",
+    "expr.struct",
+    "expr.var",
+    "fact.read_only",
+    "op.add",
+    "stmt.assign",
+    "stmt.return",
+    "stmt.var",
+    "type.named",
+    "type.string"
+  ]
+}

@@ -52,7 +52,14 @@
           "lang": "go",
           "src": "defer done()",
           "reason": "defer is outside cir/1",
-          "pos": "case.go:6"
+          "pos": "case.go:6",
+          "calls": [
+            {
+              "k": "func",
+              "name": "done",
+              "pos": "case.go:6"
+            }
+          ]
         },
         {
           "k": "assign",

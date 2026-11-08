@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Count",
+      "args": [
+        "\"ab\"",
+        "3"
+      ]
+    },
+    {
+      "func": "Count",
+      "args": [
+        "\"x\"",
+        "0"
+      ]
+    }
+  ]
+}

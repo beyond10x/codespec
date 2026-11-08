@@ -174,7 +174,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use codespec_model::{
-    Expr, Feature, Module, Stmt, Type, TypeDecl, features_from_json, receiver_type_name, vocabulary,
+    Expr, Feature, Module, Stmt, Type, TypeDecl, TypeParam, features_from_json, receiver_type_name,
+    vocabulary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -475,7 +476,7 @@ impl Walk {
     fn is_int(&self, t: &Type) -> bool {
         match t {
             Type::Int { .. } => true,
-            Type::Named { name } => self.types.iter().any(|d| match d {
+            Type::Named { name, .. } => self.types.iter().any(|d| match d {
                 TypeDecl::Newtype { name: n, under, .. }
                 | TypeDecl::Enum { name: n, under, .. } => {
                     n == name && matches!(under, Type::Int { .. })
@@ -493,26 +494,56 @@ impl Walk {
     fn ty(&mut self, t: &Type) {
         self.add(format!("type.{}", k(t)));
         match t {
-            Type::Ptr { elem } | Type::Slice { elem } | Type::Chan { elem, .. } => self.ty(elem),
+            Type::Ptr { elem }
+            | Type::Slice { elem }
+            | Type::Chan { elem, .. }
+            | Type::Array { elem, .. } => self.ty(elem),
             Type::Map { key, elem } => {
                 self.ty(key);
                 self.ty(elem);
             }
             Type::Tuple { elems } => elems.iter().for_each(|e| self.ty(e)),
+            Type::Func { params, results } => params.iter().chain(results).for_each(|e| self.ty(e)),
+            Type::Named { targs, .. } | Type::Extern { targs, .. } => self.targs(targs),
             Type::Int { .. }
             | Type::Bool
             | Type::String
             | Type::Error
             | Type::Any
             | Type::Unit
-            | Type::Named { .. } => {}
+            | Type::Float { .. }
+            | Type::Param { .. } => {}
         }
+    }
+
+    /// The type arguments of an instantiation: `expr.instantiate` when there are any.
+    fn targs(&mut self, targs: &[Type]) {
+        if !targs.is_empty() {
+            self.add("expr.instantiate");
+        }
+        targs.iter().for_each(|t| self.ty(t));
+    }
+
+    /// The type parameters of a declaration: `decl.type_params` and their constraints.
+    fn tparams(&mut self, tparams: &[TypeParam]) {
+        if !tparams.is_empty() {
+            self.add("decl.type_params");
+        }
+        tparams.iter().for_each(|p| self.ty(&p.constraint));
     }
 
     fn decl(&mut self, d: &TypeDecl) -> Result<(), Error> {
         self.add(format!("decl.{}", k(d)));
+        self.tparams(d.tparams());
         match d {
-            TypeDecl::Struct { fields, .. } => fields.iter().for_each(|f| self.ty(&f.t)),
+            TypeDecl::Struct { fields, .. } => {
+                for f in fields {
+                    self.ty(&f.t);
+                    if f.embedded {
+                        self.add("decl.embedded");
+                    }
+                }
+            }
             TypeDecl::Newtype { under, .. } => self.ty(under),
             TypeDecl::Enum {
                 under, variants, ..
@@ -540,20 +571,41 @@ impl Walk {
         self.ty(e.t());
         match e {
             Expr::Lit { .. }
+            | Expr::Float { .. }
             | Expr::Nil { .. }
             | Expr::Var { .. }
             | Expr::Const { .. }
             | Expr::Errvar { .. }
+            | Expr::Global { .. }
             | Expr::Make { .. }
             | Expr::Zero { .. } => {}
-            Expr::Field { x, .. } | Expr::Conv { x, .. } | Expr::ToError { x, .. } => {
-                self.expr(x)?
+            Expr::Field { x, .. }
+            | Expr::Conv { x, .. }
+            | Expr::ToError { x, .. }
+            | Expr::Spread { x, .. }
+            | Expr::ToIface { x, .. } => self.expr(x)?,
+            Expr::IfaceCall { recv, args, .. } => {
+                self.expr(recv)?;
+                self.exprs(args)?;
             }
             Expr::Index { x, index, .. } => {
                 self.expr(x)?;
                 self.expr(index)?;
             }
-            Expr::Call { args, .. } | Expr::Extern { args, .. } => self.exprs(args)?,
+            Expr::Call { targs, args, .. } | Expr::Extern { targs, args, .. } => {
+                self.targs(targs);
+                self.exprs(args)?
+            }
+            Expr::ExternMethod {
+                targs,
+                recv: x,
+                args,
+                ..
+            } => {
+                self.targs(targs);
+                self.expr(x)?;
+                self.exprs(args)?;
+            }
             Expr::Method { x, args, .. } => {
                 self.expr(x)?;
                 self.exprs(args)?;
@@ -589,6 +641,29 @@ impl Walk {
                     return Err(format!("intrinsic {name:?} has no feature"));
                 }
                 self.add(id);
+                self.exprs(args)?;
+            }
+            Expr::FuncRef { recv, .. } => {
+                if let Some(r) = recv {
+                    self.expr(r)?;
+                }
+            }
+            Expr::Lambda {
+                params,
+                results,
+                body,
+                ..
+            } => {
+                params.iter().for_each(|p| self.ty(&p.t));
+                results.iter().for_each(|t| self.ty(t));
+                // A `break` or `continue` inside a lambda's body never leaves a loop outside it.
+                let outer = std::mem::take(&mut self.breakable);
+                let r = self.body(body);
+                self.breakable = outer;
+                r?;
+            }
+            Expr::CallValue { f, args, .. } => {
+                self.expr(f)?;
                 self.exprs(args)?;
             }
         }
@@ -718,7 +793,9 @@ impl Walk {
 }
 
 /// Every feature id a module uses: the `k` of each statement, expression, type and type
-/// declaration; the operator, compound assignment and intrinsic of each node that carries one;
+/// declaration; `decl.variadic` for a variadic function or extern; `decl.type_params` for a
+/// declaration with type parameters and `expr.instantiate` for a call or type with type
+/// arguments; the operator, compound assignment and intrinsic of each node that carries one;
 /// each fact whose list is not empty; and the semantic features of the crate doc's table. An
 /// operator or intrinsic the vocabulary has no id for is an error.
 pub fn features_used(m: &Module) -> Result<BTreeSet<String>, Error> {
@@ -730,13 +807,39 @@ pub fn features_used(m: &Module) -> Result<BTreeSet<String>, Error> {
         w.ty(&c.t);
         w.expr(&c.value)?;
     }
+    for i in &m.interfaces {
+        w.add("decl.interface");
+        for x in &i.methods {
+            x.params.iter().chain(&x.results).for_each(|t| w.ty(t));
+        }
+    }
+    for v in &m.vars {
+        w.add("decl.var");
+        w.ty(&v.t);
+        if let Some(init) = &v.init {
+            w.expr(init)?;
+        }
+        if v.foreign.is_some() {
+            w.add("stmt.foreign");
+        }
+    }
     for f in &m.funcs {
+        w.tparams(&f.tparams);
         if let Some(r) = &f.recv {
             w.ty(&r.t);
         }
         f.params.iter().for_each(|p| w.ty(&p.t));
+        if f.params.iter().any(|p| p.variadic) {
+            w.add("decl.variadic");
+        }
         f.results.iter().for_each(|t| w.ty(t));
         w.body(&f.body)?;
+    }
+    for x in &m.externs {
+        w.tparams(&x.tparams);
+    }
+    if m.externs.iter().any(|x| x.variadic) {
+        w.add("decl.variadic");
     }
     if let Some(facts) = &m.facts {
         let facts = serde_json::to_value(facts).expect("facts always serialize");
@@ -759,7 +862,11 @@ pub fn features_used_by(m: &Module, func: &str) -> Result<BTreeSet<String>, Erro
         .find(|f| f.name == func && f.recv.is_none())
         .ok_or_else(|| format!("no function {func:?}"))?;
     let mut w = Walk::new(m);
+    w.tparams(&f.tparams);
     f.params.iter().for_each(|p| w.ty(&p.t));
+    if f.params.iter().any(|p| p.variadic) {
+        w.add("decl.variadic");
+    }
     f.results.iter().for_each(|t| w.ty(t));
     w.body(&f.body)?;
     Ok(w.out)
@@ -787,7 +894,7 @@ fn printable(t: &Type, m: &Module) -> Result<(), Error> {
         ),
         Type::Int { .. } | Type::Bool | Type::String | Type::Any => Ok(()),
         Type::Slice { elem } => printable(elem, m),
-        Type::Named { name } => match m.types.iter().find(|d| d.name() == name) {
+        Type::Named { name, .. } => match m.types.iter().find(|d| d.name() == name) {
             Some(TypeDecl::Newtype { under, .. } | TypeDecl::Enum { under, .. }) => {
                 printable(under, m)
             }
@@ -812,7 +919,7 @@ fn go_type(t: &Type, m: &Module) -> Result<String, Error> {
         Type::String => "string".to_string(),
         Type::Any => "any".to_string(),
         Type::Slice { elem } => format!("[]{}", go_type(elem, m)?),
-        Type::Named { name } => format!("subject.{name}"),
+        Type::Named { name, .. } => format!("subject.{name}"),
         other => return Err(format!("type {} has no driver spelling", k(other))),
     })
 }

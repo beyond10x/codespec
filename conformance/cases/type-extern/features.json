@@ -1,0 +1,32 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.extern",
+    "decl.struct",
+    "expr.binop",
+    "expr.extern",
+    "expr.extern_method",
+    "expr.field",
+    "expr.lit",
+    "expr.struct",
+    "expr.unop",
+    "expr.var",
+    "op.add",
+    "op.lt",
+    "sem.int.wrap",
+    "stmt.expr",
+    "stmt.for",
+    "stmt.incr",
+    "stmt.let",
+    "stmt.return",
+    "stmt.var",
+    "type.bool",
+    "type.error",
+    "type.int",
+    "type.named",
+    "type.ptr",
+    "type.string",
+    "type.tuple",
+    "unop.ref"
+  ]
+}

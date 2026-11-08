@@ -19,9 +19,9 @@ import (
 //     Java field `balance` beside its getter `balance()`). The method keeps its name, the
 //     type's API; the field gets `_` appended until no field or method of the type holds it.
 //  3. Predeclared names. A package-level declaration (function, type, enum variant, constant,
-//     sentinel error) named like one of Go's predeclared identifiers (a Java static method
-//     `make`, `len`, `append`) would hide it from the whole package, including the code the
-//     writer adds itself (sorted_keys calls make, len and append). It gets `_` appended until
+//     sentinel error, variable) named like one of Go's predeclared identifiers (a Java static
+//     method `make`, `len`, `append`) would hide it from the whole package, including the code
+//     the writer adds itself (sorted_keys calls make, len and append). It gets `_` appended until
 //     no package-level name holds it, and every reference follows. Every predeclared identifier
 //     is lower case, so no exported name changes.
 //
@@ -36,7 +36,7 @@ type goNames struct {
 // predeclared reports whether name is one of Go's predeclared identifiers.
 func predeclared(name string) bool { return types.Universe.Lookup(name) != nil }
 
-// decl is the Go name of a package-level type, enum variant, constant or sentinel error.
+// decl is the Go name of a package-level type, enum variant, constant, sentinel error or variable.
 func (n *goNames) decl(name string) string {
 	if g, ok := n.pkg[name]; ok {
 		return g
@@ -81,6 +81,9 @@ func newGoNames(m *Module) *goNames {
 	for _, e := range m.Errors {
 		pkg[e.Name] = true
 	}
+	for _, v := range m.Vars {
+		pkg[v.Name] = true
+	}
 	for _, f := range m.Funcs {
 		if f.Recv == nil {
 			pkg[f.Name] = true
@@ -109,6 +112,9 @@ func newGoNames(m *Module) *goNames {
 	}
 	for _, e := range m.Errors {
 		rename(e.Name)
+	}
+	for _, v := range m.Vars {
+		rename(v.Name)
 	}
 	methodsOf := map[string]map[string]bool{}
 	for _, f := range m.Funcs {

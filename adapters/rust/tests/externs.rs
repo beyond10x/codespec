@@ -44,6 +44,77 @@ fn orders_with_an_extern_call() -> Value {
     doc
 }
 
+/// `orders`, passed, with one more function `Hold(mu *sync.Mutex) { mu.Lock() }`.
+fn orders_with_an_extern_method_call() -> Value {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/orders/orders.cir.json");
+    let mut doc: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let ptr = json!({"k": "ptr", "elem": {"k": "extern", "path": "sync", "name": "Mutex"}});
+    doc["funcs"].as_array_mut().unwrap().push(json!({
+        "name": "Hold",
+        "exported": true,
+        "params": [{"name": "mu", "t": ptr}],
+        "results": [],
+        "body": [{
+            "k": "expr",
+            "x": {
+                "k": "extern_method",
+                "path": "sync",
+                "type": "Mutex",
+                "name": "Lock",
+                "recv": {"k": "var", "name": "mu", "t": ptr},
+                "args": [],
+                "t": {"k": "tuple", "elems": []}
+            },
+            "pos": "orders.go:200"
+        }],
+        "pos": "orders.go:199"
+    }));
+    doc["externs"] =
+        json!([{"path": "sync", "name": "Lock", "recv": ptr, "params": [], "results": []}]);
+    doc["layout"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("func:Hold"));
+    doc
+}
+
+#[test]
+fn a_function_with_an_extern_type_and_method_call_is_refused_naming_the_extern_type() {
+    use std::io::Write;
+    let out = scratch("extern-method");
+    let mut child = Command::new(WRITER)
+        .arg(&out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(orders_with_an_extern_method_call().to_string().as_bytes())
+        .unwrap();
+    let o = child.wait_with_output().unwrap();
+    assert!(
+        o.status.success(),
+        "writer failed: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    let hold = refusals
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["name"] == "Hold")
+        .unwrap_or_else(|| panic!("Hold not refused: {refusals}"));
+    let reason = hold["reason"].as_str().unwrap();
+    assert!(reason.contains("extern type sync.Mutex"), "{reason}");
+    let lib = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
+    assert!(!lib.contains("fn hold"), "Hold is refused, yet emitted");
+}
+
 #[test]
 fn a_function_with_an_extern_call_is_refused_naming_extern_and_the_rest_builds() {
     use std::io::Write;

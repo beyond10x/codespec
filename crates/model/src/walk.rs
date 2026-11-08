@@ -2,7 +2,8 @@
 
 use crate::{Expr, Stmt};
 
-/// Every statement of `body`, pre-order, including those of nested blocks.
+/// Every statement of `body`, pre-order, including those of nested blocks but not those of a
+/// lambda's body.
 pub fn walk_stmts<'a>(body: &'a [Stmt], f: &mut dyn FnMut(&'a Stmt)) {
     for s in body {
         f(s);
@@ -62,21 +63,25 @@ pub fn stmt_exprs<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
     }
 }
 
-/// `e` and every expression inside it, pre-order.
+/// `e` and every expression inside it, pre-order, including those of a lambda's body.
 pub fn walk_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
     f(e);
     match e {
         Expr::Lit { .. }
+        | Expr::Float { .. }
         | Expr::Nil { .. }
         | Expr::Var { .. }
         | Expr::Const { .. }
         | Expr::Errvar { .. }
+        | Expr::Global { .. }
         | Expr::Make { .. }
         | Expr::Zero { .. } => {}
         Expr::Field { x, .. }
         | Expr::Unop { x, .. }
         | Expr::Conv { x, .. }
-        | Expr::ToError { x, .. } => walk_expr(x, f),
+        | Expr::ToError { x, .. }
+        | Expr::Spread { x, .. }
+        | Expr::ToIface { x, .. } => walk_expr(x, f),
         Expr::Index { x, index, .. } => {
             walk_expr(x, f);
             walk_expr(index, f);
@@ -88,11 +93,68 @@ pub fn walk_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
         Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
             args.iter().for_each(|a| walk_expr(a, f))
         }
-        Expr::Method { x, args, .. } => {
+        Expr::Method { x, args, .. }
+        | Expr::ExternMethod { recv: x, args, .. }
+        | Expr::IfaceCall { recv: x, args, .. } => {
             walk_expr(x, f);
             args.iter().for_each(|a| walk_expr(a, f));
         }
         Expr::Struct { fields, .. } => fields.iter().for_each(|fi| walk_expr(&fi.value, f)),
+        Expr::FuncRef { recv, .. } => recv.iter().for_each(|r| walk_expr(r, f)),
+        Expr::Lambda { body, .. } => body_exprs(body, f),
+        Expr::CallValue {
+            f: callee, args, ..
+        } => {
+            walk_expr(callee, f);
+            args.iter().for_each(|a| walk_expr(a, f));
+        }
+    }
+}
+
+/// The expressions directly inside `e`, in order; a lambda's body is not entered.
+pub fn children<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
+    match e {
+        Expr::Lit { .. }
+        | Expr::Float { .. }
+        | Expr::Nil { .. }
+        | Expr::Var { .. }
+        | Expr::Const { .. }
+        | Expr::Errvar { .. }
+        | Expr::Global { .. }
+        | Expr::Make { .. }
+        | Expr::Zero { .. }
+        | Expr::Lambda { .. } => {}
+        Expr::Field { x, .. }
+        | Expr::Unop { x, .. }
+        | Expr::Conv { x, .. }
+        | Expr::ToError { x, .. }
+        | Expr::Spread { x, .. }
+        | Expr::ToIface { x, .. } => f(x),
+        Expr::Index { x, index, .. } => {
+            f(x);
+            f(index);
+        }
+        Expr::Binop { x, y, .. } => {
+            f(x);
+            f(y);
+        }
+        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
+            args.iter().for_each(f)
+        }
+        Expr::Method { x, args, .. }
+        | Expr::ExternMethod { recv: x, args, .. }
+        | Expr::IfaceCall { recv: x, args, .. } => {
+            f(x);
+            args.iter().for_each(f);
+        }
+        Expr::Struct { fields, .. } => fields.iter().for_each(|fi| f(&fi.value)),
+        Expr::FuncRef { recv, .. } => recv.iter().for_each(|r| f(r)),
+        Expr::CallValue {
+            f: callee, args, ..
+        } => {
+            f(callee);
+            args.iter().for_each(f);
+        }
     }
 }
 

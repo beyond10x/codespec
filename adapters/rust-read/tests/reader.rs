@@ -406,6 +406,7 @@ fn assert_foreign(m: &Module, func: &str, pos: &str, reason_has: &str) {
             src,
             reason,
             pos: p,
+            ..
         } if p == pos => Some((lang.clone(), src.clone(), reason.clone())),
         _ => None,
     });

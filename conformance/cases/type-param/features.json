@@ -1,0 +1,13 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.param",
+    "decl.type_params",
+    "expr.call",
+    "expr.instantiate",
+    "expr.var",
+    "stmt.return",
+    "type.any",
+    "type.int"
+  ]
+}

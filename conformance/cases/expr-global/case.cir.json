@@ -1,0 +1,114 @@
+{
+  "format": "cir/1",
+  "name": "expr_global",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [],
+  "vars": [
+    {
+      "name": "total",
+      "t": {
+        "k": "int",
+        "width": "platform",
+        "signed": true
+      },
+      "pos": "case.go:3"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Add",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "global",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "global",
+                "name": "total",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "global",
+              "name": "total",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:8"
+        }
+      ],
+      "doc": "Add adds n to the running total and returns the new total.",
+      "pos": "case.go:6"
+    }
+  ],
+  "layout": [
+    "var:total",
+    "func:Add"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

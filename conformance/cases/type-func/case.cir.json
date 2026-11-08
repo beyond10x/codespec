@@ -1,0 +1,239 @@
+{
+  "format": "cir/1",
+  "name": "type_func",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "twice",
+      "exported": false,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:4"
+        }
+      ],
+      "pos": "case.go:3"
+    },
+    {
+      "name": "run",
+      "exported": false,
+      "params": [
+        {
+          "name": "f",
+          "t": {
+            "k": "func",
+            "params": [
+              {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            ],
+            "results": [
+              {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            ]
+          }
+        },
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call_value",
+              "f": {
+                "k": "var",
+                "name": "f",
+                "t": {
+                  "k": "func",
+                  "params": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ],
+                  "results": [
+                    {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  ]
+                }
+              },
+              "args": [
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:8"
+        }
+      ],
+      "pos": "case.go:7"
+    },
+    {
+      "name": "Apply",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "run",
+              "args": [
+                {
+                  "k": "func_ref",
+                  "name": "twice",
+                  "t": {
+                    "k": "func",
+                    "params": [
+                      {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    ],
+                    "results": [
+                      {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    ]
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:13"
+        }
+      ],
+      "doc": "Apply passes twice to run, whose parameter has a function type.",
+      "pos": "case.go:12"
+    }
+  ],
+  "layout": [
+    "func:twice",
+    "func:run",
+    "func:Apply"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

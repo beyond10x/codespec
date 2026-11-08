@@ -2258,7 +2258,15 @@
           "lang": "go",
           "src": "go func() {\n\tfor _, o := range s.orders {\n\t\tfmt.Println(o.ID)\n\t}\n}()",
           "reason": "goroutine: concurrency is outside cir/1",
-          "pos": "orders.go:132"
+          "pos": "orders.go:132",
+          "calls": [
+            {
+              "k": "func",
+              "path": "fmt",
+              "name": "Println",
+              "pos": "orders.go:134"
+            }
+          ]
         }
       ],
       "pos": "orders.go:131"

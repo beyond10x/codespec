@@ -47,11 +47,12 @@ Defined by `crates/model/src/lib.rs`; `schemas/cir-1.schema.json` is generated f
 
 | level | nodes |
 |---|---|
-| module | name, reader `{language, name, version}`, doc, types, consts, sentinel errors, funcs, layout, facts, refusals |
-| types | `int {width: platform\|8\|16\|32\|64, signed}`, `bool`, `string`, `error`, `any`, `unit`, `named`, `ptr`, `slice`, `map`, `chan {dir}`, `tuple` |
-| declarations | `struct`, `newtype`, `enum`, `union` |
+| module | name, reader `{language, name, version}`, doc, types, consts, sentinel errors, vars `{name, t, init \| foreign}`, funcs, externs `{path, name, recv?, params, results}`, interfaces `{path?, name, exported, methods [{name, params, results}], doc?, pos?}`, layout, facts, refusals; for a whole-program analysis: import `path`, `opaque` functions, method sets `methods`, `linknames`, `inits` |
+| types | `int {width: platform\|8\|16\|32\|64, signed}`, `float {bits: 32\|64}`, `bool`, `string`, `error`, `any`, `unit`, `named {name, targs?}`, `ptr`, `slice`, `array {len, elem}`, `map`, `chan {dir}`, `tuple`, `extern {path, name, targs?}`, `func {params, results}`, `param {name}` (a type parameter, feature `type.param`); `targs` instantiate a generic type (feature `expr.instantiate`) |
+| declarations | `struct`, `newtype`, `enum`, `union` (a `newtype` may be over a func, map or slice type); module-level `var` (feature `decl.var`); a struct field marked `embedded` (feature `decl.embedded`); `interfaces`, the module's own and those of other modules a call goes through (feature `decl.interface`); `tparams [{name, constraint}]` on a `struct`, `newtype`, function or extern, each constraint an interface (`any`, `named`, `extern`), a method of a generic type binding them through its receiver's `targs` (feature `decl.type_params`) |
 | statements | `let`, `var`, `assign`, `incr`, `decr`, `if`, `for_range`, `for`, `break`, `continue`, `switch`, `return`, `expr`, `send`, `lookup_else`, `foreign` |
-| expressions | `lit`, `nil`, `var`, `const`, `errvar`, `field`, `index`, `call`, `method`, `extern`, `binop`, `unop`, `struct`, `conv`, `make`, `zero`, `intrinsic`, `to_error` |
+| expressions | `lit`, `float`, `nil`, `var`, `const`, `errvar`, `global`, `field`, `index`, `call`, `method`, `extern`, `extern_method`, `binop`, `unop`, `struct`, `conv`, `make`, `zero`, `intrinsic`, `to_error`, `func_ref`, `lambda`, `call_value`, `spread`, `iface_call`, `to_iface`; `call`, `extern` and `extern_method` carry `targs`, a generic callee's type arguments written out (feature `expr.instantiate`) |
+| calls outside `cir/1` | `func`, `method`, `iface`, `value`, `ref`, `lambda`, and `new` (a value of a named type is made here): listed by a `foreign` statement (`calls`), an `opaque` function and `inits`, named from the source language's own types |
 
 Changes from `cir/0`:
 
@@ -65,6 +66,13 @@ Changes from `cir/0`:
 | every expression has a type, required | writers never infer |
 | tagged nodes with strict fields | a document with an unknown field or kind is refused |
 | `for`, `break`, `continue` (added with M3) | loops other than a range, and leaving one early; additive, so every earlier document reads unchanged |
+| `extern` type, `extern_method`, `recv` on an extern | a type of another package (`sync.Mutex`) is opaque, and a method called on one is declared with its receiver; additive |
+| `vars`, `global` | module-level variables, read and assigned by functions; an initializer outside `cir/1` kept as `foreign` source with a refusal; additive |
+| `embedded` on a struct field | Go embedding: the field is named after its type, a named or extern type or a pointer to one, and the reader writes every promoted field access and method call as the explicit path through it, so no consumer needs promotion rules; skipped when false, additive. Strict reading refuses an embedded field not named after its type and a struct naming an embedded field twice |
+| `func` type, `func_ref`, `lambda {captures}`, `call_value`; `newtype` over a func, map or slice type | function values: a handler registered as a value is reached only through one; additive. Strict reading refuses a lambda capturing a name not in scope where it stands |
+| `variadic` on a function's last parameter and on an extern, `spread` | a variadic function (Go `...T`, a slice inside the body) called with any number of arguments, or with one slice passed `spread` as its last argument (also to `append`); additive. Strict reading refuses a spread anywhere else or to a callee whose last parameter is not variadic, a variadic parameter that is not the last or not a slice, and counts a variadic extern's last parameter as zero or more arguments |
+| `interfaces`, `iface_call {path?, iface, name, recv, args}`, `to_iface` | a value of an interface type (the module's own `named`, another module's `extern`) and a call through one, the interface declared with its whole method set so analysis dispatches over every type that has it; a conversion to an interface is explicit. Additive. Strict reading refuses a call naming an undeclared interface, a method the interface does not have or a wrong argument count, and a `to_iface` to a type that is not an interface |
+| `path`, `opaque`, `methods`, `linknames`, `foreign.calls` | the call graph of a set of modules has no hole where a body is outside `cir/1`: what such a body calls is listed, and a refused function stays in the document; additive, a `foreign` statement without `calls` means its calls are unknown |
 
 ## 4. Passes (to port, M1)
 

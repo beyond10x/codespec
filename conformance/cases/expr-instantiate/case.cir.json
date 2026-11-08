@@ -1,0 +1,211 @@
+{
+  "format": "cir/1",
+  "name": "expr_instantiate",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.4.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Box",
+      "exported": true,
+      "tparams": [
+        {
+          "name": "T",
+          "constraint": {
+            "k": "any"
+          }
+        }
+      ],
+      "fields": [
+        {
+          "name": "v",
+          "t": {
+            "k": "param",
+            "name": "T"
+          }
+        }
+      ],
+      "doc": "Box holds one value of any type.",
+      "pos": "case.go:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "get",
+      "exported": false,
+      "tparams": [
+        {
+          "name": "T",
+          "constraint": {
+            "k": "any"
+          }
+        }
+      ],
+      "params": [
+        {
+          "name": "b",
+          "t": {
+            "k": "named",
+            "name": "Box",
+            "targs": [
+              {
+                "k": "param",
+                "name": "T"
+              }
+            ]
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "param",
+          "name": "T"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "b",
+                "t": {
+                  "k": "named",
+                  "name": "Box",
+                  "targs": [
+                    {
+                      "k": "param",
+                      "name": "T"
+                    }
+                  ]
+                }
+              },
+              "name": "v",
+              "t": {
+                "k": "param",
+                "name": "T"
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        }
+      ],
+      "pos": "case.go:8"
+    },
+    {
+      "name": "Wrap",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "b"
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Box",
+              "fields": [
+                {
+                  "name": "v",
+                  "value": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Box",
+                "targs": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "get",
+              "targs": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              ],
+              "args": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "named",
+                    "name": "Box",
+                    "targs": [
+                      {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Wrap puts n in a box of int and takes it out again.",
+      "pos": "case.go:13"
+    }
+  ],
+  "layout": [
+    "type:Box",
+    "func:get",
+    "func:Wrap"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

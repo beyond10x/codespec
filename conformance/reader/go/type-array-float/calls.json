@@ -1,0 +1,35 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Weight",
+      "args": [
+        "0"
+      ]
+    },
+    {
+      "func": "Weight",
+      "args": [
+        "1"
+      ]
+    },
+    {
+      "func": "Weight",
+      "args": [
+        "2"
+      ]
+    },
+    {
+      "func": "Above",
+      "args": [
+        "0"
+      ]
+    },
+    {
+      "func": "Above",
+      "args": [
+        "2"
+      ]
+    }
+  ]
+}

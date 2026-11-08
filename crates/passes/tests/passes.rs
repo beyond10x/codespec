@@ -18,7 +18,10 @@ fn int() -> Type {
 }
 
 fn named(n: &str) -> Type {
-    Type::Named { name: n.into() }
+    Type::Named {
+        targs: Vec::new(),
+        name: n.into(),
+    }
 }
 
 fn ptr(t: Type) -> Type {
@@ -112,6 +115,7 @@ fn if_(cond: Expr, then: Vec<Stmt>, n: u32) -> Stmt {
 
 fn func(name: &str, params: Vec<Param>, results: Vec<Type>, body: Vec<Stmt>) -> Func {
     Func {
+        tparams: Vec::new(),
         name: name.into(),
         exported: true,
         recv: None,
@@ -128,22 +132,32 @@ fn method(recv: Type, name: &str, results: Vec<Type>, body: Vec<Stmt>) -> Func {
         recv: Some(Param {
             name: "s".into(),
             t: recv,
+            variadic: false,
         }),
         ..func(name, vec![], results, body)
     }
 }
 
 fn param(n: &str, t: Type) -> Param {
-    Param { name: n.into(), t }
+    Param {
+        name: n.into(),
+        t,
+        variadic: false,
+    }
 }
 
 fn strukt(name: &str, fields: Vec<(&str, Type)>) -> TypeDecl {
     TypeDecl::Struct {
+        tparams: Vec::new(),
         name: name.into(),
         exported: true,
         fields: fields
             .into_iter()
-            .map(|(n, t)| Field { name: n.into(), t })
+            .map(|(n, t)| Field {
+                name: n.into(),
+                t,
+                embedded: false,
+            })
             .collect(),
         doc: String::new(),
         pos: p(1),
@@ -163,11 +177,18 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         types,
         consts: vec![],
         errors: vec![],
+        vars: vec![],
         funcs,
         externs: vec![],
         layout: vec![],
         facts: None,
         refusals: vec![],
+        path: String::new(),
+        opaque: vec![],
+        methods: vec![],
+        linknames: vec![],
+        inits: vec![],
+        interfaces: vec![],
     }
 }
 
@@ -274,6 +295,7 @@ fn lookup_guard_leaves_a_guard_followed_by_foreign_code() {
         src: "go use(ok)".into(),
         reason: "goroutine".into(),
         pos: p(4),
+        calls: None,
     }]);
     assert_eq!(lookup_guard(&body), body);
 }
@@ -306,6 +328,28 @@ fn shared_lists_a_struct_held_by_reference_in_a_local_slice() {
             vec![Stmt::Var {
                 name: "xs".into(),
                 t: slice(ptr(named("Item"))),
+                pos: p(2),
+            }],
+        )],
+    );
+    assert_eq!(facts(&m).shared, vec!["Item".to_string()]);
+}
+
+#[test]
+fn shared_lists_a_struct_held_by_reference_as_a_type_argument() {
+    let boxed = Type::Named {
+        name: "Box".into(),
+        targs: vec![ptr(named("Item"))],
+    };
+    let m = module(
+        vec![strukt("Item", vec![("n", int())])],
+        vec![func(
+            "f",
+            vec![],
+            vec![],
+            vec![Stmt::Var {
+                name: "b".into(),
+                t: boxed,
                 pos: p(2),
             }],
         )],
@@ -594,16 +638,135 @@ fn read_only_omits_methods_that_write_through_the_receiver_an_alias_or_a_call() 
             src: "go func() { s.n = 1 }()".into(),
             reason: "goroutine".into(),
             pos: p(6),
+            calls: None,
         }],
     );
     let m = module(s_types(), vec![bump, calls, alias, foreign]);
     assert!(facts(&m).read_only.is_empty(), "{:?}", facts(&m).read_only);
 }
 
+/// `func (s *L) Hold() { s.mu.Lock() }`: an extern method may write its receiver, and the module
+/// cannot see whether it does.
+#[test]
+fn read_only_omits_a_method_calling_an_extern_method_on_its_receiver() {
+    let mutex = Type::Extern {
+        targs: Vec::new(),
+        path: "sync".into(),
+        name: "Mutex".into(),
+    };
+    let l = ptr(named("L"));
+    let hold = Func {
+        recv: Some(param("s", l.clone())),
+        ..func(
+            "Hold",
+            vec![],
+            vec![],
+            vec![Stmt::Expr {
+                x: Expr::ExternMethod {
+                    targs: Vec::new(),
+                    path: "sync".into(),
+                    type_name: "Mutex".into(),
+                    name: "Lock".into(),
+                    recv: Box::new(field(var("s", l), "mu", mutex.clone())),
+                    args: vec![],
+                    t: Type::Tuple { elems: vec![] },
+                },
+                pos: p(2),
+            }],
+        )
+    };
+    let m = module(vec![strukt("L", vec![("mu", mutex)])], vec![hold]);
+    assert!(facts(&m).read_only.is_empty(), "{:?}", facts(&m).read_only);
+}
+
+/// `func (s *L) Flush() { s.w.Flush() }` and `func (s *L) Hand(c Sink) { c.Take(s) }` with `w`
+/// and `c` of the interface `Sink`: the method that runs through an interface may write its
+/// receiver or an argument, and the module cannot see which runs. `Peek`, which only reads a
+/// field, stays read-only.
+#[test]
+fn read_only_omits_a_method_calling_through_an_interface_on_or_with_its_receiver() {
+    let sink = named("Sink");
+    let l = ptr(named("L"));
+    let call = |recv: Expr, args: Vec<Expr>, name: &str| Stmt::Expr {
+        x: Expr::IfaceCall {
+            path: String::new(),
+            iface: "Sink".into(),
+            name: name.into(),
+            recv: Box::new(recv),
+            args,
+            t: Type::Tuple { elems: vec![] },
+        },
+        pos: p(2),
+    };
+    let recv = |name: &str, params: Vec<Param>, body: Vec<Stmt>| Func {
+        recv: Some(param("s", l.clone())),
+        params,
+        ..func(name, vec![], vec![], body)
+    };
+    let flush = recv(
+        "Flush",
+        vec![],
+        vec![call(
+            field(var("s", l.clone()), "w", sink.clone()),
+            vec![],
+            "Flush",
+        )],
+    );
+    let hand = recv(
+        "Hand",
+        vec![param("c", sink.clone())],
+        vec![call(
+            var("c", sink.clone()),
+            vec![Expr::ToIface {
+                x: Box::new(var("s", l.clone())),
+                t: sink.clone(),
+            }],
+            "Take",
+        )],
+    );
+    let peek = Func {
+        recv: Some(param("s", l.clone())),
+        ..func(
+            "Peek",
+            vec![],
+            vec![int()],
+            vec![Stmt::Return {
+                results: vec![field(var("s", l.clone()), "n", int())],
+                pos: p(3),
+            }],
+        )
+    };
+    let mut m = module(
+        vec![strukt("L", vec![("w", sink.clone()), ("n", int())])],
+        vec![flush, hand, peek],
+    );
+    m.interfaces = vec![codespec_model::Interface {
+        path: String::new(),
+        name: "Sink".into(),
+        exported: true,
+        methods: vec![
+            codespec_model::IfaceMethod {
+                name: "Flush".into(),
+                params: vec![],
+                results: vec![],
+            },
+            codespec_model::IfaceMethod {
+                name: "Take".into(),
+                params: vec![sink],
+                results: vec![],
+            },
+        ],
+        doc: String::new(),
+        pos: p(1),
+    }];
+    assert_eq!(facts(&m).read_only, ["L.Peek"]);
+}
+
 // displays
 
 fn newtype(name: &str, under: Type) -> TypeDecl {
     TypeDecl::Newtype {
+        tparams: Vec::new(),
         name: name.into(),
         exported: true,
         under,
@@ -773,4 +936,44 @@ fn orders_gets_its_lookups_rewritten_and_its_facts() {
             "Service.Get"
         ])
     );
+}
+#[test]
+fn read_only_omits_a_method_whose_lambda_writes_the_receiver_and_one_holding_a_method_value() {
+    let unit = Type::Func {
+        params: vec![],
+        results: vec![],
+    };
+    let lambda = method(
+        recv_t(),
+        "Later",
+        vec![unit.clone()],
+        vec![ret(
+            vec![Expr::Lambda {
+                params: vec![],
+                results: vec![],
+                captures: vec!["s".into()],
+                body: vec![Stmt::Incr {
+                    x: field(s(), "n", int()),
+                    pos: p(3),
+                }],
+                t: unit.clone(),
+            }],
+            2,
+        )],
+    );
+    let bound = method(
+        recv_t(),
+        "Bound",
+        vec![unit.clone()],
+        vec![ret(
+            vec![Expr::FuncRef {
+                name: "Later".into(),
+                recv: Some(Box::new(s())),
+                t: unit,
+            }],
+            5,
+        )],
+    );
+    let m = module(s_types(), vec![lambda, bound]);
+    assert!(facts(&m).read_only.is_empty(), "{:?}", facts(&m).read_only);
 }
