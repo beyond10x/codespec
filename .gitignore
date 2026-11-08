@@ -3,3 +3,4 @@ target/
 website/node_modules/
 website/build/
 website/.docusaurus/
+.task/

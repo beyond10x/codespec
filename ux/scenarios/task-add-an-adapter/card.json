@@ -1,0 +1,25 @@
+{
+  "kind": "task",
+  "goal": "Find how to add an adapter for a new language.",
+  "persona": "A compiler engineer who wants codespec to read Kotlin.",
+  "card": "rotating",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "adapter",
+      "weight": 3
+    },
+    {
+      "word": "add",
+      "weight": 2
+    },
+    {
+      "word": "language",
+      "weight": 1
+    },
+    {
+      "word": "guide",
+      "weight": 1
+    }
+  ]
+}

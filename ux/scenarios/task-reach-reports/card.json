@@ -1,0 +1,33 @@
+{
+  "kind": "task",
+  "goal": "Find what `codespec reach` reports.",
+  "persona": "A reviewer reading a CI log that ran `codespec reach`.",
+  "card": "rotating",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "codespec reach",
+      "weight": 3
+    },
+    {
+      "word": "reach",
+      "weight": 1
+    },
+    {
+      "word": "cli",
+      "weight": 2
+    },
+    {
+      "word": "command",
+      "weight": 1
+    },
+    {
+      "word": "reference",
+      "weight": 1
+    },
+    {
+      "word": "report",
+      "weight": 1
+    }
+  ]
+}

@@ -18,6 +18,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `sem.error.propagate`: the Rust writer's `?` output reads back. A `?` on an `Option`, on a call
   outside the crate, inside an expression or in a function whose result is not a `Result` stays
   `foreign` with a refusal at its line. The case `sem-error-propagate` has a Rust source.
+- The site has search: a box in the navbar on every page, over an index built with the site
+  (`@easyops-cn/docusaurus-search-local`, no external service), and a results page `/search`. Links
+  in running text are underlined, the docs sidebar stays in view down to the footer, and the
+  support matrix legend can be scrolled by keyboard.
 
 ### Changed
 

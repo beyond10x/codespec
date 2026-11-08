@@ -1,0 +1,33 @@
+{
+  "kind": "task",
+  "goal": "Find how to map a whole repository to the syscalls it can reach.",
+  "persona": "A platform engineer auditing a Go service before it gets network access.",
+  "card": "anchor",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "syscall",
+      "weight": 3
+    },
+    {
+      "word": "repository",
+      "weight": 2
+    },
+    {
+      "word": "map",
+      "weight": 1
+    },
+    {
+      "word": "reach",
+      "weight": 1
+    },
+    {
+      "word": "static analysis",
+      "weight": 1
+    },
+    {
+      "word": "effects",
+      "weight": 1
+    }
+  ]
+}

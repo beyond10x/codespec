@@ -158,7 +158,7 @@ function Coverage({columns, features}: {columns: Column[]; features: ReadonlyArr
 function Legend({columns, languages, features}: {columns: Column[]; languages: ReadonlyArray<Language>; features: ReadonlyArray<Feature>}): React.ReactElement {
   const counts = columns.map(({language, role}) => countStates(language[role], features));
   return (
-    <div className={clsx(styles.scroll, styles.legend)}>
+    <div className={clsx(styles.scroll, styles.legend)} tabIndex={0} role="region" aria-label="Legend: cells per state and column">
       <table className={styles.table}>
         <caption className={styles.caption}>
           Legend: cells per state and column, over the {features.length} features shown

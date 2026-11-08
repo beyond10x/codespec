@@ -1,0 +1,29 @@
+{
+  "kind": "task",
+  "goal": "Find the cir/1 reference for interfaces and generics.",
+  "persona": "An adapter author mapping Go interfaces and generics into cir/1.",
+  "card": "rotating",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "interface",
+      "weight": 3
+    },
+    {
+      "word": "typeparam",
+      "weight": 2
+    },
+    {
+      "word": "generic",
+      "weight": 2
+    },
+    {
+      "word": "cir 1",
+      "weight": 2
+    },
+    {
+      "word": "reference",
+      "weight": 2
+    }
+  ]
+}
