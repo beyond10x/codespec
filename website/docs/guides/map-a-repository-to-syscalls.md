@@ -3,7 +3,7 @@ title: Map a repository to syscalls
 sidebar_position: 3
 description: Read a Go repository with every package it imports, run codespec effects over the set with the Linux syscall barrier, and read the effects, syscalls, dispatch sites and unknown reasons it reports.
 lede: Two commands take a Go repository and its imports, the standard library included, to a report of the syscalls each function may reach and the line that leads there.
-source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, crates/cli/tests/fixtures/readfile, commit 827b232; every command run in this repository on 2026-11-08 with codespec 0.4.0 and Go 1.27.1 linux/amd64
+source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/fixtures/readfile, commit 827b232; every command run in this repository on 2026-11-08 with codespec 0.4.0 and Go 1.27.1 linux/amd64
 ---
 
 # Map a repository to syscalls
@@ -172,7 +172,59 @@ The same width is in step 3: `Load` reaches 55 syscalls, among them `wait4` and
 `pidfd_send_signal`, which wait for and signal processes. Read a syscall list as "may reach, with
 dispatch resolved over the whole set", not as what a run of the function does.
 
-## 6. A real repository
+## 6. A worked example: entries, reach and trace
+
+`examples/netcheck/source` is a Go module of three packages: `netcheck` (an interface `Prober`
+with a dialing and a fixed implementation, a generic `Count`, a variadic `CheckAll`), a TCP server
+`cmd/server` and a client `cmd/client`. One task runs every command of this section twice, requires
+byte-equal output, and writes the checked-in files under `examples/netcheck`. It needs Go 1.27.1
+and no network:
+
+```shell-session
+$ task examples-netcheck
+```
+
+The module reads with no refusal; with its imports the set is 75 documents. Pass the two `main`
+functions as entries. With an entry, dispatch is rapid type analysis (`rta`):
+
+```shell-session
+$ M=example.com/netcheck
+$ target/debug/codespec effects work/netcheck/*.cir.json \
+    --barrier summaries/go-linux-amd64.barrier.json \
+    --entry $M/cmd/server.main --entry $M/cmd/client.main \
+    --report $M --report $M/cmd/server --report $M/cmd/client > work/netcheck.effects.json
+$ jq -r '.funcs[] | select(.name == "main") | "\(.path) \(.syscalls | length)"' work/netcheck.effects.json
+example.com/netcheck/cmd/client 49
+example.com/netcheck/cmd/server 50
+$ jq -c '.funcs[] | select(.name == "main" and (.path | endswith("server"))) | .syscalls[] | select(.name == "listen" or .name == "accept4")' work/netcheck.effects.json
+{"name":"accept4","at":["main.go:20"]}
+{"name":"listen","at":["main.go:14"]}
+$ jq -c '.funcs[] | select(.name == "Answer") | {name, effects, unknown}' work/netcheck.effects.json
+{"name":"Answer","effects":[],"unknown":[]}
+```
+
+The server reaches every syscall the client reaches, plus `accept4`. `Answer` only computes: no
+effect, no syscall, no `unknown`. Add `--dispatch cha` to compare with class-hierarchy analysis:
+
+| call in `CheckAll` | `rta` candidates | `cha` candidates |
+|---|---:|---:|
+| `p.Probe(a)` through `Prober` | 1: `TCPProber.Probe` | 2: also `FixedProber.Probe` |
+
+`codespec reach` lists what the entries reach and what is dead code:
+
+```shell-session
+$ target/debug/codespec reach work/netcheck/*.cir.json \
+    --entry $M/cmd/server.main --entry $M/cmd/client.main --report $M > work/netcheck.reach.json
+$ jq -c '.modules[0] | {reached, unreached}' work/netcheck.reach.json
+{"reached":["Answer","CheckAll","Count","TCP","TCPProber.Probe"],"unreached":["FixedProber.Probe"]}
+```
+
+`codespec trace --from $M/cmd/client.main --depth 16` gives the call tree down to the syscalls;
+[Call trees](/docs/examples/call-trace#netcheck) draws its path to `connect`, and the server's to
+`accept4`. Every table and number is on the generated page
+[netcheck: down to syscalls](/docs/examples/netcheck).
+
+## 7. A real repository
 
 A third-party Go library of 6 packages, measured with the 228 packages it imports; the library
 and its report are kept outside this repository.

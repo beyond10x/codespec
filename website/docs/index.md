@@ -74,3 +74,5 @@ says where it is going.
 - [Translate a Go package to Rust](/docs/guides/translate-go-to-rust).
 - [Map a repository to syscalls](/docs/guides/map-a-repository-to-syscalls): read a Go repository
   with every package it imports and report the syscalls each function may reach.
+- [netcheck: down to syscalls](/docs/examples/netcheck): a TCP server and client mapped to
+  syscalls, with reached and unreached functions and the call path to `connect` and `accept4`.

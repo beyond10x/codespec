@@ -26,6 +26,10 @@ original and the output produce the same bytes on the same generated inputs.
 `codespec effects` reads the same model as a static analysis: per function, which effects it may
 have (environment, file system, network, clock, …) from summaries of the library functions it
 calls, and every call it cannot account for ([docs/static-analysis.md](docs/static-analysis.md)).
+Read with every package it imports, a Go repository maps down to syscalls: `codespec effects`
+lists the syscalls each function may reach, `codespec reach` the dead code from given entries,
+`codespec trace` the call tree from one function down to its syscalls
+([worked example](https://beyond10x.github.io/codespec/docs/examples/netcheck), `examples/netcheck`).
 [Vision](https://beyond10x.github.io/codespec/docs/vision) has the rules and the milestones.
 
 ## Status

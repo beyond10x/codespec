@@ -12,7 +12,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Examples',
       collapsed: false,
-      items: ['examples/greeter', 'examples/series', 'examples/call-trace'],
+      items: ['examples/greeter', 'examples/series', 'examples/call-trace', 'examples/netcheck'],
     },
     {
       type: 'category',

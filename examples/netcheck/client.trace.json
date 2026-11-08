@@ -1,0 +1,245 @@
+{
+  "format": "codespec-trace/1",
+  "from": "example.com/netcheck/cmd/client.main",
+  "depth": 2,
+  "dispatch": "rta",
+  "root": {
+    "k": "call",
+    "pos": "main.go:11",
+    "name": "example.com/netcheck/cmd/client.main",
+    "def": "main.go:11",
+    "body": [
+      {
+        "k": "call",
+        "pos": "main.go:12",
+        "name": "example.com/netcheck.TCP",
+        "def": "netcheck.go:23"
+      },
+      {
+        "k": "call",
+        "pos": "main.go:12",
+        "name": "example.com/netcheck.CheckAll",
+        "def": "netcheck.go:77",
+        "body": [
+          {
+            "k": "lambda",
+            "pos": "netcheck.go:78",
+            "body": [
+              {
+                "k": "dispatch",
+                "pos": "netcheck.go:78",
+                "call": "example.com/netcheck.Prober.Probe",
+                "candidates": [
+                  {
+                    "k": "call",
+                    "pos": "netcheck.go:78",
+                    "name": "example.com/netcheck.TCPProber.Probe",
+                    "def": "netcheck.go:28",
+                    "body": [
+                      {
+                        "k": "cut",
+                        "pos": "netcheck.go:29",
+                        "name": "net.Dial"
+                      },
+                      {
+                        "k": "if",
+                        "pos": "netcheck.go:30",
+                        "cond": "err != nil"
+                      },
+                      {
+                        "k": "cut",
+                        "pos": "netcheck.go:33",
+                        "name": "io.WriteString"
+                      },
+                      {
+                        "k": "if",
+                        "pos": "netcheck.go:34",
+                        "cond": "werr != nil",
+                        "then": [
+                          {
+                            "k": "dispatch",
+                            "pos": "netcheck.go:35",
+                            "call": "net.Conn.Close",
+                            "candidates": [
+                              {
+                                "k": "cut",
+                                "pos": "netcheck.go:35",
+                                "name": "net.conn.Close"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "k": "cut",
+                        "pos": "netcheck.go:38",
+                        "name": "bufio.NewReader"
+                      },
+                      {
+                        "k": "cut",
+                        "pos": "netcheck.go:38",
+                        "name": "bufio.Reader.ReadString"
+                      },
+                      {
+                        "k": "dispatch",
+                        "pos": "netcheck.go:39",
+                        "call": "net.Conn.Close",
+                        "candidates": [
+                          {
+                            "k": "cut",
+                            "pos": "netcheck.go:39",
+                            "name": "net.conn.Close"
+                          }
+                        ]
+                      },
+                      {
+                        "k": "cut",
+                        "pos": "netcheck.go:40",
+                        "name": "example.com/netcheck.Answer"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "k": "call",
+            "pos": "netcheck.go:78",
+            "name": "example.com/netcheck.Count",
+            "def": "netcheck.go:66",
+            "body": [
+              {
+                "k": "loop",
+                "pos": "netcheck.go:68",
+                "cond": "_, x := range xs",
+                "body": [
+                  {
+                    "k": "dispatch",
+                    "pos": "netcheck.go:69",
+                    "call": "func value func(T) bool",
+                    "unknown": [
+                      "function value with no candidate in the set: func(T) bool"
+                    ]
+                  },
+                  {
+                    "k": "if",
+                    "pos": "netcheck.go:69",
+                    "cond": "ok(x)"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "k": "call",
+        "pos": "main.go:13",
+        "name": "strconv.Itoa",
+        "def": "number.go:214",
+        "body": [
+          {
+            "k": "call",
+            "pos": "number.go:215",
+            "name": "internal/strconv.Itoa",
+            "def": "itoa.go:52",
+            "body": [
+              {
+                "k": "cut",
+                "pos": "itoa.go:53",
+                "name": "internal/strconv.FormatInt"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "k": "extern",
+        "pos": "main.go:13",
+        "name": "println",
+        "effects": [
+          "stdout"
+        ]
+      },
+      {
+        "k": "call",
+        "pos": "main.go:13",
+        "name": "fmt.Println",
+        "def": "print.go:306",
+        "body": [
+          {
+            "k": "call",
+            "pos": "print.go:307",
+            "name": "fmt.Fprintln",
+            "def": "print.go:295",
+            "body": [
+              {
+                "k": "cut",
+                "pos": "print.go:296",
+                "name": "fmt.newPrinter"
+              },
+              {
+                "k": "cut",
+                "pos": "print.go:297",
+                "name": "fmt.pp.doPrintln"
+              },
+              {
+                "k": "dispatch",
+                "pos": "print.go:298",
+                "call": "io.Writer.Write",
+                "candidates": [
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "fmt.pp.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "internal/godebug.runtimeStderr.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "internal/poll.FD.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "io.discard.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "net.conn.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "net.netFD.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "os.File.Write"
+                  },
+                  {
+                    "k": "cut",
+                    "pos": "print.go:298",
+                    "name": "strings.Builder.Write"
+                  }
+                ]
+              },
+              {
+                "k": "cut",
+                "pos": "print.go:299",
+                "name": "fmt.pp.free"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

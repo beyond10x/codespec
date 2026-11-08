@@ -14,7 +14,9 @@
 //! - the algorithmic showcase (`examples/series.md`) and its diagram
 //!   (`website/static/img/series-cir.svg`), from the checked-in files of `examples/series`;
 //! - the call-tree page (`examples/call-trace.md`, [`calltrace`]): `codespec trace` run over the
-//!   checked-in `examples/envcheck` document;
+//!   checked-in `examples/envcheck` document, and the checked-in trees of `examples/netcheck`;
+//! - the worked static-analysis example (`examples/netcheck.md`, [`netcheck`]), from the checked-in
+//!   reports and trees of `examples/netcheck`;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
 //! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go
@@ -39,6 +41,7 @@ mod cli;
 mod crates;
 mod diagram;
 mod guide;
+mod netcheck;
 mod routes;
 mod series;
 mod showcase;
@@ -92,6 +95,18 @@ enum Action {
         /// root.
         #[arg(long, default_value = "target/adapters")]
         adapters: PathBuf,
+    },
+    /// Write the checked-in outputs of `examples/netcheck` from the full reports and call trees
+    /// `task examples-netcheck` leaves in a work directory.
+    Netcheck {
+        /// The work directory: `effects.json`, `effects-cha.json`, `reach.json`,
+        /// `reach-cha.json`, `client.trace.json`, `client-deep.trace.json`,
+        /// `server-deep.trace.json`.
+        #[arg(long)]
+        work: PathBuf,
+        /// Repository root.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
     },
     /// Bind a built site to its source commit: write `.well-known/b10x-site.json` and the route
     /// inventory `.well-known/b10x-routes.json` into it.
@@ -210,6 +225,7 @@ fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
     all.extend(showcase::outputs(root)?);
     all.extend(series::outputs(root)?);
     all.extend(calltrace::outputs(root)?);
+    all.extend(netcheck::outputs(root)?);
     Ok(all)
 }
 
@@ -475,6 +491,8 @@ fn main() -> ExitCode {
             root,
             adapters,
         } => generate(&root, &adapters, check),
+        Action::Netcheck { work, root } => netcheck::reduce(&root, &work)
+            .map(|()| println!("examples/netcheck: written from {}", work.display())),
         Action::Provenance { site, commit } => write_provenance(&site, &commit)
             .map(|()| println!("{}: bound to {commit}", site.display())),
     };

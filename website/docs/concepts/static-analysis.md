@@ -3,7 +3,7 @@ title: Static analysis
 sidebar_position: 4
 description: How codespec effects answers what a function may do outside its own memory, from extern declarations, effect summaries and the syscall barrier, and what it reports as unknown.
 lede: codespec effects reports per function the effects and syscalls it may reach, each with the line that leads there, and lists every call it cannot account for as unknown instead of taking it as pure.
-source: docs/static-analysis.md, crates/effects/src/lib.rs, crates/effects/src/set.rs, crates/cli/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, crates/cli/tests/barrier.rs, commit 827b232
+source: docs/static-analysis.md, crates/effects/src/lib.rs, crates/effects/src/set.rs, crates/cli/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/barrier.rs, commit 827b232
 ---
 
 # Static analysis
@@ -110,16 +110,39 @@ strongly connected components (iterative Tarjan), callees first, linear in nodes
 
 ## Dispatch
 
-A call through an interface or a function value has no single target. codespec resolves it by
-**class-hierarchy analysis over the set**:
+A call through an interface or a function value has no single target. codespec resolves it in
+one of two ways, chosen with `--dispatch`:
 
-| call | reaches |
-|---|---|
-| a method call through an interface | the method of every type in the set whose method set holds all the interface's methods with identical signatures |
-| a call of a function value | every function, method or function literal in the set that is used as a value and has the same signature |
+| `--dispatch` | a method call through an interface reaches | a call of a function value reaches | default |
+|---|---|---|---|
+| `cha`: class-hierarchy analysis | the method of every type in the set whose method set holds all the interface's methods with identical signatures | every function, method or function literal in the set that is used as a value and has the same signature | without entries |
+| `rta`: rapid type analysis | the same, but only types that code reached from the entries makes | the same, but only values that reached code uses | with `--entry` or `--exported` |
 
 The report's `dispatch` entry gives, per such call, its position and how many candidates it may
 reach. A call with no candidate in the set is `unknown`.
+
+## Entries and dead code: `codespec reach`
+
+An entry is a function the program starts from: `--entry <path>.<name>` (or
+`<path>.<type>.<method>`), every exported function of `--exported <module>`, or `main.main`
+when neither is given. Go `init` functions and variable initialisers are always entries.
+`codespec reach` lists, per module, the functions the entries reach and those they do not.
+`rta` narrows dispatch, so it reaches fewer functions than `cha`.
+
+## Worked example: `netcheck`
+
+[`examples/netcheck`](/docs/examples/netcheck) is a Go module with a TCP server, a client and
+an interface `Prober` with two implementations. It is read with the 72 standard library packages
+it imports and analysed from two entries, `cmd/server.main` and `cmd/client.main`.
+`task examples-netcheck` writes the outputs; `task check` checks these facts on them:
+
+| question | answer |
+|---|---|
+| which `net` syscall may only the server reach? | `accept4`; both reach `socket`, `bind`, `listen`, `connect` |
+| what does `Answer`, which only computes, reach? | nothing: no effect, no syscall, no `unknown` |
+| how many `Probe` methods may `CheckAll`'s `p.Probe(a)` call? | 1 with `rta`, 2 with `cha` |
+| which function is dead code from the two entries? | `FixedProber.Probe` with `rta`; none with `cha` |
+| how does the client reach `connect`? | through 15 calls: `CheckAll`, `TCPProber.Probe`, `net.Dial`, …, `syscall.connect` ([Call trees](/docs/examples/call-trace#netcheck)) |
 
 ## The syscall barrier
 
@@ -206,7 +229,7 @@ The library and its report are kept outside this repository.
 
 | limit | consequence |
 |---|---|
-| dispatch is class-hierarchy analysis over the whole set | wide sets: a call through `io.Writer` or of a `func() error` value reaches every candidate in all 234 packages of the measured set, so most functions that do IO share one large strongly connected component and so one large set (`docs/static-analysis.md` § 5d) |
+| dispatch is wide: `cha` takes the whole set, `rta` every type reached code makes | wide sets: with `cha`, a call through `io.Writer` or of a `func() error` value reaches every candidate in all 234 packages of the measured set, so most functions that do IO share one large strongly connected component and so one large set (`docs/static-analysis.md` § 5d) |
 | file descriptors are not followed | `read`, `write`, `close` are `io`, never `fs.read` or `net` |
 | generic interfaces and caller-implemented interfaces | `unknown`: on the measured library's paths, 66 interface calls with no implementation in the set |
 | function values from outside the set or of generic signature | `unknown`: 59 on the measured library's paths |

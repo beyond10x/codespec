@@ -403,6 +403,41 @@ tasks:
       - cmp target/examples-effects/effects.1.json target/examples-effects/effects.2.json
       - cmp target/examples-effects/effects.1.json examples/envcheck/envcheck.effects.json
 
+  examples-netcheck:
+    desc: Read the Go module examples/netcheck/source with every package it imports (scripts/read-repo.sh --deps, Go 1.27.1, linux/amd64, CGO_ENABLED=0, no network) twice and require both sets equal; run codespec effects (rta from the server and client entries, and cha), codespec reach (rta and cha) and codespec trace from the client (2 calls deep, and 16 deep) and the server (8 deep) over the set twice and require every output byte-equal; then write the checked-in read.txt, the reduced reports and the trees, the deep ones pruned to the path that ends in connect and accept4 (codespec-docs netcheck). Not in the gate; task check checks the checked-in files.
+    deps: [build]
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+    vars:
+      W: target/examples-netcheck
+      M: example.com/netcheck
+      BARRIER: summaries/go-linux-amd64.barrier.json
+    cmds:
+      - 'case "$(go env GOVERSION)" in go1.27.1|go1.27.1-*) ;; *) echo "examples-netcheck: needs Go 1.27.1, the standard library read is its source; found $(go env GOVERSION)" >&2; exit 1 ;; esac'
+      - rm -rf {{.W}}
+      - mkdir -p {{.W}}
+      - for i in 1 2; do scripts/read-repo.sh --deps examples/netcheck/source {{.W}}/cir$i > /dev/null || exit 1; done
+      - diff -r {{.W}}/cir1 {{.W}}/cir2
+      - |
+        for i in 1 2; do
+          o={{.W}}/run$i; mkdir -p $o
+          set -- {{.W}}/cir1/*.cir.json
+          {{.CODESPEC}} effects "$@" --barrier {{.BARRIER}} --entry {{.M}}/cmd/server.main --entry {{.M}}/cmd/client.main --report {{.M}} --report {{.M}}/cmd/server --report {{.M}}/cmd/client > $o/effects.json || exit 1
+          {{.CODESPEC}} effects "$@" --barrier {{.BARRIER}} --entry {{.M}}/cmd/server.main --entry {{.M}}/cmd/client.main --dispatch cha --report {{.M}} --report {{.M}}/cmd/server --report {{.M}}/cmd/client > $o/effects-cha.json || exit 1
+          {{.CODESPEC}} reach "$@" --entry {{.M}}/cmd/server.main --entry {{.M}}/cmd/client.main --report {{.M}} --report {{.M}}/cmd/server --report {{.M}}/cmd/client > $o/reach.json || exit 1
+          {{.CODESPEC}} reach "$@" --entry {{.M}}/cmd/server.main --entry {{.M}}/cmd/client.main --dispatch cha --report {{.M}} --report {{.M}}/cmd/server --report {{.M}}/cmd/client > $o/reach-cha.json || exit 1
+          {{.CODESPEC}} trace "$@" --barrier {{.BARRIER}} --from {{.M}}/cmd/client.main --depth 2 > $o/client.trace.json || exit 1
+          {{.CODESPEC}} trace "$@" --barrier {{.BARRIER}} --from {{.M}}/cmd/client.main --depth 16 > $o/client-deep.trace.json || exit 1
+          {{.CODESPEC}} trace "$@" --barrier {{.BARRIER}} --from {{.M}}/cmd/server.main --depth 8 > $o/server-deep.trace.json || exit 1
+        done
+      - diff -r {{.W}}/run1 {{.W}}/run2
+      - cp {{.W}}/cir1/read.txt examples/netcheck/read.txt
+      - cargo run --locked -q -p codespec-docs -- netcheck --work {{.W}}/run1
+
   examples-series:
     desc: Read the algorithmic series package twice, pass it, write it as Go and as Rust; read the Rust output back twice, pass it and write it as Go; require every document and output equal to the checked-in copy, no refusal, gofmt-clean vetted Go and a Rust build without warnings, then run the original, the Go output, the Rust output and the Go from the Rust output on 200 seeded traces of 300 commands byte-equal.
     deps: [build]

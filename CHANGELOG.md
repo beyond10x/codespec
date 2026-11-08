@@ -6,6 +6,16 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `examples/netcheck`, a worked example of the static analysis: a Go module with a TCP server, a
+  client, an interface with two implementations, a generic function and a variadic call, read
+  with the 72 standard library packages it imports. `task examples-netcheck` runs `codespec
+  effects` (`rta` from both `main` functions, and `cha`), `codespec reach` and `codespec trace`
+  over the set twice, byte-equal, and writes the checked-in reports and the call paths to
+  `connect` and `accept4` (`codespec-docs netcheck`). `cargo test -p codespec-docs` checks facts
+  on them: only the server reaches `accept4`, the client reaches `connect`, `Answer` has no effect
+  and no syscall, `Prober.Probe` has 1 candidate with `rta` and 2 with `cha`. The site gains the
+  generated page "netcheck: down to syscalls", the netcheck trees on the Call trees page, and the
+  example in the static analysis concept page and the syscalls guide.
 - `codespec trace <documents…> --from <path>.<function>` prints `codespec-trace/1`, the call tree
   from one function over a set: each `if`, `switch` and loop a branch node with its condition,
   each call expanded once where it is called fewest calls from `--from` (a repeat is a `ref`

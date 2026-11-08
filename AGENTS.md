@@ -90,6 +90,11 @@ alone as `task <name>` (`Taskfile.yml`):
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
 | `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy}` equal to what the kit's case sources build, the six conformance reports equal to `codespec conform` run again on the Go, Rust, Java and Groovy readers and the Go and Rust writers (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
 
+Not in the gate: `task examples-netcheck`, which reads `examples/netcheck/source` with every package
+it imports (needs Go 1.27.1, no network), runs `codespec effects`, `reach` and `trace` over the set
+twice byte-equal and rewrites the checked-in files of `examples/netcheck`; `cargo test -p
+codespec-docs` checks facts on those files.
+
 Not in the gate: the site build, `task docs-site` (`npm --prefix website ci --allow-git=root &&
 npm --prefix website run build`; npm 12 needs `--allow-git=root` for the Git-pinned
 `@beyond10x/docs-system`, CI's Node 22 does not). Run it when a page, `product.json` or the site
@@ -111,6 +116,8 @@ Never edit these by hand; change the generator and regenerate.
 | `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy; writers go, rust | `task docs-generate` |
 | `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
+| `website/docs/examples/netcheck.md`, `website/docs/examples/call-trace.md` | `codespec-docs` (`netcheck.rs`, `calltrace.rs`) from `examples/netcheck` and `examples/envcheck` | `task docs-generate` |
+| `examples/netcheck/*.json`, `examples/netcheck/read.txt` | `codespec effects`, `reach`, `trace` over the set, reduced by `codespec-docs netcheck` | `task examples-netcheck` |
 
 A change to the CLI, a crate's `description`, the model, an example or the capability list is
 followed by `task docs-generate` in the same commit; `docs-check` fails otherwise. A crate
@@ -160,6 +167,11 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 - The harness catches a one-token change:
   `crates/cli/tests/harness.rs::a_planted_one_token_change_in_the_rust_output_fails_with_seed_rust_and_first_line`;
   traces are platform-independent: `crates/harness/tests/harness.rs::a_trace_is_pinned_across_platforms`.
+- The netcheck outputs hold their facts: only the server reaches `accept4`, `Answer` is pure, `rta`
+  has fewer candidates than `cha`:
+  `crates/docs/src/netcheck.rs::the_server_reaches_bind_listen_and_accept4_and_the_client_connect`,
+  `crates/docs/src/netcheck.rs::answer_only_computes`,
+  `crates/docs/src/netcheck.rs::rapid_type_analysis_reaches_fewer_candidates_than_class_hierarchy_analysis`.
 - Generated site files are current: `crates/docs/src/main.rs::every_generated_file_is_current_in_this_tree`;
   each reader corpus is what the kit's case sources build:
   `crates/docs/src/main.rs::every_reader_corpus_is_built_from_the_kit_case_sources`; the support
