@@ -12,7 +12,7 @@ This guide runs [static analysis](/docs/concepts/static-analysis) on Go code: fi
 with hand-written summaries, then a whole module with every package it imports, down to the
 syscall barrier. Every command was run from the repository root after `task build`
 ([Getting started](/docs/getting-started)), with codespec 0.5.0 and Go 1.27.1 on linux/amd64.
-Output is pasted from that run; `jq` lines shorten the JSON reports.
+Output is pasted from that run. The `jq` lines shorten the JSON reports.
 
 ## What you need
 
@@ -40,10 +40,10 @@ $ jq -c '.funcs[] | {name, effects, unknown}' work/envcheck.effects.json
 {"name":"Save","effects":["env","fs.write"],"unknown":[]}
 ```
 
-The report is byte-equal to the checked-in `examples/envcheck/envcheck.effects.json`
-(`task examples-effects` checks it). `Label` has no effects and no `unknown`: pure as far as the
-summaries say. `Save`'s statement `return os.WriteFile(…, 0o644)` is a refusal in the `cir/1`
-(`fs.FileMode` has no `cir/1` type), but the reader lists the calls inside it, so `os.WriteFile`
+The report is byte-equal to the checked-in `examples/envcheck/envcheck.effects.json`, and
+`task examples-effects` checks it. `Label` has no effects and no `unknown`: pure as far as the
+summaries say. `Save`'s statement `return os.WriteFile(…, 0o644)` is a refusal in the `cir/1`,
+because `fs.FileMode` has no `cir/1` type. The reader lists the calls inside it, so `os.WriteFile`
 still counts as `fs.write`.
 
 This mode stops at the summaries. A call of a standard library function the 37 do not name is
@@ -51,10 +51,10 @@ This mode stops at the summaries. A call of a standard library function the 37 d
 
 ## 2. Read the repository with every import
 
-`scripts/read-repo.sh --deps <repo> <out>` reads every package `go list -deps ./...` names, the
-standard library included, in parallel, one `cir/1` document per package, each with its import
-path as `path`. Run on the fixture `crates/cli/tests/fixtures/readfile` (module
-`example.com/readfile`, one function `Load` returning `os.ReadFile(path)`):
+`scripts/read-repo.sh --deps <repo> <out>` reads every package `go list -deps ./...` lists, the
+standard library included, in parallel. It writes one `cir/1` document per package, each with its
+import path as `path`. The fixture `crates/cli/tests/fixtures/readfile` is the module
+`example.com/readfile` with one function, `Load`, which returns `os.ReadFile(path)`:
 
 ```shell-session
 $ scripts/read-repo.sh --deps crates/cli/tests/fixtures/readfile work/readfile
@@ -81,7 +81,7 @@ unsafe | ok | read 0 of 0 functions, n/a | refusals 9
 | 4 | refusals: constructs kept as `foreign` with a reason |
 
 The fixture gives 54 documents, 13 MB, in 2.3 s on the machine this page was written on. A low
-"read" share does not stop the analysis: a refused function stays in the document as an opaque
+"read" share does not stop the analysis. A refused function stays in the document as an opaque
 function with its calls (`Module.opaque`), and a `foreign` statement lists its calls.
 
 For your repository, replace the fixture with its directory: `scripts/read-repo.sh --deps
@@ -89,8 +89,9 @@ For your repository, replace the fixture with its directory: `scripts/read-repo.
 
 ## 3. Run effects over the set, with the barrier
 
-Pass every document, the summaries and the barrier. `--report` limits the output to one module;
-every module is still analysed:
+Pass every document, the summaries and the barrier. `--report` limits the output to one module.
+Every module is still analysed. The [CLI reference](/docs/reference/cli) lists every flag of
+`codespec effects`.
 
 ```shell-session
 $ target/debug/codespec effects work/readfile/*.cir.json \
@@ -107,7 +108,7 @@ $ jq -c '.funcs[0].syscalls[] | select(.name == "openat" or .name == "read")' wo
 ```
 
 This ran in 0.5 s. `at` is the line of `Load` that leads to the syscall: `readfile.go:8`, the
-`os.ReadFile` call. `crates/cli/tests/barrier.rs` checks exactly this.
+`os.ReadFile` call. `crates/cli/tests/barrier.rs` checks this line.
 
 | report field | what it says |
 |---|---|
@@ -174,17 +175,17 @@ dispatch resolved over the whole set", not as what a run of the function does.
 
 ## 6. A worked example: entries, reach and trace
 
-`examples/netcheck/source` is a Go module of three packages: `netcheck` (an interface `Prober`
-with a dialing and a fixed implementation, a generic `Count`, a variadic `CheckAll`), a TCP server
-`cmd/server` and a client `cmd/client`. One task runs every command of this section twice, requires
-byte-equal output, and writes the checked-in files under `examples/netcheck`. It needs Go 1.27.1
-and no network:
+`examples/netcheck/source` is a Go module of three packages: `netcheck`, a TCP server `cmd/server`
+and a client `cmd/client`. `netcheck` holds an interface `Prober` with a dialing and a fixed
+implementation, a generic `Count` and a variadic `CheckAll`. One task runs every command of this
+section twice, requires byte-equal output, and writes the checked-in files under
+`examples/netcheck`. It needs Go 1.27.1 and no network:
 
 ```shell-session
 $ task examples-netcheck
 ```
 
-The module reads with no refusal; with its imports the set is 75 documents. Pass the two `main`
+The module reads with no refusal. With its imports the set is 75 documents. Pass the two `main`
 functions as entries. With an entry, dispatch is rapid type analysis (`rta`):
 
 ```shell-session
@@ -219,30 +220,17 @@ $ jq -c '.modules[0] | {reached, unreached}' work/netcheck.reach.json
 {"reached":["Answer","CheckAll","Count","TCP","TCPProber.Probe"],"unreached":["FixedProber.Probe"]}
 ```
 
-`codespec trace --from $M/cmd/client.main --depth 16` gives the call tree down to the syscalls;
+`codespec trace --from $M/cmd/client.main --depth 16` gives the call tree down to the syscalls.
 [Call trees](/docs/examples/call-trace#netcheck) draws its path to `connect`, and the server's to
 `accept4`. Every table and number is on the generated page
 [netcheck: down to syscalls](/docs/examples/netcheck).
 
 ## 7. A real repository
 
-A third-party Go library of 6 packages, measured with the 228 packages it imports; the library
-and its report are kept outside this repository.
-
-| measure | value |
-|---|---|
-| documents read with `read-repo.sh --deps` | 234, in 27 s |
-| `codespec effects` over the set, reporting the library's packages | 3.6 s |
-| syscalls its client entry point may reach | 74 |
-| syscalls its server entry point may reach | 75: the same plus `accept4` |
-| `unknown` reasons on those paths | 66 interface calls with no implementation in the set, 59 function values with no candidate, 27 functions without a body |
-
-The sets are wide for the reason step 5 shows: an interface call reaches every type of the 234
-packages with the methods, so most functions that do IO share one large set. This is the current
+A third-party Go library of 6 packages, read with the 228 packages it imports, gives 234 documents
+in 27 s. `codespec effects` over the set takes 3.6 s. Its client entry point may reach 74 syscalls,
+its server entry point 75. The sets are wide for the reason step 5 shows. This width is the current
 limit of dispatch, not a property of the library.
 
-## Next
-
-- [Static analysis](/docs/concepts/static-analysis): the formats, the effect vocabulary, the
-  barrier and every `unknown` reason.
-- [CLI reference](/docs/reference/cli): every flag of `codespec effects`.
+The full measurement, the formats, the effect vocabulary, the barrier and every `unknown` reason
+are on [Static analysis](/docs/concepts/static-analysis).

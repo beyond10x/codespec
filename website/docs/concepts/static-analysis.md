@@ -11,18 +11,16 @@ source: docs/static-analysis.md, crates/effects/src/lib.rs, crates/effects/src/s
 ## The question
 
 `codespec effects` answers one question per function: **what may this function do outside its own
-memory?** It reads the environment, the file system, the network, the clock; it prints; it starts
-a process; and, read down to the operating system, which syscalls it may reach. Each answer
-carries the position of the call that leads there.
+memory?** The answer lists whether it reads the environment, the file system, the network or the
+clock, prints, or starts a process. Read down to the operating system, it also lists the syscalls
+the function may reach.
 
-Because the analysis runs on `cir/1`, it is written once for every language a reader exists for.
-Today the Go reader produces everything it needs; the design
-is in `docs/static-analysis.md`.
+The analysis runs on `cir/1`, so one implementation serves every language a reader exists for.
+Today the Go reader produces everything it needs. The design is in `docs/static-analysis.md`.
 
-## Three layers
+## Layers
 
-A function calls code outside its module. codespec does not guess what that code does. It works in
-three layers:
+codespec does not guess what code outside the module does. It works in three layers:
 
 | layer | what | where it comes from |
 |---|---|---|
@@ -30,15 +28,15 @@ three layers:
 | effect summary | per outside function, the effects it may have, from a closed vocabulary | a hand-written `codespec-effects/1` file (`summaries/go-std.effects.json`), or the function itself when its package is read into the same set |
 | unknown | a call with no summary, a statement the reader could not express, a call through an interface with no implementation in the set | the analysis lists it with a position, never takes it as pure |
 
-The third row is the repository's rule for readers applied to analysis: a construct that cannot be
-expressed is kept and reported, never approximated.
+The third row applies the repository's rule for readers to analysis: a construct that cannot be
+expressed is kept and reported. It is not approximated.
 
 ### Example: `envcheck`
 
 `examples/envcheck/source/envcheck.go` reads `APP_MODE`, builds a banner, prints it and writes it
 to a file. Its `cir/1` declares five externs (`os.Getenv`, `strconv.Itoa`, `strings.ToLower`,
-`strings.ToUpper`, `strings.TrimSpace`). With `summaries/go-std.effects.json` the report
-(`examples/envcheck/envcheck.effects.json`, checked by `task examples-effects`) says:
+`strings.ToUpper`, `strings.TrimSpace`). The report with `summaries/go-std.effects.json` is
+`examples/envcheck/envcheck.effects.json`, and `task examples-effects` checks it:
 
 | function | effects | unknown |
 |---|---|---|
@@ -50,8 +48,8 @@ to a file. Its `cir/1` declares five externs (`os.Getenv`, `strconv.Itoa`, `stri
 
 ## The effect vocabulary
 
-The vocabulary is closed (`EFFECTS` in `crates/effects/src/lib.rs`). A summary or barrier that
-names any other effect is refused.
+The vocabulary is closed (`EFFECTS` in `crates/effects/src/lib.rs`). A summary or barrier with any
+other effect is refused.
 
 | effect | meaning |
 |---|---|
@@ -76,10 +74,9 @@ A summary entry with `"effects": []` declares the function pure.
 | `codespec-barrier/1` | where the source ends: functions that enter the operating system and what each syscall does | `summaries/go-linux-amd64.barrier.json` |
 | `codespec-effects-report/1` | what `codespec effects` prints: per function `effects`, `unknown`, and when present `syscalls`, `effect_sites`, `dispatch`, `unknown_roots` | stdout |
 
-All three are read strictly (unknown fields, unsorted or repeated entries and other formats are
-refused) and the report is canonical JSON: the same modules, summaries and barrier give the same
-bytes. Field-by-field definitions are in the crate doc of `b10x-codespec-effects`
-([crates](/docs/reference/crates)).
+All three are read strictly: unknown fields, unsorted or repeated entries and other formats are
+refused. The report is canonical JSON: the same modules, summaries and barrier give the same bytes.
+The crate doc of `b10x-codespec-effects` defines every field ([crates](/docs/reference/crates)).
 
 ## Linking a set by import path
 
@@ -99,14 +96,14 @@ $ codespec effects a.cir.json b.cir.json … --summaries go-std.effects.json --b
 | `--report <import path>` | prints only that module's functions; the others are still analysed |
 
 Statements `cir/1` cannot express still count. The Go reader lists the calls inside a `foreign`
-statement (`foreign.calls`), and keeps a refused or body-less function as an opaque function with
+statement (`foreign.calls`). It keeps a refused or body-less function as an opaque function with
 its calls (`Module.opaque`), so the call graph has no hole where a body is not expressible. It also
 records each named type's method set (`Module.methods`), every `//go:linkname` (`Module.linknames`)
 and the calls made by package variable initialisers (`Module.inits`).
 
-Effects and syscalls are carried to a fixed point over one call graph of every function of the set:
-strongly connected components (iterative Tarjan), callees first, linear in nodes plus edges
-(`crates/effects/src/set.rs`).
+Effects and syscalls are carried to a fixed point over one call graph of every function of the set.
+The graph is walked by strongly connected components (iterative Tarjan), callees first, in time
+linear in nodes plus edges (`crates/effects/src/set.rs`).
 
 ## Dispatch
 
@@ -132,17 +129,15 @@ when neither is given. Go `init` functions and variable initialisers are always 
 ## Worked example: `netcheck`
 
 [`examples/netcheck`](/docs/examples/netcheck) is a Go module with a TCP server, a client and
-an interface `Prober` with two implementations. It is read with the 72 standard library packages
-it imports and analysed from two entries, `cmd/server.main` and `cmd/client.main`.
-`task examples-netcheck` writes the outputs; `task check` checks these facts on them:
+an interface `Prober` with two implementations, analysed from `cmd/server.main` and
+`cmd/client.main`. `task check` checks its facts:
 
 | question | answer |
 |---|---|
 | which `net` syscall may only the server reach? | `accept4`; both reach `socket`, `bind`, `listen`, `connect` |
-| what does `Answer`, which only computes, reach? | nothing: no effect, no syscall, no `unknown` |
 | how many `Probe` methods may `CheckAll`'s `p.Probe(a)` call? | 1 with `rta`, 2 with `cha` |
 | which function is dead code from the two entries? | `FixedProber.Probe` with `rta`; none with `cha` |
-| how does the client reach `connect`? | through 15 calls: `CheckAll`, `TCPProber.Probe`, `net.Dial`, …, `syscall.connect` ([Call trees](/docs/examples/call-trace#netcheck)) |
+| how does the client reach `connect`? | through 15 calls ([Call trees](/docs/examples/call-trace#netcheck)) |
 
 ## The syscall barrier
 
@@ -174,13 +169,13 @@ A body-less function with a `//go:linkname` resolves in either direction, for ex
 entry gains `syscalls`: each syscall with the positions of the function's own calls that lead
 there.
 
-`crates/cli/tests/barrier.rs` reads the fixture `crates/cli/tests/fixtures/readfile` (one function,
-`Load`, returning `os.ReadFile(path)`) with every package it imports, and finds `openat` and `read`
-at `readfile.go:8`, the `os.ReadFile` line.
+The fixture `crates/cli/tests/fixtures/readfile` has one function, `Load`, which returns
+`os.ReadFile(path)`. `crates/cli/tests/barrier.rs` reads it with every package it imports and finds
+`openat` and `read` at `readfile.go:8`, the `os.ReadFile` line.
 
 ### What the barrier cannot say
 
-`read`, `write` and `close` take a file descriptor; the syscall is the same for a file, a socket
+`read`, `write` and `close` take a file descriptor. The syscall is the same for a file, a socket
 and standard input. The analysis does not follow a descriptor back to the call that made it, so
 these map to `io`, not to `fs.read` or `net`. `openat` maps to `fs.read` and `fs.write`, `connect`
 and `socket` to `net`. 193 of the 385 syscalls map to no effect (for example `getpid`).
@@ -212,16 +207,22 @@ reaches, counted, most frequent first, which says what to summarise or read next
 ## One call, with its branches: `codespec trace`
 
 `codespec trace <documents…> --from <path>.<function>` prints `codespec-trace/1`, the call tree
-from one function on the same call graph: each `if`, `switch` and loop a branch node with its
-condition, each call expanded once (a repeat is a `ref` node), a call through an interface or a
-function value a `dispatch` node listing its candidates, syscalls and summarised externs at the
-leaves, and a `cut` node past `--depth` (default 8). [Call trees](/docs/examples/call-trace)
-draws it for `envcheck.Announce`.
+from one function on the same call graph:
+
+| in the source | in the tree |
+|---|---|
+| each `if`, `switch` and loop | a branch node with its condition |
+| each call | expanded once; a repeat is a `ref` node |
+| a call through an interface or a function value | a `dispatch` node listing its candidates |
+| syscalls and summarised externs | the leaves |
+| the tree past `--depth` (default 8) | a `cut` node |
+
+[Call trees](/docs/examples/call-trace) draws it for `envcheck.Announce`.
 
 ## Measured: a third-party Go library
 
 A third-party Go library of 6 packages and the 228 packages it imports, 234 documents in all,
-were read in 27 s; `codespec effects` over the set took 3.6 s reporting the library's packages.
+were read in 27 s. `codespec effects` over the set took 3.6 s, reporting the library's packages.
 Its client entry point reaches 74 syscalls, its server entry point 75 (the same plus `accept4`).
 The library and its report are kept outside this repository.
 

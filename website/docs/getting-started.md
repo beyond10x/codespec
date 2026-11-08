@@ -8,7 +8,7 @@ source: Taskfile.yml, crates/cli/src/lib.rs, examples/orders; every command run 
 
 # Getting started
 
-Every command below was run in a checkout of this repository, and its output is pasted from that
+Every command on this page was run in a checkout of this repository, and its output is pasted from that
 run. Absolute paths in the output are shortened to `<checkout>`.
 
 ## Install or build
@@ -17,10 +17,10 @@ A GitHub Release carries one archive per target, `codespec-<tag>-<target>.tar.gz
 `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, plus
 `SHA256SUMS`. Each archive holds `codespec` and the three adapters side by side, so the directory
 you extract it into is the `--adapters` directory. See the
-[releases page](https://github.com/beyond10x/codespec/releases); the commands below build from
-source instead and use `target/debug/codespec` and `target/adapters`.
+[releases page](https://github.com/beyond10x/codespec/releases). The commands on this page build
+from source and use `target/debug/codespec` and `target/adapters`.
 
-To build, you need Rust (the toolchain `rust-toolchain.toml` names, 1.97), Go 1.23 or newer, and
+To build, you need Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
 [go-task](https://taskfile.dev). `task build` builds the `codespec` command into `target/debug/`
 and every adapter into `target/adapters/`:
 
@@ -38,8 +38,8 @@ $ target/debug/codespec --version
 codespec 0.1.2
 ```
 
-(`Compiling …` lines omitted.) Instead of `--adapters target/adapters` on every command you can
-set `CODESPEC_ADAPTERS=target/adapters`.
+(`Compiling …` lines omitted.) Set `CODESPEC_ADAPTERS=target/adapters` to drop
+`--adapters target/adapters` from every command.
 
 ## Read: Go → cir/1
 
@@ -137,8 +137,8 @@ $ diff examples/orders/source/orders.go try/go/orders.go
 > }
 ```
 
-The Go writer prints from a `go/ast` tree, so one-line bodies come out on several lines; nothing
-else differs, and the `Audit` goroutine is written back verbatim from its `foreign` statement.
+The Go writer prints from a `go/ast` tree, so one-line bodies come out on several lines. Nothing
+else differs. The `Audit` goroutine is written back verbatim from its `foreign` statement.
 
 ## Write Rust
 
@@ -163,8 +163,8 @@ $ cargo build --manifest-path try/rust/Cargo.toml --target-dir try/build
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
 ```
 
-The crate has no dependencies and builds; `Audit` is left out and listed, every other method is
-written.
+The crate has no dependencies and builds. `Audit` is left out and listed, and every other method
+is written.
 
 ## Run the harness
 

@@ -9,8 +9,8 @@ source: crates/cli/src/lib.rs, adapters/go/cmd/codespec-read-go, adapters/rust/s
 # Translate a Go package to Rust
 
 This guide translates a small Go package that is not one of the repository's examples. Every
-command was run from the repository root after `task build` ([Getting started](/docs/getting-started));
-absolute paths are shortened to `<checkout>`.
+command was run from the repository root after `task build` ([Getting started](/docs/getting-started)).
+Absolute paths are shortened to `<checkout>`.
 
 ## 1. The package
 
@@ -119,11 +119,15 @@ $ jq -c .facts work/stock.cir.json
 {"shared":["Item"],"comma_ok":["Store.Count"],"fallible":["Store.Add","Store.Take"],"read_only":["Store.Take","Store.Count"],"displays":["SKU"]}
 ```
 
-Each fact decides one Rust mapping: `Item` is stored by pointer in a map, so it is `shared` and
-becomes `Rc<RefCell<Item>>`; `Add` and `Take` are `fallible` and return `Result<(), Error>`;
-`Count` is `comma_ok` and returns `Option<i64>`. `Take` writes only through the shared item, not
-the store, so it is `read_only` and takes `&self`; `Add` inserts into the store's map and takes
-`&mut self`.
+Each fact decides one Rust mapping:
+
+| fact | in `stock` | Rust |
+|---|---|---|
+| `shared` | `Item` is stored by pointer in a map | `Rc<RefCell<Item>>` |
+| `fallible` | `Add` and `Take` | return `Result<(), Error>` |
+| `comma_ok` | `Count` | returns `Option<i64>` |
+| `read_only` | `Take` writes only through the shared item, not the store | takes `&self` |
+| not `read_only` | `Add` inserts into the store's map | takes `&mut self` |
 
 ## 4. Write the Rust crate
 
@@ -218,7 +222,7 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 ```
 
-Both lookups became `let … else` through `lookup-guard`; `fmt.Errorf` became `Error::Msg`; the map
+Both lookups became `let … else` through `lookup-guard`. `fmt.Errorf` became `Error::Msg`. The map
 is a `BTreeMap`, so any iteration over it is in key order.
 
 ## 5. Build and test it
@@ -287,4 +291,4 @@ $ diff work/stock/stock.go work/stock-go/stock.go
 A hand-written test checks the cases you thought of. The [harness](/docs/concepts/harness) checks
 generated traces byte for byte, but its trace generator, built into `crates/harness`, speaks only
 the `orders` commands today. Comparing `stock` that way needs a Go and a Rust driver for it and a
-generator for its commands in the harness crate; there is no generic one yet.
+generator for its commands in the harness crate. There is no generic one yet.

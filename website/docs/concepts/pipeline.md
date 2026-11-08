@@ -23,7 +23,7 @@ A reader and a writer are **adapters**: programs found by name in the `--adapter
 | writer | `codespec-write-<lang> <out dir>` | reads one `cir/1` module on stdin and writes into the directory; exit 0 |
 
 `codespec read` validates the reader's output against the model before it writes a byte, and
-writes it in canonical encoding; `codespec write` validates the document before the writer sees it.
+writes it in canonical encoding. `codespec write` validates the document before the writer sees it.
 No adapter's output reaches another unchecked. An adapter is written in the language whose tooling
 handles its target best:
 
@@ -43,12 +43,16 @@ the facts over the rewritten module. A pass is deterministic and total: it rewri
 recognises, leaves every other node as it was, and never fails. Running `codespec pass` on its own
 output gives the same bytes.
 
-**`lookup-guard`.** `v, ok := m[k]` directly followed by `if !ok { … return }`, with `ok` read
+### `lookup-guard`
+
+`v, ok := m[k]` directly followed by `if !ok { … return }`, with `ok` read
 nowhere else and `v` not read in the guard, becomes one `lookup_else { name: v, map: m, index: k,
 then }` statement. Rust writes it as `let Some(v) = … else { … };`. A `foreign` statement after the
 lookup may read `ok`, so the lookup is then left as it was.
 
-**Facts.** Written into `Module.facts` and read by writers:
+### Facts
+
+The facts are written into `Module.facts` and read by writers:
 
 | Fact | What it lists |
 |---|---|
@@ -66,15 +70,19 @@ the foreign source returns or writes is unknown. The exact rules are in the crat
 
 ## Writers
 
-**Go.** `codespec-write-go` builds a `go/ast` tree from the module and prints it with `go/printer`,
-then `go/format`. A `foreign` Go statement is spliced back verbatim; `foreign` source in any other
-language is refused. A construct Go cannot hold is refused whole: exit 1, a message naming its
+### Go
+
+`codespec-write-go` builds a `go/ast` tree from the module and prints it with `go/printer`, then
+`go/format`. A `foreign` Go statement is spliced back verbatim. `foreign` source in any other
+language is refused. A construct Go cannot hold is refused whole: exit 1, a message with its
 position, nothing written. Its output is gofmt-clean and vetted, and the Go reader reads it back
 to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
 
-**Rust.** `codespec-write-rust` writes a Cargo crate (`Cargo.toml` with no dependencies,
-`src/lib.rs`, `refusals.json`) built as `syn` trees and printed with `prettyplease`. Every mapping
-is read off the facts:
+### Rust
+
+`codespec-write-rust` writes a Cargo crate of `Cargo.toml` with no dependencies, `src/lib.rs` and
+`refusals.json`, built as `syn` trees and printed with `prettyplease`. Every mapping is read off the
+facts:
 
 | cir/1 | Rust | Decided by |
 |---|---|---|
@@ -89,7 +97,7 @@ is read off the facts:
 | sentinel errors, error structs, formatted errors | one `enum Error` | — |
 | Go `int` | `i64`, with wrapping arithmetic | — |
 
-A module without facts is refused whole, naming the pass to run:
+The writer refuses a module without facts whole, and the message gives the pass to run:
 
 ```shell-session
 $ CODESPEC_ADAPTERS=target/adapters target/debug/codespec write --lang rust work/stock.read.cir.json --out work/no-facts
@@ -99,18 +107,15 @@ codespec: target/adapters/codespec-write-rust exited with exit status: 1
 
 ## Refusals
 
-A refusal is where the pipeline stops guessing.
+| stage | refused | result |
+|---|---|---|
+| reader | a construct `cir/1` cannot express | a `foreign` statement with source text, language, reason and position, and a `refusals` entry on the module |
+| Rust writer, per function | a function it cannot write: a `foreign` statement, a construct without a mapping, a call of a refused function | left out, listed in `refusals.json` with its key, position and reason; exit 0 |
+| writer, whole module | a module without facts, or one whose types cannot be written | exit 1, nothing written |
 
-- **Reader.** A construct `cir/1` cannot express becomes a `foreign` statement (source text,
-  language, reason, position) and a `refusals` entry on the module. In `orders`, `Audit` starts a
-  goroutine: `{"pos":"orders.go:132","what":"go func() { …","reason":"goroutine: concurrency is
-  outside cir/1"}`.
-- **Writer, per function.** The Rust writer leaves out a function it cannot write (a `foreign`
-  statement, a construct without a mapping, a call of a refused function), lists it in
-  `refusals.json` with its key, position and reason, and still exits 0. `orders` gets exactly one:
-  `Service.Audit`.
-- **Writer, whole module.** A module without facts, or one whose types cannot be written, is
-  refused: exit 1, nothing written.
+In `orders`, `Audit` starts a goroutine. The reader records
+`{"pos":"orders.go:132","what":"go func() { …","reason":"goroutine: concurrency is outside cir/1"}`.
+The Rust writer refuses exactly one function of `orders`: `Service.Audit`.
 
 A refused function is absent from the output, so a harness trace cannot call it: the `orders`
 trace format has no `audit` command for that reason.

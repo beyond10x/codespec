@@ -55,17 +55,20 @@ A trace is UTF-8 text, one command per line. The first command is `new`:
 | `pending` | `PendingOrders()` |
 
 The generator is SplitMix64 seeded with the seed, and only integer arithmetic on its output
-decides a trace, so one seed gives the same bytes on every platform (a test pins one trace's
-bytes). About a fifth of totals are zero, negative, one or an `int64` extreme, and about a fifth of
-ids are ones the service never issued, so every error path is reached. There is no `audit`
-command: the Rust writer refused `Audit`, so the Rust output has no such method.
+decides a trace, so one seed gives the same bytes on every platform. A test pins one trace's
+bytes. About a fifth of totals are zero, negative, one or an `int64` extreme. About a fifth of ids
+are ones the service never issued, so every error path is reached.
+
+There is no `audit` command: the Rust writer refused `Audit`, so the Rust output has no such
+method.
 
 `trace = "inventory"` at the top of a `harness.toml` selects the second generator, for the Rust
-`inventory` crate (`add`, `receive`, `reserve`, `find`, `stock`, `value`, `low`, `reserved`); its
-commands and output lines are in the crate doc of `crates/harness`. `examples/inventory` runs the
-original Rust crate, the Go output and the Rust output, the two Rust ones from one driver source
-built by two manifests (`drivers/rust`, `drivers/rust-original`). Another program needs its own
-drivers and its own trace format before the harness can compare it.
+`inventory` crate (`add`, `receive`, `reserve`, `find`, `stock`, `value`, `low`, `reserved`). Its
+commands and output lines are in the crate doc of `crates/harness`.
+
+`examples/inventory` runs the original Rust crate, the Go output and the Rust output. The two Rust
+ones come from one driver source built by two manifests (`drivers/rust`, `drivers/rust-original`).
+Another program needs its own drivers and its own trace format before the harness can compare it.
 
 ## Output
 
@@ -91,7 +94,7 @@ Exit status 1, with the seed, the implementation and the first differing line. T
 
 ## What the harness does not do
 
-- It compares observable output; it does not prove two programs equal on inputs no trace reaches.
-- A driver that exits non-zero fails the run; there is no timeout per driver.
+- It compares observable output. It does not prove two programs equal on inputs no trace reaches.
+- A driver that exits non-zero fails the run. There is no timeout per driver.
 - It does not run concurrent code: what `cir/1` refuses is absent from the outputs and from the
   traces.

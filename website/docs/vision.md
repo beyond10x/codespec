@@ -16,13 +16,12 @@ code between languages, or rewriting it within one, needs a representation of th
 `cir/1` is that representation: one typed, canonical document per module, with a single
 definition in Rust.
 
-Two uses follow from it:
+Its uses:
 
-- **Round trip with rewrites.** Go → `cir/1` → Go, with normalisation or idiom changes between.
-- **Translation.** Go → `cir/1` → Rust, and Rust → `cir/1` → Go with the Rust reader.
-
-A third is one analysis for many languages: sharing, fallibility, purity and iteration order,
-computed on `cir/1` once and read by every writer.
+- Round trip with rewrites: Go → `cir/1` → Go, with normalisation or idiom changes between.
+- Translation: Go → `cir/1` → Rust, and Rust → `cir/1` → Go with the Rust reader.
+- One analysis for many languages: sharing, fallibility, purity and iteration order, computed on
+  `cir/1` once and read by every writer.
 
 ## The pipeline
 
@@ -44,21 +43,24 @@ The details are on [Readers, passes and writers](/docs/concepts/pipeline) and
 
 ## Rules
 
-- **Deterministic, no model.** No step is a language model or a heuristic that could answer
-  differently tomorrow. The same source read twice gives the same bytes; a pass run on its own
-  output gives the same bytes.
-- **Refuse, never approximate.** What `cir/1` cannot express becomes a `foreign` statement holding
-  the source text and a reason, plus a refusal. What a writer cannot write is left out and listed.
-- **One definition.** The Rust model is the format. The schema, every adapter and every document
-  follow it; a change in meaning is a new format version, `cir/2`, not an edit to `cir/1`.
-- **Evidence by running.** A translation is checked by running the original and the output on the
-  same inputs, never by a claim.
+| rule | what it means |
+|---|---|
+| deterministic, no model | No step is a language model or a heuristic. The same source read twice gives the same bytes, and a pass run on its own output gives the same bytes. |
+| refuse what cannot be expressed | What `cir/1` cannot express becomes a `foreign` statement holding the source text and a reason, plus a refusal. What a writer cannot write is left out and listed. |
+| one definition | The Rust model is the format. The schema, every adapter and every document follow it. A change in meaning is a new format version, `cir/2`, not an edit to `cir/1`. |
+| evidence by running | A translation is checked by running the original and the output on the same inputs. |
 
 ## Measured adapters
 
-Each adapter is written in the language whose tooling handles its target best: the Go reader uses
-`go/types`, the Go writer builds `go/ast` and prints it with `go/printer`, the Rust writer builds
-`syn` trees and prints them with `prettyplease`. The Rust reader parses with `syn`, which the Rust
+Each adapter is written in the language whose tooling handles its target best:
+
+| adapter | tooling |
+|---|---|
+| Go reader | `go/types` |
+| Go writer | builds `go/ast` and prints it with `go/printer` |
+| Rust writer | builds `syn` trees and prints them with `prettyplease` |
+
+The Rust reader parses with `syn`, which the Rust
 writer already depends on, and resolves names and types itself for the subset of Rust that `cir/1`
 covers.
 
@@ -83,19 +85,20 @@ Release 0.1.0 is M0, M1 and M4: Go reader, Rust reader, Go writer, Rust writer, 
 
 Decided on 2026-11-06.
 
-- **tree-sitter.** Considered as the reader for languages without typed tooling, and not used. It
-  gives syntax only, and `cir/1` needs a type on every expression. No tree-sitter-based tool
-  infers types: Semgrep's generic AST covers 31 languages but stays close to the source text;
-  GitHub's stack-graphs resolves names but not types, and was archived on 2025-09-09; tree-sitter
-  tags queries only label definitions and references. A tree-sitter reader would have to bring its
-  own type inference for each language, and codespec keeps its dependencies minimal.
-- **rust-analyzer's `ra_ap_*` crates.** Not used for the Rust reader, for the same dependency
+- tree-sitter: considered as the reader for languages without typed tooling, and not used. It
+  gives syntax only, and `cir/1` needs a type on every expression. A tree-sitter reader would have
+  to bring its own type inference for each language, and codespec keeps its dependencies minimal.
+  No tree-sitter-based tool infers types:
+  - Semgrep's generic AST covers 31 languages but stays close to the source text.
+  - GitHub's stack-graphs resolves names but not types, and was archived on 2025-09-09.
+  - tree-sitter tags queries only label definitions and references.
+- rust-analyzer's `ra_ap_*` crates: not used for the Rust reader, for the same dependency
   reason. The reader resolves names and types itself, on `syn`, for the `cir/1` subset.
 
 ## Later
 
 - [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)): a
-  specification could supply a service's skeleton, `cir/1` bodies fill what it leaves to the
-  implementation, and the ESS conformance suite becomes an equivalence oracle beside the harness.
-  This is a direction, not a plan: codespec does not use ESS today.
+  specification could supply a service's skeleton, and `cir/1` bodies fill what it leaves to the
+  implementation. The ESS conformance suite would be an equivalence oracle beside the harness.
+  This item is a direction, not a plan: codespec does not use ESS today.
 - More target languages through the same adapter boundary.

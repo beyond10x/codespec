@@ -19,7 +19,7 @@ source: crates/cli/src/main.rs, Taskfile.yml, adapters/go/cmd, adapters/rust; ev
 | success | exit 0 | exit 0; a function it cannot write is left out and listed, if the target has a refusal list |
 | failure | non-zero exit, a message on stderr | non-zero exit, a message on stderr, nothing written |
 
-`codespec` looks the program up in the `--adapters` directory (or `CODESPEC_ADAPTERS`); without
+`codespec` looks the program up in the `--adapters` directory (or `CODESPEC_ADAPTERS`). Without
 it, the command fails before anything runs:
 
 ```shell-session
@@ -32,18 +32,18 @@ codespec: no read adapter for "java": target/adapters/codespec-read-java does no
 ```
 
 A reader must be deterministic: the same source read twice gives the same bytes. A construct it
-cannot express becomes a `foreign` statement with a `refusals` entry, never an approximation. A
+cannot express becomes a `foreign` statement with a `refusals` entry. It is not approximated. A
 writer reads its choices off `Module.facts` and refuses what they do not decide
 ([Readers, passes and writers](/docs/concepts/pipeline)).
 
 ## Where it lives and what it is written in
 
 An adapter goes under `adapters/<language>/`, written in the language whose tooling reads or
-writes its target best: the Go adapters are a Go module (`adapters/go/cmd/codespec-read-go`,
-`adapters/go/cmd/codespec-write-go`), the Rust writer is the workspace package
-`codespec-write-rust` in `adapters/rust`. tree-sitter is not used: it gives syntax only and `cir/1`
-needs a type on every expression ([Not used](/docs/vision#not-used)). The repository's own tooling
-(the model, the CLI, passes, harness and checks) stays Rust.
+writes its target best. The Go adapters are a Go module (`adapters/go/cmd/codespec-read-go`,
+`adapters/go/cmd/codespec-write-go`). The Rust writer is the workspace package
+`codespec-write-rust` in `adapters/rust`. tree-sitter is not used: it gives syntax only, and
+`cir/1` needs a type on every expression ([Not used](/docs/vision#not-used)). The repository's own
+tooling stays Rust: the model, the CLI, passes, harness and checks.
 
 Build it into `target/adapters` from the `adapters` task in `Taskfile.yml`, next to the existing
 ones, so `task build` produces it.
@@ -51,7 +51,7 @@ ones, so `task build` produces it.
 ## The boundary is checked
 
 A stand-in reader that only copies a document shows what `codespec read` does with an adapter's
-output. This is a throwaway shell script in a scratch directory, not an adapter to keep:
+output. The script is a throwaway in a scratch directory, not an adapter to keep:
 
 ```shell-session
 $ cat work/stub/codespec-read-cat
@@ -72,12 +72,12 @@ $ test -e work/copy2.json || echo 'nothing written'
 nothing written
 ```
 
-Fix the adapter, never the model's strictness.
+Fix the adapter. The model's strictness does not change.
 
 ## What the gate needs
 
-1. Format and lint in the adapter's own language, in the `adapters-check` task (`gofmt` and
-   `go vet` for Go; `cargo fmt` and `cargo clippy` cover a Rust adapter in the workspace).
+1. Format and lint in the adapter's own language, in the `adapters-check` task: `gofmt` and
+   `go vet` for Go. `cargo fmt` and `cargo clippy` cover a Rust adapter in the workspace.
 2. A reader: every example read twice to the same bytes, equal to the checked-in document, in
    `examples-check`.
 3. A writer: its output for every example checked in under `examples/<name>/out/<language>/`,
@@ -88,14 +88,18 @@ Fix the adapter, never the model's strictness.
 5. A conformance report: `codespec conform` runs the conformance kit against the adapter and exits
    0 only when it conforms.
 
-`codespec conform` needs two programs in the `--adapters` directory (or `CODESPEC_ADAPTERS`): the
-adapter, which answers `--describe` with its manifest, the features it claims; and
-`codespec-run-<lang>`, the runner that builds what a writer wrote, or the source a reader reads,
-and runs it on a case's `calls.json`. A reader also needs `codespec-write-go` and `codespec-run-go`,
-which write its output as Go and run it. Each kit case is then run, and every feature gets a
-verdict against the claim. Here is the Go writer, run in this repository; `codespec-docs generate`
-writes this block from the checked-in report `website/data/conformance/writer-go.json`, and
-`task docs-check` fails when it differs:
+`codespec conform` needs two programs in the `--adapters` directory (or `CODESPEC_ADAPTERS`):
+
+- the adapter, which answers `--describe` with its manifest, the features it claims;
+- `codespec-run-<lang>`, the runner that builds what a writer wrote, or the source a reader reads,
+  and runs it on a case's `calls.json`.
+
+A reader also needs `codespec-write-go` and `codespec-run-go`, which write its output as Go and run
+it. Each kit case is then run, and every feature gets a verdict against the claim.
+
+Here is the Go writer, run in this repository. `codespec-docs generate` writes this block from the
+checked-in report `website/data/conformance/writer-go.json`, and `task docs-check` fails when it
+differs:
 
 <!-- conform-sample: written by codespec-docs from website/data/conformance/writer-go.json -->
 ```shell-session
@@ -110,12 +114,18 @@ $ jq -c .summary work/go-writer.json
 
 The kit defaults to `conformance/` in this repository. Outside it, take
 `codespec-conformance-<version>.tar.gz` from the release, unpack it, and pass its `conformance/`
-directory as `--kit`. Each release's binary archive `codespec-<version>-<target>.tar.gz` holds
-`codespec`, the Go and Rust readers and writers and the runners `codespec-run-go` and
-`codespec-run-rust`: unpacked into one directory and named as `--adapters`, with your own adapter
-and runner beside them, it is everything `codespec conform` needs for a Go or Rust writer and for a
-reader. The runners build what they run, so `go` and `cargo` must be on `PATH`. A reader's corpus defaults to `<kit>/reader/<lang>`; `--corpus` names another.
-`--timeout` bounds each program in seconds (default 300), and `--check REPORT` runs again and names
-every feature whose entry differs from the report.
+directory as `--kit`.
 
-Run `task check`; it is the gate.
+Each release's binary archive `codespec-<version>-<target>.tar.gz` holds `codespec`, the Go and
+Rust readers and writers and the runners `codespec-run-go` and `codespec-run-rust`. Unpack it into
+one directory, put your own adapter and runner beside them, and pass the directory as `--adapters`.
+That directory is everything `codespec conform` needs for a Go or Rust writer and for a reader. The
+runners build what they run, so `go` and `cargo` must be on `PATH`.
+
+| flag | effect |
+|---|---|
+| `--corpus` | a reader's corpus; default `<kit>/reader/<lang>` |
+| `--timeout` | bounds each program, in seconds; default 300 |
+| `--check REPORT` | runs again and lists every feature whose entry differs from the report |
+
+Run `task check`, the gate.
