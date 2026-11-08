@@ -35,6 +35,9 @@ type front struct {
 	unlabeled map[*ast.BranchStmt]bool
 	// fnBody is the body of the function being read: the scope of its labels.
 	fnBody *ast.BlockStmt
+	// hoist holds the `if` statements of the function being read whose init is read in front of
+	// them (planHoists).
+	hoist hoists
 }
 
 func load(dir string) (*Module, error) {
@@ -331,6 +334,14 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 		fn.Body = []Stmt{f.namedResultsBody(d)}
 	} else {
 		f.fnBody = d.Body
+		params := map[string]bool{}
+		if fn.Recv != nil {
+			params[fn.Recv.Name] = true
+		}
+		for _, p := range fn.Params {
+			params[p.Name] = true
+		}
+		f.hoist = f.planHoists(d.Body, params)
 		fn.Body = f.stmts(d.Body.List, fn.Results)
 	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
@@ -395,9 +406,24 @@ func firstLine(s string) string {
 func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 	var out []Stmt
 	for _, s := range list {
+		if is, ok := s.(*ast.IfStmt); ok {
+			if assign, ok := f.hoist[is]; ok {
+				out = append(out, f.hoisted(is.Init.(*ast.AssignStmt), assign, results), f.ifStmt(is, results))
+				continue
+			}
+		}
 		out = append(out, f.stmt(s, results))
 	}
 	return out
+}
+
+// hoisted reads the init statement of a hoisted `if` as the statement in front of it: as written
+// (a declaration), or as an assignment to the names an earlier hoisted init declared.
+func (f *front) hoisted(init *ast.AssignStmt, assign bool, results []Type) Stmt {
+	if !assign {
+		return f.stmt(init, results)
+	}
+	return f.stmt(&ast.AssignStmt{Lhs: init.Lhs, TokPos: init.TokPos, Tok: token.ASSIGN, Rhs: init.Rhs}, results)
 }
 
 // inside reads the statements of a loop or switch body, with that construct as the target of an
@@ -570,18 +596,7 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 		if s.Init != nil {
 			return f.foreign(s, "if with an init statement")
 		}
-		c, ok := f.expr(s.Cond)
-		if !ok {
-			return f.foreign(s, "expression outside cir/1")
-		}
-		st := Stmt{K: "if", Cond: &c, Then: f.stmts(s.Body.List, results), Pos: pos}
-		switch e := s.Else.(type) {
-		case *ast.BlockStmt:
-			st.Else = f.stmts(e.List, results)
-		case *ast.IfStmt:
-			st.Else = []Stmt{f.stmt(e, results)}
-		}
-		return st
+		return f.ifStmt(s, results)
 	case *ast.RangeStmt:
 		over, ok := f.expr(s.X)
 		if !ok {
@@ -699,6 +714,22 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 		return f.foreign(s, "defer is outside cir/1")
 	}
 	return f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))
+}
+
+// ifStmt reads s but for its init statement, which the caller has read or refused.
+func (f *front) ifStmt(s *ast.IfStmt, results []Type) Stmt {
+	c, ok := f.expr(s.Cond)
+	if !ok {
+		return f.foreign(s, "expression outside cir/1")
+	}
+	st := Stmt{K: "if", Cond: &c, Then: f.stmts(s.Body.List, results), Pos: f.pos(s.Pos())}
+	switch e := s.Else.(type) {
+	case *ast.BlockStmt:
+		st.Else = f.stmts(e.List, results)
+	case *ast.IfStmt:
+		st.Else = []Stmt{f.stmt(e, results)}
+	}
+	return st
 }
 
 // coerce wraps a value of an error struct type that is used where an `error` is expected.
@@ -859,4 +890,322 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 		}
 	}
 	return Expr{}, false
+}
+
+// cir/1 has no block statement, so an `if` whose init statement declares names cannot keep them
+// scoped to the `if`. The reader hoists the init in front of the `if` where that keeps the
+// meaning: the init is `<names> := <call>` and it and the condition read inside cir/1, the `if`
+// has no `else` and is a statement of a block (not an `else if`), the function has no goto, no
+// name is a parameter or the receiver, and no name occurs anywhere in the function body outside
+// the `if` (the call of its init counting as outside) except inside another such `if` that
+// declares it with the same type, neither containing the other, where the name is never captured
+// by a function literal or its address taken (escapingNames). Walking the body
+// in source order, one whose names are all undeclared reads as `let` and declares them in its
+// block; one whose names are all declared in scope by an earlier one reads as an assignment; one
+// with some of each stays foreign, and the plan is made again without it.
+
+// ifInit is one `if` whose init statement may be hoisted.
+type ifInit struct {
+	s     *ast.IfStmt
+	init  *ast.AssignStmt
+	names map[string]types.Type // the non-blank names the init declares
+	blank bool                  // the init also has a blank name
+}
+
+// hoists holds, for the function being read, every `if` read as its init followed by the `if`,
+// and whether the init reads as an assignment (true) or as a declaration (false).
+type hoists map[*ast.IfStmt]bool
+
+// blocks walks the statement lists the reader reads as statement lists, in source order: list
+// itself and, nested in its statements, the bodies of if, else, for, range and switch cases.
+// enter is called before each list, leave after it, and each for every statement of a list.
+func blocks(list []ast.Stmt, enter, leave func(), each func(ast.Stmt)) {
+	var within func(s ast.Stmt)
+	var walk func(list []ast.Stmt)
+	walk = func(list []ast.Stmt) {
+		enter()
+		for _, s := range list {
+			each(s)
+			within(s)
+		}
+		leave()
+	}
+	within = func(s ast.Stmt) {
+		switch s := s.(type) {
+		case *ast.IfStmt:
+			walk(s.Body.List)
+			switch e := s.Else.(type) {
+			case *ast.BlockStmt:
+				walk(e.List)
+			case *ast.IfStmt:
+				within(e)
+			}
+		case *ast.ForStmt:
+			walk(s.Body.List)
+		case *ast.RangeStmt:
+			walk(s.Body.List)
+		case *ast.SwitchStmt:
+			for _, cl := range s.Body.List {
+				walk(cl.(*ast.CaseClause).Body)
+			}
+		case *ast.LabeledStmt:
+			within(s.Stmt)
+		}
+	}
+	walk(list)
+}
+
+// planHoists decides which `if` statements of body are hoisted. params holds the names of the
+// function's parameters and receiver.
+func (f *front) planHoists(body *ast.BlockStmt, params map[string]bool) hoists {
+	if hasGoto(body) {
+		// a goto can jump over a hoisted declaration to a later assignment to it
+		return hoists{}
+	}
+	escaped := f.escapingNames(body)
+	var cands []*ifInit
+	nop := func() {}
+	blocks(body.List, nop, nop, func(s ast.Stmt) {
+		if is, ok := s.(*ast.IfStmt); ok {
+			if c := f.ifInitShape(is, params); c != nil {
+				cands = append(cands, c)
+			}
+		}
+	})
+	live := map[*ast.IfStmt]*ifInit{}
+	for _, c := range cands {
+		live[c.s] = c
+	}
+	for {
+		removed := false
+		for _, c := range cands {
+			if live[c.s] != nil && !namesKeptInside(c, live, body, escaped) {
+				delete(live, c.s)
+				removed = true
+			}
+		}
+		if removed {
+			continue
+		}
+		plan, mixed := assignOrDeclare(body, live)
+		if mixed == nil {
+			return plan
+		}
+		delete(live, mixed)
+	}
+}
+
+// ifInitShape returns s as a hoisting candidate, or nil when its shape alone rules it out.
+func (f *front) ifInitShape(s *ast.IfStmt, params map[string]bool) *ifInit {
+	init, ok := s.Init.(*ast.AssignStmt)
+	if !ok || s.Else != nil || init.Tok != token.DEFINE || len(init.Rhs) != 1 {
+		return nil
+	}
+	if _, ok := init.Rhs[0].(*ast.CallExpr); !ok {
+		return nil
+	}
+	// The init and the condition must read inside cir/1: a foreign `if` keeps its init in its
+	// source text, and a foreign init keeps `:=` in its source text even where it is read as an
+	// assignment, so either would run or declare the init twice or wrongly.
+	if _, ok := f.expr(s.Cond); !ok {
+		return nil
+	}
+	if _, ok := f.exprs(init.Rhs); !ok {
+		return nil
+	}
+	if _, ok := f.exprs(init.Lhs); !ok {
+		return nil
+	}
+	c := &ifInit{s: s, init: init, names: map[string]types.Type{}}
+	for _, l := range init.Lhs {
+		id, ok := l.(*ast.Ident)
+		if !ok {
+			return nil
+		}
+		if id.Name == "_" {
+			c.blank = true
+			continue
+		}
+		if params[id.Name] {
+			return nil
+		}
+		obj := f.info.Defs[id]
+		if obj == nil {
+			return nil
+		}
+		c.names[id.Name] = obj.Type()
+	}
+	if len(c.names) == 0 {
+		return nil
+	}
+	return c
+}
+
+// holds reports whether pos lies in c's `if` and outside the call of its init, the one place in
+// the `if` where an init name still means what it means outside it.
+func (c *ifInit) holds(pos token.Pos) bool {
+	call := c.init.Rhs[0]
+	return pos >= c.s.Pos() && pos < c.s.End() && !(pos >= call.Pos() && pos < call.End())
+}
+
+func (c *ifInit) contains(d *ifInit) bool {
+	return d.s.Pos() >= c.s.Pos() && d.s.End() <= c.s.End()
+}
+
+// hasGoto reports whether body holds a goto outside function literals (a label is not visible
+// inside one).
+func hasGoto(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.BranchStmt:
+			if n.Tok == token.GOTO {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// escapingNames returns, by spelling, every name in body whose variable may be reached other
+// than by its name: used inside a function literal, the operand of `&` or of a slice expression,
+// or the receiver of a pointer method called on an addressable value. Hoisted inits that share
+// such a name would make one variable of what Go keeps as one per `if`, and a pointer or closure
+// taken from one would see the next one's value.
+func (f *front) escapingNames(body *ast.BlockStmt) map[string]bool {
+	escaped := map[string]bool{}
+	root := func(e ast.Expr) {
+		for {
+			switch x := e.(type) {
+			case *ast.ParenExpr:
+				e = x.X
+			case *ast.SelectorExpr:
+				e = x.X
+			case *ast.IndexExpr:
+				e = x.X
+			case *ast.Ident:
+				escaped[x.Name] = true
+				return
+			default:
+				return
+			}
+		}
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			ast.Inspect(n.Body, func(m ast.Node) bool {
+				if id, ok := m.(*ast.Ident); ok {
+					escaped[id.Name] = true
+				}
+				return true
+			})
+			return false
+		case *ast.UnaryExpr:
+			if n.Op == token.AND {
+				root(n.X)
+			}
+		case *ast.SliceExpr:
+			root(n.X)
+		case *ast.SelectorExpr:
+			if sel := f.info.Selections[n]; sel != nil && sel.Kind() == types.MethodVal {
+				if _, ptrRecv := sel.Obj().Type().(*types.Signature).Recv().Type().(*types.Pointer); ptrRecv {
+					if _, ptrX := f.info.TypeOf(n.X).Underlying().(*types.Pointer); !ptrX {
+						root(n.X)
+					}
+				}
+			}
+		}
+		return true
+	})
+	return escaped
+}
+
+// namesKeptInside reports whether every identifier in body spelled like one of c's names lies in
+// c, or in another live candidate disjoint from c that declares that name with the same type and
+// that name is not in escaped. The check goes by spelling, so a use of an outer variable, constant
+// or function of that name counts; only the name of a field or method selector is skipped.
+func namesKeptInside(c *ifInit, live map[*ast.IfStmt]*ifInit, body *ast.BlockStmt, escaped map[string]bool) bool {
+	ok := true
+	var visit func(n ast.Node) bool
+	visit = func(n ast.Node) bool {
+		if !ok {
+			return false
+		}
+		switch n := n.(type) {
+		case *ast.SelectorExpr:
+			ast.Inspect(n.X, visit)
+			return false
+		case *ast.Ident:
+			t, named := c.names[n.Name]
+			if !named || c.holds(n.Pos()) {
+				return true
+			}
+			if escaped[n.Name] {
+				ok = false
+				return false
+			}
+			for _, d := range live {
+				if d == c || c.contains(d) || d.contains(c) || !d.holds(n.Pos()) {
+					continue
+				}
+				if dt, ok := d.names[n.Name]; ok && types.Identical(dt, t) {
+					return true
+				}
+			}
+			ok = false
+		}
+		return true
+	}
+	ast.Inspect(body, visit)
+	return ok
+}
+
+// assignOrDeclare walks body in source order with a scope per block. A live candidate none of
+// whose names is declared in scope reads as a declaration, and declares them in its block; one
+// all of whose names are, and that has no blank name, reads as an assignment. It returns the plan,
+// or the first candidate that is neither.
+func assignOrDeclare(body *ast.BlockStmt, live map[*ast.IfStmt]*ifInit) (hoists, *ast.IfStmt) {
+	plan := hoists{}
+	var mixed *ast.IfStmt
+	var scopes []map[string]bool
+	declared := func(n string) bool {
+		for i := len(scopes) - 1; i >= 0; i-- {
+			if scopes[i][n] {
+				return true
+			}
+		}
+		return false
+	}
+	blocks(body.List,
+		func() { scopes = append(scopes, map[string]bool{}) },
+		func() { scopes = scopes[:len(scopes)-1] },
+		func(s ast.Stmt) {
+			is, ok := s.(*ast.IfStmt)
+			c := live[is]
+			if !ok || c == nil || mixed != nil {
+				return
+			}
+			in := 0
+			for n := range c.names {
+				if declared(n) {
+					in++
+				}
+			}
+			switch {
+			case in == 0:
+				plan[is] = false
+				for n := range c.names {
+					scopes[len(scopes)-1][n] = true
+				}
+			case in == len(c.names) && !c.blank:
+				plan[is] = true
+			default:
+				mixed = is
+			}
+		})
+	return plan, mixed
 }

@@ -68,10 +68,11 @@ names or canonical encoding is a new format version, `cir/2`, never an edit to `
 
 ## What cir/1 cannot express
 
-A construct with no node (in the Go reader: a goroutine, `defer`, an `if` with an init statement,
-named results, an expression it has no node for) is kept as a `foreign` statement with its source
-text, its language and a reason, and the
-module lists it under `refusals`. Nothing is dropped or approximated. A writer for the same
+A construct with no node (in the Go reader: a goroutine, `defer`, named results, an expression it
+has no node for, an `if` with an init statement unless hoisting the init in front of the `if` keeps
+the meaning, as it reads `if err := f(); err != nil { … }` as `err := f()` and the `if`) is kept
+as a `foreign` statement with its source text, its language and a reason, and the module lists it
+under `refusals`. Nothing is dropped or approximated. A writer for the same
 language can splice the source back; a writer for another language refuses the function that holds
 it. See [Readers, passes and writers](/docs/concepts/pipeline#refusals).
 
