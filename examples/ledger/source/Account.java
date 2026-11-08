@@ -31,8 +31,11 @@ public class Account {
         return postings;
     }
 
-    /** Records one amount: a deposit adds it, a withdrawal or a fee takes it; the balance wraps as a long does. */
-    public void post(Kind kind, long amount) {
+    /** Records one amount: a deposit adds it, a withdrawal or a fee takes it, a withdrawal never past the balance; the balance wraps as a long does. */
+    public void post(Kind kind, long amount) throws LedgerException {
+        if (kind == Kind.WITHDRAWAL && balance < amount) {
+            throw new InsufficientFunds();
+        }
         switch (kind) {
             case DEPOSIT:
                 balance += amount;

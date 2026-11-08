@@ -39,8 +39,11 @@ impl Account {
     pub fn postings(&self) -> i32 {
         self.postings
     }
-    /// Records one amount: a deposit adds it, a withdrawal or a fee takes it; the balance wraps as a long does.
-    pub fn post(&mut self, kind: Kind, amount: i64) {
+    /// Records one amount: a deposit adds it, a withdrawal or a fee takes it, a withdrawal never past the balance; the balance wraps as a long does.
+    pub fn post(&mut self, kind: Kind, amount: i64) -> Result<(), Error> {
+        if kind == Kind::WITHDRAWAL && self.balance < amount {
+            return Err(Error::InsufficientFunds);
+        }
         if kind == Kind::DEPOSIT {
             self.balance = self.balance.wrapping_add(amount);
         } else if kind == Kind::WITHDRAWAL || kind == Kind::FEE {
@@ -48,6 +51,7 @@ impl Account {
         } else {}
         self.postings = self.postings.wrapping_add(1i32);
         self.amounts.push(amount);
+        Ok(())
     }
     /// Adds n points, which may be negative; the total wraps as an int does.
     pub fn award(&mut self, n: i32) -> i32 {
@@ -149,7 +153,7 @@ impl Ledger {
         }
         Some(self.accounts[n.wrapping_sub(1i32) as usize].clone())
     }
-    /// Posts a positive amount; a withdrawal may not overdraw, a fee may.
+    /// Posts a positive amount to an open account; the account refuses an overdrawing withdrawal.
     pub fn post(&mut self, id: String, kind: Kind, amount: i64) -> Result<(), Error> {
         if amount <= 0i64 {
             return Err(Error::NonPositiveAmount);
@@ -159,10 +163,7 @@ impl Ledger {
             return Err(Error::UnknownAccount);
         }
         let mut a = self.accounts[n.wrapping_sub(1i32) as usize].clone();
-        if kind == Kind::WITHDRAWAL && a.borrow().balance() < amount {
-            return Err(Error::InsufficientFunds);
-        }
-        a.borrow_mut().post(kind, amount);
+        a.borrow_mut().post(kind, amount)?;
         self.count = self.count.wrapping_add(1i32);
         self.tally
             .insert(

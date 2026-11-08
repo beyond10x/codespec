@@ -33,7 +33,7 @@ public class Ledger {
         return Optional.of(accounts.get(n - 1));
     }
 
-    /** Posts a positive amount; a withdrawal may not overdraw, a fee may. */
+    /** Posts a positive amount to an open account; the account refuses an overdrawing withdrawal. */
     public void post(String id, Kind kind, long amount) throws LedgerException {
         if (amount <= 0) {
             throw new NonPositiveAmount();
@@ -43,9 +43,6 @@ public class Ledger {
             throw new UnknownAccount();
         }
         Account a = accounts.get(n - 1);
-        if (kind == Kind.WITHDRAWAL && a.balance() < amount) {
-            throw new InsufficientFunds();
-        }
         a.post(kind, amount);
         count++;
         tally.put(kind, tally.getOrDefault(kind, 0) + 1);

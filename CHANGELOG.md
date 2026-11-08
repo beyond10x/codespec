@@ -2,6 +2,17 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec-read-java` claims `sem.error.propagate`: the conformance case `sem-error-propagate` has
+  a Java source, a call of a throwing method left uncaught, which the reader reads as the
+  propagation form. `codespec-read-groovy` refuses that source (a thrown exception is not read as
+  an error) and does not claim the feature. `examples/ledger` throws `InsufficientFunds` from
+  `Account.post` again, and `Ledger.post` calls it without catching; the Go and Rust outputs pass
+  the error on, byte-equal with the original Java under the harness.
+
 ## 0.4.0
 
 ### Added
