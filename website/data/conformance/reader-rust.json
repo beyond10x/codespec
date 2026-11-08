@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "rust",
     "version": "0.4.0",
-    "manifest_sha256": "36162cc7ad8d6f18032d856208de540f136aaa841778bce3dabc9e46582d49c0"
+    "manifest_sha256": "a2e4830d4a9239ad5e884e2533e501d6e8424e2c588e30ab277285fdff298ec5"
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "e997ef71f032e2d5f1d37bd5d3450f03dbe59dc078e58cfa6fe0b869162e2837"
+    "sha256": "77a11989c11b4a58d00470e9c99d439240a41798cfffc2c42b617c1f72228df7"
   },
   "corpus": {
-    "sha256": "ac8e256a1dae8a70ddc110c5c6d8625307e3c6fd1c0a04980caa948c709c7acc"
+    "sha256": "7bd901967721b2abf3bc366b28b0815ef713f4e33e94422d31024969e9d2a7ec"
   },
   "codespec": "0.4.0",
   "features": [
@@ -515,9 +515,11 @@
     },
     {
       "id": "sem.error.propagate",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-error-propagate"
+      ]
     },
     {
       "id": "sem.int.wrap",
@@ -830,12 +832,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 88,
-    "pass": 88,
+    "claimed": 89,
+    "pass": 89,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 18,
+    "untested": 17,
     "boundary_fail": 0
   },
   "conforms": true

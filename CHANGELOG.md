@@ -12,6 +12,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   an error) and does not claim the feature. `examples/ledger` throws `InsufficientFunds` from
   `Account.post` again, and `Ledger.post` calls it without catching; the Go and Rust outputs pass
   the error on, byte-equal with the original Java under the harness.
+- `codespec-read-rust` reads `let v = f(…)?;`, `let (a, b) = f(…)?;` and `f(…)?;`, `f` a fallible
+  function or method of the same crate, in a function whose result is a `Result`, as
+  `v, err := f(…)` followed by `if err != nil { return <zero values>, err }`, and claims
+  `sem.error.propagate`: the Rust writer's `?` output reads back. A `?` on an `Option`, on a call
+  outside the crate, inside an expression or in a function whose result is not a `Result` stays
+  `foreign` with a refusal at its line. The case `sem-error-propagate` has a Rust source.
 
 ### Changed
 

@@ -64,11 +64,12 @@
 //! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
 //! | an arm `v if v == e => …`, `v` read by neither `e` nor the body | a `case e:` of that `switch`; any other guard is refused |
+//! | `let v = f(…)?;`, `let (a, b) = f(…)?;`, `f(…)?;`, `f` a fallible function or method of the crate, in a function whose result is a `Result` | `v, err := f(…)` (`_, err`, or `err` alone for a `Result<(), Error>`), then `if err != nil { return <zero values>, err }`; `err` a name no other binding holds. A `?` on an `Option`, on a call outside the crate, inside an expression or in a function whose result is not a `Result` is refused |
 //! | `return …`, a block's tail expression | `return`, with `Ok(x)` → `x, nil`, `Err(e)` → zero values and `e`, `Some(x)` → `x, true`, `None` → `zero, false` |
 //! | `println!("{} {}", a, b)` (only `{}` separated by single spaces) | `println` |
 //!
-//! Anything else (`while let`, labels, ranges, closures, `unsafe`, `?`, nested items, blocks other
-//! than the Rust writer's, macros other than those named) is `foreign`.
+//! Anything else (`while let`, labels, ranges, closures, `unsafe`, `?` other than above, nested
+//! items, blocks other than the Rust writer's, macros other than those named) is `foreign`.
 //!
 //! # Expressions
 //!
@@ -134,7 +135,6 @@
 //! | `type.any` | Rust's dynamic value is `Box<dyn Any>`, a trait object, which the reader does not type; it neither prints nor compares without naming its concrete type again |
 //! | `expr.nil` | the case's subject is a nil slice, and Rust has none: `Vec::new()` is an empty vector and reads as `make`. (`Ok(())` reads as a nil `error`, but that is not the case's subject) |
 //! | `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.tuple`, `type.unit` | no conformance case has the feature as its subject, so nothing holds a claim |
-//! | `sem.error.propagate` | the reader does not read `?`, the form the Rust writer gives a fallible call whose error the caller returns unchanged, and its case has no Rust source |
 
 mod body;
 mod names;

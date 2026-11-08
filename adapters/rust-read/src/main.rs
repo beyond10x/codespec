@@ -44,7 +44,6 @@ fn manifest() -> AdapterManifest {
             "expr.nil",
             "expr.zero",
             "intrinsic.sorted_keys",
-            "sem.error.propagate",
             "stmt.foreign",
             "type.any",
             "type.tuple",

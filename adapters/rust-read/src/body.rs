@@ -886,6 +886,9 @@ impl<'r> Fx<'r> {
             syn::Pat::Type(pt) => (&*pt.pat, Some(self.r.ty(&pt.ty, self.impl_ty.as_deref())?)),
             p => (p, None),
         };
+        if let syn::Expr::Try(t) = &*init.expr {
+            return self.propagate(t, Some(pat), ann.as_ref(), &pos);
+        }
         match pat {
             // `let p = &mut x;`, `x` a local: Go's `p := &x`. Through `p` the function reads and
             // writes `x` itself, as Go's pointer does; the borrow checker keeps `x` unused while
@@ -1093,6 +1096,118 @@ impl<'r> Fx<'r> {
         }
     }
 
+    /// `let p = f(…)?;` (`pat`, annotated `ann`) or `f(…)?;` (`pat` `None`), `f` a fallible
+    /// function or method of the crate, in a function whose result is a `Result`: Go's
+    /// `v, err := f(…)` (one `_` per value when nothing is bound) followed by
+    /// `if err != nil { return <zero values>, err }`, the form the Rust writer writes with `?`.
+    /// Every fallible function returns the crate's one `enum Error`, so `?` converts nothing.
+    fn propagate(
+        &mut self,
+        t: &syn::ExprTry,
+        pat: Option<&syn::Pat>,
+        ann: Option<&Type>,
+        pos: &str,
+    ) -> R<Vec<Stmt>> {
+        if self.shape != Shape::Fallible {
+            return Err(
+                "the `?` operator in a function whose result is not a `Result` is outside cir/1"
+                    .into(),
+            );
+        }
+        let call = match self.expr(&t.expr, None) {
+            Ok(V::Res(x)) => x,
+            Ok(_) => {
+                return Err("the `?` operator on other than a call of a fallible function of the crate is outside cir/1".into());
+            }
+            Err(e) => {
+                return Err(format!(
+                    "the `?` operator on other than a call of a fallible function of the crate: {e}"
+                ));
+            }
+        };
+        let elems = match call.t() {
+            Type::Tuple { elems } => elems.clone(),
+            t => vec![t.clone()],
+        };
+        let (_, values) = elems.split_last().expect("a fallible call has an error");
+        let value_t = match values {
+            [] => Type::Unit,
+            [t] => t.clone(),
+            ts => Type::Tuple { elems: ts.to_vec() },
+        };
+        if let Some(a) = ann
+            && *a != value_t
+        {
+            return Err(format!("a value of type {value_t:?} annotated as {a:?}"));
+        }
+        let simple = |p: &syn::Pat| -> Option<String> {
+            match p {
+                syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
+                    Some(i.ident.to_string())
+                }
+                syn::Pat::Wild(_) => Some("_".into()),
+                _ => None,
+            }
+        };
+        let rust: Vec<String> = match pat {
+            None | Some(syn::Pat::Wild(_)) => vec!["_".into(); values.len()],
+            Some(syn::Pat::Tuple(pt)) if values.len() > 1 && pt.elems.len() == values.len() => pt
+                .elems
+                .iter()
+                .map(simple)
+                .collect::<Option<_>>()
+                .ok_or("a tuple pattern element other than a name")?,
+            Some(p) if values.len() == 1 && simple(p).is_some() => vec![simple(p).unwrap()],
+            Some(_) => {
+                return Err("a `?` bound to other than a name per value of the call".into());
+            }
+        };
+        let mut names: Vec<String> = rust
+            .iter()
+            .zip(values)
+            .map(|(n, t)| self.bind(n, t.clone()))
+            .collect();
+        // Held in the block's scope under a name no Rust local has, so a later `let err` of the
+        // block is renamed as Go's `:=` needs.
+        let err = self.fresh("err");
+        self.scopes
+            .last_mut()
+            .expect("a block scope")
+            .push(("?".into(), err.clone(), Type::Error));
+        names.push(err.clone());
+        let var = Expr::Var {
+            name: err,
+            t: Type::Error,
+        };
+        let results = self.results.clone();
+        let mut returned: Vec<Expr> = results[..results.len() - 1]
+            .iter()
+            .map(|t| self.zero(t))
+            .collect();
+        returned.push(var.clone());
+        Ok(vec![
+            Stmt::Let {
+                names,
+                rhs: vec![call],
+                pos: pos.into(),
+            },
+            Stmt::If {
+                cond: Expr::Binop {
+                    op: "!=".into(),
+                    x: Box::new(var),
+                    y: Box::new(Expr::Nil { t: Type::Error }),
+                    t: Type::Bool,
+                },
+                then: vec![Stmt::Return {
+                    results: returned,
+                    pos: pos.into(),
+                }],
+                otherwise: Vec::new(),
+                pos: pos.into(),
+            },
+        ])
+    }
+
     /// A block's tail expression: the function's result.
     fn tail(&mut self, e: &syn::Expr) -> R<Vec<Stmt>> {
         if self.results.is_empty() {
@@ -1253,7 +1368,7 @@ impl<'r> Fx<'r> {
                 }
             }
             syn::Expr::Block(b) => self.block_stmt(b, false),
-            syn::Expr::Try(_) => Err("the `?` operator is outside cir/1".into()),
+            syn::Expr::Try(t) => self.propagate(t, None, None, &pos),
             syn::Expr::Tuple(t) if t.elems.is_empty() => Ok(Vec::new()),
             _ => Err("an expression statement that is not a call or an assignment".into()),
         }
