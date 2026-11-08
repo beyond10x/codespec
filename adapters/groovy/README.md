@@ -132,8 +132,8 @@ since their Java `/` is a BigDecimal division in Groovy.
 `codespec-read-groovy --describe` claims every feature whose cases in that corpus all pass, and
 `task adapters-check` requires each claimed feature to be used by the reader's output for
 `testdata/typed` or for the corpus. The features whose cases the reader refuses are not claimed:
-`expr.errvar`, `expr.nil`, `expr.zero` and `type.error` (a thrown exception is not read as an
-error).
+`expr.errvar`, `expr.nil`, `expr.zero`, `sem.error.propagate` and `type.error` (a thrown exception
+is not read as an error).
 
 ## Refusal categories
 

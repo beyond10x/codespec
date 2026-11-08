@@ -40,8 +40,11 @@ func (this *Account) Postings() int32 {
 	return this.postings
 }
 
-// Records one amount: a deposit adds it, a withdrawal or a fee takes it; the balance wraps as a long does.
-func (this *Account) Post(kind Kind, amount int64) {
+// Records one amount: a deposit adds it, a withdrawal or a fee takes it, a withdrawal never past the balance; the balance wraps as a long does.
+func (this *Account) Post(kind Kind, amount int64) error {
+	if kind == WITHDRAWAL && this.balance < amount {
+		return InsufficientFunds
+	}
 	switch kind {
 	case DEPOSIT:
 		this.balance += amount
@@ -51,6 +54,7 @@ func (this *Account) Post(kind Kind, amount int64) {
 	}
 	this.postings++
 	this.amounts = append(this.amounts, amount)
+	return nil
 }
 
 // Adds n points, which may be negative; the total wraps as an int does.
@@ -137,7 +141,7 @@ func (this *Ledger) Find(id string) (*Account, bool) {
 	return this.accounts[n-1], true
 }
 
-// Posts a positive amount; a withdrawal may not overdraw, a fee may.
+// Posts a positive amount to an open account; the account refuses an overdrawing withdrawal.
 func (this *Ledger) Post(id string, kind Kind, amount int64) error {
 	if amount <= 0 {
 		return NonPositiveAmount
@@ -147,10 +151,10 @@ func (this *Ledger) Post(id string, kind Kind, amount int64) error {
 		return UnknownAccount
 	}
 	a := this.accounts[n-1]
-	if kind == WITHDRAWAL && a.Balance() < amount {
-		return InsufficientFunds
+	err := a.Post(kind, amount)
+	if err != nil {
+		return err
 	}
-	a.Post(kind, amount)
 	this.count++
 	this.tally[kind] = this.tally[kind] + 1
 	return nil

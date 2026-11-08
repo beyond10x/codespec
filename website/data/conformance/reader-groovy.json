@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
+    "sha256": "e997ef71f032e2d5f1d37bd5d3450f03dbe59dc078e58cfa6fe0b869162e2837"
   },
   "corpus": {
-    "sha256": "03282ce39f19b651eb1c5343d52e84713a6c96a41cdec8dc52c472e395fa726f"
+    "sha256": "b290f8fac79093119b5534f46a7816ccd0db6b1be7253ac04fc33533365a79e5"
   },
   "codespec": "0.4.0",
   "features": [
@@ -514,8 +514,14 @@
     {
       "id": "sem.error.propagate",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "sem-error-propagate"
+      ],
+      "case": "sem-error-propagate",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use sem.error.propagate outside a foreign statement"
     },
     {
       "id": "sem.int.wrap",
@@ -826,9 +832,9 @@
     "claimed": 72,
     "pass": 72,
     "fail": 0,
-    "refused_unclaimed": 4,
+    "refused_unclaimed": 5,
     "pass_unclaimed": 0,
-    "untested": 30,
+    "untested": 29,
     "boundary_fail": 0
   },
   "conforms": true

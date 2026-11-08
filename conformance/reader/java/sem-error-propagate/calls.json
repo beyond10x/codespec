@@ -1,0 +1,29 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Through",
+      "args": [
+        "-3"
+      ]
+    },
+    {
+      "func": "Through",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Guarded",
+      "args": [
+        "-4"
+      ]
+    },
+    {
+      "func": "Guarded",
+      "args": [
+        "4"
+      ]
+    }
+  ]
+}

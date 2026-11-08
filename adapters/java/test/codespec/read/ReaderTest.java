@@ -54,6 +54,8 @@ public final class ReaderTest {
         List<Case> cases = new ArrayList<>();
         names.add("the_ledger_reads_with_no_refusal");
         cases.add(t::theLedgerReadsWithNoRefusal);
+        names.add("the_example_ledger_post_passes_account_posts_error_on_unchanged");
+        cases.add(t::theExampleLedgerPostPassesAccountPostsErrorOnUnchanged);
         names.add("the_ledger_read_twice_gives_the_same_bytes");
         cases.add(t::theLedgerReadTwiceGivesTheSameBytes);
         names.add("a_long_balance_is_int64_and_an_int_counter_int32");
@@ -158,6 +160,45 @@ public final class ReaderTest {
         Map<String, Object> reader = map(doc.get("reader"));
         check("java".equals(reader.get("language")), "reader.language");
         check("codespec-read-java".equals(reader.get("name")), "reader.name");
+    }
+
+    /**
+     * {@code examples/ledger}: {@code Account.post} throws on an overdrawing withdrawal and {@code
+     * Ledger.post} calls it without catching, so the call reads as the error-only propagation form
+     * {@code err := a.post(kind, amount); if err != nil { return err }}, with no refusal.
+     */
+    private void theExampleLedgerPostPassesAccountPostsErrorOnUnchanged() throws Exception {
+        Map<String, Object> doc = Reader.read(root.resolve("examples/ledger/source"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> account = funcByKey(doc, "Account.post");
+        check(Json.write(account.get("results")).equals(Json.write(Json.parse("[{\"k\":\"error\"}]"))),
+            "Account.post results " + Json.write(account.get("results")).replaceAll("\\s+", " "));
+        check(Json.write(account.get("body")).contains("\"name\": \"InsufficientFunds\""),
+            "Account.post does not return InsufficientFunds");
+        List<Object> body = list(funcByKey(doc, "Ledger.post").get("body"));
+        boolean found = false;
+        for (int i = 0; i + 1 < body.size() && !found; i++) {
+            Map<String, Object> let = map(body.get(i));
+            if (!"let".equals(let.get("k")) || list(let.get("names")).size() != 1) {
+                continue;
+            }
+            Map<String, Object> call = map(list(let.get("rhs")).get(0));
+            if (!"method".equals(call.get("k")) || !"post".equals(call.get("name"))) {
+                continue;
+            }
+            String err = (String) list(let.get("names")).get(0);
+            Map<String, Object> iff = map(body.get(i + 1));
+            check("if".equals(iff.get("k")), "a.post(…) is followed by " + iff.get("k"));
+            List<Object> then = list(iff.get("then"));
+            Map<String, Object> ret = map(then.get(then.size() - 1));
+            List<Object> rs = list(ret.get("results"));
+            check("return".equals(ret.get("k")) && same(rs.get(rs.size() - 1),
+                "{\"k\":\"var\",\"name\":\"" + err + "\",\"t\":{\"k\":\"error\"}}"),
+                "the if after a.post(…) does not return " + err + ": " + Json.write(iff).replaceAll("\\s+", " "));
+            found = true;
+        }
+        check(found, "no error-only let of a.post(…) in Ledger.post: " + Json.write(body).replaceAll("\\s+", " "));
+        check(!Json.write(body).contains("\"name\": \"InsufficientFunds\""), "Ledger.post still returns InsufficientFunds");
     }
 
     private void theLedgerReadTwiceGivesTheSameBytes() throws Exception {

@@ -530,8 +530,97 @@
           }
         }
       ],
-      "results": [],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
       "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "&&",
+            "x": {
+              "k": "binop",
+              "op": "==",
+              "x": {
+                "k": "var",
+                "name": "kind",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              "y": {
+                "k": "const",
+                "name": "WITHDRAWAL",
+                "t": {
+                  "k": "named",
+                  "name": "Kind"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "y": {
+              "k": "binop",
+              "op": "<",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Account"
+                    }
+                  }
+                },
+                "name": "balance",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "amount",
+                "t": {
+                  "k": "int",
+                  "width": "64",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "errvar",
+                  "name": "InsufficientFunds",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "Account.java:37"
+            }
+          ],
+          "pos": "Account.java:36"
+        },
         {
           "k": "switch",
           "tag": {
@@ -591,7 +680,7 @@
                       }
                     }
                   ],
-                  "pos": "Account.java:38"
+                  "pos": "Account.java:41"
                 }
               ]
             },
@@ -651,7 +740,7 @@
                       }
                     }
                   ],
-                  "pos": "Account.java:42"
+                  "pos": "Account.java:45"
                 }
               ]
             },
@@ -660,7 +749,7 @@
               "body": []
             }
           ],
-          "pos": "Account.java:36"
+          "pos": "Account.java:39"
         },
         {
           "k": "incr",
@@ -684,7 +773,7 @@
               "signed": true
             }
           },
-          "pos": "Account.java:47"
+          "pos": "Account.java:50"
         },
         {
           "k": "assign",
@@ -761,10 +850,22 @@
               }
             }
           ],
-          "pos": "Account.java:48"
+          "pos": "Account.java:51"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "Account.java:35"
         }
       ],
-      "doc": "Records one amount: a deposit adds it, a withdrawal or a fee takes it; the balance wraps as a long does.",
+      "doc": "Records one amount: a deposit adds it, a withdrawal or a fee takes it, a withdrawal never past the balance; the balance wraps as a long does.",
       "pos": "Account.java:35"
     },
     {
@@ -834,7 +935,7 @@
               }
             }
           ],
-          "pos": "Account.java:53"
+          "pos": "Account.java:56"
         },
         {
           "k": "return",
@@ -860,11 +961,11 @@
               }
             }
           ],
-          "pos": "Account.java:54"
+          "pos": "Account.java:57"
         }
       ],
       "doc": "Adds n points, which may be negative; the total wraps as an int does.",
-      "pos": "Account.java:52"
+      "pos": "Account.java:55"
     },
     {
       "name": "largest",
@@ -904,7 +1005,7 @@
               }
             }
           ],
-          "pos": "Account.java:59"
+          "pos": "Account.java:62"
         },
         {
           "k": "for",
@@ -924,7 +1025,7 @@
                 }
               }
             ],
-            "pos": "Account.java:60"
+            "pos": "Account.java:63"
           },
           "cond": {
             "k": "binop",
@@ -996,7 +1097,7 @@
                 "signed": true
               }
             },
-            "pos": "Account.java:60"
+            "pos": "Account.java:63"
           },
           "body": [
             {
@@ -1113,13 +1214,13 @@
                       }
                     }
                   ],
-                  "pos": "Account.java:62"
+                  "pos": "Account.java:65"
                 }
               ],
-              "pos": "Account.java:61"
+              "pos": "Account.java:64"
             }
           ],
-          "pos": "Account.java:60"
+          "pos": "Account.java:63"
         },
         {
           "k": "return",
@@ -1134,11 +1235,11 @@
               }
             }
           ],
-          "pos": "Account.java:65"
+          "pos": "Account.java:68"
         }
       ],
       "doc": "The largest single amount, or 0.",
-      "pos": "Account.java:58"
+      "pos": "Account.java:61"
     },
     {
       "name": "reach",
@@ -1187,7 +1288,7 @@
               }
             }
           ],
-          "pos": "Account.java:70"
+          "pos": "Account.java:73"
         },
         {
           "k": "let",
@@ -1205,7 +1306,7 @@
               }
             }
           ],
-          "pos": "Account.java:71"
+          "pos": "Account.java:74"
         },
         {
           "k": "for",
@@ -1325,7 +1426,7 @@
                   }
                 }
               ],
-              "pos": "Account.java:73"
+              "pos": "Account.java:76"
             },
             {
               "k": "incr",
@@ -1338,7 +1439,7 @@
                   "signed": true
                 }
               },
-              "pos": "Account.java:74"
+              "pos": "Account.java:77"
             },
             {
               "k": "if",
@@ -1370,13 +1471,13 @@
               "then": [
                 {
                   "k": "break",
-                  "pos": "Account.java:76"
+                  "pos": "Account.java:79"
                 }
               ],
-              "pos": "Account.java:75"
+              "pos": "Account.java:78"
             }
           ],
-          "pos": "Account.java:72"
+          "pos": "Account.java:75"
         },
         {
           "k": "if",
@@ -1419,10 +1520,10 @@
                   }
                 }
               ],
-              "pos": "Account.java:80"
+              "pos": "Account.java:83"
             }
           ],
-          "pos": "Account.java:79"
+          "pos": "Account.java:82"
         },
         {
           "k": "return",
@@ -1437,11 +1538,11 @@
               }
             }
           ],
-          "pos": "Account.java:82"
+          "pos": "Account.java:85"
         }
       ],
       "doc": "How many leading amounts it takes to reach target, or -1.",
-      "pos": "Account.java:69"
+      "pos": "Account.java:72"
     },
     {
       "name": "describe",
@@ -1561,10 +1662,10 @@
               }
             }
           ],
-          "pos": "Account.java:86"
+          "pos": "Account.java:89"
         }
       ],
-      "pos": "Account.java:85"
+      "pos": "Account.java:88"
     },
     {
       "name": "NewLedger",
@@ -2514,68 +2615,67 @@
           "pos": "Ledger.java:45"
         },
         {
+          "k": "let",
+          "names": [
+            "err"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Account"
+                  }
+                }
+              },
+              "name": "post",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "kind",
+                  "t": {
+                    "k": "named",
+                    "name": "Kind"
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "amount",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "Ledger.java:46"
+        },
+        {
           "k": "if",
           "cond": {
             "k": "binop",
-            "op": "&&",
+            "op": "!=",
             "x": {
-              "k": "binop",
-              "op": "==",
-              "x": {
-                "k": "var",
-                "name": "kind",
-                "t": {
-                  "k": "named",
-                  "name": "Kind"
-                }
-              },
-              "y": {
-                "k": "const",
-                "name": "WITHDRAWAL",
-                "t": {
-                  "k": "named",
-                  "name": "Kind"
-                }
-              },
+              "k": "var",
+              "name": "err",
               "t": {
-                "k": "bool"
+                "k": "error"
               }
             },
             "y": {
-              "k": "binop",
-              "op": "<",
-              "x": {
-                "k": "method",
-                "x": {
-                  "k": "var",
-                  "name": "a",
-                  "t": {
-                    "k": "ptr",
-                    "elem": {
-                      "k": "named",
-                      "name": "Account"
-                    }
-                  }
-                },
-                "name": "balance",
-                "args": [],
-                "t": {
-                  "k": "int",
-                  "width": "64",
-                  "signed": true
-                }
-              },
-              "y": {
-                "k": "var",
-                "name": "amount",
-                "t": {
-                  "k": "int",
-                  "width": "64",
-                  "signed": true
-                }
-              },
+              "k": "nil",
               "t": {
-                "k": "bool"
+                "k": "error"
               }
             },
             "t": {
@@ -2587,58 +2687,17 @@
               "k": "return",
               "results": [
                 {
-                  "k": "errvar",
-                  "name": "InsufficientFunds",
+                  "k": "var",
+                  "name": "err",
                   "t": {
                     "k": "error"
                   }
                 }
               ],
-              "pos": "Ledger.java:47"
+              "pos": "Ledger.java:46"
             }
           ],
           "pos": "Ledger.java:46"
-        },
-        {
-          "k": "expr",
-          "x": {
-            "k": "method",
-            "x": {
-              "k": "var",
-              "name": "a",
-              "t": {
-                "k": "ptr",
-                "elem": {
-                  "k": "named",
-                  "name": "Account"
-                }
-              }
-            },
-            "name": "post",
-            "args": [
-              {
-                "k": "var",
-                "name": "kind",
-                "t": {
-                  "k": "named",
-                  "name": "Kind"
-                }
-              },
-              {
-                "k": "var",
-                "name": "amount",
-                "t": {
-                  "k": "int",
-                  "width": "64",
-                  "signed": true
-                }
-              }
-            ],
-            "t": {
-              "k": "unit"
-            }
-          },
-          "pos": "Ledger.java:49"
         },
         {
           "k": "incr",
@@ -2662,7 +2721,7 @@
               "signed": true
             }
           },
-          "pos": "Ledger.java:50"
+          "pos": "Ledger.java:47"
         },
         {
           "k": "assign",
@@ -2774,7 +2833,7 @@
               }
             }
           ],
-          "pos": "Ledger.java:51"
+          "pos": "Ledger.java:48"
         },
         {
           "k": "return",
@@ -2789,7 +2848,7 @@
           "pos": "Ledger.java:37"
         }
       ],
-      "doc": "Posts a positive amount; a withdrawal may not overdraw, a fee may.",
+      "doc": "Posts a positive amount to an open account; the account refuses an overdrawing withdrawal.",
       "pos": "Ledger.java:37"
     },
     {
@@ -2880,7 +2939,7 @@
               }
             }
           ],
-          "pos": "Ledger.java:56"
+          "pos": "Ledger.java:53"
         },
         {
           "k": "if",
@@ -2929,10 +2988,10 @@
                   }
                 }
               ],
-              "pos": "Ledger.java:58"
+              "pos": "Ledger.java:55"
             }
           ],
-          "pos": "Ledger.java:57"
+          "pos": "Ledger.java:54"
         },
         {
           "k": "return",
@@ -3026,11 +3085,11 @@
               }
             }
           ],
-          "pos": "Ledger.java:60"
+          "pos": "Ledger.java:57"
         }
       ],
       "doc": "Awards points to an account and returns its new total.",
-      "pos": "Ledger.java:55"
+      "pos": "Ledger.java:52"
     },
     {
       "name": "balances",
@@ -3066,7 +3125,7 @@
               }
             }
           ],
-          "pos": "Ledger.java:65"
+          "pos": "Ledger.java:62"
         },
         {
           "k": "for_range",
@@ -3252,10 +3311,10 @@
                   }
                 }
               ],
-              "pos": "Ledger.java:67"
+              "pos": "Ledger.java:64"
             }
           ],
-          "pos": "Ledger.java:66"
+          "pos": "Ledger.java:63"
         },
         {
           "k": "return",
@@ -3268,11 +3327,11 @@
               }
             }
           ],
-          "pos": "Ledger.java:69"
+          "pos": "Ledger.java:66"
         }
       ],
       "doc": "Every balance, in id order.",
-      "pos": "Ledger.java:64"
+      "pos": "Ledger.java:61"
     },
     {
       "name": "tallied",
@@ -3312,7 +3371,7 @@
               }
             }
           ],
-          "pos": "Ledger.java:74"
+          "pos": "Ledger.java:71"
         },
         {
           "k": "for_range",
@@ -3405,10 +3464,10 @@
                   }
                 }
               ],
-              "pos": "Ledger.java:76"
+              "pos": "Ledger.java:73"
             }
           ],
-          "pos": "Ledger.java:75"
+          "pos": "Ledger.java:72"
         },
         {
           "k": "return",
@@ -3423,11 +3482,11 @@
               }
             }
           ],
-          "pos": "Ledger.java:78"
+          "pos": "Ledger.java:75"
         }
       ],
       "doc": "The postings tallied over every kind; the order of the kinds does not change a sum.",
-      "pos": "Ledger.java:73"
+      "pos": "Ledger.java:70"
     },
     {
       "name": "count",
@@ -3475,10 +3534,10 @@
               }
             }
           ],
-          "pos": "Ledger.java:82"
+          "pos": "Ledger.java:79"
         }
       ],
-      "pos": "Ledger.java:81"
+      "pos": "Ledger.java:78"
     }
   ],
   "layout": [

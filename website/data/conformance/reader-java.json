@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "java",
     "version": "0.4.0",
-    "manifest_sha256": "6da77044b9587b9a5bc301da1765a2d1697dba6f167e9247509a6e8a802bc404"
+    "manifest_sha256": "ec53ef0237ca74d51f2c23983ddb37f5988ecaf158b57c0951595a4bf3d6295c"
   },
   "kit": {
     "version": "0.4.0",
-    "sha256": "c4c9a668a188a278f9651b6f5a2c5c80c132ac9dba0ab1abd38b7f50320a1c72"
+    "sha256": "e997ef71f032e2d5f1d37bd5d3450f03dbe59dc078e58cfa6fe0b869162e2837"
   },
   "corpus": {
-    "sha256": "0f48dcb5795f049c6a43bf6ea9b567e41ba58905368ea8c37fd3f0ffc27f99a2"
+    "sha256": "80f1c0b0c6437872d5b298ce13cfaf98c66285029ccef0ddf0bc5ff6123f1a7b"
   },
   "codespec": "0.4.0",
   "features": [
@@ -501,9 +501,11 @@
     },
     {
       "id": "sem.error.propagate",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-error-propagate"
+      ]
     },
     {
       "id": "sem.int.wrap",
@@ -807,12 +809,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 76,
-    "pass": 76,
+    "claimed": 77,
+    "pass": 77,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 30,
+    "untested": 29,
     "boundary_fail": 0
   },
   "conforms": true
