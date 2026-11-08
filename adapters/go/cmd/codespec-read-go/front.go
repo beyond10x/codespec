@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/importer"
 	"go/parser"
 	"go/printer"
 	"go/token"
 	"go/types"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -35,11 +37,32 @@ type front struct {
 	unlabeled map[*ast.BranchStmt]bool
 	// fnBody is the body of the function being read: the scope of its labels.
 	fnBody *ast.BlockStmt
+	// outside holds the named types of the package that have no cir/1 declaration, with the reason.
+	outside map[string]string
+	// globals holds the package-level variables read as module vars; sentinels those read as sentinel
+	// errors. A package-level variable in neither is refused, and so is every expression naming it.
+	globals, sentinels map[*types.Var]bool
+	// sig is the signature of the function or literal being read: the types its returns convert to.
+	sig *types.Signature
 }
 
 func load(dir string) (*Module, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, nil, parser.ParseComments)
+	// The files the toolchain would build for this platform: no test files, build constraints
+	// applied. A directory with no buildable file falls back to every non-test file.
+	keep := func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }
+	// cgo off: a file needing cgo is not Go source cir/1 can read, and with cgo off the standard
+	// library builds its pure-Go paths (net's own resolver).
+	ctx := build.Default
+	ctx.CgoEnabled = false
+	if bp, err := ctx.ImportDir(dir, 0); err == nil && len(bp.GoFiles) > 0 {
+		chosen := map[string]bool{}
+		for _, f := range bp.GoFiles {
+			chosen[f] = true
+		}
+		keep = func(fi fs.FileInfo) bool { return chosen[fi.Name()] }
+	}
+	pkgs, err := parser.ParseDir(fset, dir, keep, parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
@@ -62,25 +85,40 @@ func load(dir string) (*Module, error) {
 	info := &types.Info{
 		Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{},
 		Types: map[ast.Expr]types.TypeAndValue{}, Selections: map[*ast.SelectorExpr]*types.Selection{},
+		Instances: map[*ast.Ident]types.Instance{},
 	}
 	ensureGOROOT()
 	conf := types.Config{Importer: importer.ForCompiler(fset, "source", nil)}
-	pkg, err := conf.Check(name, fset, files, info)
+	path := importPath(dir)
+	checkAs := name
+	if path != "" {
+		checkAs = path
+	}
+	pkg, err := conf.Check(checkAs, fset, files, info)
 	if err != nil {
 		return nil, err
 	}
 	f := &front{fset: fset, info: info, pkg: pkg, conv: map[string]bool{}, unlabeled: map[*ast.BranchStmt]bool{},
-		mod: &Module{Name: name}}
+		mod: &Module{Name: name, Path: path}}
 	for _, file := range files {
 		if file.Doc != nil {
 			f.mod.Doc = strings.TrimSpace(file.Doc.Text())
 		}
 	}
 	f.scanConversions(files)
+	f.scanOutside(files)
+	f.scanVars(files)
 	for _, file := range files {
 		for _, d := range file.Decls {
 			f.decl(d)
 		}
+	}
+	// Method sets and linknames serve a set of modules linked by import path; a module without one
+	// is never in such a set.
+	if path != "" {
+		f.methodSets()
+		f.linknames(files)
+		f.inits(files)
 	}
 	f.mod.Layout = f.layout
 	return f.mod, nil
@@ -122,16 +160,39 @@ func (f *front) scanConversions(files []*ast.File) {
 	}
 }
 
+// declaredInFunc reports whether the type name obj is declared inside a function rather than at
+// the top level of its package.
+func declaredInFunc(obj *types.TypeName) bool {
+	return obj.Pkg() != nil && obj.Parent() != nil && obj.Parent() != obj.Pkg().Scope()
+}
+
 func (f *front) typ(t types.Type) Type {
 	switch t := t.(type) {
 	case *types.Named:
 		if t.Obj().Pkg() == nil && t.Obj().Name() == "error" {
 			return T("error")
 		}
+		if declaredInFunc(t.Obj()) {
+			// A type declared inside a function has no cir/1 declaration to name.
+			return Type{K: "foreign", Name: t.Obj().Name() + " (declared inside a function)"}
+		}
+		// An instantiated generic type carries its type arguments.
+		targs, ok := f.typeArgs(t.TypeArgs())
 		if t.Obj().Pkg() == f.pkg {
-			return Type{K: "named", Name: t.Obj().Name()}
+			if _, out := f.outside[t.Obj().Name()]; out {
+				return Type{K: "foreign", Name: t.Obj().Name()}
+			}
+			if !ok {
+				return Type{K: "foreign", Name: t.String()}
+			}
+			return Type{K: "named", Name: t.Obj().Name(), Targs: targs}
+		}
+		if t.Obj().Pkg() != nil && ok {
+			return Type{K: "extern", Path: t.Obj().Pkg().Path(), Name: t.Obj().Name(), Targs: targs}
 		}
 		return Type{K: "foreign", Name: t.String()}
+	case *types.TypeParam:
+		return Type{K: "param", Name: t.Obj().Name()}
 	case *types.Alias:
 		return f.typ(types.Unalias(t))
 	case *types.Basic:
@@ -146,6 +207,24 @@ func (f *front) typ(t types.Type) Type {
 			return Type{K: "int", Bits: 64}
 		case t.Kind() == types.Int32:
 			return Type{K: "int", Bits: 32}
+		case t.Kind() == types.Int16:
+			return Type{K: "int", Bits: 16}
+		case t.Kind() == types.Int8:
+			return Type{K: "int", Bits: 8}
+		case t.Kind() == types.Uint:
+			return Type{K: "int", Unsigned: true}
+		case t.Kind() == types.Uint64:
+			return Type{K: "int", Bits: 64, Unsigned: true}
+		case t.Kind() == types.Uint32:
+			return Type{K: "int", Bits: 32, Unsigned: true}
+		case t.Kind() == types.Uint16:
+			return Type{K: "int", Bits: 16, Unsigned: true}
+		case t.Kind() == types.Uint8:
+			return Type{K: "int", Bits: 8, Unsigned: true}
+		case t.Kind() == types.Float64 || t.Kind() == types.UntypedFloat:
+			return Type{K: "float", Bits: 64}
+		case t.Kind() == types.Float32:
+			return Type{K: "float", Bits: 32}
 		case t.Kind() == types.UntypedNil:
 			return T("nil")
 		}
@@ -156,6 +235,9 @@ func (f *front) typ(t types.Type) Type {
 	case *types.Slice:
 		e := f.typ(t.Elem())
 		return Type{K: "slice", Elem: &e}
+	case *types.Array:
+		e := f.typ(t.Elem())
+		return Type{K: "array", Len: t.Len(), Elem: &e}
 	case *types.Map:
 		k, e := f.typ(t.Key()), f.typ(t.Elem())
 		return Type{K: "map", Key: &k, Elem: &e}
@@ -176,6 +258,19 @@ func (f *front) typ(t types.Type) Type {
 			tt.Elems = append(tt.Elems, f.typ(t.At(i).Type()))
 		}
 		return tt
+	case *types.Signature:
+		// A function value: no receiver, type parameters or variadic last parameter.
+		if t.Recv() != nil || t.TypeParams().Len() > 0 || t.Variadic() {
+			break
+		}
+		ft := Type{K: "func", Params: []Type{}, Results: []Type{}}
+		for i := 0; i < t.Params().Len(); i++ {
+			ft.Params = append(ft.Params, f.typ(t.Params().At(i).Type()))
+		}
+		for i := 0; i < t.Results().Len(); i++ {
+			ft.Results = append(ft.Results, f.typ(t.Results().At(i).Type()))
+		}
+		return ft
 	}
 	return Type{K: "foreign", Name: t.String()}
 }
@@ -218,8 +313,15 @@ func (f *front) decl(d ast.Decl) {
 }
 
 func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
+	if why, out := f.outside[ts.Name.Name]; out {
+		f.refuse(ts, ts.Name.Name, why)
+		return
+	}
 	obj := f.info.Defs[ts.Name].(*types.TypeName)
 	td := TypeDecl{Name: ts.Name.Name, Exported: ts.Name.IsExported(), Doc: docText(doc), Pos: f.pos(ts.Pos())}
+	if n, ok := obj.Type().(*types.Named); ok {
+		td.Tparams, _ = f.tparams(n.TypeParams())
+	}
 	if ts.Doc != nil {
 		td.Doc = docText(ts.Doc)
 	}
@@ -227,18 +329,17 @@ func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
 	case *types.Struct:
 		td.K = "struct"
 		for i := 0; i < u.NumFields(); i++ {
-			if u.Field(i).Embedded() {
-				f.refuse(ts, ts.Name.Name, "struct with an embedded field: field and method promotion are outside cir/1")
-				return
-			}
-			td.Fields = append(td.Fields, Field{Name: u.Field(i).Name(), T: f.typ(u.Field(i).Type())})
+			td.Fields = append(td.Fields, Field{Name: u.Field(i).Name(), T: f.typ(u.Field(i).Type()), Embedded: u.Field(i).Embedded()})
 		}
-	case *types.Basic:
+	case *types.Basic, *types.Signature, *types.Map, *types.Slice:
 		td.K = "newtype"
 		ut := f.typ(u)
 		td.Under = &ut
+	case *types.Interface:
+		f.ifaceDecl(ts, u, td.Doc)
+		return
 	default:
-		f.refuse(ts, ts.Name.Name, "type declaration other than struct or basic newtype")
+		f.refuse(ts, ts.Name.Name, "type declaration other than struct or newtype over a basic, func, map or slice type")
 		return
 	}
 	f.mod.Types = append(f.mod.Types, td)
@@ -259,8 +360,21 @@ func (f *front) constDecl(d *ast.GenDecl) {
 		vs := sp.(*ast.ValueSpec)
 		for i, n := range vs.Names {
 			c := f.info.Defs[n].(*types.Const)
+			// The literal is typed by the underlying type: a constant of an extern type over uintptr
+			// has no cir/1 literal.
+			if hasForeign(f.typ(c.Type())) || hasForeign(f.typ(c.Type().Underlying())) {
+				f.refuse(vs, n.Name, fmt.Sprintf("constant of type %s has no cir/1 type", c.Type()))
+				continue
+			}
 			val := Expr{K: "lit", Value: c.Val().ExactString(), T: ptrT(f.typ(c.Type().Underlying()))}
-			if i < len(vs.Values) {
+			if bits := floatBits(c.Type()); bits != 0 {
+				v, ok := floatSpelling(c.Val(), bits)
+				if !ok {
+					f.refuse(vs, n.Name, fmt.Sprintf("constant %s is not a finite %s", c.Val().ExactString(), c.Type()))
+					continue
+				}
+				val = Expr{K: "float", Value: v, T: val.T}
+			} else if i < len(vs.Values) {
 				if bl, ok := vs.Values[i].(*ast.BasicLit); ok {
 					val.Value = bl.Value
 				}
@@ -280,19 +394,95 @@ func (f *front) constDecl(d *ast.GenDecl) {
 
 func ptrT(t Type) *Type { return &t }
 
-func (f *front) varDecl(vs *ast.ValueSpec) {
-	for i, n := range vs.Names {
-		if i < len(vs.Values) {
-			if call, ok := vs.Values[i].(*ast.CallExpr); ok && f.isPkgFunc(call.Fun, "errors", "New") && len(call.Args) == 1 {
-				if bl, ok := call.Args[0].(*ast.BasicLit); ok {
-					msg, _ := strconv.Unquote(bl.Value)
-					f.mod.Errors = append(f.mod.Errors, ErrorVar{Name: n.Name, Message: msg, Pos: f.pos(n.Pos())})
-					f.layout = append(f.layout, "error:"+n.Name)
-					continue
+// sentinelMessage is the message of `errors.New(<literal>)`, the initializer of a sentinel error.
+func (f *front) sentinelMessage(e ast.Expr) (string, bool) {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || !f.isPkgFunc(call.Fun, "errors", "New") || len(call.Args) != 1 {
+		return "", false
+	}
+	bl, ok := call.Args[0].(*ast.BasicLit)
+	if !ok {
+		return "", false
+	}
+	msg, _ := strconv.Unquote(bl.Value)
+	return msg, true
+}
+
+// varOutside is why the package-level variable n of vs is refused, or "": a variable of a type
+// outside cir/1, the blank variable, and one of several set from one multi-value expression.
+func (f *front) varOutside(vs *ast.ValueSpec, n *ast.Ident) string {
+	v := f.info.Defs[n].(*types.Var)
+	if t := f.typ(v.Type()); hasForeign(t) {
+		return fmt.Sprintf("variable of type %s has no cir/1 type", v.Type())
+	}
+	if n.Name == "_" {
+		return "blank variable: cir/1 declares named variables only"
+	}
+	if len(vs.Values) > 0 && len(vs.Values) != len(vs.Names) {
+		return "variables set together from one multi-value expression"
+	}
+	return ""
+}
+
+// scanVars sorts every package-level variable, before any body is read, into a sentinel error
+// (`errors.New(<literal>)`), a module var, or neither (refused by varDecl).
+func (f *front) scanVars(files []*ast.File) {
+	f.globals, f.sentinels = map[*types.Var]bool{}, map[*types.Var]bool{}
+	for _, file := range files {
+		for _, d := range file.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, sp := range gd.Specs {
+				vs := sp.(*ast.ValueSpec)
+				for i, n := range vs.Names {
+					v := f.info.Defs[n].(*types.Var)
+					if len(vs.Values) == len(vs.Names) {
+						if _, ok := f.sentinelMessage(vs.Values[i]); ok {
+							f.sentinels[v] = true
+							continue
+						}
+					}
+					if f.varOutside(vs, n) == "" {
+						f.globals[v] = true
+					}
 				}
 			}
 		}
-		f.refuse(vs, n.Name, "package-level variable other than errors.New(<literal>)")
+	}
+}
+
+func (f *front) varDecl(vs *ast.ValueSpec) {
+	for i, n := range vs.Names {
+		v := f.info.Defs[n].(*types.Var)
+		if f.sentinels[v] {
+			msg, _ := f.sentinelMessage(vs.Values[i])
+			f.mod.Errors = append(f.mod.Errors, ErrorVar{Name: n.Name, Message: msg, Pos: f.pos(n.Pos())})
+			f.layout = append(f.layout, "error:"+n.Name)
+			continue
+		}
+		if !f.globals[v] {
+			f.refuse(vs, n.Name, f.varOutside(vs, n))
+			continue
+		}
+		d := VarDecl{Name: n.Name, T: f.typ(v.Type()), Pos: f.pos(n.Pos())}
+		if i < len(vs.Values) {
+			x, ok := f.expr(vs.Values[i])
+			if ok && x.K == "nil" {
+				x.T = ptrT(d.T)
+			}
+			if ok && exprForeignType(x) == "" {
+				x = f.coerce(x, v.Type())
+				d.Init = &x
+			} else {
+				reason := "initializer outside cir/1"
+				d.Foreign = &Stmt{K: "foreign", Lang: "go", Src: f.src(vs.Values[i]), Reason: reason}
+				f.refuse(vs.Values[i], n.Name, reason)
+			}
+		}
+		f.mod.Vars = append(f.mod.Vars, d)
+		f.layout = append(f.layout, "var:"+n.Name)
 	}
 }
 
@@ -312,6 +502,17 @@ func (f *front) isPkgFunc(e ast.Expr, pkg, name string) bool {
 func (f *front) funcDecl(d *ast.FuncDecl) {
 	fn := Func{Name: d.Name.Name, Exported: d.Name.IsExported(), Pos: f.pos(d.Pos()), Doc: docText(d.Doc)}
 	sig := f.info.Defs[d.Name].Type().(*types.Signature)
+	if d.Body == nil {
+		f.refuse(d, d.Name.Name, "function without a Go body (assembly or linkname)")
+		f.opaque(d, "function without a Go body (assembly or linkname)")
+		return
+	}
+	if why := f.signatureOutside(sig); why != "" {
+		f.refuse(d, d.Name.Name, why)
+		f.opaque(d, why)
+		return
+	}
+	fn.Tparams, _ = f.tparams(sig.TypeParams())
 	if d.Recv != nil {
 		r := sig.Recv()
 		name := r.Name()
@@ -322,7 +523,7 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := sig.Params().At(i)
-		fn.Params = append(fn.Params, Param{Name: p.Name(), T: f.typ(p.Type())})
+		fn.Params = append(fn.Params, Param{Name: p.Name(), T: f.typ(p.Type()), Variadic: sig.Variadic() && i == sig.Params().Len()-1})
 	}
 	for i := 0; i < sig.Results().Len(); i++ {
 		fn.Results = append(fn.Results, f.typ(sig.Results().At(i).Type()))
@@ -330,7 +531,7 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	if hasNamedResults(d.Type) {
 		fn.Body = []Stmt{f.namedResultsBody(d)}
 	} else {
-		f.fnBody = d.Body
+		f.fnBody, f.sig = d.Body, sig
 		fn.Body = f.stmts(d.Body.List, fn.Results)
 	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
@@ -359,7 +560,7 @@ func (f *front) foreign(s ast.Stmt, reason string) Stmt {
 		return true
 	})
 	f.refuse(s, firstLine(f.src(s)), reason)
-	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos())}
+	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos()), Calls: f.callsOf(s)}
 }
 
 func hasNamedResults(ft *ast.FuncType) bool {
@@ -382,7 +583,7 @@ func (f *front) namedResultsBody(d *ast.FuncDecl) Stmt {
 	sig := f.src(&ast.FuncType{Params: &ast.FieldList{}, Results: d.Type.Results})
 	src := "return " + sig + " " + f.src(d.Body) + "()"
 	f.refuse(d.Body, d.Name.Name, reason)
-	return Stmt{K: "foreign", Lang: "go", Src: src, Reason: reason, Pos: f.pos(d.Body.Pos())}
+	return Stmt{K: "foreign", Lang: "go", Src: src, Reason: reason, Pos: f.pos(d.Body.Pos()), Calls: f.callsOf(d.Body)}
 }
 
 func firstLine(s string) string {
@@ -517,7 +718,34 @@ func (f *front) labeled(s *ast.LabeledStmt, results []Type) Stmt {
 	return st
 }
 
+// stmt reads s; a statement holding an expression of a type cir/1 has no form for is kept foreign.
 func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
+	refused := len(f.mod.Refusals)
+	st := f.stmtRaw(s, results)
+	if n := stmtForeignType(st); n != "" {
+		st = f.foreign(s, "type outside cir/1: "+n)
+	}
+	// A function literal's body is read before the statement holding it is known to be kept;
+	// when it is foreign, the refusals of that body go with it and the statement's own stays.
+	if st.K == "foreign" && len(f.mod.Refusals) > refused+1 && holdsFuncLit(s) {
+		last := f.mod.Refusals[len(f.mod.Refusals)-1]
+		f.mod.Refusals = append(f.mod.Refusals[:refused], last)
+	}
+	return st
+}
+
+func holdsFuncLit(n ast.Node) bool {
+	found := false
+	ast.Inspect(n, func(c ast.Node) bool {
+		if _, ok := c.(*ast.FuncLit); ok {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	pos := f.pos(s.Pos())
 	switch s := s.(type) {
 	case *ast.AssignStmt:
@@ -541,6 +769,10 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 			op = s.Tok.String()
 		}
 		for i := range rhs {
+			// go/types leaves the nil of `m = nil` untyped; it takes the type of its target.
+			if i < len(lhs) && rhs[i].K == "nil" && rhs[i].T != nil && rhs[i].T.K == "nil" {
+				rhs[i].T = lhs[i].T
+			}
 			if i < len(s.Lhs) {
 				rhs[i] = f.coerce(rhs[i], f.info.TypeOf(s.Lhs[i]))
 			}
@@ -675,6 +907,10 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 			}
 			if i < len(results) && results[i].K == "error" {
 				rs[i] = f.coerce(rs[i], types.Universe.Lookup("error").Type())
+			} else if f.sig != nil && len(rs) == f.sig.Results().Len() {
+				if wt, ok := f.ifaceTarget(f.sig.Results().At(i).Type()); ok {
+					rs[i] = toIface(rs[i], wt)
+				}
 			}
 		}
 		return Stmt{K: "return", Results: rs, Pos: pos}
@@ -701,10 +937,14 @@ func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 	return f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))
 }
 
-// coerce wraps a value of an error struct type that is used where an `error` is expected.
+// coerce wraps a value of an error struct type that is used where an `error` is expected, and
+// converts a value used where a named interface is expected (interfaces.go).
 func (f *front) coerce(e Expr, want types.Type) Expr {
-	if want == nil {
-		return e
+	if _, param := want.(*types.TypeParam); want == nil || param {
+		return e // a value of a type parameter's type is the type argument's own
+	}
+	if wt, ok := f.ifaceTarget(want); ok {
+		return toIface(e, wt)
 	}
 	if _, ok := want.Underlying().(*types.Interface); !ok || e.T == nil || e.T.K != "named" {
 		return e
@@ -730,6 +970,10 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 	case *ast.ParenExpr:
 		return f.expr(e.X)
 	case *ast.BasicLit:
+		if bits := floatBits(f.info.TypeOf(e)); bits != 0 {
+			v, ok := floatSpelling(f.info.Types[e].Value, bits)
+			return Expr{K: "float", Value: v, T: t}, ok
+		}
 		return Expr{K: "lit", Value: e.Value, T: t}, true
 	case *ast.Ident:
 		switch o := f.info.Uses[e].(type) {
@@ -742,20 +986,61 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			return Expr{K: "const", Name: e.Name, T: t}, true
 		case *types.Var:
 			if o.Parent() == f.pkg.Scope() {
-				return Expr{K: "errvar", Name: e.Name, T: t}, true
+				switch {
+				case f.sentinels[o]:
+					return Expr{K: "errvar", Name: e.Name, T: t}, true
+				case f.globals[o]:
+					return Expr{K: "global", Name: e.Name, T: t}, true
+				case t != nil && hasForeign(*t):
+					// refused for its type: the statement holding it is foreign for that type
+					return Expr{K: "global", Name: e.Name, T: t}, true
+				}
+				return Expr{}, false
 			}
 			return Expr{K: "var", Name: e.Name, T: t}, true
+		case *types.Func:
+			// A function of the package used as a value; an instance of a generic one has no
+			// cir/1 form (func_ref carries no type arguments).
+			if _, generic := f.info.Instances[e]; o.Pkg() != f.pkg || t == nil || t.K != "func" || generic {
+				return Expr{}, false
+			}
+			return Expr{K: "func_ref", Name: e.Name, T: t}, true
 		}
 		if f.info.Defs[e] != nil {
 			return Expr{K: "var", Name: e.Name, T: t}, true
 		}
 		return Expr{}, false
 	case *ast.SelectorExpr:
+		if sel := f.info.Selections[e]; sel != nil && sel.Kind() == types.FieldVal && sel.Obj().Pkg() != f.pkg {
+			return Expr{}, false // a field of a struct of another package: the extern type is opaque
+		}
+		if sel := f.info.Selections[e]; sel != nil && sel.Kind() != types.FieldVal {
+			// A method value x.M of a method the package declares, through the embedded fields it
+			// is promoted from; a method expression T.M is outside cir/1.
+			// A method value of an interface dispatches when called: no function to name.
+			if sel.Kind() != types.MethodVal || sel.Obj().Pkg() != f.pkg || t == nil || t.K != "func" || types.IsInterface(holder(sel)) {
+				return Expr{}, false
+			}
+			x, ok := f.receiver(e, sel)
+			if !ok {
+				return Expr{}, false
+			}
+			return Expr{K: "func_ref", Name: e.Sel.Name, X: &x, T: t}, true
+		}
+		if sel := f.info.Selections[e]; sel != nil {
+			x, ok := f.receiver(e, sel)
+			if !ok {
+				return Expr{}, false
+			}
+			return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+		}
 		x, ok := f.expr(e.X)
 		if !ok {
 			return Expr{}, false
 		}
 		return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+	case *ast.FuncLit:
+		return f.lambda(e, t)
 	case *ast.IndexExpr:
 		x, ok1 := f.expr(e.X)
 		y, ok2 := f.expr(e.Index)
@@ -797,6 +1082,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		if t == nil || t.K != "named" {
 			return Expr{}, false
 		}
+		if _, ok := f.info.TypeOf(e).Underlying().(*types.Struct); !ok {
+			return Expr{}, false // a literal of a named map or slice type
+		}
 		out := Expr{K: "struct", Name: t.Name, T: t}
 		for _, el := range e.Elts {
 			kv, ok := el.(*ast.KeyValueExpr)
@@ -806,6 +1094,11 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			v, ok := f.expr(kv.Value)
 			if !ok {
 				return Expr{}, false
+			}
+			if fv, ok := f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var); ok {
+				if wt, ok := f.ifaceTarget(fv.Type()); ok {
+					v = toIface(v, wt)
+				}
 			}
 			out.FieldNames = append(out.FieldNames, kv.Key.(*ast.Ident).Name)
 			out.Args = append(out.Args, v)
@@ -818,18 +1111,22 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 }
 
 // externCall reads pkg.Name(args), a call of a function of another package, as an extern call,
-// declaring the extern from the callee's own signature. A variadic callee, or one with a
-// parameter or result type cir/1 has no type for, is outside cir/1.
+// declaring the extern from the callee's own signature; a variadic callee is declared variadic, a
+// generic one with its type parameters, the call with its type arguments. A callee with a
+// parameter or result type, or a constraint, cir/1 has no type for is outside cir/1.
 func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Type) (Expr, bool) {
 	fn, ok := f.info.Uses[sel].(*types.Func)
 	if !ok || t == nil {
 		return Expr{}, false
 	}
+	fn = fn.Origin()
 	sig := fn.Type().(*types.Signature)
-	if sig.Variadic() || sig.TypeParams().Len() > 0 {
+	tps, why := f.tparams(sig.TypeParams())
+	targs, _, ok := f.instance(sel)
+	if why != "" || !ok {
 		return Expr{}, false
 	}
-	x := Extern{Path: pn.Imported().Path(), Name: fn.Name()}
+	x := Extern{Path: pn.Imported().Path(), Name: fn.Name(), Variadic: sig.Variadic(), Tparams: tps}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := f.typ(sig.Params().At(i).Type())
 		if hasForeign(p) {
@@ -848,13 +1145,13 @@ func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Ty
 		return Expr{}, false
 	}
 	f.extern(x)
-	return Expr{K: "extern", Path: x.Path, Name: x.Name, Args: args, T: t}, true
+	return Expr{K: "extern", Path: x.Path, Name: x.Name, Targs: targs, Args: args, T: t}, true
 }
 
 // extern declares x once; the encoder sorts the declarations.
 func (f *front) extern(x Extern) {
 	for _, y := range f.mod.Externs {
-		if y.Path == x.Path && y.Name == x.Name {
+		if y.key() == x.key() {
 			return
 		}
 	}
@@ -877,40 +1174,77 @@ func hasForeign(t Type) bool {
 			return true
 		}
 	}
+	for _, e := range append(append(append([]Type{}, t.Params...), t.Results...), t.Targs...) {
+		if hasForeign(e) {
+			return true
+		}
+	}
 	return false
 }
 
 func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
-	if e.Ellipsis.IsValid() {
-		return Expr{}, false // a spread call: cir/1 has no spread argument
-	}
 	args, ok := f.exprs(e.Args)
 	if !ok {
 		return Expr{}, false
 	}
+	// A spread call f(xs...): its last argument, a slice, is the variadic parameter itself.
+	spread := e.Ellipsis.IsValid()
+	if spread {
+		last := e.Args[len(e.Args)-1]
+		if _, ok := f.info.TypeOf(last).Underlying().(*types.Slice); !ok {
+			return Expr{}, false // append(b, s...) of a string: no slice to pass
+		}
+		x := args[len(args)-1]
+		args[len(args)-1] = Expr{K: "spread", X: &x, T: x.T}
+	}
 	if tv, ok := f.info.Types[e.Fun]; ok && tv.IsType() {
+		if wt, ok := f.ifaceTarget(tv.Type); ok && len(args) == 1 {
+			return toIface(args[0], wt), true
+		}
 		if len(args) != 1 || t == nil || t.K != "named" {
 			return Expr{}, false
 		}
 		return Expr{K: "conv", Name: t.Name, X: &args[0], T: t}, true
 	}
+	// The fmt intrinsics take their arguments one by one; called with a spread, each is the
+	// extern call it is in Go.
 	for _, in := range []struct{ pkg, name, as string }{
 		{"fmt", "Sprintf", "sprintf"}, {"fmt", "Errorf", "errorf"}, {"fmt", "Println", "println"},
 	} {
-		if f.isPkgFunc(e.Fun, in.pkg, in.name) {
+		if !spread && f.isPkgFunc(e.Fun, in.pkg, in.name) {
 			return Expr{K: "intrinsic", Name: in.as, Args: args, T: t}, true
 		}
 	}
-	switch fun := e.Fun.(type) {
+	if ft := f.info.TypeOf(e.Fun); ft != nil {
+		if sig, ok := ft.Underlying().(*types.Signature); ok {
+			f.coerceArgs(args, sig)
+		}
+	}
+	// An explicit instantiation f[T](…) calls f with those type arguments.
+	callee := e.Fun
+	if base := calleeIdent(e.Fun); base != e.Fun {
+		id, _ := base.(*ast.Ident)
+		if s, ok := base.(*ast.SelectorExpr); ok {
+			id = s.Sel
+		}
+		if _, inst := f.info.Instances[id]; id != nil && inst {
+			callee = base
+		}
+	}
+	switch fun := callee.(type) {
 	case *ast.Ident:
 		switch f.info.Uses[fun].(type) {
 		case *types.Builtin:
-			if fun.Name == "append" || fun.Name == "len" {
+			if fun.Name == "append" || (fun.Name == "len" && !spread) {
 				return Expr{K: "intrinsic", Name: fun.Name, Args: args, T: t}, true
 			}
 			return Expr{}, false
 		case *types.Func:
-			return Expr{K: "call", Name: fun.Name, Args: args, T: t}, true
+			targs, _, ok := f.instance(fun)
+			if !ok {
+				return Expr{}, false
+			}
+			return Expr{K: "call", Name: fun.Name, Targs: targs, Args: args, T: t}, true
 		}
 	case *ast.SelectorExpr:
 		if x, ok := fun.X.(*ast.Ident); ok {
@@ -919,12 +1253,81 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			}
 		}
 		if sel := f.info.Selections[fun]; sel != nil && sel.Kind() == types.MethodVal {
-			x, ok := f.expr(fun.X)
+			x, ok := f.receiver(fun, sel)
 			if !ok {
 				return Expr{}, false
+			}
+			if tp, ok := holder(sel).(*types.TypeParam); ok {
+				return f.paramCall(tp, fun.Sel.Name, x, args, t)
+			}
+			if n, ok := types.Unalias(holder(sel)).(*types.Named); ok && n.Obj().Pkg() != nil && types.IsInterface(n) {
+				return f.ifaceCall(n, fun.Sel.Name, x, args, t)
+			}
+			if fn, ok := sel.Obj().(*types.Func); ok && fn.Pkg() != nil && fn.Pkg() != f.pkg {
+				return f.externMethod(fn, x, args, t)
 			}
 			return Expr{K: "method", X: &x, Name: fun.Sel.Name, Args: args, T: t}, true
 		}
 	}
+	// A call of a function value: a local, a parameter, a field, a function literal. A function
+	// type is never variadic in cir/1, so a spread call of a value is outside it.
+	if ft := f.info.TypeOf(e.Fun); ft != nil && !spread {
+		if _, ok := ft.Underlying().(*types.Signature); ok {
+			fn, ok := f.expr(e.Fun)
+			if !ok {
+				return Expr{}, false
+			}
+			return Expr{K: "call_value", X: &fn, Args: args, T: t}, true
+		}
+	}
 	return Expr{}, false
+}
+
+// lambda reads a function literal: its parameters and results, the outer locals it uses, and its
+// body, in which no enclosing loop or label is visible. A literal with named results is outside
+// cir/1.
+func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
+	if t == nil || t.K != "func" || hasForeign(*t) || hasNamedResults(e.Type) {
+		return Expr{}, false
+	}
+	sig := f.info.TypeOf(e).(*types.Signature)
+	x := Expr{K: "lambda", T: t, Params: []Param{}, Results: t.Results, Captures: f.captures(e)}
+	for i := 0; i < sig.Params().Len(); i++ {
+		name := sig.Params().At(i).Name()
+		if name == "" {
+			name = "_"
+		}
+		x.Params = append(x.Params, Param{Name: name, T: t.Params[i]})
+	}
+	breaks, loops, label, fnBody, outer := f.breaks, f.loops, f.label, f.fnBody, f.sig
+	f.breaks, f.loops, f.label, f.fnBody, f.sig = nil, nil, "", e.Body, sig
+	x.Body = f.stmts(e.Body.List, t.Results)
+	f.breaks, f.loops, f.label, f.fnBody, f.sig = breaks, loops, label, fnBody, outer
+	return x, true
+}
+
+// captures names, sorted and each once, every local, parameter or receiver declared outside the
+// literal that its body uses.
+func (f *front) captures(lit *ast.FuncLit) []string {
+	seen := map[string]bool{}
+	ast.Inspect(lit.Body, func(n ast.Node) bool {
+		id, ok := n.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		v, ok := f.info.Uses[id].(*types.Var)
+		if !ok || v.IsField() || v.Pkg() != f.pkg || v.Parent() == f.pkg.Scope() {
+			return true
+		}
+		if v.Pos() < lit.Pos() || v.Pos() >= lit.End() {
+			seen[v.Name()] = true
+		}
+		return true
+	})
+	out := []string{}
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -412,7 +412,26 @@
           "lang": "go",
           "src": "return os.WriteFile(path, []byte(Banner(name, port)), 0o644)",
           "reason": "expression outside cir/1",
-          "pos": "envcheck.go:37"
+          "pos": "envcheck.go:37",
+          "calls": [
+            {
+              "k": "func",
+              "path": "os",
+              "name": "WriteFile",
+              "consts": [
+                {
+                  "index": 2,
+                  "value": "420"
+                }
+              ],
+              "pos": "envcheck.go:37"
+            },
+            {
+              "k": "func",
+              "name": "Banner",
+              "pos": "envcheck.go:37"
+            }
+          ]
         }
       ],
       "doc": "Save writes the banner to a file. os.WriteFile takes an fs.FileMode, a type cir/1 has none for.",

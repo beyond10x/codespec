@@ -6,9 +6,9 @@ import (
 )
 
 // A call of a function of another package with cir/1 types is an extern call, declared once from
-// the callee's signature; a variadic callee (path.Join), and one with a parameter of another package's type,
-// stay foreign with a refusal each.
-func TestStandardLibraryCallsReadAsExternsUnlessVariadicOrForeignTyped(t *testing.T) {
+// the callee's signature, a variadic callee (path.Join) declared variadic; one with a parameter of another
+// package's type that cir/1 has no type for stays foreign with a refusal.
+func TestStandardLibraryCallsReadAsExternsUnlessForeignTyped(t *testing.T) {
 	m := loadSource(t, `package p
 
 import (
@@ -44,7 +44,7 @@ func Save(s string) error {
 		n := x.(node)
 		got = append(got, n["path"].(string)+"."+n["name"].(string))
 	}
-	want := []string{"os.Getenv", "strconv.Atoi", "strings.ToUpper"}
+	want := []string{"os.Getenv", "path.Join", "strconv.Atoi", "strings.ToUpper"}
 	if len(got) != len(want) {
 		t.Fatalf("externs %v, want %v", got, want)
 	}
@@ -53,7 +53,7 @@ func Save(s string) error {
 			t.Fatalf("externs %v, want %v", got, want)
 		}
 	}
-	if len(m.Refusals) != 2 || !strings.Contains(m.Refusals[0].What, "path.Join") || !strings.Contains(m.Refusals[1].What, "os.WriteFile") {
-		t.Fatalf("want refusals of path.Join (variadic) and os.WriteFile (fs.FileMode), got %v", m.Refusals)
+	if len(m.Refusals) != 1 || !strings.Contains(m.Refusals[0].What, "os.WriteFile") {
+		t.Fatalf("want only os.WriteFile (fs.FileMode) refused, got %v", m.Refusals)
 	}
 }
