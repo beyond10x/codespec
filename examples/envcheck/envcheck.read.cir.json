@@ -4,7 +4,7 @@
   "reader": {
     "language": "go",
     "name": "codespec-read-go",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "doc": "Package envcheck builds a service banner from its environment.",
   "types": [],

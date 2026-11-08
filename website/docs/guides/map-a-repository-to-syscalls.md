@@ -3,7 +3,7 @@ title: Map a repository to syscalls
 sidebar_position: 3
 description: Read a Go repository with every package it imports, run codespec effects over the set with the Linux syscall barrier, and read the effects, syscalls, dispatch sites and unknown reasons it reports.
 lede: Two commands take a Go repository and its imports, the standard library included, to a report of the syscalls each function may reach and the line that leads there.
-source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/fixtures/readfile, commit 827b232; every command run in this repository on 2026-11-08 with codespec 0.4.0 and Go 1.27.1 linux/amd64
+source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/fixtures/readfile, commit 827b232; every command run in this repository on 2026-11-08 with codespec 0.5.0 and Go 1.27.1 linux/amd64
 ---
 
 # Map a repository to syscalls
@@ -11,7 +11,7 @@ source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, 
 This guide runs [static analysis](/docs/concepts/static-analysis) on Go code: first one package
 with hand-written summaries, then a whole module with every package it imports, down to the
 syscall barrier. Every command was run from the repository root after `task build`
-([Getting started](/docs/getting-started)), with codespec 0.4.0 and Go 1.27.1 on linux/amd64.
+([Getting started](/docs/getting-started)), with codespec 0.5.0 and Go 1.27.1 on linux/amd64.
 Output is pasted from that run; `jq` lines shorten the JSON reports.
 
 ## What you need

@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.5.0
+
 ### Added
 
 - `examples/netcheck`, a worked example of the static analysis: a Go module with a TCP server, a
