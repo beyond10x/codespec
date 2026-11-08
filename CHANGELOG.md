@@ -2,6 +2,18 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Changed
+
+- `codespec-read-go` reads `if <names> := <call>; <cond> { … }` as `<names> := <call>` followed by
+  the `if`, instead of keeping it as `foreign`, when the init and the condition read inside `cir/1`,
+  the `if` has no `else`, is not an `else if`, the function has no `goto`, and no name is a parameter
+  or occurs in the function body outside the `if` except in another such `if` declaring it with the
+  same type, where no function literal captures it and its address is never taken; the first of
+  those reads as the declaration, each later one as an assignment. So `if err := f(); err != nil { return 0, err }` reaches the Rust writer's `?`. Every
+  other `if` with an init statement stays `foreign` with its refusal.
+
 ## 0.4.0
 
 ### Added
