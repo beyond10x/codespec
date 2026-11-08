@@ -4,14 +4,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
-## 0.5.0
-
 ### Added
 
 - The site has search: a box in the navbar on every page, over an index built with the site
   (`@easyops-cn/docusaurus-search-local`, no external service), and a results page `/search`. Links
   in running text are underlined, the docs sidebar stays in view down to the footer, and the
   support matrix legend can be scrolled by keyboard.
+
+## 0.5.0
+
+### Added
+
 - `examples/netcheck`, a worked example of the static analysis: a Go module with a TCP server, a
   client, an interface with two implementations, a generic function and a variadic call, read
   with the 72 standard library packages it imports. `task examples-netcheck` runs `codespec
