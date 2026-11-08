@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import type { Cue, TaskCard, TaskTruth } from './types.ts';
 
 export interface Candidate {
-  role: 'link' | 'button' | 'searchbox';
+  role: 'link' | 'button' | 'searchbox' | 'option';
   name: string;
   region: 'primary' | 'other';
   current: boolean;
@@ -42,7 +42,9 @@ function visibleControls(primary: string): Candidate[] {
     if (t) return t;
     return (e.getAttribute('title') ?? e.querySelector('img[alt]')?.getAttribute('alt') ?? '').trim();
   };
-  for (const e of document.querySelectorAll('a[href], button, [role="link"], [role="button"], input[type="search"], [role="searchbox"]')) {
+  for (const e of document.querySelectorAll(
+    'a[href], button, [role="link"], [role="button"], input[type="search"], [role="searchbox"], input[aria-label*="earch" i], [role="option"]',
+  )) {
     const r = e.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue;
     if (r.left < 0 || r.top < 0 || r.right > vw || r.bottom > vh) continue;
@@ -50,11 +52,24 @@ function visibleControls(primary: string): Candidate[] {
     if (!hit || !(hit === e || e.contains(hit))) continue;
     const tag = e.tagName.toLowerCase();
     const role: Candidate['role'] =
-      tag === 'input' || e.getAttribute('role') === 'searchbox' ? 'searchbox' : tag === 'a' || e.getAttribute('role') === 'link' ? 'link' : 'button';
+      e.getAttribute('role') === 'option'
+        ? 'option'
+        : tag === 'input' || e.getAttribute('role') === 'searchbox'
+          ? 'searchbox'
+          : tag === 'a' || e.getAttribute('role') === 'link'
+            ? 'link'
+            : 'button';
     const href = (e as HTMLAnchorElement).href ?? '';
+    // A result option is read as its spans: title, then path, with a space between them.
+    const optionName = () => {
+      const parts: string[] = [];
+      const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement?.closest('svg, [aria-hidden="true"]')) parts.push(n.textContent ?? '');
+      return parts.join(' ').replace(/\s+/g, ' ').trim();
+    };
     out.push({
       role,
-      name: nameOf(e),
+      name: role === 'option' ? optionName() : nameOf(e),
       region: e.closest(primary) ? 'primary' : 'other',
       current: e.getAttribute('aria-current') === 'page',
       external: role === 'link' && (e.getAttribute('target') === '_blank' || (href !== '' && new URL(href).origin !== location.origin)),
@@ -138,6 +153,7 @@ export async function runScreenOnly(page: Page, card: TaskCard, truth: TaskTruth
   let steps = 1;
   const visited = new Set<string>();
   const tried = new Set<string>();
+  const searched = new Set<string>();
   const hub: Cue[] = o.hubWords.map((w) => ({ word: w, weight: 1 }));
   await page.goto(o.base + card.start);
   await page.waitForTimeout(o.settleMs);
@@ -153,15 +169,32 @@ export async function runScreenOnly(page: Page, card: TaskCard, truth: TaskTruth
     let scrolled = 0;
     let choice: { cand: Candidate; score: number } | null = null;
     let via = '';
+    const all = async () => page.evaluate(visibleControls, o.primary);
     const seen = async () =>
-      (await page.evaluate(visibleControls, o.primary)).filter(
-        (c) => !c.current && !c.external && c.role !== 'searchbox' && !tried.has(pageKey + '|' + c.role + '|' + c.name),
-      );
-    // In order: a strong match in view, scrolling for one, a hub link in view, a weak match in view.
+      (await all()).filter((c) => !c.current && !c.external && c.role !== 'searchbox' && c.role !== 'option' && !tried.has(pageKey + '|' + c.role + '|' + c.name));
+    // In order: a strong match in view, a visible search box, scrolling for one, a hub link in view, a weak match in view.
     for (;;) {
       const cands = await seen();
       choice = pick(cands, card.cues, STRONG);
       if (choice) break;
+      if (scrolled === 0 && searched.size === 0) {
+        const box = (await all()).find((c) => c.role === 'searchbox');
+        if (box) {
+          searched.add(pageKey);
+          const used = await useSearch(page, box, card, o, (s) => {
+            trace.push({ url: here(), ...s });
+            actions++;
+            steps++;
+          });
+          looks += used.looks;
+          if (used.option) {
+            choice = used.option;
+            via = ' (search)';
+            break;
+          }
+          continue;
+        }
+      }
       const atEnd = await page.evaluate(() => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2);
       if (atEnd || scrolled >= o.maxScrolls) {
         choice = pick(cands, hub, 1);
@@ -183,7 +216,10 @@ export async function runScreenOnly(page: Page, card: TaskCard, truth: TaskTruth
     const glance: 1 | 2 | 3 = scrolled > 0 ? 3 : choice.cand.region === 'primary' ? 1 : 2;
     looks += glance;
     tried.add(pageKey + '|' + choice.cand.role + '|' + choice.cand.name);
-    const loc = page.getByRole(choice.cand.role, { name: choice.cand.name, exact: true });
+    // A result option's name joins its title and path spans, which the browser and the bot space
+    // differently; it is found by its role and the box the bot saw.
+    const loc =
+      choice.cand.role === 'option' ? page.getByRole('option') : page.getByRole(choice.cand.role, { name: choice.cand.name, exact: true });
     const n = await loc.count();
     let target = null;
     for (let i = 0; i < n; i++) {
@@ -206,6 +242,70 @@ export async function runScreenOnly(page: Page, card: TaskCard, truth: TaskTruth
   }
   if (await atTruth(page, o.base, truth)) return done(true);
   return done(false, `not at ${truth.path} after ${actions} actions`);
+}
+
+/** A result option: highest score first; on a tie the shortest name (a title or heading hit over a text excerpt), then the higher one. */
+export function pickOption(opts: Candidate[], cues: Cue[], min: number): { cand: Candidate; score: number } | null {
+  let best: { cand: Candidate; score: number; len: number } | null = null;
+  for (const c of opts) {
+    const s = score(c.name, cues);
+    if (s < min) continue;
+    const len = tokens(c.name).length;
+    if (!best || s > best.score || (s === best.score && (len < best.len || (len === best.len && c.box.y < best.cand.box.y)))) best = { cand: c, score: s, len };
+  }
+  return best && { cand: best.cand, score: best.score };
+}
+
+/** The query the user types: the card's own, else its heaviest cue word. */
+export function searchQuery(card: TaskCard): string {
+  if (card.search) return card.search;
+  return [...card.cues].sort((a, b) => b.weight - a.weight)[0]?.word ?? '';
+}
+
+/**
+ * Use a visible search box: click it (one action), type the query (one action: one input, however many
+ * characters), and return the best visible result option for the cues, if any; the caller clicks it.
+ * Without a matching option it presses Escape (one action) and the user goes on without search.
+ */
+async function useSearch(
+  page: Page,
+  box: Candidate,
+  card: TaskCard,
+  o: BotOptions,
+  act: (s: Omit<Step, 'url'>) => void,
+): Promise<{ option: { cand: Candidate; score: number } | null; looks: number }> {
+  const query = searchQuery(card);
+  if (!query) return { option: null, looks: 0 };
+  const byRole = page
+    .getByRole('searchbox', { name: box.name, exact: true })
+    .or(page.getByRole('combobox', { name: box.name, exact: true }))
+    .or(page.getByRole('textbox', { name: box.name, exact: true }));
+  const n = await byRole.count();
+  let input = null;
+  for (let i = 0; i < n; i++) {
+    const b = await byRole.nth(i).boundingBox();
+    if (b && Math.abs(b.x - box.box.x) < 1 && Math.abs(b.y - box.box.y) < 1) {
+      input = byRole.nth(i);
+      break;
+    }
+  }
+  if (!input) return { option: null, looks: 0 };
+  const looks = box.region === 'primary' ? 1 : 2;
+  await input.click();
+  act({ action: `click searchbox "${box.name}"`, glance: looks as 1 | 2 });
+  await input.fill(query);
+  act({ action: `type "${query}"`, glance: 0 });
+  let option: { cand: Candidate; score: number } | null = null;
+  for (let i = 0; i < 40 && !option; i++) {
+    await page.waitForTimeout(100);
+    const opts = (await page.evaluate(visibleControls, o.primary)).filter((c) => c.role === 'option');
+    option = pickOption(opts, card.cues, STRONG) ?? (i >= 20 ? pickOption(opts, card.cues, 1) : null);
+  }
+  if (!option) {
+    await page.keyboard.press('Escape');
+    act({ action: 'Escape (no matching result)', glance: 0 });
+  }
+  return { option, looks };
 }
 
 /** Wait until a (possibly smooth) scroll has stopped: the same scroll position on three reads 50 ms apart. */

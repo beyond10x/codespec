@@ -189,4 +189,20 @@ test.describe('break-tests: each layout check can fail', () => {
     const miss = await runScreenOnly(page, { ...card, cues: [{ word: 'kotlin', weight: 3 }] }, { path: '/install', hashes: [] }, { ...opts, hubWords: [] });
     expect(miss.reached).toBe(false);
   });
+
+  test('screen-only user: uses a visible search box when no strong link is in view, in 3 actions', async ({ page }) => {
+    const box =
+      '<input aria-label="Search" style="position:fixed;top:5px;right:60px;width:150px" oninput="' +
+      "document.getElementById('r').innerHTML=this.value?'<div role=option onclick=&quot;location.href=\\'/install\\'&quot;>Install codespec</div>':''" +
+      '"><div id="r" role="listbox" style="position:fixed;top:40px;right:60px;width:200px;background:#fff"></div>';
+    const base = await fixture(page, {
+      '/': shell('<p>nothing to follow</p>', box),
+      '/install': shell('<h1 id="install">Install</h1>'),
+    });
+    const card = { kind: 'task' as const, goal: 'g', persona: 'p', card: 'anchor' as const, start: '/', cues: [{ word: 'install', weight: 3 }] };
+    const r = await runScreenOnly(page, card, { path: '/install', hashes: [] }, { base, primary: 'main', hubWords: [], maxActions: 6, maxScrolls: 0, settleMs: 100 });
+    expect(r.reached).toBe(true);
+    expect(r.actions).toBe(3);
+    expect(r.trace.map((s) => s.action)).toEqual(['click searchbox "Search"', 'type "install"', 'click option "Install codespec" (search)']);
+  });
 });

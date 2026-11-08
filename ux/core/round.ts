@@ -133,7 +133,9 @@ export function writeRound(i: RoundInput): void {
       'questionnaire scores: no sessions, none',
       'L4 keyed replay and L5 discoverability probe: operator-only, not run',
       'review-heuristics.md and review-report.md: the two review agents run after this command (§ 8)',
-      'search: the site has no search control, so the screen-only user follows links only',
+      tasks.some((t) => t.result.trace.some((s) => s.action.startsWith('click searchbox')))
+        ? 'search: the screen-only user uses the visible search box when no strong link is in view'
+        : 'search: no task used search (no visible search box, or a strong link was in view first)',
     ],
   };
   writeFileSync(join(dir, 'round.json'), JSON.stringify(round, null, 2) + '\n');

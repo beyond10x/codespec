@@ -26,7 +26,7 @@ export const adapter: Adapter = {
   themeAttribute: 'data-theme',
   alwaysVisible: [
     { name: 'navbar', locate: { role: 'navigation', name: 'Main' } },
-    { name: 'search', locate: { role: 'searchbox', name: /search/i, css: '.navbar__search, .DocSearch-Button, [role="search"]', scope: '.navbar' } },
+    { name: 'search', locate: { role: 'searchbox', name: /search/i, css: '.navbar__search-input, .navbar__search, .DocSearch-Button, [role="search"]', scope: '.navbar' } },
     { name: 'theme toggle', locate: { role: 'button', name: /dark and light mode/i } },
     { name: 'sidebar', locate: { role: 'navigation', name: 'Docs sidebar' }, minWidth: 997, pathPrefix: '/codespec/docs' },
   ],

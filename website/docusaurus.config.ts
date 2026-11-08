@@ -43,7 +43,26 @@ const config: Config = {
           editUrl: 'https://github.com/beyond10x/codespec/tree/main/website/',
         },
         blog: false,
+        theme: {
+          customCss: './src/css/custom.css',
+        },
       } satisfies Preset.Options,
+    ],
+  ],
+
+  themes: [
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        hashed: true,
+        language: ['en'],
+        indexDocs: true,
+        indexBlog: false,
+        indexPages: true,
+        docsRouteBasePath: 'docs',
+        explicitSearchResultPath: true,
+        highlightSearchTermsOnTargetPage: false,
+      },
     ],
   ],
 

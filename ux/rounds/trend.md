@@ -5,3 +5,4 @@ One row per round, written by `task ux-round`. Gate columns: failing units (unwa
 | round | commit | date | gate1 | gate2 | gate4 | gate5 | axe serious+critical | overflow | screen-only actions | looks | unreached |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | R-01 | 586d3d8 | 2026-11-08 | 0 | 76 | 0 | 76 | 180 | 0 | 39 | 29 | 0 |
+| R-02 | 0ce370d | 2026-11-08 | 0 | 0 | 0 | 4 | 0 | 0 | 15 | 21 | 0 |
