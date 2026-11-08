@@ -1,0 +1,29 @@
+{
+  "kind": "task",
+  "goal": "Find the install or download instructions.",
+  "persona": "A developer who has just heard of codespec and wants to try it.",
+  "card": "anchor",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "install",
+      "weight": 3
+    },
+    {
+      "word": "download",
+      "weight": 3
+    },
+    {
+      "word": "release",
+      "weight": 2
+    },
+    {
+      "word": "started",
+      "weight": 2
+    },
+    {
+      "word": "build",
+      "weight": 1
+    }
+  ]
+}

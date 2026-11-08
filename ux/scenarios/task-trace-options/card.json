@@ -1,0 +1,33 @@
+{
+  "kind": "task",
+  "goal": "Find the options of `codespec trace`.",
+  "persona": "A user of codespec who wants to trace one function down to its syscalls.",
+  "card": "rotating",
+  "start": "/codespec/",
+  "cues": [
+    {
+      "word": "codespec trace",
+      "weight": 3
+    },
+    {
+      "word": "trace",
+      "weight": 1
+    },
+    {
+      "word": "cli",
+      "weight": 2
+    },
+    {
+      "word": "command",
+      "weight": 1
+    },
+    {
+      "word": "reference",
+      "weight": 1
+    },
+    {
+      "word": "options",
+      "weight": 1
+    }
+  ]
+}

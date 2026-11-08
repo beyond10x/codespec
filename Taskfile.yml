@@ -56,6 +56,65 @@ tasks:
       - npm --prefix website ci --allow-git=root
       - npm --prefix website run build
 
+  ux-install:
+    desc: Install the UX harness in ux/ (Playwright, axe-core, TypeScript) and its Chromium. Needs the network; every ux task after it does not.
+    dir: ux
+    method: timestamp
+    sources: [package.json, package-lock.json]
+    generates: [node_modules/.package-lock.json]
+    cmds:
+      - npm ci --no-audit --no-fund
+      - npx playwright install chromium
+
+  ux-site:
+    desc: Build website/build for the UX harness when it is missing or older than the site's sources. Needs website/node_modules (task docs-site once).
+    method: timestamp
+    sources:
+      - website/docs/**/*
+      - website/src/**/*
+      - website/static/**/*
+      - website/data/**/*
+      - website/docusaurus.config.ts
+      - website/sidebars.ts
+      - website/product.json
+      - website/package-lock.json
+    generates: [website/build/sitemap.xml]
+    preconditions:
+      - sh: test -d website/node_modules
+        msg: website/node_modules is missing; run `task docs-site` once
+    cmds:
+      - npm --prefix website run build
+
+  ux-check:
+    desc: The every-merge UX gate (ui-iteration-loop L1–L3) on website/build served locally, no network. Typecheck, the findings rule, L1 core and break-tests, L2 layout contract (gates 1, 2, 5), L3 screen-only user (gate 4), then the ratchet against ux/baseline.json and main's. Not part of task check.
+    deps: [ux-install, ux-site]
+    dir: ux
+    cmds:
+      - npx tsc --noEmit
+      - node cli.ts findings
+      - npx playwright test
+      - node cli.ts ratchet
+
+  ux-ratchet:
+    desc: The ratchet alone over the last ux-check results. `task ux-ratchet -- --update [--decision <id>]` takes the measured values into ux/baseline.json in the same merge.
+    dir: ux
+    cmds:
+      - node cli.ts ratchet {{.CLI_ARGS}}
+
+  ux-scenarios:
+    desc: Add a page scenario under ux/scenarios for every page in website/build/sitemap.xml that has none; report stale ones.
+    deps: [ux-site]
+    dir: ux
+    cmds:
+      - node cli.ts scenarios
+
+  ux-round:
+    desc: The Measure step of a UX round. Runs L2 at the gating and measured-only viewports and L3, takes contact sheets, and writes ux/rounds/R-nn/{report.md,round.json,shots/} and ux/rounds/trend.md. `task ux-round -- --round R-nn` re-measures a given round.
+    deps: [ux-install, ux-site]
+    dir: ux
+    cmds:
+      - node cli.ts round {{.CLI_ARGS}}
+
   build:
     desc: Build the codespec CLI and every adapter into target/.
     cmds:
