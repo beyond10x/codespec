@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:jvm-readers-error-propagation
 kind: story
-status: active
+status: implemented
 title: The Java reader claims error propagation, and the ledger throws again
 relations:
 - decomposes: epic:errors-cross-every-adapter
@@ -28,10 +28,11 @@ scope:
   path: website/data/conformance
 - confidence: inferred
   path: website/data/support-matrix.json
-revision: 12
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T18:32:51Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-11-07T18:38:43Z", actor: "human:timo", revision: 12}
+- {from: "active", to: "implemented", at: "2026-11-08T09:17:25Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Java reader claims error propagation, and the ledger throws again
 

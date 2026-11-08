@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-08T09:17:25Z",
+  "actor": "human:timo",
+  "artifact": "story:jvm-readers-error-propagation",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on 29076e7 (wave/errors-cross-every-adapter): exit 0, 298 Rust tests passed, 0 failed"
+  }
+}

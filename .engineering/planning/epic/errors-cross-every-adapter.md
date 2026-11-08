@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: epic:errors-cross-every-adapter
 kind: epic
-status: active
+status: implemented
 title: Errors cross every adapter
 relations:
 - informed_by: story:rust-writer-error-propagation
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T18:32:51Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-07T18:38:43Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-08T09:17:30Z", actor: "human:timo", revision: 6}
 ---
 # Epic: Errors cross every adapter
 

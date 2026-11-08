@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-if-init-error-check
 kind: story
-status: active
+status: implemented
 title: The Go reader reads an error check written in the if's init statement
 relations:
 - decomposes: epic:errors-cross-every-adapter
@@ -15,10 +15,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/if_init_test.go
 - confidence: cited
   path: website/docs/concepts/cir-1.md
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-07T22:18:31Z", actor: "human:timo", revision: 7}
 - {from: "proposed", to: "active", at: "2026-11-07T22:18:31Z", actor: "human:timo", revision: 8}
+- {from: "active", to: "implemented", at: "2026-11-08T09:17:25Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader reads an error check written in the if's init statement
 
