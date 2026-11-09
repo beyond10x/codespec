@@ -18,7 +18,7 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.6.0";
+pub const VERSION: &str = "0.6.1";
 
 /// The date the list below was last checked against the tree.
 const AS_OF: &str = "2026-11-08";
@@ -404,7 +404,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.6.0\""));
+        assert!(document.contains("\"version\": \"0.6.1\""));
     }
 
     #[test]
@@ -475,10 +475,15 @@ mod tests {
         let mut out = Vec::new();
         let mut i = 0;
         while i < b.len() {
-            if b[i].is_ascii_digit() && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'.')) {
+            if b[i].is_ascii_digit()
+                && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'.'))
+            {
                 let start = i;
                 let mut dots = 0;
-                while i < b.len() && (b[i].is_ascii_digit() || (b[i] == b'.' && i + 1 < b.len() && b[i + 1].is_ascii_digit())) {
+                while i < b.len()
+                    && (b[i].is_ascii_digit()
+                        || (b[i] == b'.' && i + 1 < b.len() && b[i + 1].is_ascii_digit()))
+                {
                     dots += usize::from(b[i] == b'.');
                     i += 1;
                 }
@@ -498,11 +503,26 @@ mod tests {
     fn the_site_states_only_the_workspace_version() {
         let site = root().join("website");
         let product = fs::read_to_string(site.join("product.json")).unwrap();
-        assert_eq!(versions(&product), Vec::<&str>::new(), "website/product.json names a release");
+        assert_eq!(
+            versions(&product),
+            Vec::<&str>::new(),
+            "website/product.json names a release"
+        );
         let status = fs::read_to_string(site.join("docs/status.mdx")).unwrap();
-        assert_eq!(versions(&status), Vec::<&str>::new(), "website/docs/status.mdx names a release; use status.version");
+        assert_eq!(
+            versions(&status),
+            Vec::<&str>::new(),
+            "website/docs/status.mdx names a release; use status.version"
+        );
         let start = fs::read_to_string(site.join("docs/getting-started.md")).unwrap();
-        let after = start.split("$ target/debug/codespec --version\n").nth(1).expect("getting-started.md runs --version");
-        assert_eq!(after.lines().next(), Some(format!("codespec {VERSION}").as_str()), "website/docs/getting-started.md");
+        let after = start
+            .split("$ target/debug/codespec --version\n")
+            .nth(1)
+            .expect("getting-started.md runs --version");
+        assert_eq!(
+            after.lines().next(),
+            Some(format!("codespec {VERSION}").as_str()),
+            "website/docs/getting-started.md"
+        );
     }
 }

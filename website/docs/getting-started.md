@@ -40,7 +40,7 @@ codespec-run-rust
 codespec-write-go
 codespec-write-rust
 $ target/debug/codespec --version
-codespec 0.6.0
+codespec 0.6.1
 ```
 
 Set `CODESPEC_ADAPTERS=target/adapters` to drop `--adapters target/adapters` from every command.

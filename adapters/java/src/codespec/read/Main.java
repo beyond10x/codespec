@@ -13,7 +13,7 @@ import java.nio.file.Path;
  */
 public final class Main {
     /** The workspace version; written into every document as {@code reader.version}. */
-    public static final String VERSION = "0.6.0";
+    public static final String VERSION = "0.6.1";
 
     /**
      * The reader's claim: the features its output for {@code examples/ledger} uses and the subject

@@ -626,7 +626,12 @@ mod tests {
     #[test]
     fn no_generated_page_shows_a_long_code_block_open() {
         let mut open = Vec::new();
-        for page in ["examples/greeter.md", "examples/series.md", "examples/netcheck.md", "examples/call-trace.md"] {
+        for page in [
+            "examples/greeter.md",
+            "examples/series.md",
+            "examples/netcheck.md",
+            "examples/call-trace.md",
+        ] {
             let text = fs::read_to_string(root().join("website/docs").join(page)).unwrap();
             let (mut details, mut start, mut fence) = (0usize, 0usize, false);
             for (n, line) in text.lines().enumerate() {
@@ -651,10 +656,19 @@ mod tests {
     #[test]
     fn the_netcheck_example_is_worked_on_one_hand_written_page() {
         let docs = root().join("website/docs");
-        let pages: Vec<&str> = ["concepts/static-analysis.md", "guides/map-a-repository-to-syscalls.md", "index.md", "vision.md"]
-            .into_iter()
-            .filter(|page| fs::read_to_string(docs.join(page)).unwrap().contains("FixedProber.Probe"))
-            .collect();
+        let pages: Vec<&str> = [
+            "concepts/static-analysis.md",
+            "guides/map-a-repository-to-syscalls.md",
+            "index.md",
+            "vision.md",
+        ]
+        .into_iter()
+        .filter(|page| {
+            fs::read_to_string(docs.join(page))
+                .unwrap()
+                .contains("FixedProber.Probe")
+        })
+        .collect();
         assert_eq!(pages, ["guides/map-a-repository-to-syscalls.md"]);
     }
 
@@ -679,19 +693,28 @@ mod tests {
         pages.sort();
         let field = |text: &str, key: &str| {
             text.split("\n---").next().unwrap().lines().find_map(|l| {
-                l.strip_prefix(key).map(|v| v.trim().trim_matches('"').to_owned())
+                l.strip_prefix(key)
+                    .map(|v| v.trim().trim_matches('"').to_owned())
             })
         };
         let mut names = Vec::new();
         for page in &pages {
             let text = fs::read_to_string(page).unwrap();
-            let Some(title) = field(&text, "title:") else { continue };
+            let Some(title) = field(&text, "title:") else {
+                continue;
+            };
             let label = field(&text, "sidebar_label:");
-            let body = text.splitn(2, "\n---\n").nth(1).unwrap_or("");
-            let h1 = body.lines().find_map(|l| l.strip_prefix("# ")).map(|h| h.replace('`', ""));
+            let body = text.split_once("\n---\n").map_or("", |x| x.1);
+            let h1 = body
+                .lines()
+                .find_map(|l| l.strip_prefix("# "))
+                .map(|h| h.replace('`', ""));
             for other in [label, h1].into_iter().flatten() {
                 if other != title {
-                    names.push(format!("{}: {title:?} / {other:?}", page.strip_prefix(&docs).unwrap().display()));
+                    names.push(format!(
+                        "{}: {title:?} / {other:?}",
+                        page.strip_prefix(&docs).unwrap().display()
+                    ));
                 }
             }
         }

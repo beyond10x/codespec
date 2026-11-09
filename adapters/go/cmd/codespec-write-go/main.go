@@ -18,7 +18,7 @@ import (
 )
 
 // version is the workspace version, as in codespec-read-go.
-const version = "0.6.0"
+const version = "0.6.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--describe" {

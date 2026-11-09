@@ -2,6 +2,22 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## 0.6.1
+
+### Changed
+
+- The documentation site is shorter and easier to scan. The home page shows "Get started" on the
+  first screen and names no release. The sidebar is grouped Start here, Guides, Concepts,
+  Examples, Reference and Project, and only the open group is expanded. The navbar is
+  Documentation, Getting started, Reference, Status and GitHub. Below 997 px wide, the search box
+  no longer covers the menu button.
+- Every page has one name for its title, sidebar label and heading: the CLI page is
+  "codespec CLI", the docs index "Overview". Code blocks over 60 lines on the generated example
+  pages are folded with their line count. Content repeated on several pages is a link to the page
+  that holds it.
+- The prose of eleven hand-written pages is tighter: 11,363 → 11,282 words, semicolon chains split
+  into sentences.
+
 ## 0.6.0
 
 ### Added
