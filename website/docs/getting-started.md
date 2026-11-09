@@ -1,49 +1,50 @@
 ---
 title: Getting started
 sidebar_position: 3
-description: Build codespec, read the orders example into cir/1, apply the passes, write Go and Rust, and run the harness.
+description: Install codespec, read the orders example into cir/1, apply the passes, write Go and Rust, and run the harness.
 lede: Ten commands take a Go service through every step codespec has, and the last one shows the three implementations print the same bytes.
-source: Taskfile.yml, crates/cli/src/lib.rs, examples/orders; every command run in a clean checkout on 2026-11-06
+source: .github/workflows/release-build.yml, crates/cli/src/lib.rs, examples/orders; every command run with an installed codespec in a clean clone on 2026-11-09
 ---
 
 # Getting started
 
-Every command on this page was run in a checkout of this repository, and its output is pasted from that
-run. Absolute paths in the output are shortened to `<checkout>`.
+Every command on this page was run with an installed `codespec`, in a clone of the repository, and
+its output is pasted from that run. Absolute paths in the output are shortened to `<install>` for
+the install directory and `<checkout>` for the clone.
 
-## Install or build
+## Install
 
-A GitHub Release carries one archive per target, `codespec-<tag>-<target>.tar.gz`, for
-`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, plus
-`SHA256SUMS`. Each archive holds `codespec`, the Go and Rust readers and writers and their runners
-side by side, so the directory you extract it into is the `--adapters` directory. See the
-[releases page](https://github.com/beyond10x/codespec/releases). The commands on this page build
-from source and use `target/debug/codespec` and `target/adapters`.
-
-To build, you need Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
-[go-task](https://taskfile.dev). The Java and Groovy readers also need a JDK 17 or newer (`JDK` in
-`Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). `task build` builds the `codespec` command into
-`target/debug/` and every adapter into `target/adapters/`:
+Each [GitHub Release](https://github.com/beyond10x/codespec/releases) carries one archive per
+target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, and `SHA256SUMS` over them. An archive
+holds `codespec`, the Go and Rust readers and writers, and their runners, side by side. Download
+the archive for your machine and `SHA256SUMS`, check it and extract it. `<tag>` is the release, for
+example `0.6.1`. On macOS, `shasum -a 256 -c --ignore-missing SHA256SUMS` does the check:
 
 ```shell-session
-$ git clone https://github.com/beyond10x/codespec && cd codespec
-$ task build
-$ ls target/adapters
-codespec-read-go
-codespec-read-groovy
-codespec-read-java
-codespec-read-rust
-codespec-run-go
-codespec-run-groovy
-codespec-run-java
-codespec-run-rust
-codespec-write-go
-codespec-write-rust
-$ target/debug/codespec --version
+$ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz
+$ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/SHA256SUMS
+$ sha256sum -c --ignore-missing SHA256SUMS
+codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz: OK
+$ mkdir -p ~/.local/share/codespec
+$ tar -xzf codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/share/codespec
+$ export PATH="$HOME/.local/share/codespec:$PATH"
+$ export CODESPEC_ADAPTERS="$HOME/.local/share/codespec"
+$ codespec --version
 codespec 0.6.1
 ```
 
-Set `CODESPEC_ADAPTERS=target/adapters` to drop `--adapters target/adapters` from every command.
+`codespec` runs an adapter from the directory `CODESPEC_ADAPTERS` names, or from `--adapters` on
+each command. The extract directory is that directory. The Java and Groovy readers are not in the
+archive: [Build from source](#build-from-source) builds them.
+
+The commands below read the repository's examples. Clone it at the tag you installed:
+
+```shell-session
+$ git clone --branch <tag> https://github.com/beyond10x/codespec && cd codespec
+```
+
+The Go reader needs Go 1.23 or newer on `PATH`, and building the Rust output needs Cargo.
 
 ## Read: Go → cir/1
 
@@ -52,8 +53,8 @@ list pending, and an `Audit` method that starts a goroutine.
 
 ```shell-session
 $ mkdir -p try
-$ target/debug/codespec read --lang go examples/orders/source --out try/orders.read.cir.json --adapters target/adapters
-$ target/debug/codespec validate --canonical try/orders.read.cir.json
+$ codespec read --lang go examples/orders/source --out try/orders.read.cir.json
+$ codespec validate --canonical try/orders.read.cir.json
 try/orders.read.cir.json: cir/1 orders, 9 types, 9 funcs, 1 refusals
 $ cmp try/orders.read.cir.json examples/orders/orders.read.cir.json
 ```
@@ -70,7 +71,7 @@ $ jq -c .refusals try/orders.read.cir.json
 ## Pass: cir/1 → cir/1
 
 ```shell-session
-$ target/debug/codespec pass try/orders.read.cir.json --out try/orders.cir.json
+$ codespec pass try/orders.read.cir.json --out try/orders.cir.json
 $ jq .facts try/orders.cir.json
 {
   "shared": [
@@ -116,7 +117,7 @@ $ jq .facts try/orders.cir.json
 ## Write Go
 
 ```shell-session
-$ target/debug/codespec write --lang go try/orders.read.cir.json --out try/go --adapters target/adapters
+$ codespec write --lang go try/orders.read.cir.json --out try/go
 $ diff examples/orders/source/orders.go try/go/orders.go
 0a1,2
 > // Code generated by codespec-write-go from cir/1. DO NOT EDIT.
@@ -149,7 +150,7 @@ else differs. The `Audit` goroutine is written back verbatim from its `foreign` 
 The Rust writer needs the facts, so it reads the passed document:
 
 ```shell-session
-$ target/debug/codespec write --lang rust try/orders.cir.json --out try/rust --adapters target/adapters
+$ codespec write --lang rust try/orders.cir.json --out try/rust
 $ find try/rust -type f | sort
 try/rust/Cargo.toml
 try/rust/refusals.json
@@ -173,7 +174,7 @@ is written.
 ## Run the harness
 
 ```shell-session
-$ target/debug/codespec harness examples/orders --seeds 200 --commands 300 --build-dir target/harness
+$ codespec harness examples/orders --seeds 200 --commands 300 --build-dir try/harness
 harness: 200 seeds x 300 commands, 3 implementations (original, go, rust), 79990 output lines each, byte-equal
 ```
 
@@ -184,8 +185,8 @@ differing byte. How a difference is reported: [The harness](/docs/concepts/harne
 ## When an adapter is missing
 
 ```shell-session
-$ target/debug/codespec read --lang python examples/orders/source --out try/x.json --adapters target/adapters
-codespec: no read adapter for "python": target/adapters/codespec-read-python does not exist
+$ codespec read --lang python examples/orders/source --out try/x.json
+codespec: no read adapter for "python": <install>/codespec-read-python does not exist
 ```
 
 Exit status 1. There is no Python reader.
@@ -196,3 +197,30 @@ Exit status 1. There is no Python reader.
 - [Translate a Go package to Rust](/docs/guides/translate-go-to-rust): the same steps on a package
   of your own.
 - [codespec CLI reference](/docs/reference/cli).
+
+## Build from source
+
+Building needs Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
+[go-task](https://taskfile.dev). The Java and Groovy readers also need a JDK 17 or newer (`JDK` in
+`Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). `task build` builds `codespec` into
+`target/debug/` and every adapter into `target/adapters/`:
+
+```shell-session
+$ git clone https://github.com/beyond10x/codespec && cd codespec
+$ task build
+$ ls target/adapters
+codespec-read-go
+codespec-read-groovy
+codespec-read-java
+codespec-read-rust
+codespec-run-go
+codespec-run-groovy
+codespec-run-java
+codespec-run-rust
+codespec-write-go
+codespec-write-rust
+$ target/debug/codespec --version
+codespec 0.6.1
+```
+
+A source build runs as `target/debug/codespec` with `CODESPEC_ADAPTERS=target/adapters`.

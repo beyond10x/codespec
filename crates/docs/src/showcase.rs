@@ -114,7 +114,7 @@ fn page(root: &Path) -> Result<String> {
          `foreign` statement (\"expression outside cir/1\") and the Rust writer refuses the \
          function that holds it.\n\n{}\n\
          ## 2. Read: Go → `cir/1`\n\n\
-         ```shell-session\n$ codespec read --lang go {EXAMPLE}/source --out {READ} --adapters target/adapters\n```\n\n\
+         ```shell-session\n$ codespec read --lang go {EXAMPLE}/source --out {READ}\n```\n\n\
          The Go reader (`codespec-read-go`, on `go/types`) writes one `cir/1` module: {} types, {} \
          sentinel errors, {} functions, {} refusals. Every expression carries its type. This is \
          `Count` as read:\n\n{}\n\
@@ -130,11 +130,11 @@ fn page(root: &Path) -> Result<String> {
          kind and type. Nested expressions are collapsed into one line.\n\n\
          ![The cir/1 module greeter as a tree of declarations, statements and expressions](/img/greeter-cir.svg)\n\n\
          ## 4. Write: `cir/1` → Go\n\n\
-         ```shell-session\n$ codespec write --lang go {READ} --out {EXAMPLE}/out/go --adapters target/adapters\n```\n\n\
+         ```shell-session\n$ codespec write --lang go {READ} --out {EXAMPLE}/out/go\n```\n\n\
          The Go writer (`codespec-write-go`) builds a `go/ast` tree and prints it with \
          `go/printer`. The result differs from the source only by the generated-code header it starts with.\n\n{}\n\
          ## 5. Write: `cir/1` → Rust\n\n\
-         ```shell-session\n$ codespec write --lang rust {PASSED} --out {EXAMPLE}/out/rust --adapters target/adapters\n```\n\n\
+         ```shell-session\n$ codespec write --lang rust {PASSED} --out {EXAMPLE}/out/rust\n```\n\n\
          The Rust writer (`codespec-write-rust`, on `syn` and `prettyplease`) reads its mappings \
          off the facts: `Greet` is `fallible`, so it returns `Result<String, Error>`; `Count` is \
          `comma_ok` and `read_only`, so it takes `&self` and returns `Option<i64>`; the sentinel \

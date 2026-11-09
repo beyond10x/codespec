@@ -3,25 +3,31 @@ title: Map a repository to syscalls
 sidebar_position: 3
 description: Read a Go repository with every package it imports, run codespec effects over the set with the Linux syscall barrier, and read the effects, syscalls, dispatch sites and unknown reasons it reports.
 lede: Two commands take a Go repository and its imports, the standard library included, to a report of the syscalls each function may reach and the line that leads there.
-source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/fixtures/readfile, commit 827b232; every command run in this repository on 2026-11-08 with codespec 0.5.0 and Go 1.27.1 linux/amd64
+source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, summaries/go-std.effects.json, summaries/go-linux-amd64.barrier.json, examples/envcheck, examples/netcheck, crates/cli/tests/fixtures/readfile, commit 44e2a15; every command run in a clone with an installed codespec 0.6.1 on 2026-11-09, Go 1.27.1 linux/amd64, CGO_ENABLED=0
 ---
 
 # Map a repository to syscalls
 
 This guide runs [static analysis](/docs/concepts/static-analysis) on Go code: first one package
 with hand-written summaries, then a whole module with every package it imports, down to the
-syscall barrier. Every command was run from the repository root after `task build`
-([Getting started](/docs/getting-started)), with codespec 0.5.0 and Go 1.27.1 on linux/amd64.
-Output is pasted from that run. The `jq` lines shorten the JSON reports.
+syscall barrier. Every command was run in a clone of the repository with an installed codespec
+0.6.1 ([Getting started](/docs/getting-started#install)) and Go 1.27.1 on linux/amd64. Output is
+pasted from that run. The `jq` lines shorten the JSON reports.
 
 ## What you need
 
 | what | why |
 |---|---|
-| a codespec checkout after `task build` | `scripts/read-repo.sh` uses `target/debug/codespec` and `target/adapters` (or `$CODESPEC` and `$CODESPEC_ADAPTERS`) |
+| an installed `codespec`, `CODESPEC_ADAPTERS` set | [Getting started](/docs/getting-started#install) |
+| a clone of the repository | `scripts/read-repo.sh`, the summaries and the barrier are in it |
+| `CODESPEC=codespec` | `read-repo.sh` runs `$CODESPEC`, with the adapters in `$CODESPEC_ADAPTERS` |
 | Go on `PATH` | the Go reader type-checks with `go/types`; `go list -deps` finds the imports |
 | a Go module: a directory with `go.mod` | `read-repo.sh` runs `go mod download` and `go list` in it |
-| linux/amd64 | the only barrier is `summaries/go-linux-amd64.barrier.json` |
+| linux/amd64, `CGO_ENABLED=0` | the only barrier is `summaries/go-linux-amd64.barrier.json`; with cgo, `go list -deps` adds packages |
+
+```shell-session
+$ export CODESPEC=codespec CGO_ENABLED=0
+```
 
 ## 1. One package, summaries only
 
@@ -30,19 +36,19 @@ functions summarised by hand. `examples/envcheck` reads an environment variable,
 a file:
 
 ```shell-session
-$ target/debug/codespec read --lang go examples/envcheck/source --out work/envcheck.cir.json --adapters target/adapters
-$ target/debug/codespec effects work/envcheck.cir.json --summaries summaries/go-std.effects.json > work/envcheck.effects.json
+$ codespec read --lang go examples/envcheck/source --out work/envcheck.cir.json
+$ codespec effects work/envcheck.cir.json --summaries summaries/go-std.effects.json > work/envcheck.effects.json
 $ jq -c '.funcs[] | {name, effects, unknown}' work/envcheck.effects.json
 {"name":"Mode","effects":["env"],"unknown":[]}
 {"name":"Label","effects":[],"unknown":[]}
 {"name":"Banner","effects":["env"],"unknown":[]}
 {"name":"Announce","effects":["env","stdout"],"unknown":[]}
 {"name":"Save","effects":["env","fs.write"],"unknown":[]}
+$ cmp work/envcheck.effects.json examples/envcheck/envcheck.effects.json
 ```
 
-The report is byte-equal to the checked-in `examples/envcheck/envcheck.effects.json`, and
-`task examples-effects` checks it. `Label` has no effects and no `unknown`: pure as far as the
-summaries say. `Save`'s statement `return os.WriteFile(…, 0o644)` is a refusal in the `cir/1`,
+The report is byte-equal to the checked-in `examples/envcheck/envcheck.effects.json`. `Label` has
+no effects and no `unknown`: pure as far as the summaries say. `Save`'s statement `return os.WriteFile(…, 0o644)` is a refusal in the `cir/1`,
 because `fs.FileMode` has no `cir/1` type. The reader lists the calls inside it, so `os.WriteFile`
 still counts as `fs.write`.
 
@@ -59,17 +65,17 @@ import path as `path`. The fixture `crates/cli/tests/fixtures/readfile` is the m
 ```shell-session
 $ scripts/read-repo.sh --deps crates/cli/tests/fixtures/readfile work/readfile
 cmp | ok | read 0 of 0 functions, n/a | refusals 5
-errors | ok | read 2 of 8 functions, 25.0% | refusals 22
+errors | ok | read 2 of 10 functions, 20.0% | refusals 20
 example.com/readfile | ok | read 1 of 1 functions, 100.0% | refusals 0
-internal/abi | ok | read 10 of 22 functions, 45.5% | refusals 115
+internal/abi | ok | read 11 of 26 functions, 42.3% | refusals 110
 …
-os | ok | read 38 of 96 functions, 39.6% | refusals 424
+os | ok | read 131 of 280 functions, 46.8% | refusals 373
 …
-runtime | ok | read 186 of 722 functions, 25.8% | refusals 5490
+runtime | ok | read 264 of 932 functions, 28.3% | refusals 5399
 …
-syscall | ok | read 29 of 249 functions, 11.6% | refusals 675
-time | ok | read 53 of 173 functions, 30.6% | refusals 415
-unicode/utf8 | ok | read 3 of 19 functions, 15.8% | refusals 54
+syscall | ok | read 31 of 294 functions, 10.5% | refusals 602
+time | ok | read 59 of 180 functions, 32.8% | refusals 378
+unicode/utf8 | ok | read 3 of 19 functions, 15.8% | refusals 44
 unsafe | ok | read 0 of 0 functions, n/a | refusals 9
 ```
 
@@ -80,7 +86,7 @@ unsafe | ok | read 0 of 0 functions, n/a | refusals 9
 | 3 | `codespec measure`: functions read with no `foreign` statement, of all functions |
 | 4 | refusals: constructs kept as `foreign` with a reason |
 
-The fixture gives 54 documents, 13 MB, in 2.3 s on the machine this page was written on. A low
+The fixture gives 54 documents, 17 MB, in 1.2 s on the machine this page was written on. A low
 "read" share does not stop the analysis. A refused function stays in the document as an opaque
 function with its calls (`Module.opaque`), and a `foreign` statement lists its calls.
 
@@ -94,7 +100,7 @@ Every module is still analysed. The [CLI reference](/docs/reference/cli) lists e
 `codespec effects`.
 
 ```shell-session
-$ target/debug/codespec effects work/readfile/*.cir.json \
+$ codespec effects work/readfile/*.cir.json \
     --summaries summaries/go-std.effects.json \
     --barrier summaries/go-linux-amd64.barrier.json \
     --report example.com/readfile > work/readfile.report.json
@@ -107,7 +113,7 @@ $ jq -c '.funcs[0].syscalls[] | select(.name == "openat" or .name == "read")' wo
 {"name":"read","at":["readfile.go:8"]}
 ```
 
-This ran in 0.5 s. `at` is the line of `Load` that leads to the syscall: `readfile.go:8`, the
+This ran in 0.2 s. `at` is the line of `Load` that leads to the syscall: `readfile.go:8`, the
 `os.ReadFile` call. `crates/cli/tests/barrier.rs` checks this line.
 
 | report field | what it says |
@@ -128,17 +134,16 @@ documents replace them.
 it reaches, counted, most frequent first.
 
 ```shell-session
-$ target/debug/codespec effects work/readfile/*.cir.json \
+$ codespec effects work/readfile/*.cir.json \
     --summaries summaries/go-std.effects.json \
     --barrier summaries/go-linux-amd64.barrier.json \
     --report example.com/readfile --roots > work/readfile.roots.json
 $ jq '.funcs[0].unknown_roots | length' work/readfile.roots.json
-33
+31
 $ jq -r '.funcs[0].unknown_roots[].reason | sub(":.*"; "")' work/readfile.roots.json | sort | uniq -c | sort -rn
      20 function without a body
+      6 function value with no candidate in the set
       5 interface call with no implementation in the set
-      5 function value with no candidate in the set
-      3 method on undeclared type
 ```
 
 | root | what to do |
@@ -155,7 +160,7 @@ Report a standard library package to see dispatch. `os.SyscallError.Error` forma
 error with `err.Error()`, a call through the `error` interface:
 
 ```shell-session
-$ target/debug/codespec effects work/readfile/*.cir.json \
+$ codespec effects work/readfile/*.cir.json \
     --summaries summaries/go-std.effects.json \
     --barrier summaries/go-linux-amd64.barrier.json \
     --report os > work/os.report.json
@@ -177,12 +182,12 @@ dispatch resolved over the whole set", not as what a run of the function does.
 
 `examples/netcheck/source` is a Go module of three packages: `netcheck`, a TCP server `cmd/server`
 and a client `cmd/client`. `netcheck` holds an interface `Prober` with a dialing and a fixed
-implementation, a generic `Count` and a variadic `CheckAll`. One task runs every command of this
-section twice, requires byte-equal output, and writes the checked-in files under
-`examples/netcheck`. It needs Go 1.27.1 and no network:
+implementation, a generic `Count` and a variadic `CheckAll`. Read it with every import. With Go
+1.27.1 the read lines equal the checked-in `examples/netcheck/read.txt`:
 
 ```shell-session
-$ task examples-netcheck
+$ scripts/read-repo.sh --deps examples/netcheck/source work/netcheck > /dev/null
+$ cmp work/netcheck/read.txt examples/netcheck/read.txt
 ```
 
 The module reads with no refusal. With its imports the set is 75 documents. Pass the two `main`
@@ -190,7 +195,7 @@ functions as entries. With an entry, dispatch is rapid type analysis (`rta`):
 
 ```shell-session
 $ M=example.com/netcheck
-$ target/debug/codespec effects work/netcheck/*.cir.json \
+$ codespec effects work/netcheck/*.cir.json \
     --barrier summaries/go-linux-amd64.barrier.json \
     --entry $M/cmd/server.main --entry $M/cmd/client.main \
     --report $M --report $M/cmd/server --report $M/cmd/client > work/netcheck.effects.json
@@ -214,7 +219,7 @@ effect, no syscall, no `unknown`. Add `--dispatch cha` to compare with class-hie
 `codespec reach` lists what the entries reach and what is dead code:
 
 ```shell-session
-$ target/debug/codespec reach work/netcheck/*.cir.json \
+$ codespec reach work/netcheck/*.cir.json \
     --entry $M/cmd/server.main --entry $M/cmd/client.main --report $M > work/netcheck.reach.json
 $ jq -c '.modules[0] | {reached, unreached}' work/netcheck.reach.json
 {"reached":["Answer","CheckAll","Count","TCP","TCPProber.Probe"],"unreached":["FixedProber.Probe"]}

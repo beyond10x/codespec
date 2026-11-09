@@ -36,7 +36,7 @@ expressed is kept and reported. It is not approximated.
 `examples/envcheck/source/envcheck.go` reads `APP_MODE`, builds a banner, prints it and writes it
 to a file. Its `cir/1` declares five externs (`os.Getenv`, `strconv.Itoa`, `strings.ToLower`,
 `strings.ToUpper`, `strings.TrimSpace`). The report with `summaries/go-std.effects.json` is
-`examples/envcheck/envcheck.effects.json`, and `task examples-effects` checks it:
+`examples/envcheck/envcheck.effects.json`:
 
 | function | effects | unknown |
 |---|---|---|

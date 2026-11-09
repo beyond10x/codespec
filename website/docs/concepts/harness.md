@@ -13,7 +13,7 @@ each on one generated trace per seed, and compares every output byte for byte wi
 implementation's, the reference. Any difference fails the run.
 
 ```shell-session
-$ target/debug/codespec harness examples/orders --seeds 200 --commands 300 --build-dir target/harness
+$ codespec harness examples/orders --seeds 200 --commands 300 --build-dir work/harness
 harness: 200 seeds x 300 commands, 3 implementations (original, go, rust), 79990 output lines each, byte-equal
 ```
 
@@ -83,7 +83,9 @@ A copy of `orders` with one token changed in the Rust output (`if total <= 0i64`
 `if total < 0i64`):
 
 ```shell-session
-$ target/debug/codespec harness target/docs-run/planted/orders --seeds 200 --commands 300 --build-dir target/docs-run/planted/build
+$ cp -r examples/orders work/planted
+$ sed -i 's/if total <= 0i64/if total < 0i64/' work/planted/out/rust/src/lib.rs
+$ codespec harness work/planted --seeds 200 --commands 300 --build-dir work/planted-build
 codespec: seed 0: rust differs from original at line 160
   expected: "place err total must be positive"
   got:      "place ok o-3"

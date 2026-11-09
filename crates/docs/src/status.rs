@@ -515,14 +515,19 @@ mod tests {
             "website/docs/status.mdx names a release; use status.version"
         );
         let start = fs::read_to_string(site.join("docs/getting-started.md")).unwrap();
-        let after = start
-            .split("$ target/debug/codespec --version\n")
-            .nth(1)
-            .expect("getting-started.md runs --version");
-        assert_eq!(
-            after.lines().next(),
-            Some(format!("codespec {VERSION}").as_str()),
-            "website/docs/getting-started.md"
+        let printed: Vec<&str> = start
+            .split("codespec --version\n")
+            .skip(1)
+            .map(|after| after.lines().next().unwrap_or(""))
+            .collect();
+        assert!(
+            start.contains("\n$ codespec --version\n"),
+            "website/docs/getting-started.md runs the installed codespec --version"
+        );
+        let expected = format!("codespec {VERSION}");
+        assert!(
+            printed.iter().all(|line| *line == expected),
+            "website/docs/getting-started.md: {printed:?}"
         );
     }
 }

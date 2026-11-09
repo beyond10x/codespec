@@ -48,8 +48,8 @@ Every node with variants is tagged by the field `k`. The diagram is the `greeter
 
 `Module::from_json` refuses an unknown field anywhere, an unknown kind, an expression without a
 type, and any `format` other than `cir/1`. `codespec validate --canonical` also refuses a document
-whose bytes are not its canonical encoding. Run next to a copy of `orders.read.cir.json`, with
-`target/debug` on `PATH`:
+whose bytes are not its canonical encoding. Run next to a copy of `orders.read.cir.json`, with the
+installed `codespec`:
 
 ```shell-session
 $ jq -c '.format="cir/2"' orders.read.cir.json > v2.json

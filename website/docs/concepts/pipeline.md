@@ -97,12 +97,14 @@ facts:
 | sentinel errors, error structs, formatted errors | one `enum Error` | — |
 | Go `int` | `i64`, with wrapping arithmetic | — |
 
-The writer refuses a module without facts whole, and the message gives the pass to run:
+The writer refuses a module without facts whole, and the message gives the pass to run. On the
+`stock` package of [Translate a Go package to Rust](/docs/guides/translate-go-to-rust), with
+`<install>` the install directory:
 
 ```shell-session
-$ CODESPEC_ADAPTERS=target/adapters target/debug/codespec write --lang rust work/stock.read.cir.json --out work/no-facts
+$ codespec write --lang rust work/stock.read.cir.json --out work/no-facts
 codespec-write-rust: module stock has no facts: the `facts` pass has not run; run `codespec pass` over it first
-codespec: target/adapters/codespec-write-rust exited with exit status: 1
+codespec: <install>/codespec-write-rust exited with exit status: 1
 ```
 
 ## Refusals
