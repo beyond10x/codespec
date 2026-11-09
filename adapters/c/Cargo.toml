@@ -1,0 +1,19 @@
+[package]
+name = "codespec-write-c"
+description = "Writes a cir/1 module as C11 with a header-only runtime for strings, slices, maps and errors, linking libc only"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "codespec-write-c"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

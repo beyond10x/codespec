@@ -117,10 +117,11 @@ The kit defaults to `conformance/` in this repository. Outside it, take
 directory as `--kit`.
 
 Each release's binary archive `codespec-<version>-<target>.tar.gz` holds `codespec`, the Go and
-Rust readers and writers and the runners `codespec-run-go` and `codespec-run-rust`. Unpack it into
-one directory, put your own adapter and runner beside them, and pass the directory as `--adapters`.
-That directory is everything `codespec conform` needs for a Go or Rust writer and for a reader. The
-runners build what they run, so `go` and `cargo` must be on `PATH`.
+Rust readers and writers, the C writer and the runners `codespec-run-go`, `codespec-run-rust` and
+`codespec-run-c`. Unpack it into one directory, put your own adapter and runner beside them, and
+pass the directory as `--adapters`. That directory is everything `codespec conform` needs for a
+Go, Rust or C writer and for a reader. The runners build what they run, so `go`, `cargo` and `cc`
+must be on `PATH`.
 
 | flag | effect |
 |---|---|

@@ -76,10 +76,10 @@ To run a written program the kit needs one more program from the adapter's autho
 | `codespec-run-<lang>` | `<written dir> <calls.json>` | builds the written module with the target's toolchain, makes the calls in order, prints one line per result in the harness encoding |
 
 The runner replaces the per-example drivers the harness uses today: one runner per language serves
-every case. This repository ships `codespec-run-go` and `codespec-run-rust`, which also serve as the
+every case. This repository ships `codespec-run-go`, `codespec-run-rust` and `codespec-run-c`, which also serve as the
 worked examples, and `codespec-run-java` and `codespec-run-groovy` (`adapters/jvm/src/codespec/run`),
 which compile a package with javac or groovyc and call its static methods by reflection; the JVM
-runners serve step 1 of the Java and Groovy readers' runs. A runner cannot pass a case on its own: the module it runs comes from the writer
+runners serve step 1 of the Java and Groovy readers' runs. `codespec-run-c` serves the C reader's the same way: a directory without a module header is C written by hand, its functions called by the `func` names of `calls.json` with their first letter lower case. A runner cannot pass a case on its own: the module it runs comes from the writer
 under test, and the output is compared with the reference's.
 
 ## 5. The claim: a manifest the adapter prints

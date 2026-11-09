@@ -46,6 +46,7 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("Rust", "rust"),
     ("Java", "java"),
     ("Groovy", "groovy"),
+    ("C", "c"),
 ];
 
 /// One adapter as the matrix sees it: its manifest's bytes and, when one exists, its report.

@@ -1,0 +1,24 @@
+[package]
+name = "codespec-run-c"
+description = "Compiles C written by codespec-write-c, or by hand as a C reader reads it, with cc and a generated driver that makes a conformance case's calls, printing each result in the harness encoding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_run_c"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codespec-run-c"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-conformance = { path = "../../crates/conformance" }
+clap.workspace = true
+
+[dev-dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+serde_json.workspace = true

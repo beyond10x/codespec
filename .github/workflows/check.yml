@@ -38,6 +38,7 @@ jobs:
           - test codespec-docs
           - test codespec-write-rust
           - test codespec-read-rust codespec-run-rust
+          - test codespec-write-c codespec-run-c
           - adapters
           - examples
           - conformance

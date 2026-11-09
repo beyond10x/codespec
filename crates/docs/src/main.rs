@@ -19,8 +19,8 @@
 //!   reports and trees of `examples/netcheck`;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
-//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go
-//!   and Rust writers (`website/data/conformance/<role>-<lang>.json`), by running `codespec
+//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go,
+//!   Rust and C writers (`website/data/conformance/<role>-<lang>.json`), by running `codespec
 //!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
 //!   (`target/adapters`, `task build`);
 //! - the support matrix (`website/data/support-matrix.json`, [`support`]), from the feature list,
@@ -255,6 +255,7 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "writer",
         "rust",
     ),
+    ("website/data/conformance/writer-c.json", "writer", "c"),
 ];
 
 /// One generated directory: its path relative to the root and every file under it, by path

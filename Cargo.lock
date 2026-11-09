@@ -194,6 +194,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespec-run-c"
+version = "0.6.1"
+dependencies = [
+ "b10x-codespec-conformance",
+ "b10x-codespec-model",
+ "clap",
+ "serde_json",
+]
+
+[[package]]
 name = "codespec-run-rust"
 version = "0.6.1"
 dependencies = [
@@ -205,6 +215,14 @@ dependencies = [
  "serde_json",
  "syn",
  "toml",
+]
+
+[[package]]
+name = "codespec-write-c"
+version = "0.6.1"
+dependencies = [
+ "b10x-codespec-model",
+ "serde_json",
 ]
 
 [[package]]

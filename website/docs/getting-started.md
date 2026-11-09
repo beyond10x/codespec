@@ -213,10 +213,12 @@ codespec-read-go
 codespec-read-groovy
 codespec-read-java
 codespec-read-rust
+codespec-run-c
 codespec-run-go
 codespec-run-groovy
 codespec-run-java
 codespec-run-rust
+codespec-write-c
 codespec-write-go
 codespec-write-rust
 $ target/debug/codespec --version
