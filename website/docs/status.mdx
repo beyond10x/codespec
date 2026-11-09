@@ -18,18 +18,13 @@ that is not built.
 
 <StatusTable data={status} />
 
-## Not provided
-
-- **No network I/O or concurrency in `cir/1`.** Such code is kept as a `foreign`
-  statement and refused by writers for another language.
-- **No language model.** Nothing in the pipeline guesses; this is not planned.
-- **No ESS integration.** Using an ESS conformance suite as an equivalence oracle is a direction
-  in the [Vision](/docs/vision#later), not a plan.
+What codespec does not do is on the [overview](/docs/#what-it-is-not).
 
 ## Known limitations
 
 - **The Rust reader reads a subset.** One file, `src/lib.rs`; no generics, traits other than
-  `Display`, closures, `while` or `loop`, `?`, or integer literals nothing types. Each is kept as a
+  `Display`, closures, `while` or `loop`, `?` other than on a fallible call of the same crate, or
+  integer literals nothing types. Each is kept as a
   `foreign` statement with a refusal inside a body; an item outside it (a generic function, a trait
   impl) is listed as a refusal and left out. Go's `int` and `int64` both come back from Rust as `int64`.
 - **The harness speaks two programs.** Its trace generators are the `orders` and `inventory`

@@ -126,18 +126,8 @@ when neither is given. Go `init` functions and variable initialisers are always 
 `codespec reach` lists, per module, the functions the entries reach and those they do not.
 `rta` narrows dispatch, so it reaches fewer functions than `cha`.
 
-## Worked example: `netcheck`
-
-[`examples/netcheck`](/docs/examples/netcheck) is a Go module with a TCP server, a client and
-an interface `Prober` with two implementations, analysed from `cmd/server.main` and
-`cmd/client.main`. `task check` checks its facts:
-
-| question | answer |
-|---|---|
-| which `net` syscall may only the server reach? | `accept4`; both reach `socket`, `bind`, `listen`, `connect` |
-| how many `Probe` methods may `CheckAll`'s `p.Probe(a)` call? | 1 with `rta`, 2 with `cha` |
-| which function is dead code from the two entries? | `FixedProber.Probe` with `rta`; none with `cha` |
-| how does the client reach `connect`? | through 15 calls ([Call trees](/docs/examples/call-trace#netcheck)) |
+[Map a repository to syscalls](/docs/guides/map-a-repository-to-syscalls#6-a-worked-example-entries-reach-and-trace)
+runs `effects`, `reach` and `trace` on [`examples/netcheck`](/docs/examples/netcheck).
 
 ## The syscall barrier
 

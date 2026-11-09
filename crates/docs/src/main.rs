@@ -203,13 +203,14 @@ fn cell(value: &str) -> String {
         .replace('|', "\\|")
 }
 
-/// The front matter of a generated page: the generator line, title, label, sidebar position,
-/// description and no edit link, then the generated-page comment.
-fn front_matter(title: &str, label: &str, description: &str, position: u32) -> String {
+/// The front matter of a generated page: the generator line, `name` as title and sidebar label,
+/// sidebar position, description and no edit link, then the generated-page comment and `name`
+/// as the H1, so the page has one name everywhere it is shown (UXF-011).
+fn front_matter(name: &str, description: &str, position: u32) -> String {
     format!(
-        "---\n{FRONT_MATTER_HEADER}\ntitle: {}\nsidebar_label: {}\nsidebar_position: {position}\ndescription: {}\ncustom_edit_url: null\n---\n\n{HEADER}\n\n",
-        yaml_string(title),
-        yaml_string(label),
+        "---\n{FRONT_MATTER_HEADER}\ntitle: {}\nsidebar_label: {}\nsidebar_position: {position}\ndescription: {}\ncustom_edit_url: null\n---\n\n{HEADER}\n\n# {name}\n\n",
+        yaml_string(name),
+        yaml_string(name),
         yaml_string(description),
     )
 }
@@ -619,5 +620,81 @@ mod tests {
                 "{relative} is stale; run `task docs-generate`"
             );
         }
+    }
+
+    // UXF-013: a generated page shows no code block over 60 lines open; a longer one is folded.
+    #[test]
+    fn no_generated_page_shows_a_long_code_block_open() {
+        let mut open = Vec::new();
+        for page in ["examples/greeter.md", "examples/series.md", "examples/netcheck.md", "examples/call-trace.md"] {
+            let text = fs::read_to_string(root().join("website/docs").join(page)).unwrap();
+            let (mut details, mut start, mut fence) = (0usize, 0usize, false);
+            for (n, line) in text.lines().enumerate() {
+                if line.starts_with("<details") {
+                    details += 1;
+                } else if line.starts_with("</details") {
+                    details = details.saturating_sub(1);
+                } else if line.starts_with("```") {
+                    if fence && details == 0 && n - start - 1 > 60 {
+                        open.push(format!("{page}:{} ({} lines)", start + 1, n - start - 1));
+                    }
+                    fence = !fence;
+                    start = n;
+                }
+            }
+        }
+        assert_eq!(open, Vec::<String>::new());
+    }
+
+    /// UXF-008: the netcheck worked example is run on one hand-written page, the syscalls guide,
+    /// and generated on its own page. The concept page links to it instead of repeating it.
+    #[test]
+    fn the_netcheck_example_is_worked_on_one_hand_written_page() {
+        let docs = root().join("website/docs");
+        let pages: Vec<&str> = ["concepts/static-analysis.md", "guides/map-a-repository-to-syscalls.md", "index.md", "vision.md"]
+            .into_iter()
+            .filter(|page| fs::read_to_string(docs.join(page)).unwrap().contains("FixedProber.Probe"))
+            .collect();
+        assert_eq!(pages, ["guides/map-a-repository-to-syscalls.md"]);
+    }
+
+    /// UXF-011: a page has one name. Its `title`, its `sidebar_label` when it has one, and its H1
+    /// when it has one are the same text, so the sidebar, the tab, the search result and the page
+    /// agree.
+    #[test]
+    fn every_page_has_one_name() {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "md" || e == "mdx") {
+                    out.push(path);
+                }
+            }
+        }
+        let docs = root().join("website/docs");
+        let mut pages = Vec::new();
+        walk(&docs, &mut pages);
+        pages.sort();
+        let field = |text: &str, key: &str| {
+            text.split("\n---").next().unwrap().lines().find_map(|l| {
+                l.strip_prefix(key).map(|v| v.trim().trim_matches('"').to_owned())
+            })
+        };
+        let mut names = Vec::new();
+        for page in &pages {
+            let text = fs::read_to_string(page).unwrap();
+            let Some(title) = field(&text, "title:") else { continue };
+            let label = field(&text, "sidebar_label:");
+            let body = text.splitn(2, "\n---\n").nth(1).unwrap_or("");
+            let h1 = body.lines().find_map(|l| l.strip_prefix("# ")).map(|h| h.replace('`', ""));
+            for other in [label, h1].into_iter().flatten() {
+                if other != title {
+                    names.push(format!("{}: {title:?} / {other:?}", page.strip_prefix(&docs).unwrap().display()));
+                }
+            }
+        }
+        assert_eq!(names, Vec::<String>::new());
     }
 }

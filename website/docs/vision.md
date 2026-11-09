@@ -23,22 +23,7 @@ Its uses:
 - One analysis for many languages: sharing, fallibility, purity and iteration order, computed on
   `cir/1` once and read by every writer.
 
-## The pipeline
-
-```text
-source ──reader──▶ cir/1 ──passes──▶ cir/1 ──writer──▶ source
-```
-
-| Step | Contract |
-|---|---|
-| reader | source language → `cir/1`; a program that prints one module on stdout |
-| pass | `cir/1` → `cir/1`; deterministic, total, named |
-| facts | whole-module results written by passes and read by writers, so writers decide nothing |
-| writer | `cir/1` → source language; a program that reads one module on stdin |
-| refusal | a construct a reader or writer does not handle, with its position and reason |
-| harness | runs every implementation of one program on seeded traces and compares outputs byte for byte |
-
-The details are on [Readers, passes and writers](/docs/concepts/pipeline) and
+The pipeline is on [Readers, passes and writers](/docs/concepts/pipeline) and
 [The harness](/docs/concepts/harness).
 
 ## Rules

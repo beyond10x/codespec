@@ -104,19 +104,6 @@
           "href": "/docs/guides/map-a-repository-to-syscalls"
         }
       ]
-    },
-    {
-      "kind": "related",
-      "eyebrow": "Related tools",
-      "title": "Where codespec sits.",
-      "tools": [
-        {
-          "name": "ESS",
-          "description": "Executable system specifications describe a system from the outside. Not used by codespec today; later, an ESS conformance suite may serve as an equivalence oracle beside the harness.",
-          "href": "https://beyond10x.github.io/ess/",
-          "mark": "ES"
-        }
-      ]
     }
   ]
 }

@@ -227,10 +227,7 @@ $ jq -c '.modules[0] | {reached, unreached}' work/netcheck.reach.json
 
 ## 7. A real repository
 
-A third-party Go library of 6 packages, read with the 228 packages it imports, gives 234 documents
-in 27 s. `codespec effects` over the set takes 3.6 s. Its client entry point may reach 74 syscalls,
-its server entry point 75. The sets are wide for the reason step 5 shows. This width is the current
-limit of dispatch, not a property of the library.
-
-The full measurement, the formats, the effect vocabulary, the barrier and every `unknown` reason
-are on [Static analysis](/docs/concepts/static-analysis).
+A third-party Go library of 234 documents is measured on
+[Static analysis](/docs/concepts/static-analysis#measured-a-third-party-go-library). Its syscall
+sets are wide for the reason step 5 shows: the current limit of dispatch, not a property of the
+library.

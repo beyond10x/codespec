@@ -1,11 +1,11 @@
 ---
 slug: /
-title: codespec
+title: Overview
 sidebar_position: 1
 description: What codespec is, what it is not, and where it sits among its neighbours.
 ---
 
-# codespec
+# Overview
 
 codespec is a typed code intermediate representation, `cir/1`, and the tools around it. A
 **reader** lifts a source language into `cir/1`, **passes** rewrite it and compute facts about the
