@@ -2,10 +2,14 @@
 format: aep.planning-md/3
 id: epic:c-reader-writer
 kind: epic
-status: draft
+status: implemented
 title: A C reader and a C writer
 summary: codespec-read-c on clang's typed JSON AST, codespec-write-c with a header-only runtime, and codespec-run-c, verified by codespec conform.
-revision: 3
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "active", to: "implemented", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":2}}}
 ---
 # Epic: A C reader and a C writer
 

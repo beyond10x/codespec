@@ -2,12 +2,15 @@
 format: aep.planning-md/3
 id: epic:java-quarkus-reader
 kind: epic
-status: draft
+status: active
 title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
 ---
 # Epic: Java applications and Quarkus
 
