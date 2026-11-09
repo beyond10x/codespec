@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-09T04:18:55Z",
+  "actor": "human:timo",
+  "artifact": "story:c-writer",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check",
+    "reference": "https://github.com/beyond10x/codespec/commit/5169b26"
+  }
+}
