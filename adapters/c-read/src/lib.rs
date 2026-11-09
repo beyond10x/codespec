@@ -351,6 +351,10 @@ impl<'s> Assembly<'s> {
             linknames: Vec::new(),
             inits: Vec::new(),
             interfaces: Vec::new(),
+            entries: Vec::new(),
+            beans: Vec::new(),
+            injects: Vec::new(),
+            transactional: Vec::new(),
         }
     }
 

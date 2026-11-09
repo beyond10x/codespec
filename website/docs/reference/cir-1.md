@@ -19,14 +19,17 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
+| `beans` | list of [`Bean`](#bean) | no | The types of the module a dependency-injection container manages, in source order. Each names a type of `types`. |
 | `consts` | list of [`ConstDecl`](#constdecl) | no |  |
 | `doc` | `string` | no |  |
+| `entries` | list of [`Entry`](#entry) | no | The functions a framework starts, in the reader's order: an HTTP resource method, a scheduled method, a message consumer. Each names a function of `funcs`. |
 | `errors` | list of [`ErrorVar`](#errorvar) | no | Sentinel errors: module-level error values built from a fixed message. |
 | `externs` | list of [`Extern`](#extern) | no | Every function and method outside the module that the module calls, sorted by `path`, then receiver type name (`""` for a function), then `name`, each once. |
 | `facts` | [`Facts`](#facts) or null | no | Whole-module analysis results, written by passes and read by writers. |
 | `format` | `string` | yes | Always `cir/1`. |
 | `funcs` | list of [`Func`](#func) | yes |  |
 | `inits` | list of [`CallRef`](#callref) | no | Every call the initializers of the module's variables make, and every function they use as a value (Go `var hook = syscall.Connect`): run when the module is loaded. |
+| `injects` | list of [`Inject`](#inject) | no | Every injection point of the module, in source order, with what the container resolves it to. |
 | `interfaces` | list of [`Interface`](#interface) | no | Interface types: the module's own, in source order, then every interface of another module that an `iface_call` goes through, sorted by `path`, then `name`, each once. |
 | `layout` | list of `string` | yes | Source declaration order, `type:<name>` (a type or one of the module's own interfaces), `const:<name>`, `error:<name>`, `var:<name>`, `func:<name>` or `func:<receiver type>.<name>`, for writers that keep it. |
 | `linknames` | list of [`Linkname`](#linkname) | no | Every function of the module linked by name to a function of another module (Go `//go:linkname`). |
@@ -36,12 +39,23 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `path` | `string` | no | The module's import path in the source language's spelling (`net/http`), when the reader knows it: the name an `extern` of another module uses for it. |
 | `reader` | [`Reader`](#reader) | yes | Which reader produced this document. |
 | `refusals` | list of [`Refusal`](#refusal) | no | Every construct the reader kept as `foreign` or could not read. |
+| `transactional` | list of `string` | no | The keys (`F` or `T.m`) of the functions of `funcs` that run in a transaction: the container opens one around each call. Source order. |
 | `types` | list of [`TypeDecl`](#typedecl) | yes |  |
 | `vars` | list of [`VarDecl`](#vardecl) | no | Module-level variables, in source order. |
 
 ## Definitions
 
-32 definitions: [`CallRef`](#callref), [`Case`](#case), [`ChanDir`](#chandir), [`ConstArg`](#constarg), [`ConstDecl`](#constdecl), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`FloatBits`](#floatbits), [`ForeignInit`](#foreigninit), [`Func`](#func), [`IfaceMethod`](#ifacemethod), [`IntWidth`](#intwidth), [`Interface`](#interface), [`Linkname`](#linkname), [`MethodEntry`](#methodentry), [`MethodSet`](#methodset), [`MethodSig`](#methodsig), [`Opaque`](#opaque), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`TypeParam`](#typeparam), [`UnionVariant`](#unionvariant), [`VarDecl`](#vardecl), [`Variant`](#variant).
+35 definitions: [`Bean`](#bean), [`CallRef`](#callref), [`Case`](#case), [`ChanDir`](#chandir), [`ConstArg`](#constarg), [`ConstDecl`](#constdecl), [`Entry`](#entry), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`FloatBits`](#floatbits), [`ForeignInit`](#foreigninit), [`Func`](#func), [`IfaceMethod`](#ifacemethod), [`Inject`](#inject), [`IntWidth`](#intwidth), [`Interface`](#interface), [`Linkname`](#linkname), [`MethodEntry`](#methodentry), [`MethodSet`](#methodset), [`MethodSig`](#methodsig), [`Opaque`](#opaque), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`TypeParam`](#typeparam), [`UnionVariant`](#unionvariant), [`VarDecl`](#vardecl), [`Variant`](#variant).
+
+## Bean
+
+A type of the module that a dependency-injection container creates and holds: its scope annotation without the package (`ApplicationScoped`, `Singleton`, `RequestScoped`, `Dependent`).
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | `string` | yes | The name of a type in `types`. |
+| `pos` | `string` | yes |  |
+| `scope` | `string` | yes |  |
 
 ## CallRef
 
@@ -87,6 +101,19 @@ The argument at `index` (from 0) of a call is the integer constant `value`, in d
 | `pos` | `string` | yes |  |
 | `t` | [`Type`](#type) | yes |  |
 | `value` | [`Expr`](#expr) | yes |  |
+
+## Entry
+
+A function a framework starts, not the program: a reader recognised it from the framework's annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `consumes` | list of `string` | no | `http`: the media types the method accepts, as written; empty when it declares none. |
+| `func` | `string` | yes | The key of the function in `funcs`: `F` or `T.m`. |
+| `kind` | `string` | yes | One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer) or `incoming` (a message consumer). |
+| `method` | `string` | no | The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only. |
+| `on` | `string` | yes | `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`: `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name. |
+| `produces` | list of `string` | no | `http`: the media types the method produces, as written; empty when it declares none. |
 
 ## ErrorVar
 
@@ -216,6 +243,16 @@ One method of an interface: its name and its parameter and result types.
 | `name` | `string` | yes |  |
 | `params` | list of [`Type`](#type) | yes |  |
 | `results` | list of [`Type`](#type) | yes |  |
+
+## Inject
+
+A point the container fills in: a field, or a constructor parameter.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `at` | `string` | yes | `Type.field`, or `Type.<new>.param` for a constructor parameter. |
+| `bean` | `string` | no | The qualified name of the one bean of the read packages that implements the type; empty when there is none or several, and the value comes from outside the read code (`t` then is an `extern` type). |
+| `t` | [`Type`](#type) | yes | The type the point is declared with. |
 
 ## IntWidth
 

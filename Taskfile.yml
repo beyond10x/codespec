@@ -8,6 +8,7 @@ vars:
   ADAPTERS: '{{.ROOT_DIR}}/target/adapters'
   CODESPEC: '{{.ROOT_DIR}}/target/debug/codespec'
   JDK: '{{.JDK | default "/usr/lib/jvm/java-21-openjdk"}}'
+  MVN_FLAGS: '{{.MVN_FLAGS | default "-o -q"}}'
   GROOVY_JAR:
     sh: echo "${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}/embeddable/groovy-all-2.4.10.jar"
 
@@ -144,7 +145,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-run-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
+    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; read the Quarkus fixture adapters/java/testdata/quarkus as a project against its Maven class path (task java-quarkus-check); run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -153,12 +154,14 @@ tasks:
       - mkdir -p target/java/test-classes target/java-check
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test adapters/jvm/src adapters/jvm/test -name "*.java" | sort)'
       - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.jvm.JvmTypesTest'
-      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work {{.ADAPTERS}}'
+      - task: java-quarkus-prepare
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
       - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json
       - '{{.CODESPEC}} validate --canonical target/java-check/ledger.1.json'
       - '! grep -q ''"refusals"'' target/java-check/ledger.1.json'
+      - task: java-quarkus-check
       - rm -rf target/groovy/test-classes target/groovy/test-work target/groovy-check
       - mkdir -p target/groovy/test-classes target/groovy-check
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -cp {{.GROOVY_JAR}} -d target/groovy/test-classes $(find adapters/groovy/src adapters/groovy/test adapters/jvm/src adapters/jvm/test -name "*.java" | sort)'
@@ -201,6 +204,53 @@ tasks:
       - '{{.JDK}}/bin/java -cp target/nullable/java Main adapters/java/testdata/nullable/calls.json > target/nullable/java.txt'
       - cmp target/nullable/go.txt target/nullable/java.txt
       - cmp target/nullable/rust.txt target/nullable/java.txt
+
+  java-classpath:
+    desc: Write the dependency class path of the Maven project in PROJECT, or in the directory after --, to target/java-classpath.txt, the value of CODESPEC_JAVA_CLASSPATH. Maven runs with MVN_FLAGS, offline by default (-o -q), and the reader never runs it.
+    vars:
+      PROJECT: '{{.PROJECT | default .CLI_ARGS}}'
+    cmds:
+      - mkdir -p target
+      - 'JAVA_HOME={{.JDK}} mvn {{.MVN_FLAGS}} -f {{.PROJECT}}/pom.xml org.apache.maven.plugins:maven-dependency-plugin:3.7.0:build-classpath -Dmdep.outputFile={{.ROOT_DIR}}/target/java-classpath.txt'
+
+  java-quarkus-prepare:
+    desc: Build the Quarkus fixture adapters/java/testdata/quarkus with mvn package under MVN_FLAGS (offline by default, -B -q online in CI) and write its class path to target/java-classpath.txt.
+    cmds:
+      - 'JAVA_HOME={{.JDK}} mvn {{.MVN_FLAGS}} -f adapters/java/testdata/quarkus/pom.xml package'
+      - task: java-classpath
+        vars: {PROJECT: adapters/java/testdata/quarkus}
+
+  java-quarkus-check:
+    desc: Read the Quarkus fixture as a project against its class path twice through codespec read, byte-equal, canonical and equal to adapters/java/testdata/quarkus.read.cir.json, then run codespec effects over it with the summary codespec-read-java --effects prints. Needs task java-quarkus-prepare first.
+    cmds:
+      - rm -rf target/java-quarkus
+      - mkdir -p target/java-quarkus
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.CODESPEC}} read --lang java adapters/java/testdata/quarkus --out target/java-quarkus/read.1.json --adapters {{.ADAPTERS}}'
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.CODESPEC}} read --lang java adapters/java/testdata/quarkus --out target/java-quarkus/read.2.json --adapters {{.ADAPTERS}}'
+      - cmp target/java-quarkus/read.1.json target/java-quarkus/read.2.json
+      - '{{.CODESPEC}} validate --canonical target/java-quarkus/read.1.json'
+      - cmp target/java-quarkus/read.1.json adapters/java/testdata/quarkus.read.cir.json
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.ADAPTERS}}/codespec-read-java --effects adapters/java/testdata/quarkus > target/java-quarkus/effects.summary.json'
+      - '{{.CODESPEC}} effects target/java-quarkus/read.1.json --summaries target/java-quarkus/effects.summary.json > target/java-quarkus/effects.1.json'
+      - '{{.CODESPEC}} effects target/java-quarkus/read.1.json --summaries target/java-quarkus/effects.summary.json > target/java-quarkus/effects.2.json'
+      - cmp target/java-quarkus/effects.1.json target/java-quarkus/effects.2.json
+
+  java-quickstart:
+    desc: Read the pinned Quarkus quickstart application hibernate-orm-panache-quickstart as a project against the class path of adapters/java/testdata/quickstart and print its numbers. QUICKSTARTS names a clone of github.com/quarkusio/quarkus-quickstarts at the pinned commit. Not in the gate, it needs the clone.
+    requires:
+      vars: [QUICKSTARTS]
+    vars:
+      QUICKSTART_COMMIT: 81a58443e92d0080c962f4ef01aa9e6118deb7a5
+      QUICKSTART_APP: hibernate-orm-panache-quickstart
+    cmds:
+      - 'test "$(git -C {{.QUICKSTARTS}} rev-parse HEAD)" = {{.QUICKSTART_COMMIT}}'
+      - task: java-classpath
+        vars: {PROJECT: adapters/java/testdata/quickstart}
+      - rm -rf target/java-quickstart
+      - mkdir -p target/java-quickstart
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.ADAPTERS}}/codespec-read-java --all {{.QUICKSTARTS}}/{{.QUICKSTART_APP}} target/java-quickstart'
+      - 'for f in target/java-quickstart/*.cir.json; do {{.CODESPEC}} validate --canonical "$f" > /dev/null || exit 1; done'
+      - sh adapters/java/read-numbers.sh target/java-quickstart
 
   groovy-fixture-check:
     desc: Compile the Grails lending fixture's domain classes, services and utils with groovyc 2.4.10 on the JDK, all but TransactionalAuditService.groovy, which needs the Grails jars. GROOVY_HOME defaults to the sdkman groovy/2.4.10 candidate.

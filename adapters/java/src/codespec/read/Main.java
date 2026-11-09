@@ -2,12 +2,28 @@ package codespec.read;
 
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 /**
  * {@code codespec-read-java <package dir>}: reads every {@code .java} file of one package with
  * javac's attributed trees and prints it as one cir/1 module on stdout. Constructs cir/1 cannot
  * express are kept as {@code foreign} statements and listed as refusals.
+ *
+ * <p>{@code codespec-read-java <project dir>}: a directory with {@code pom.xml} or {@code
+ * build.gradle(.kts)} is a project. Every package under {@code src/main/java} is read in one javac
+ * analysis against the jars {@code CODESPEC_JAVA_CLASSPATH} names (separated by {@code :}), one
+ * module per package. A project of one package prints its module; of several, {@code
+ * CODESPEC_JAVA_PACKAGE} names the one to print. The reader never runs Maven or Gradle.
+ *
+ * <p>{@code codespec-read-java --packages <project dir>} lists the packages, one per line.
+ * {@code codespec-read-java --all <project dir> <out dir>} writes every package's module to {@code
+ * <out dir>/<package>.cir.json}. {@code codespec-read-java --effects <project dir>} prints the
+ * codespec-effects/1 summary of the project's REST clients ({@code net}) and of the Panache, entity
+ * manager and JDBC calls ({@code db}).
  *
  * <p>{@code codespec-read-java --describe} prints the reader's codespec-adapter/1 manifest.
  */
@@ -60,27 +76,71 @@ public final class Main {
         return b.toString();
     }
 
+    private static final String USAGE =
+        "usage: codespec-read-java <package or project dir> | --packages <project dir> | --all <project dir> <out dir>"
+            + " | --effects <project dir> | --describe";
+
     public static void main(String[] args) {
         if (args.length == 1 && args[0].equals("--describe")) {
-            PrintStream stdout = new PrintStream(System.out, false, StandardCharsets.UTF_8);
-            stdout.print(describe());
-            stdout.flush();
+            print(describe());
             return;
         }
-        if (args.length != 1) {
-            System.err.println("usage: codespec-read-java <package dir> | --describe");
-            System.exit(2);
-        }
-        String out;
         try {
-            out = Json.write(Reader.read(Path.of(args[0])));
-        } catch (Reader.Failure e) {
+            if (args.length == 2 && args[0].equals("--packages")) {
+                StringBuilder b = new StringBuilder();
+                for (String p : Reader.packages(Path.of(args[1]))) {
+                    b.append(p).append('\n');
+                }
+                print(b.toString());
+            } else if (args.length == 2 && args[0].equals("--effects")) {
+                print(Reader.effectsSummary(Path.of(args[1]), classpath()));
+            } else if (args.length == 3 && args[0].equals("--all")) {
+                Path outDir = Path.of(args[2]);
+                Files.createDirectories(outDir);
+                for (Map.Entry<String, Map<String, Object>> e : Reader.readProject(Path.of(args[1]), classpath()).entrySet()) {
+                    Files.writeString(outDir.resolve(e.getKey() + ".cir.json"), Json.write(e.getValue()), StandardCharsets.UTF_8);
+                }
+            } else if (args.length == 1 && !args[0].startsWith("--")) {
+                print(Json.write(read(Path.of(args[0]))));
+            } else {
+                System.err.println(USAGE);
+                System.exit(2);
+            }
+        } catch (Reader.Failure | IOException e) {
             System.err.println("codespec-read-java: " + e.getMessage());
             System.exit(1);
-            return;
         }
+    }
+
+    /** One module: a package directory's, or the one package of a project that the environment names. */
+    private static Map<String, Object> read(Path dir) throws Reader.Failure {
+        if (!Reader.isProject(dir)) {
+            return Reader.read(dir);
+        }
+        Map<String, Map<String, Object>> modules = Reader.readProject(dir, classpath());
+        String want = System.getenv("CODESPEC_JAVA_PACKAGE");
+        if (want == null || want.isEmpty()) {
+            if (modules.size() == 1) {
+                return modules.values().iterator().next();
+            }
+            throw new Reader.Failure(dir + " has " + modules.size() + " packages (" + String.join(", ", modules.keySet())
+                + "): CODESPEC_JAVA_PACKAGE names the one to read");
+        }
+        Map<String, Object> m = modules.get(want);
+        if (m == null) {
+            throw new Reader.Failure(dir + " has no package " + want + ", only " + String.join(", ", modules.keySet()));
+        }
+        return m;
+    }
+
+    private static List<Path> classpath() {
+        String cp = System.getenv(Reader.CLASSPATH_VARIABLE);
+        return cp == null ? List.of() : Reader.classpath(cp);
+    }
+
+    private static void print(String s) {
         PrintStream stdout = new PrintStream(System.out, false, StandardCharsets.UTF_8);
-        stdout.print(out);
+        stdout.print(s);
         stdout.flush();
     }
 }

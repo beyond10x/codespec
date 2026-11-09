@@ -1,0 +1,764 @@
+{
+  "format": "cir/1",
+  "name": "acme",
+  "reader": {
+    "language": "java",
+    "name": "codespec-read-java",
+    "version": "0.6.1"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Cleanup",
+      "exported": true,
+      "fields": [],
+      "pos": "Cleanup.java:7"
+    },
+    {
+      "k": "struct",
+      "name": "Fruit",
+      "exported": true,
+      "fields": [
+        {
+          "name": "name",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "Fruit.java:7"
+    },
+    {
+      "k": "struct",
+      "name": "FruitResource",
+      "exported": true,
+      "fields": [
+        {
+          "name": "service",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "FruitService"
+            }
+          }
+        },
+        {
+          "name": "countries",
+          "t": {
+            "k": "extern",
+            "path": "org.acme.CountryClient",
+            "name": "CountryClient"
+          }
+        }
+      ],
+      "pos": "FruitResource.java:14"
+    },
+    {
+      "k": "struct",
+      "name": "FruitService",
+      "exported": true,
+      "fields": [],
+      "pos": "FruitService.java:6"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "NewCleanup",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Cleanup"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Cleanup",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Cleanup"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Cleanup"
+                }
+              }
+            }
+          ],
+          "pos": "Cleanup.java:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Cleanup"
+                }
+              }
+            }
+          ],
+          "pos": "Cleanup.java:7"
+        }
+      ],
+      "pos": "Cleanup.java:7"
+    },
+    {
+      "name": "sweep",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Cleanup"
+          }
+        }
+      },
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+            "name": "deleteAll",
+            "args": [],
+            "t": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          },
+          "pos": "Cleanup.java:10"
+        }
+      ],
+      "pos": "Cleanup.java:9"
+    },
+    {
+      "name": "NewFruit",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Fruit"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Fruit",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Fruit"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Fruit"
+                }
+              }
+            }
+          ],
+          "pos": "Fruit.java:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Fruit"
+                }
+              }
+            }
+          ],
+          "pos": "Fruit.java:7"
+        }
+      ],
+      "pos": "Fruit.java:7"
+    },
+    {
+      "name": "NewFruitResource",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FruitResource"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "FruitResource",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "FruitResource"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FruitResource"
+                }
+              }
+            }
+          ],
+          "pos": "FruitResource.java:14"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FruitResource"
+                }
+              }
+            }
+          ],
+          "pos": "FruitResource.java:14"
+        }
+      ],
+      "pos": "FruitResource.java:14"
+    },
+    {
+      "name": "origin",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FruitResource"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern_method",
+              "path": "org.acme.CountryClient",
+              "type": "CountryClient",
+              "name": "byName",
+              "recv": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "FruitResource"
+                    }
+                  }
+                },
+                "name": "countries",
+                "t": {
+                  "k": "extern",
+                  "path": "org.acme.CountryClient",
+                  "name": "CountryClient"
+                }
+              },
+              "args": [
+                {
+                  "k": "method",
+                  "x": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "this",
+                      "t": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "FruitResource"
+                        }
+                      }
+                    },
+                    "name": "service",
+                    "t": {
+                      "k": "ptr",
+                      "elem": {
+                        "k": "named",
+                        "name": "FruitService"
+                      }
+                    }
+                  },
+                  "name": "defaultName",
+                  "args": [],
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "FruitResource.java:26"
+        }
+      ],
+      "pos": "FruitResource.java:25"
+    },
+    {
+      "name": "create",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FruitResource"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "name",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "f"
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "NewFruit",
+              "args": [],
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Fruit"
+                }
+              }
+            }
+          ],
+          "pos": "FruitResource.java:33"
+        },
+        {
+          "k": "let",
+          "names": [
+            "name2"
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "name",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "FruitResource.java:34"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "f",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Fruit"
+                  }
+                }
+              },
+              "name": "name",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "string"
+                }
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "var",
+                "name": "name2",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "string"
+                }
+              }
+            }
+          ],
+          "pos": "FruitResource.java:34"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+            "type": "PanacheEntityBase",
+            "name": "persist",
+            "recv": {
+              "k": "var",
+              "name": "f",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Fruit"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "FruitResource.java:35"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "name",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "FruitResource.java:36"
+        }
+      ],
+      "pos": "FruitResource.java:32"
+    },
+    {
+      "name": "NewFruitService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FruitService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "FruitService",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "FruitService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FruitService"
+                }
+              }
+            }
+          ],
+          "pos": "FruitService.java:6"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "FruitService"
+                }
+              }
+            }
+          ],
+          "pos": "FruitService.java:6"
+        }
+      ],
+      "pos": "FruitService.java:6"
+    },
+    {
+      "name": "defaultName",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "FruitService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "string"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "\"apple\"",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "FruitService.java:8"
+        }
+      ],
+      "pos": "FruitService.java:7"
+    }
+  ],
+  "externs": [
+    {
+      "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+      "name": "deleteAll",
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "64",
+          "signed": true
+        }
+      ]
+    },
+    {
+      "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+      "name": "persist",
+      "recv": {
+        "k": "extern",
+        "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+        "name": "PanacheEntityBase"
+      },
+      "params": [],
+      "results": []
+    },
+    {
+      "path": "org.acme.CountryClient",
+      "name": "byName",
+      "recv": {
+        "k": "extern",
+        "path": "org.acme.CountryClient",
+        "name": "CountryClient"
+      },
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "string"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "type:Cleanup",
+    "func:NewCleanup",
+    "func:Cleanup.sweep",
+    "type:Fruit",
+    "func:NewFruit",
+    "type:FruitResource",
+    "func:NewFruitResource",
+    "func:FruitResource.origin",
+    "func:FruitResource.create",
+    "type:FruitService",
+    "func:NewFruitService",
+    "func:FruitService.defaultName"
+  ],
+  "refusals": [
+    {
+      "pos": "Fruit.java:6",
+      "what": "@Entity",
+      "reason": "annotation jakarta.persistence.Entity: annotations with behaviour are outside cir/1"
+    }
+  ],
+  "path": "org.acme",
+  "entries": [
+    {
+      "kind": "scheduled",
+      "func": "Cleanup.sweep",
+      "on": "every=10m"
+    },
+    {
+      "kind": "http",
+      "func": "FruitResource.origin",
+      "method": "GET",
+      "on": "/fruits/origin",
+      "produces": [
+        "text/plain",
+        "text/html"
+      ]
+    },
+    {
+      "kind": "http",
+      "func": "FruitResource.create",
+      "method": "POST",
+      "on": "/fruits",
+      "consumes": [
+        "text/plain"
+      ],
+      "produces": [
+        "application/json"
+      ]
+    }
+  ],
+  "beans": [
+    {
+      "name": "Cleanup",
+      "scope": "ApplicationScoped",
+      "pos": "Cleanup.java:7"
+    },
+    {
+      "name": "FruitService",
+      "scope": "ApplicationScoped",
+      "pos": "FruitService.java:6"
+    }
+  ],
+  "injects": [
+    {
+      "at": "FruitResource.service",
+      "t": {
+        "k": "ptr",
+        "elem": {
+          "k": "named",
+          "name": "FruitService"
+        }
+      },
+      "bean": "org.acme.FruitService"
+    },
+    {
+      "at": "FruitResource.countries",
+      "t": {
+        "k": "extern",
+        "path": "org.acme.CountryClient",
+        "name": "CountryClient"
+      }
+    }
+  ],
+  "transactional": [
+    "FruitResource.create"
+  ]
+}

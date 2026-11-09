@@ -53,11 +53,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Stream;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
@@ -127,6 +130,20 @@ import javax.tools.ToolProvider;
  *       since Java evaluates and drops that expression.
  * </ul>
  *
+ * <p>A project directory (one with {@code pom.xml}, {@code build.gradle} or {@code
+ * build.gradle.kts}) is read with {@link #readProject}: every package under {@code src/main/java}
+ * in one javac analysis, one module per package, against the jars of {@code
+ * CODESPEC_JAVA_CLASSPATH}. In a project read a type or call the table does not map becomes an
+ * extern: a call into a jar is an extern with its declared signature, a class of another package
+ * of the project an extern of that package. Quarkus 3 maps to the additive {@code entries}, {@code
+ * beans} and {@code injects} of the module: {@code @Path} with a verb is an {@code http} entry
+ * point, {@code @Scheduled} and {@code @Incoming} entry points, {@code @ApplicationScoped},
+ * {@code @Singleton}, {@code @RequestScoped} and {@code @Dependent} a bean, {@code @Transactional} a
+ * mark in {@code transactional}, {@code @Produces} and {@code @Consumes} the media types of an http entry, {@code @Inject} an
+ * injection resolved to the one bean or to an extern. A {@code @RegisterRestClient} interface is
+ * externs, and Panache, {@code EntityManager} and JDBC calls are externs ({@link
+ * #effectsSummary} gives them {@code net} and {@code db}).
+ *
  * <p>Everything else is kept as a {@code foreign} statement holding its Java source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line; either way it is listed as a
  * refusal. Implicit numeric conversions are refused except for an integer literal, whose constant
@@ -159,6 +176,92 @@ public final class Reader {
     private final Types types;
     private final Elements elements;
     private final SourcePositions positions;
+    private final Analysis analysis;
+    /** Whether the module is read as part of a project: its jars and other packages are externs. */
+    private final boolean project;
+    /** The package this module reads, in project mode. */
+    private String pkgName = "";
+
+    /** Every extern the module may call, by path, receiver type name and name. */
+    private final Map<String, Map<String, Object>> externs = new TreeMap<>();
+    private final List<Object> outEntries = new ArrayList<>();
+    private final List<Object> outBeans = new ArrayList<>();
+    private final List<Object> outInjects = new ArrayList<>();
+    private final List<String> outTransactional = new ArrayList<>();
+
+    private static final String REST_CLIENT = "org.eclipse.microprofile.rest.client.inject.RegisterRestClient";
+    private static final String REST_CLIENT_QUALIFIER = "org.eclipse.microprofile.rest.client.inject.RestClient";
+    private static final String INJECT = "jakarta.inject.Inject";
+    private static final String PATH = "jakarta.ws.rs.Path";
+    private static final String TRANSACTIONAL = "jakarta.transaction.Transactional";
+    private static final String PRODUCES = "jakarta.ws.rs.Produces";
+    private static final String CONSUMES = "jakarta.ws.rs.Consumes";
+    private static final String SCHEDULED = "io.quarkus.scheduler.Scheduled";
+    private static final String INCOMING = "org.eclipse.microprofile.reactive.messaging.Incoming";
+    private static final List<String> HTTP_METHODS = List.of("GET", "POST", "PUT", "DELETE", "PATCH");
+    private static final List<String> SCOPES = List.of(
+        "jakarta.enterprise.context.ApplicationScoped", "jakarta.inject.Singleton",
+        "jakarta.enterprise.context.RequestScoped", "jakarta.enterprise.context.Dependent");
+
+    /** The annotations a project read maps instead of refusing, by where they may stand. */
+    private static final Set<String> QUARKUS_ANNOTATIONS = new HashSet<>(List.of(
+        REST_CLIENT, REST_CLIENT_QUALIFIER, INJECT, PATH, SCHEDULED, INCOMING, TRANSACTIONAL, PRODUCES, CONSUMES,
+        "jakarta.ws.rs.GET", "jakarta.ws.rs.POST", "jakarta.ws.rs.PUT", "jakarta.ws.rs.DELETE",
+        "jakarta.ws.rs.PATCH", "jakarta.enterprise.context.ApplicationScoped", "jakarta.inject.Singleton",
+        "jakarta.enterprise.context.RequestScoped", "jakarta.enterprise.context.Dependent"));
+
+    /**
+     * The calls whose effect is {@code db}, as path and a comma-separated list of names: a function
+     * is its name, a method {@code Type.name}. Panache entities and repositories, the entity manager,
+     * its queries and JDBC.
+     */
+    private static final String[][] DB_CALLS = {
+        {"io.quarkus.hibernate.orm.panache.PanacheEntityBase",
+            "PanacheEntityBase.delete,PanacheEntityBase.flush,PanacheEntityBase.isPersistent,PanacheEntityBase.persist,"
+                + "PanacheEntityBase.persistAndFlush,count,delete,deleteAll,deleteById,find,findAll,findById,"
+                + "findByIdOptional,flush,getEntityManager,list,listAll,persist,stream,streamAll,update"},
+        {"io.quarkus.hibernate.orm.panache.PanacheRepositoryBase",
+            "PanacheRepositoryBase.count,PanacheRepositoryBase.delete,PanacheRepositoryBase.deleteAll,"
+                + "PanacheRepositoryBase.deleteById,PanacheRepositoryBase.find,PanacheRepositoryBase.findAll,"
+                + "PanacheRepositoryBase.findById,PanacheRepositoryBase.findByIdOptional,PanacheRepositoryBase.flush,"
+                + "PanacheRepositoryBase.getEntityManager,PanacheRepositoryBase.isPersistent,PanacheRepositoryBase.list,"
+                + "PanacheRepositoryBase.listAll,PanacheRepositoryBase.persist,PanacheRepositoryBase.persistAndFlush,"
+                + "PanacheRepositoryBase.stream,PanacheRepositoryBase.streamAll,PanacheRepositoryBase.update"},
+        {"io.quarkus.hibernate.reactive.panache.PanacheEntityBase",
+            "PanacheEntityBase.delete,PanacheEntityBase.flush,PanacheEntityBase.isPersistent,PanacheEntityBase.persist,"
+                + "PanacheEntityBase.persistAndFlush,count,delete,deleteAll,deleteById,find,findAll,findById,"
+                + "flush,list,listAll,persist,stream,streamAll,update"},
+        {"io.quarkus.hibernate.reactive.panache.PanacheRepositoryBase",
+            "PanacheRepositoryBase.count,PanacheRepositoryBase.delete,PanacheRepositoryBase.deleteAll,"
+                + "PanacheRepositoryBase.deleteById,PanacheRepositoryBase.find,PanacheRepositoryBase.findAll,"
+                + "PanacheRepositoryBase.findById,PanacheRepositoryBase.flush,PanacheRepositoryBase.isPersistent,"
+                + "PanacheRepositoryBase.list,PanacheRepositoryBase.listAll,PanacheRepositoryBase.persist,"
+                + "PanacheRepositoryBase.persistAndFlush,PanacheRepositoryBase.stream,PanacheRepositoryBase.streamAll,"
+                + "PanacheRepositoryBase.update"},
+        {"jakarta.persistence.EntityManager",
+            "EntityManager.clear,EntityManager.createNamedQuery,EntityManager.createNativeQuery,"
+                + "EntityManager.createQuery,EntityManager.detach,EntityManager.find,EntityManager.flush,"
+                + "EntityManager.getReference,EntityManager.lock,EntityManager.merge,EntityManager.persist,"
+                + "EntityManager.refresh,EntityManager.remove"},
+        {"jakarta.persistence.Query",
+            "Query.executeUpdate,Query.getResultList,Query.getResultStream,Query.getSingleResult"},
+        {"jakarta.persistence.TypedQuery",
+            "TypedQuery.executeUpdate,TypedQuery.getResultList,TypedQuery.getResultStream,TypedQuery.getSingleResult"},
+        {"java.sql.Connection",
+            "Connection.commit,Connection.createStatement,Connection.prepareCall,Connection.prepareStatement,"
+                + "Connection.rollback"},
+        {"java.sql.DriverManager", "getConnection"},
+        {"java.sql.PreparedStatement",
+            "PreparedStatement.execute,PreparedStatement.executeBatch,PreparedStatement.executeQuery,"
+                + "PreparedStatement.executeUpdate"},
+        {"java.sql.ResultSet",
+            "ResultSet.getBoolean,ResultSet.getInt,ResultSet.getLong,ResultSet.getObject,ResultSet.getString,"
+                + "ResultSet.next"},
+        {"java.sql.Statement",
+            "Statement.execute,Statement.executeBatch,Statement.executeQuery,Statement.executeUpdate"},
+        {"javax.sql.DataSource", "DataSource.getConnection"},
+    };
+
     private final Map<CompilationUnitTree, String> sources = new HashMap<>();
     /** Every compilation unit, in file order. */
     private final List<CompilationUnitTree> units = new ArrayList<>();
@@ -244,11 +347,31 @@ public final class Reader {
         }
     }
 
-    private Reader(JavacTask task) {
-        this.trees = Trees.instance(task);
-        this.types = task.getTypes();
-        this.elements = task.getElements();
+    /**
+     * What every module of one read shares: javac's analysis of all the files, and, for a project, the
+     * classes it declares and its beans.
+     */
+    private static final class Analysis {
+        final JavacTask task;
+        final List<CompilationUnitTree> units;
+        /** Qualified names of the top-level classes the project's own sources declare. */
+        final Set<String> projectClasses = new HashSet<>();
+        /** The beans of the project: a class with a scope annotation, in source order. */
+        final List<TypeElement> beans = new ArrayList<>();
+
+        Analysis(JavacTask task, List<CompilationUnitTree> units) {
+            this.task = task;
+            this.units = units;
+        }
+    }
+
+    private Reader(Analysis analysis, boolean project) {
+        this.trees = Trees.instance(analysis.task);
+        this.types = analysis.task.getTypes();
+        this.elements = analysis.task.getElements();
         this.positions = trees.getSourcePositions();
+        this.analysis = analysis;
+        this.project = project;
     }
 
     /** Read every {@code .java} file directly in {@code dir}, all of one package. */
@@ -264,6 +387,153 @@ public final class Reader {
         if (files.isEmpty()) {
             throw new Failure(dir + ": no .java files");
         }
+        Analysis a = analyse(dir, files, List.of());
+        a.units.sort(Comparator.comparing(cu -> fileName(cu)));
+        return new Reader(a, false).module(a.units);
+    }
+
+    /**
+     * Whether {@code dir} is a project directory: it holds {@code pom.xml}, {@code build.gradle} or
+     * {@code build.gradle.kts}.
+     */
+    public static boolean isProject(Path dir) {
+        return Files.isRegularFile(dir.resolve("pom.xml")) || Files.isRegularFile(dir.resolve("build.gradle"))
+            || Files.isRegularFile(dir.resolve("build.gradle.kts"));
+    }
+
+    /** The jars of a class path of the form {@code CODESPEC_JAVA_CLASSPATH} holds: paths separated by {@code :}. */
+    public static List<Path> classpath(String value) {
+        List<Path> out = new ArrayList<>();
+        for (String s : value.split(":", -1)) {
+            if (!s.isEmpty()) {
+                out.add(Path.of(s));
+            }
+        }
+        return out;
+    }
+
+    /** The {@code .java} files under {@code src/main/java}, sorted by path. */
+    private static List<Path> projectFiles(Path dir) throws Failure {
+        Path src = dir.resolve("src/main/java");
+        if (!Files.isDirectory(src)) {
+            throw new Failure(dir + ": no src/main/java");
+        }
+        try (Stream<Path> s = Files.walk(src)) {
+            List<Path> files = s.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".java")
+                && !p.getFileName().toString().equals("module-info.java"))
+                .sorted(Comparator.comparing(p -> src.relativize(p).toString()))
+                .toList();
+            if (files.isEmpty()) {
+                throw new Failure(src + ": no .java files");
+            }
+            return files;
+        } catch (IOException e) {
+            throw new Failure(dir + ": " + e.getMessage());
+        }
+    }
+
+    /** The packages of a project, in byte order: those of the files under {@code src/main/java}. */
+    public static List<String> packages(Path dir) throws Failure {
+        Path src = dir.resolve("src/main/java");
+        Set<String> out = new java.util.TreeSet<>();
+        for (Path f : projectFiles(dir)) {
+            Path parent = src.relativize(f).getParent();
+            out.add(parent == null ? "" : parent.toString().replace('/', '.'));
+        }
+        return new ArrayList<>(out);
+    }
+
+    /**
+     * Read a project: every package under {@code src/main/java} in one javac analysis with {@code
+     * classpath} on the class path, one module per package, by package name in byte order. A class
+     * of another package or of a jar becomes an extern; the classes of the jars are not read.
+     */
+    public static Map<String, Map<String, Object>> readProject(Path dir, List<Path> classpath) throws Failure {
+        Analysis a = projectAnalysis(dir, classpath);
+        Map<String, List<CompilationUnitTree>> byPackage = new TreeMap<>();
+        for (CompilationUnitTree cu : a.units) {
+            byPackage.computeIfAbsent(cu.getPackageName() == null ? "" : cu.getPackageName().toString(), k -> new ArrayList<>()).add(cu);
+        }
+        Map<String, Map<String, Object>> out = new TreeMap<>();
+        for (Map.Entry<String, List<CompilationUnitTree>> e : byPackage.entrySet()) {
+            out.put(e.getKey(), new Reader(a, true).module(e.getValue()));
+        }
+        return out;
+    }
+
+    private static Analysis projectAnalysis(Path dir, List<Path> classpath) throws Failure {
+        Analysis a = analyse(dir, projectFiles(dir), classpath);
+        a.units.sort(Comparator.comparing((CompilationUnitTree cu) -> cu.getPackageName() == null ? "" : cu.getPackageName().toString())
+            .thenComparing(cu -> fileName(cu)));
+        Reader r = new Reader(a, true);
+        for (CompilationUnitTree cu : a.units) {
+            for (Tree t : cu.getTypeDecls()) {
+                if (t instanceof ClassTree) {
+                    TypeElement te = r.element(new TreePath(new TreePath(cu), t));
+                    a.projectClasses.add(te.getQualifiedName().toString());
+                }
+            }
+        }
+        for (CompilationUnitTree cu : a.units) {
+            for (Tree t : cu.getTypeDecls()) {
+                if (t instanceof ClassTree) {
+                    TypeElement te = r.element(new TreePath(new TreePath(cu), t));
+                    if (te.getKind() == ElementKind.CLASS && !te.getModifiers().contains(Modifier.ABSTRACT) && r.scope(te) != null) {
+                        a.beans.add(te);
+                    }
+                }
+            }
+        }
+        return a;
+    }
+
+    /**
+     * The codespec-effects/1 summary of what a project's jars do outside the code: the calls of its
+     * REST clients are {@code net}; those of Panache, the entity manager and JDBC are {@code db}.
+     */
+    public static String effectsSummary(Path dir, List<Path> classpath) throws Failure {
+        Analysis a = projectAnalysis(dir, classpath);
+        Reader r = new Reader(a, true);
+        Map<String, List<String>> entries = new TreeMap<>();
+        for (String[] db : DB_CALLS) {
+            for (String name : db[1].split(",")) {
+                entries.put(db[0] + "\u0000" + name, List.of("db"));
+            }
+        }
+        for (CompilationUnitTree cu : a.units) {
+            for (Tree t : cu.getTypeDecls()) {
+                if (!(t instanceof ClassTree)) {
+                    continue;
+                }
+                TypeElement te = r.element(new TreePath(new TreePath(cu), t));
+                if (te.getKind() != ElementKind.INTERFACE || annotation(te, REST_CLIENT) == null) {
+                    continue;
+                }
+                for (Element m : te.getEnclosedElements()) {
+                    if (m.getKind() == ElementKind.METHOD && !m.getModifiers().contains(Modifier.STATIC)) {
+                        entries.put(te.getQualifiedName() + "\u0000" + te.getSimpleName() + "." + m.getSimpleName(), List.of("net"));
+                    }
+                }
+            }
+        }
+        Map<String, Object> doc = Json.obj();
+        doc.put("format", "codespec-effects/1");
+        doc.put("language", "java");
+        List<Object> list = new ArrayList<>();
+        for (Map.Entry<String, List<String>> e : entries.entrySet()) {
+            int i = e.getKey().indexOf('\u0000');
+            Map<String, Object> x = Json.obj();
+            x.put("path", e.getKey().substring(0, i));
+            x.put("name", e.getKey().substring(i + 1));
+            x.put("effects", new ArrayList<Object>(e.getValue()));
+            list.add(x);
+        }
+        doc.put("externs", list);
+        return Json.write(doc);
+    }
+
+    /** Compile {@code files} against {@code classpath} and attribute them; a compile error is a failure. */
+    private static Analysis analyse(Path dir, List<Path> files, List<Path> classpath) throws Failure {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) {
             throw new Failure("this Java runtime has no compiler (module jdk.compiler): run on a JDK");
@@ -274,7 +544,7 @@ public final class Reader {
         JavacTask task;
         try {
             fm.setLocation(StandardLocation.SOURCE_PATH, List.of());
-            fm.setLocation(StandardLocation.CLASS_PATH, List.of());
+            fm.setLocation(StandardLocation.CLASS_PATH, classpath.stream().map(Path::toFile).toList());
             task = (JavacTask) javac.getTask(null, fm, diags,
                 List.of("-proc:none", "-implicit:none", "-encoding", "UTF-8", "-Xlint:none", "-nowarn"),
                 null, fm.getJavaFileObjectsFromPaths(files));
@@ -294,12 +564,17 @@ public final class Reader {
         }
         if (!errors.isEmpty()) {
             errors.sort(null);
+            if (classpath.isEmpty() && isProject(dir)) {
+                errors.add("a project is read against its dependency jars: " + CLASSPATH_VARIABLE
+                    + " names them, separated by ':'");
+            }
             throw new Failure(String.join("\n", errors));
         }
-        units.sort(Comparator.comparing(cu -> fileName(cu)));
-        Reader r = new Reader(task);
-        return r.module(units);
+        return new Analysis(task, units);
     }
+
+    /** The environment variable that names a project's dependency jars. */
+    public static final String CLASSPATH_VARIABLE = "CODESPEC_JAVA_CLASSPATH";
 
     private static String fileName(CompilationUnitTree cu) {
         return Path.of(cu.getSourceFile().getName()).getFileName().toString();
@@ -330,11 +605,13 @@ public final class Reader {
                 }
             }
         }
+        pkgName = pkg;
         classify();
         signatures();
         for (TreePath p : decls) {
             emit(p);
         }
+        pruneExterns();
         refusals.sort(Comparator.comparing((Map<String, Object> r) -> file((String) r.get("pos")))
             .thenComparingInt(r -> line((String) r.get("pos"))));
 
@@ -354,9 +631,27 @@ public final class Reader {
             doc.put("errors", outErrors);
         }
         doc.put("funcs", outFuncs);
+        if (!externs.isEmpty()) {
+            doc.put("externs", new ArrayList<Object>(externs.values()));
+        }
         doc.put("layout", layout);
         if (!refusals.isEmpty()) {
             doc.put("refusals", new ArrayList<Object>(refusals));
+        }
+        if (project) {
+            doc.put("path", pkg);
+        }
+        if (!outEntries.isEmpty()) {
+            doc.put("entries", outEntries);
+        }
+        if (!outBeans.isEmpty()) {
+            doc.put("beans", outBeans);
+        }
+        if (!outInjects.isEmpty()) {
+            doc.put("injects", outInjects);
+        }
+        if (!outTransactional.isEmpty()) {
+            doc.put("transactional", new ArrayList<Object>(outTransactional));
         }
         return doc;
     }
@@ -409,6 +704,9 @@ public final class Reader {
                     why = "annotation type: annotations with behaviour are outside cir/1";
                     break;
                 case INTERFACE:
+                    if (project && annotation(te, REST_CLIENT) != null) {
+                        break;
+                    }
                     why = interfaceShape(ct);
                     if (why == null) {
                         interfaces.add(te);
@@ -471,11 +769,14 @@ public final class Reader {
                     errorLeaves.put(te, msg);
                     continue;
                 }
-            } else if (!sup.equals("java.lang.Object")) {
+            } else if (!sup.equals("java.lang.Object") && !externalSuperclass(te)) {
                 why = "class extends " + sup + ": inheritance beyond one checked-exception hierarchy is outside cir/1";
             } else {
                 for (TypeMirror i : te.getInterfaces()) {
                     TypeElement ie = (TypeElement) types.asElement(i);
+                    if (externalInterface(ie)) {
+                        continue;
+                    }
                     if (!interfaces.contains(ie)) {
                         why = "implements " + qname(i) + ": only an interface of the package with one implementation is read";
                         break;
@@ -483,12 +784,18 @@ public final class Reader {
                     if (implOf.containsKey(ie)) {
                         why = "a second implementation of interface " + ie.getSimpleName() + " (the first is "
                             + implOf.get(ie).getSimpleName() + "): interfaces with more than one implementation are outside cir/1";
+                        if (project) {
+                            implOf.remove(ie);
+                            interfaces.remove(ie);
+                        }
                         break;
                     }
                 }
                 if (why == null) {
                     for (TypeMirror i : te.getInterfaces()) {
-                        implOf.put((TypeElement) types.asElement(i), te);
+                        if (!externalInterface((TypeElement) types.asElement(i))) {
+                            implOf.put((TypeElement) types.asElement(i), te);
+                        }
                     }
                     structs.add(te);
                     continue;
@@ -695,6 +1002,9 @@ public final class Reader {
                 continue;
             }
             Element e = trees.getElement(new TreePath(p, m));
+            if (project && annotation(e, INJECT) != null) {
+                continue;
+            }
             if (e.getModifiers().contains(Modifier.STATIC) || e.asType().getKind().isPrimitive()) {
                 continue;
             }
@@ -1035,6 +1345,155 @@ public final class Reader {
                 emitFunc(fns.get(e));
             }
         }
+        if (project) {
+            framework(p, te, ct);
+        }
+    }
+
+    /**
+     * What Quarkus makes of the class: a bean, its injection points, and its resource, scheduled and
+     * consumer methods as entry points. Only the methods the module reads are entry points.
+     */
+    private void framework(TreePath p, TypeElement te, ClassTree ct) {
+        CompilationUnitTree cu = p.getCompilationUnit();
+        String cls = te.getSimpleName().toString();
+        String sc = scope(te);
+        if (sc != null) {
+            Map<String, Object> b = Json.obj();
+            b.put("name", cls);
+            b.put("scope", sc);
+            b.put("pos", declPos(cu, ct, ct.getModifiers()));
+            outBeans.add(b);
+        }
+        AnnotationMirror classPath = annotation(te, PATH);
+        for (Tree m : ct.getMembers()) {
+            Element e = trees.getElement(new TreePath(p, m));
+            if (m instanceof VariableTree && !e.getModifiers().contains(Modifier.STATIC) && annotation(e, INJECT) != null) {
+                inject(cls + "." + e.getSimpleName(), fieldType((VariableElement) e), e.asType());
+            } else if (m instanceof MethodTree && fns.containsKey(e)) {
+                Fn fn = fns.get(e);
+                ExecutableElement ee = (ExecutableElement) e;
+                if (fn.isCtor) {
+                    if (annotation(e, INJECT) != null) {
+                        for (int i = 0; i < ee.getParameters().size(); i++) {
+                            inject(cls + ".<new>." + fn.paramNames.get(i), fn.params.get(i), ee.getParameters().get(i).asType());
+                        }
+                    }
+                    continue;
+                }
+                AnnotationMirror methodPath = annotation(e, PATH);
+                AnnotationMirror scheduled = annotation(e, SCHEDULED);
+                AnnotationMirror incoming = annotation(e, INCOMING);
+                if (annotation(e, TRANSACTIONAL) != null || annotation(te, TRANSACTIONAL) != null) {
+                    outTransactional.add(fn.key());
+                }
+                for (String verb : HTTP_METHODS) {
+                    if (classPath != null && annotation(e, "jakarta.ws.rs." + verb) != null) {
+                        entry("http", fn.key(), verb, joinPaths(attribute(classPath, "value"), methodPath == null ? null : attribute(methodPath, "value")),
+                            media(e, te, CONSUMES), media(e, te, PRODUCES));
+                    }
+                }
+                if (scheduled != null) {
+                    String cron = attribute(scheduled, "cron");
+                    String every = attribute(scheduled, "every");
+                    entry("scheduled", fn.key(), "", cron != null && !cron.isEmpty() ? "cron=" + cron
+                        : every != null ? "every=" + every : "");
+                }
+                if (incoming != null) {
+                    String channel = attribute(incoming, "value");
+                    entry("incoming", fn.key(), "", channel == null ? "" : channel);
+                }
+            }
+        }
+    }
+
+    private void entry(String kind, String func, String method, String on) {
+        entry(kind, func, method, on, List.of(), List.of());
+    }
+
+    private void entry(String kind, String func, String method, String on, List<String> consumes, List<String> produces) {
+        Map<String, Object> x = Json.obj();
+        x.put("kind", kind);
+        x.put("func", func);
+        if (!method.isEmpty()) {
+            x.put("method", method);
+        }
+        x.put("on", on);
+        if (!consumes.isEmpty()) {
+            x.put("consumes", new ArrayList<Object>(consumes));
+        }
+        if (!produces.isEmpty()) {
+            x.put("produces", new ArrayList<Object>(produces));
+        }
+        outEntries.add(x);
+    }
+
+    /** The media types of {@code ann} on the method, else on its class; empty when neither declares it. */
+    private static List<String> media(Element method, TypeElement cls, String ann) {
+        AnnotationMirror am = annotation(method, ann);
+        if (am == null) {
+            am = annotation(cls, ann);
+        }
+        List<String> out = new ArrayList<>();
+        if (am == null) {
+            return out;
+        }
+        for (Map.Entry<? extends ExecutableElement, ? extends javax.lang.model.element.AnnotationValue> en
+            : am.getElementValues().entrySet()) {
+            if (en.getKey().getSimpleName().contentEquals("value")) {
+                Object v = en.getValue().getValue();
+                if (v instanceof String) {
+                    out.add((String) v);
+                } else if (v instanceof List<?>) {
+                    for (Object o : (List<?>) v) {
+                        Object s = o instanceof javax.lang.model.element.AnnotationValue
+                            ? ((javax.lang.model.element.AnnotationValue) o).getValue() : o;
+                        if (s instanceof String) {
+                            out.add((String) s);
+                        }
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private void inject(String at, Map<String, Object> t, TypeMirror declared) {
+        Map<String, Object> x = Json.obj();
+        x.put("at", at);
+        x.put("t", t);
+        String bean = resolveBean(declared);
+        if (!bean.isEmpty()) {
+            x.put("bean", bean);
+        }
+        outInjects.add(x);
+    }
+
+    /** The qualified name of the one bean of the project that is a {@code t}; empty when none or several are. */
+    private String resolveBean(TypeMirror t) {
+        TypeMirror want = types.erasure(t);
+        String found = "";
+        int n = 0;
+        for (TypeElement b : analysis.beans) {
+            if (types.isAssignable(types.erasure(b.asType()), want)) {
+                found = b.getQualifiedName().toString();
+                n++;
+            }
+        }
+        return n == 1 ? found : "";
+    }
+
+    /** The resource's path and the method's joined: every segment, one {@code /} between, a leading {@code /}. */
+    private static String joinPaths(String resource, String method) {
+        StringBuilder b = new StringBuilder();
+        for (String part : new String[] {resource == null ? "" : resource, method == null ? "" : method}) {
+            for (String seg : part.split("/")) {
+                if (!seg.isEmpty()) {
+                    b.append('/').append(seg);
+                }
+            }
+        }
+        return b.length() == 0 ? "/" : b.toString();
     }
 
     private void putDoc(Map<String, Object> d, Element e) {
@@ -2391,7 +2850,7 @@ public final class Reader {
             c.put("t", resultType(fn));
             return c;
         }
-        if (inPackage(owner)) {
+        if (inPackage(owner) && !(project && owner.getKind() == ElementKind.INTERFACE && !implOf.containsKey(owner))) {
             throw new Unsupported("call of " + owner.getSimpleName() + "." + name + ", which is not read");
         }
         for (ExpressionTree a : mi.getArguments()) {
@@ -2403,6 +2862,9 @@ public final class Reader {
             return format(p, mi, ctx);
         }
         if (recvPath == null || !on.startsWith("java.")) {
+            if (project) {
+                return externCall(p, mi, m, owner, recvPath, ctx);
+            }
             throw new Unsupported(owner.getSimpleName() + "." + name + " is outside the reader's library table");
         }
         Map<String, Object> recv = expr(recvPath, ctx);
@@ -2451,7 +2913,108 @@ public final class Reader {
                 return binop("==", recv, lit("\"\"", tString()), tBool());
             }
         }
+        if (project) {
+            return externCall(p, mi, m, owner, recvPath, ctx);
+        }
         throw new Unsupported(owner.getSimpleName() + "." + name + " is outside the reader's library table");
+    }
+
+    /**
+     * A call of a method of a class outside the module, from a jar or another package of the
+     * project, as an extern with its declared signature: {@code extern} for a static method,
+     * {@code extern_method} on an object. Overloads are not told apart: externs are keyed by name.
+     */
+    private Map<String, Object> externCall(TreePath p, MethodInvocationTree mi, ExecutableElement m, TypeElement owner,
+                                           TreePath recvPath, Ctx ctx) {
+        boolean isStatic = m.getModifiers().contains(Modifier.STATIC);
+        String name = m.getSimpleName().toString();
+        Map<String, Object> recv = null;
+        if (!isStatic) {
+            recv = recvPath == null ? thisRef(ctx) : expr(recvPath, ctx);
+            Map<String, Object> rt = type(recv);
+            String rk = (String) rt.get("k");
+            boolean own = "ptr".equals(rk) && "named".equals(sub(rt, "elem").get("k"));
+            if (!"extern".equals(rk) && !own) {
+                throw new Unsupported(owner.getSimpleName() + "." + name + " on a " + describe(rt)
+                    + ": the value is not an object of a class outside the module");
+            }
+        }
+        List<Map<String, Object>> sigParams = new ArrayList<>();
+        for (VariableElement v : m.getParameters()) {
+            sigParams.add(signatureType(v.asType()));
+        }
+        List<Map<String, Object>> sigResults = new ArrayList<>();
+        if (m.getReturnType().getKind() != TypeKind.VOID) {
+            sigResults.add(signatureType(m.getReturnType()));
+        }
+        boolean variadic = m.isVarArgs();
+        Map<String, Object> declared = Json.obj();
+        String path = isStatic ? staticPath(owner) : externPath(owner);
+        String typeName = isStatic ? "" : externName(owner);
+        declared.put("path", path);
+        declared.put("name", name);
+        if (!isStatic) {
+            declared.put("recv", externType(owner, List.of()));
+        }
+        declared.put("params", new ArrayList<Object>(sigParams));
+        declared.put("results", new ArrayList<Object>(sigResults));
+        if (variadic) {
+            declared.put("variadic", Boolean.TRUE);
+        }
+        List<? extends ExpressionTree> as = mi.getArguments();
+        List<Object> args = new ArrayList<>();
+        for (int i = 0; i < as.size(); i++) {
+            TreePath ap = new TreePath(p, as.get(i));
+            refuseUnassigned(ap, "an argument of a call", ESCAPES);
+            Map<String, Object> want = i < sigParams.size() - (variadic ? 1 : 0) ? sigParams.get(i)
+                : variadic ? sub(sigParams.get(sigParams.size() - 1), "elem") : null;
+            args.add(externArg(expr(ap, ctx), want));
+        }
+        Map<String, Object> t = m.getReturnType().getKind() == TypeKind.VOID ? tUnit() : signatureType(trees.getTypeMirror(p));
+        registerExtern(path, typeName, name, declared);
+        Map<String, Object> c = Json.obj();
+        if (isStatic) {
+            c.put("k", "extern");
+            c.put("path", path);
+            c.put("name", name);
+        } else {
+            c.put("k", "extern_method");
+            c.put("path", path);
+            c.put("type", typeName);
+            c.put("name", name);
+            c.put("recv", recv);
+        }
+        c.put("args", args);
+        c.put("t", t);
+        return c;
+    }
+
+    /** The path of a static extern: the package of another package's class, else the class. */
+    private String staticPath(TypeElement owner) {
+        return inOtherPackage(owner) ? packageOf(owner) : owner.getQualifiedName().toString();
+    }
+
+    /** An argument for a parameter of the declared type {@code want}: a subtype keeps its own type. */
+    private Map<String, Object> externArg(Map<String, Object> e, Map<String, Object> want) {
+        if (want == null) {
+            return e;
+        }
+        String k = (String) want.get("k");
+        if ("int".equals(k) || "bool".equals(k) || "string".equals(k)) {
+            return coerce(e, want);
+        }
+        return e;
+    }
+
+    /** Declare an extern; a second declaration under the same key that differs is an overload, refused. */
+    private void registerExtern(String path, String type, String name, Map<String, Object> declared) {
+        String key = externKey(path, type, name);
+        Map<String, Object> have = externs.get(key);
+        if (have != null && !Json.write(have).equals(Json.write(declared))) {
+            throw new Unsupported("an overload of " + name + " in " + path + ": externs are keyed by name, and the declaration"
+                + " already read has other parameters");
+        }
+        externs.put(key, declared);
     }
 
     /**
@@ -2563,7 +3126,49 @@ public final class Reader {
         if (errorLeaves.containsKey(te)) {
             throw new Unsupported("an exception created other than by throw");
         }
+        if (project && !inPackage(te) && trees.getElement(p) instanceof ExecutableElement) {
+            return externNew(p, nc, te, (ExecutableElement) trees.getElement(p), tm, ctx);
+        }
         throw new Unsupported("new " + te.getSimpleName() + " is outside the reader's library table");
+    }
+
+    /**
+     * {@code new C(…)} of a class outside the module as an extern function: {@code <init>} of the
+     * class for a jar's, {@code New<C>} of the package for a class of another package.
+     */
+    private Map<String, Object> externNew(TreePath p, NewClassTree nc, TypeElement te, ExecutableElement ce, TypeMirror tm, Ctx ctx) {
+        List<Map<String, Object>> sigParams = new ArrayList<>();
+        for (VariableElement v : ce.getParameters()) {
+            sigParams.add(signatureType(v.asType()));
+        }
+        boolean variadic = ce.isVarArgs();
+        String path = staticPath(te);
+        String name = inOtherPackage(te) ? "New" + te.getSimpleName() : "<init>";
+        Map<String, Object> declared = Json.obj();
+        declared.put("path", path);
+        declared.put("name", name);
+        declared.put("params", new ArrayList<Object>(sigParams));
+        declared.put("results", new ArrayList<Object>(List.of(externType(te, List.of()))));
+        if (variadic) {
+            declared.put("variadic", Boolean.TRUE);
+        }
+        List<Object> args = new ArrayList<>();
+        List<? extends ExpressionTree> as = nc.getArguments();
+        for (int i = 0; i < as.size(); i++) {
+            TreePath ap = new TreePath(p, as.get(i));
+            refuseUnassigned(ap, "an argument of a constructor", ESCAPES);
+            Map<String, Object> want = i < sigParams.size() - (variadic ? 1 : 0) ? sigParams.get(i)
+                : variadic ? sub(sigParams.get(sigParams.size() - 1), "elem") : null;
+            args.add(externArg(expr(ap, ctx), want));
+        }
+        registerExtern(path, "", name, declared);
+        Map<String, Object> c = Json.obj();
+        c.put("k", "extern");
+        c.put("path", path);
+        c.put("name", name);
+        c.put("args", args);
+        c.put("t", signatureType(tm));
+        return c;
     }
 
     private List<Object> args(TreePath p, List<? extends ExpressionTree> as, List<Map<String, Object>> params, Ctx ctx) {
@@ -2779,7 +3384,206 @@ public final class Reader {
         try {
             return JvmTypes.map(jvmType(t), this::ownType);
         } catch (JvmTypes.Outside o) {
+            if (project && t.getKind() == TypeKind.DECLARED) {
+                return externType((TypeElement) ((DeclaredType) t).asElement(), List.of());
+            }
             throw new Unsupported(o.getMessage());
+        }
+    }
+
+    // ---- projects: classes of jars and of other packages ----
+
+    /** The extern type of the class {@code t} names, with its type arguments where the table maps them. */
+    private Map<String, Object> externOf(JvmTypes.Type t) {
+        TypeElement te = elements.getTypeElement(t.className());
+        if (te == null) {
+            return null;
+        }
+        List<Object> targs = new ArrayList<>();
+        try {
+            for (JvmTypes.Type a : t.args()) {
+                targs.add(JvmTypes.map(a, this::ownType));
+            }
+        } catch (JvmTypes.Outside o) {
+            targs.clear();
+        }
+        return externType(te, targs);
+    }
+
+    private static TypeElement outermost(TypeElement te) {
+        Element e = te;
+        while (e.getEnclosingElement() instanceof TypeElement) {
+            e = e.getEnclosingElement();
+        }
+        return (TypeElement) e;
+    }
+
+    /** Whether the project's own sources declare {@code te}, in any package. */
+    private boolean isProjectClass(TypeElement te) {
+        return analysis.projectClasses.contains(outermost(te).getQualifiedName().toString());
+    }
+
+    private String packageOf(TypeElement te) {
+        Element e = te;
+        while (!(e instanceof PackageElement)) {
+            e = e.getEnclosingElement();
+        }
+        return ((PackageElement) e).getQualifiedName().toString();
+    }
+
+    /**
+     * Whether {@code te} is a class of another package of the project, which that package's module
+     * declares: calls of it name the package, as they would a module of the set.
+     */
+    private boolean inOtherPackage(TypeElement te) {
+        return isProjectClass(te) && annotation(te, REST_CLIENT) == null && !packageOf(te).equals(pkgName);
+    }
+
+    /**
+     * The extern type of a class outside the module: for a class of another package of the project,
+     * the package and the class name; for any other, the class's qualified name as its path.
+     */
+    private Map<String, Object> externType(TypeElement te, List<Object> targs) {
+        Map<String, Object> x = Json.obj();
+        x.put("k", "extern");
+        x.put("path", externPath(te));
+        x.put("name", externName(te));
+        if (!targs.isEmpty()) {
+            x.put("targs", new ArrayList<Object>(targs));
+        }
+        return x;
+    }
+
+    private String externPath(TypeElement te) {
+        return inOtherPackage(te) ? packageOf(te) : te.getQualifiedName().toString();
+    }
+
+    private String externName(TypeElement te) {
+        if (inOtherPackage(te)) {
+            String q = te.getQualifiedName().toString();
+            return q.substring(packageOf(te).length() + 1);
+        }
+        return te.getSimpleName().toString();
+    }
+
+    private boolean externalSuperclass(TypeElement te) {
+        if (!project) {
+            return false;
+        }
+        TypeMirror sup = te.getSuperclass();
+        if (sup.getKind() != TypeKind.DECLARED) {
+            return false;
+        }
+        TypeElement se = (TypeElement) types.asElement(sup);
+        TypeElement throwable = elements.getTypeElement("java.lang.Throwable");
+        return !isProjectClass(se) && !types.isAssignable(types.erasure(sup), throwable.asType());
+    }
+
+    private boolean externalInterface(TypeElement ie) {
+        return project && !isProjectClass(ie);
+    }
+
+    /** The first annotation of {@code e} of the class {@code qn}, or null. */
+    private static AnnotationMirror annotation(Element e, String qn) {
+        for (AnnotationMirror am : e.getAnnotationMirrors()) {
+            if (((TypeElement) am.getAnnotationType().asElement()).getQualifiedName().contentEquals(qn)) {
+                return am;
+            }
+        }
+        return null;
+    }
+
+    /** The String value of the attribute {@code attr} of {@code am}, or null when absent or not a String. */
+    private static String attribute(AnnotationMirror am, String attr) {
+        for (Map.Entry<? extends ExecutableElement, ? extends javax.lang.model.element.AnnotationValue> en
+            : am.getElementValues().entrySet()) {
+            if (en.getKey().getSimpleName().contentEquals(attr)) {
+                Object v = en.getValue().getValue();
+                return v instanceof String ? (String) v : null;
+            }
+        }
+        return null;
+    }
+
+    /** The simple name of the scope annotation of {@code te} ({@code ApplicationScoped}, …), or null. */
+    private String scope(TypeElement te) {
+        for (String s : SCOPES) {
+            if (annotation(te, s) != null) {
+                return s.substring(s.lastIndexOf('.') + 1);
+            }
+        }
+        return null;
+    }
+
+    /** Drop every extern no call of a function the module reads names. */
+    private void pruneExterns() {
+        Set<String> used = new HashSet<>();
+        collectExterns(outFuncs, used);
+        externs.keySet().removeIf(k -> !used.contains(k));
+    }
+
+    private void collectExterns(Object o, Set<String> used) {
+        if (o instanceof Map) {
+            Map<?, ?> m = (Map<?, ?>) o;
+            Object k = m.get("k");
+            if ("extern".equals(k) && m.containsKey("args")) {
+                used.add(externKey((String) m.get("path"), "", (String) m.get("name")));
+            } else if ("extern_method".equals(k)) {
+                used.add(externKey((String) m.get("path"), (String) m.get("type"), (String) m.get("name")));
+            }
+            for (Object v : m.values()) {
+                collectExterns(v, used);
+            }
+        } else if (o instanceof List) {
+            for (Object v : (List<?>) o) {
+                collectExterns(v, used);
+            }
+        }
+    }
+
+    private static String externKey(String path, String type, String name) {
+        return path + "\u0000" + type + "\u0000" + name;
+    }
+
+    /**
+     * The declared type of an extern's parameter or result: a type that names a type variable is
+     * its erasure; a class the table does not map is an extern of that class, without its type
+     * arguments; an array a slice.
+     */
+    private Map<String, Object> signatureType(TypeMirror t) {
+        TypeMirror u = mentionsVariable(t) ? types.erasure(t) : t;
+        if (u.getKind() == TypeKind.ARRAY) {
+            Map<String, Object> s = kind("slice");
+            s.put("elem", signatureType(((javax.lang.model.type.ArrayType) u).getComponentType()));
+            return s;
+        }
+        try {
+            return typeOf(u);
+        } catch (Unsupported e) {
+            if (u.getKind() == TypeKind.DECLARED) {
+                return externType((TypeElement) ((DeclaredType) u).asElement(), List.of());
+            }
+            throw e;
+        }
+    }
+
+    private static boolean mentionsVariable(TypeMirror t) {
+        switch (t.getKind()) {
+            case TYPEVAR:
+            case WILDCARD:
+            case INTERSECTION:
+                return true;
+            case ARRAY:
+                return mentionsVariable(((javax.lang.model.type.ArrayType) t).getComponentType());
+            case DECLARED:
+                for (TypeMirror a : ((DeclaredType) t).getTypeArguments()) {
+                    if (mentionsVariable(a)) {
+                        return true;
+                    }
+                }
+                return false;
+            default:
+                return false;
         }
     }
 
@@ -2829,7 +3633,7 @@ public final class Reader {
             }
         }
         if (te == null) {
-            return null;
+            return project ? externOf(t) : null;
         }
         if (structs.contains(te)) {
             return tPtr(tNamed(te.getSimpleName().toString()));
@@ -3124,7 +3928,7 @@ public final class Reader {
         for (AnnotationTree a : mods.getAnnotations()) {
             TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
             String qn = at == null ? "" : qname(at);
-            if (!HARMLESS_ANNOTATIONS.contains(qn)) {
+            if (!HARMLESS_ANNOTATIONS.contains(qn) && !(project && QUARKUS_ANNOTATIONS.contains(qn))) {
                 refuse(pos(cu, a), source(cu, a), "annotation " + qn + ": annotations with behaviour are outside cir/1");
             }
         }

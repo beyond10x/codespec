@@ -302,6 +302,18 @@ fn the_go_standard_library_summary_reads_and_holds_every_listed_function() {
     );
 }
 
+/// A summary may name `db`, the effect of a call into a database.
+#[test]
+fn the_vocabulary_has_db_and_a_summary_may_use_it() {
+    assert!(EFFECTS.iter().any(|(e, _)| *e == "db"));
+    let doc = json!({
+        "format": "codespec-effects/1",
+        "language": "java",
+        "externs": [{"path": "javax.sql", "name": "query", "effects": ["db"]}]
+    });
+    summary_from_json(doc.to_string().as_bytes()).expect("db is an effect");
+}
+
 /// `func w(c net.Conn, s string) string { return c.Name(os.Getenv(s)) }`: the method is
 /// summarised as `Conn.Name` of `net`, and the call inside its arguments counts too.
 #[test]

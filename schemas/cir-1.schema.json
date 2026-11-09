@@ -4,6 +4,13 @@
   "description": "One source module: a Go package, a Rust crate module, a Java compilation unit set.",
   "type": "object",
   "properties": {
+    "beans": {
+      "description": "The types of the module a dependency-injection container manages, in source order. Each\nnames a type of `types`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Bean"
+      }
+    },
     "consts": {
       "type": "array",
       "items": {
@@ -12,6 +19,13 @@
     },
     "doc": {
       "type": "string"
+    },
+    "entries": {
+      "description": "The functions a framework starts, in the reader's order: an HTTP resource method, a\nscheduled method, a message consumer. Each names a function of `funcs`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Entry"
+      }
     },
     "errors": {
       "description": "Sentinel errors: module-level error values built from a fixed message.",
@@ -53,6 +67,13 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/CallRef"
+      }
+    },
+    "injects": {
+      "description": "Every injection point of the module, in source order, with what the container resolves it\nto.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Inject"
       }
     },
     "interfaces": {
@@ -108,6 +129,13 @@
         "$ref": "#/$defs/Refusal"
       }
     },
+    "transactional": {
+      "description": "The keys (`F` or `T.m`) of the functions of `funcs` that run in a transaction: the\ncontainer opens one around each call. Source order.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "types": {
       "type": "array",
       "items": {
@@ -132,6 +160,28 @@
     "layout"
   ],
   "$defs": {
+    "Bean": {
+      "description": "A type of the module that a dependency-injection container creates and holds: its scope\nannotation without the package (`ApplicationScoped`, `Singleton`, `RequestScoped`,\n`Dependent`).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "The name of a type in `types`.",
+          "type": "string"
+        },
+        "pos": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "scope",
+        "pos"
+      ]
+    },
     "CallRef": {
       "description": "A call a construct makes, named from the source language's own type information where the\nconstruct is outside `cir/1` (a `foreign` statement, an [`Opaque`] function). A signature `sig`\nis the source language's spelling of a function type without parameter names, every named\ntype qualified by its full import path: `func([]byte) (int, error)`.",
       "oneOf": [
@@ -411,6 +461,48 @@
         "t",
         "value",
         "pos"
+      ]
+    },
+    "Entry": {
+      "description": "A function a framework starts, not the program: a reader recognised it from the framework's\nannotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).",
+      "type": "object",
+      "properties": {
+        "consumes": {
+          "description": "`http`: the media types the method accepts, as written; empty when it declares none.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "func": {
+          "description": "The key of the function in `funcs`: `F` or `T.m`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer)\nor `incoming` (a message consumer).",
+          "type": "string"
+        },
+        "method": {
+          "description": "The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only.",
+          "type": "string"
+        },
+        "on": {
+          "description": "`http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:\n`every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.",
+          "type": "string"
+        },
+        "produces": {
+          "description": "`http`: the media types the method produces, as written; empty when it declares none.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "func",
+        "on"
       ]
     },
     "ErrorVar": {
@@ -1442,6 +1534,29 @@
         "name",
         "params",
         "results"
+      ]
+    },
+    "Inject": {
+      "description": "A point the container fills in: a field, or a constructor parameter.",
+      "type": "object",
+      "properties": {
+        "at": {
+          "description": "`Type.field`, or `Type.<new>.param` for a constructor parameter.",
+          "type": "string"
+        },
+        "bean": {
+          "description": "The qualified name of the one bean of the read packages that implements the type; empty\nwhen there is none or several, and the value comes from outside the read code (`t` then\nis an `extern` type).",
+          "type": "string"
+        },
+        "t": {
+          "description": "The type the point is declared with.",
+          "$ref": "#/$defs/Type"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "t"
       ]
     },
     "IntWidth": {

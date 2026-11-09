@@ -1,7 +1,7 @@
 # codespec-read-java
 
-Reads one Java package directory with javac's attributed trees (`JavacTask.analyze()`) and prints
-it as one `cir/1` module. The program is `codespec.read.Main` under `src/`, on the JDK only; what
+Reads one Java package directory, or a project of them, with javac's attributed trees (`JavacTask.analyze()`) and prints
+it as one `cir/1` module, or a project as one module per package. The program is `codespec.read.Main` under `src/`, on the JDK only; what
 it maps and what it refuses is the class comment of `src/codespec/read/Reader.java`. Its JVM type
 table (primitives, boxes, `String`, lists and maps) is `codespec.jvm.JvmTypes` in
 [`../jvm/src`](../jvm/src/codespec/jvm/JvmTypes.java), shared with the other JVM readers and compiled
@@ -68,6 +68,72 @@ compiler and makes a `calls.json` against its static methods; `codespec conform 
 `conformance/reader/java`, built from those sources. A claimed feature that is the subject of no
 case with a Java source would have no corpus case, and the report would fail it as `no_case`.
 
+## Projects and Quarkus
+
+A directory with a `pom.xml`, `build.gradle` or `build.gradle.kts` is a project. The reader reads
+every package under `src/main/java` in one javac analysis and makes one module per package.
+`src/test/java` is not read. `codespec read --lang java <project>` writes one module: with several
+packages, `CODESPEC_JAVA_PACKAGE` names it. `codespec-read-java --packages <project>` lists the
+packages, `--all <project> <out>` writes `<out>/<package>.cir.json` for each, and `--effects
+<project>` prints the `codespec-effects/1` summary for `codespec effects --summaries`.
+
+The jars come from `CODESPEC_JAVA_CLASSPATH`, jar files separated by `:`. The reader never runs Maven
+or Gradle. `task java-classpath -- <project>` writes the value to `target/java-classpath.txt` with
+`mvn -o dependency:build-classpath`. Without it, a read that cannot find a type says so and names
+the variable.
+
+A call into a jar is an extern with its declared signature, a class of another package of the
+project an extern of that package. Extern overloads and generic signatures are refused or erased.
+Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
+
+| Source | Module |
+|---|---|
+| `@Path` with `@GET`, `@POST`, `@PUT`, `@DELETE` or `@PATCH` | `http` entry with the method and the joined path |
+| `@Scheduled`, `@Incoming` | `scheduled`, `incoming` entry |
+| `@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent` | bean with its scope |
+| `@Inject` | injection, resolved to the one bean, else an extern |
+| `@RegisterRestClient` interface | externs, summarised `net` |
+| Panache, `EntityManager`, JDBC calls | externs, summarised `db` |
+
+What the reader cannot map stays `foreign` with one refusal. `@Entity` and the other persistence
+annotations are such refusals. `@Transactional` is recorded in `transactional`, the keys of the functions
+that run in a transaction, a class-level one for each of its methods. `@Produces` and `@Consumes` are
+recorded as `produces` and `consumes` on the `http` entry, the method's own or else its class's.
+
+A `throw` of an exception outside the package's checked-exception hierarchy (the quickstart's
+`WebApplicationException`) stays refused and `foreign`: `cir/1` has no statement that leaves a
+function by an exception no caller declares, and an error result would change the signature the
+framework calls.
+
+`testdata/quarkus` is a Quarkus 3.27.0 project: one resource with two HTTP methods, a service bean,
+a Panache entity, a REST client interface and a `@Scheduled` method. `task java-quarkus-prepare`
+builds it with `mvn -o -q package`, `task java-quarkus-check` reads it twice, byte-equal, against
+`testdata/quarkus.read.cir.json`, and runs `codespec effects` over it: `FruitResource.create` is
+`db`, `FruitResource.origin` is `net`, `Cleanup.sweep` is `db`.
+
+### A quickstart
+
+`hibernate-orm-panache-quickstart` of [quarkus-quickstarts](https://github.com/quarkusio/quarkus-quickstarts),
+commit `81a58443e92d0080c962f4ef01aa9e6118deb7a5`, read against the class path of
+`testdata/quickstart` (Quarkus 3.27.0, since the quickstart's own 3.40.1.1 is not in an offline
+repository):
+
+- modules: 2 (`org.acme.hibernate.orm.panache.entity`, `org.acme.hibernate.orm.panache.repository`)
+- functions: 15
+- refusals: 25 (35 before `@Transactional`, `@Produces` and `@Consumes` were recorded: 6, 2 and 2 fewer)
+
+| Count | Reason |
+|---|---|
+| 8 | throw of an exception outside the package's checked-exception hierarchy |
+| 2 each | annotations `Cacheable`, `Column`, `Entity` |
+| 2 each | a second constructor; nested class; static field other than a constant; field of `Fruit`, which is not read |
+| 1 each | annotations `GeneratedValue`, `Id`; field of `PanacheEntity`, which is not read |
+
+Reproduce with a clone at that commit:
+
+```console
+task java-quickstart QUICKSTARTS=<clone>
+```
 ## Assumptions
 
 The document describes the Java program only under these assumptions; the reader does not check

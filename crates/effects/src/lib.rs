@@ -113,6 +113,7 @@ pub const BARRIER_FORMAT: &str = "codespec-barrier/1";
 
 /// The closed effect vocabulary, sorted, each with its meaning.
 pub const EFFECTS: &[(&str, &str)] = &[
+    ("db", "reads or writes a database"),
     (
         "env",
         "reads or writes the process environment or arguments",

@@ -66,6 +66,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: maven
+          cache-dependency-path: adapters/java/testdata/*/pom.xml
 
       - name: Install go-task
         env:
@@ -97,6 +99,7 @@ jobs:
         env:
           JDK: ${{ steps.jdk.outputs.path }}
           PART: ${{ matrix.part }}
+          MVN_FLAGS: -B -q
         run: |
           set -euo pipefail
           case "$PART" in
@@ -142,7 +145,7 @@ jobs:
                   timeout -k 10 600 cargo test --locked "${args[@]}" -- --test-threads 1 ;;
               esac ;;
             adapters)
-              task adapters-check JDK="$JDK"
+              task adapters-check JDK="$JDK" MVN_FLAGS="$MVN_FLAGS"
               task groovy-fixture-check JDK="$JDK" ;;
             examples)
               for t in examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-series examples-ledger examples-fees harness; do

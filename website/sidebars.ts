@@ -13,7 +13,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Guides',
-      items: ['guides/translate-go-to-rust', 'guides/add-an-adapter', 'guides/map-a-repository-to-syscalls'],
+      items: ['guides/translate-go-to-rust', 'guides/add-an-adapter', 'guides/map-a-repository-to-syscalls', 'guides/read-a-quarkus-project'],
     },
     {
       type: 'category',

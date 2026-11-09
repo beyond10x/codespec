@@ -135,7 +135,7 @@ pub enum Cmd {
         format: String,
     },
     /// Report what each function of one module, or of several read as one program, may do outside
-    /// its own memory: per function, its effects (env, fs.read, fs.write, io, net, proc, rand,
+    /// its own memory: per function, its effects (db, env, fs.read, fs.write, io, net, proc, rand,
     /// stdin, stdout, time), with a barrier the syscalls it reaches, where each comes from, and
     /// every reason that set may be incomplete, as codespec-effects-report/1.
     ///

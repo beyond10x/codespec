@@ -1282,3 +1282,96 @@ fn a_type_parameter_out_of_scope_or_constrained_by_a_non_interface_is_refused() 
         "{why}"
     );
 }
+
+/// `orders` with the framework structure a reader found: entry points on its first function, a
+/// bean and two injection points.
+fn with_framework() -> serde_json::Value {
+    let mut v = orders();
+    let key = {
+        let bytes = serde_json::to_vec(&v).expect("json");
+        Module::from_json(&bytes).expect("admitted").funcs[0].key()
+    };
+    let named = {
+        let bytes = serde_json::to_vec(&v).expect("json");
+        let m = Module::from_json(&bytes).expect("admitted");
+        m.types
+            .iter()
+            .find_map(|d| match d {
+                codespec_model::TypeDecl::Struct { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+            .expect("a struct")
+    };
+    v["entries"] = serde_json::json!([
+        {"kind": "http", "func": key, "method": "GET", "on": "/orders"},
+        {"kind": "scheduled", "func": key, "on": "every=10m"}
+    ]);
+    v["beans"] = serde_json::json!([
+        {"name": named, "scope": "ApplicationScoped", "pos": "orders.java:3"}
+    ]);
+    v["injects"] = serde_json::json!([
+        {"at": format!("{named}.store"), "t": {"k": "ptr", "elem": {"k": "named", "name": named}}, "bean": "orders.Service"},
+        {"at": format!("{named}.client"), "t": {"k": "extern", "path": "org.acme", "name": "Client"}}
+    ]);
+    v
+}
+
+#[test]
+fn entries_beans_and_injections_read_and_are_canonical() {
+    let bytes = serde_json::to_vec(&with_framework()).expect("json");
+    let m = Module::from_json(&bytes).expect("admitted");
+    assert_eq!(m.entries.len(), 2);
+    assert_eq!(m.beans.len(), 1);
+    assert_eq!(m.injects.len(), 2);
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    assert_eq!(again, m);
+}
+
+#[test]
+fn an_entry_naming_a_function_the_module_lacks_is_refused() {
+    let mut v = with_framework();
+    v["entries"][0]["func"] = serde_json::json!("Nowhere");
+    assert!(refused(&v).contains("entry point names Nowhere, which is no function of the module"));
+}
+
+#[test]
+fn an_entry_of_an_unknown_kind_is_refused() {
+    let mut v = with_framework();
+    v["entries"][0]["kind"] = serde_json::json!("cron");
+    assert!(refused(&v).contains("entry point of unknown kind cron"));
+}
+
+#[test]
+fn a_bean_naming_a_type_the_module_lacks_is_refused() {
+    let mut v = with_framework();
+    v["beans"][0]["name"] = serde_json::json!("Ghost");
+    assert!(refused(&v).contains("bean Ghost is no type of the module"));
+}
+
+#[test]
+fn media_types_on_an_entry_and_transactional_functions_read_and_are_canonical() {
+    let mut v = with_framework();
+    let key = v["entries"][0]["func"].as_str().expect("key").to_string();
+    v["entries"][0]["consumes"] = serde_json::json!(["application/json"]);
+    v["entries"][0]["produces"] = serde_json::json!(["application/json", "text/plain"]);
+    v["transactional"] = serde_json::json!([key]);
+    let bytes = serde_json::to_vec(&v).expect("json");
+    let m = Module::from_json(&bytes).expect("admitted");
+    assert_eq!(m.entries[0].produces.len(), 2);
+    assert_eq!(m.transactional.len(), 1);
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again, m);
+}
+
+#[test]
+fn a_transactional_mark_on_a_function_the_module_lacks_is_refused() {
+    let mut v = with_framework();
+    v["transactional"] = serde_json::json!(["nope"]);
+    let bytes = serde_json::to_vec(&v).expect("json");
+    let err = Module::from_json(&bytes).expect_err("refused").to_string();
+    assert!(
+        err.contains("transactional") && err.contains("nope"),
+        "{err}"
+    );
+}

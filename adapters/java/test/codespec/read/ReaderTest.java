@@ -130,6 +130,24 @@ public final class ReaderTest {
         cases.add(t::everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter);
         names.add("every_claimed_feature_is_the_subject_of_a_kit_case_with_a_java_source");
         cases.add(t::everyClaimedFeatureIsTheSubjectOfAKitCaseWithAJavaSource);
+        names.add("a_project_directory_is_read_one_module_per_package");
+        cases.add(t::aProjectDirectoryIsReadOneModulePerPackage);
+        names.add("a_project_of_several_packages_read_without_naming_one_is_refused_naming_them_and_the_variable");
+        cases.add(t::aProjectOfSeveralPackagesReadWithoutNamingOneIsRefusedNamingThemAndTheVariable);
+        names.add("a_project_read_without_its_jars_is_refused_naming_the_variable");
+        cases.add(t::aProjectReadWithoutItsJarsIsRefusedNamingTheVariable);
+        names.add("quarkus_entry_points_are_http_methods_with_joined_paths_and_scheduled_methods");
+        cases.add(t::quarkusEntryPointsAreHttpMethodsWithJoinedPathsAndScheduledMethods);
+        names.add("quarkus_beans_and_injection_points_resolve_to_the_one_bean_or_to_an_extern");
+        cases.add(t::quarkusBeansAndInjectionPointsResolveToTheOneBeanOrToAnExtern);
+        names.add("a_call_into_a_jar_is_an_extern_with_its_declared_signature");
+        cases.add(t::aCallIntoAJarIsAnExternWithItsDeclaredSignature);
+        names.add("quarkus_refuses_only_what_it_cannot_map");
+        cases.add(t::quarkusRefusesOnlyWhatItCannotMap);
+        names.add("quarkus_read_twice_gives_the_same_bytes");
+        cases.add(t::quarkusReadTwiceGivesTheSameBytes);
+        names.add("effects_over_the_quarkus_read_give_the_persisting_method_db_and_the_client_method_net");
+        cases.add(t::effectsOverTheQuarkusReadGiveThePersistingMethodDbAndTheClientMethodNet);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -802,6 +820,153 @@ public final class ReaderTest {
             }
         }
         check(missing.isEmpty(), "claimed features that are the subject of no kit case with a java/Case.java: " + missing);
+    }
+
+    // ---- projects and Quarkus ----
+
+    private static final String CLASSPATH_ENV = "CODESPEC_JAVA_CLASSPATH";
+
+    /** The jars the Quarkus fixture is read against, as {@code task adapters-check} puts them in the environment. */
+    private static List<Path> classpath() {
+        String cp = System.getenv(CLASSPATH_ENV);
+        check(cp != null && !cp.isEmpty(), CLASSPATH_ENV + " is not set: task adapters-check produces it with mvn dependency:build-classpath");
+        return Reader.classpath(cp);
+    }
+
+    private Map<String, Object> quarkus() throws Exception {
+        Map<String, Map<String, Object>> modules = Reader.readProject(testdata.resolve("quarkus"), classpath());
+        check(modules.keySet().equals(Set.of("org.acme")), "packages " + modules.keySet());
+        return modules.get("org.acme");
+    }
+
+    private void aProjectDirectoryIsReadOneModulePerPackage() throws Exception {
+        Map<String, Map<String, Object>> modules = Reader.readProject(testdata.resolve("packages"), List.of());
+        check(new ArrayList<>(modules.keySet()).equals(List.of("shop", "shop.pricing")), "packages " + modules.keySet());
+        Map<String, Object> shop = modules.get("shop");
+        Map<String, Object> pricing = modules.get("shop.pricing");
+        check("shop".equals(shop.get("path")) && "shop".equals(shop.get("name")), "shop module " + shop.get("path") + " " + shop.get("name"));
+        check("shop.pricing".equals(pricing.get("path")) && "pricing".equals(pricing.get("name")), "pricing module");
+        check(!shop.containsKey("refusals") && !pricing.containsKey("refusals"), "refusals "
+            + shop.get("refusals") + " " + pricing.get("refusals"));
+        check(funcByKeyOrNull(pricing, "Price.apply") != null, "no Price.apply in the pricing module");
+        String price = "{\"k\":\"extern\",\"path\":\"shop.pricing\",\"name\":\"Price\"}";
+        List<Object> externs = list(shop.get("externs"));
+        check(externs.size() == 1, "externs " + Json.write(externs));
+        check(same(map(externs.get(0)).get("recv"), price), "extern receiver " + Json.write(map(externs.get(0)).get("recv")));
+        check("apply".equals(map(externs.get(0)).get("name")) && "shop.pricing".equals(map(externs.get(0)).get("path")), "extern " + Json.write(externs));
+        check(Json.write(funcByKey(shop, "Cart.total").get("body")).contains("\"k\": \"extern_method\""), "no extern_method in Cart.total");
+    }
+
+    private void aProjectOfSeveralPackagesReadWithoutNamingOneIsRefusedNamingThemAndTheVariable() throws Exception {
+        Path out = work.resolve("packages.stdout.json");
+        Path err = work.resolve("packages.stderr.txt");
+        ProcessBuilder pb = new ProcessBuilder(adapters.resolve("codespec-read-java").toString(), testdata.resolve("packages").toString())
+            .redirectOutput(out.toFile()).redirectError(err.toFile());
+        pb.environment().remove("CODESPEC_JAVA_PACKAGE");
+        check(pb.start().waitFor() == 1, "exit code is not 1");
+        String why = Files.readString(err);
+        check(why.contains("shop") && why.contains("shop.pricing") && why.contains("CODESPEC_JAVA_PACKAGE"), "stderr: " + why);
+        pb.environment().put("CODESPEC_JAVA_PACKAGE", "shop.pricing");
+        check(pb.start().waitFor() == 0, "exit code with CODESPEC_JAVA_PACKAGE");
+        check("shop.pricing".equals(map(Json.parse(Files.readString(out))).get("path")), "module printed " + Files.readString(out));
+    }
+
+    private void aProjectReadWithoutItsJarsIsRefusedNamingTheVariable() throws Exception {
+        try {
+            Reader.readProject(testdata.resolve("quarkus"), List.of());
+        } catch (Reader.Failure e) {
+            check(e.getMessage().contains(CLASSPATH_ENV), e.getMessage());
+            return;
+        }
+        throw new AssertionError("a project that needs its jars was read without them");
+    }
+
+    private void quarkusEntryPointsAreHttpMethodsWithJoinedPathsAndScheduledMethods() throws Exception {
+        List<Object> entries = list(quarkus().get("entries"));
+        List<String> got = new ArrayList<>();
+        for (Object e : entries) {
+            Map<String, Object> m = map(e);
+            got.add(m.get("kind") + " " + m.get("func") + " " + m.getOrDefault("method", "-") + " " + m.get("on")
+                + " consumes=" + m.getOrDefault("consumes", List.of()) + " produces=" + m.getOrDefault("produces", List.of()));
+        }
+        check(got.equals(List.of("scheduled Cleanup.sweep - every=10m consumes=[] produces=[]",
+            "http FruitResource.origin GET /fruits/origin consumes=[] produces=[text/plain, text/html]",
+            "http FruitResource.create POST /fruits consumes=[text/plain] produces=[application/json]")), "entries " + got);
+        check(list(quarkus().get("transactional")).equals(List.of("FruitResource.create")), "transactional " + quarkus().get("transactional"));
+    }
+
+    private void quarkusBeansAndInjectionPointsResolveToTheOneBeanOrToAnExtern() throws Exception {
+        Map<String, Object> doc = quarkus();
+        List<String> beans = new ArrayList<>();
+        for (Object b : list(doc.get("beans"))) {
+            beans.add(map(b).get("name") + " " + map(b).get("scope"));
+        }
+        check(beans.equals(List.of("Cleanup ApplicationScoped", "FruitService ApplicationScoped")), "beans " + beans);
+        List<Object> injects = list(doc.get("injects"));
+        check(injects.size() == 2, "injects " + Json.write(injects));
+        Map<String, Object> service = map(injects.get(0));
+        check("FruitResource.service".equals(service.get("at")) && "org.acme.FruitService".equals(service.get("bean")), "service " + Json.write(service));
+        check(same(service.get("t"), "{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"FruitService\"}}"), "service type");
+        Map<String, Object> client = map(injects.get(1));
+        check("FruitResource.countries".equals(client.get("at")) && !client.containsKey("bean"), "client " + Json.write(client));
+        check(same(client.get("t"), "{\"k\":\"extern\",\"path\":\"org.acme.CountryClient\",\"name\":\"CountryClient\"}"), "client type");
+    }
+
+    private void aCallIntoAJarIsAnExternWithItsDeclaredSignature() throws Exception {
+        Map<String, Object> doc = quarkus();
+        List<String> got = new ArrayList<>();
+        for (Object x : list(doc.get("externs"))) {
+            Map<String, Object> m = map(x);
+            got.add(m.get("path") + " " + (m.containsKey("recv") ? map(map(m.get("recv")).get("k").equals("ptr") ? map(m.get("recv")).get("elem") : m.get("recv")).get("name") : "-")
+                + " " + m.get("name") + " " + Json.write(m.get("params")).replaceAll("\\s+", "") + Json.write(m.get("results")).replaceAll("\\s+", ""));
+        }
+        String s = "{\"k\":\"string\"}";
+        check(got.equals(List.of(
+            "io.quarkus.hibernate.orm.panache.PanacheEntityBase - deleteAll []" + "[{\"k\":\"int\",\"width\":\"64\",\"signed\":true}]",
+            "io.quarkus.hibernate.orm.panache.PanacheEntityBase PanacheEntityBase persist [][]",
+            "org.acme.CountryClient CountryClient byName [" + s + "][" + s + "]")), "externs " + got);
+    }
+
+    private void quarkusRefusesOnlyWhatItCannotMap() throws Exception {
+        Map<String, Object> doc = quarkus();
+        List<Object> refusals = list(doc.get("refusals"));
+        check(refusals.size() == 1, "refusals " + Json.write(refusals).replaceAll("\\s+", " "));
+        check(String.valueOf(map(refusals.get(0)).get("reason")).startsWith("annotation jakarta.persistence.Entity"), Json.write(refusals));
+        check("org.acme".equals(doc.get("path")), "path " + doc.get("path"));
+    }
+
+    private void quarkusReadTwiceGivesTheSameBytes() throws Exception {
+        check(Json.write(quarkus()).equals(Json.write(quarkus())), "two reads differ");
+    }
+
+    /** {@code codespec effects} over the read, with the summary the reader prints for the project. */
+    private void effectsOverTheQuarkusReadGiveThePersistingMethodDbAndTheClientMethodNet() throws Exception {
+        Path read = work.resolve("quarkus.read.json");
+        Path summary = work.resolve("quarkus.effects.json");
+        Path report = work.resolve("quarkus.report.json");
+        Files.writeString(read, Json.write(quarkus()), StandardCharsets.UTF_8);
+        Files.writeString(summary, Reader.effectsSummary(testdata.resolve("quarkus"), classpath()), StandardCharsets.UTF_8);
+        run("codespec effects", report, work.resolve("quarkus.effects.err"), codespec.toString(), "effects", read.toString(),
+            "--summaries", summary.toString());
+        Map<String, Object> doc = map(Json.parse(Files.readString(report)));
+        check(Json.write(map(funcByKeyInReport(doc, "FruitResource.create")).get("effects")).replaceAll("\\s+", "").equals("[\"db\"]"),
+            "create " + Json.write(funcByKeyInReport(doc, "FruitResource.create")));
+        check(Json.write(map(funcByKeyInReport(doc, "FruitResource.origin")).get("effects")).replaceAll("\\s+", "").equals("[\"net\"]"),
+            "origin " + Json.write(funcByKeyInReport(doc, "FruitResource.origin")));
+        check(Json.write(map(funcByKeyInReport(doc, "Cleanup.sweep")).get("effects")).replaceAll("\\s+", "").equals("[\"db\"]"),
+            "sweep " + Json.write(funcByKeyInReport(doc, "Cleanup.sweep")));
+        check(Json.write(map(funcByKeyInReport(doc, "FruitService.defaultName")).get("effects")).replaceAll("\\s+", "").equals("[]"), "defaultName has effects");
+        check(Json.write(map(funcByKeyInReport(doc, "FruitResource.create")).get("unknown")).replaceAll("\\s+", "").equals("[]"), "create is unknown: "
+            + Json.write(funcByKeyInReport(doc, "FruitResource.create")));
+    }
+
+    private static Map<String, Object> funcByKeyInReport(Map<String, Object> report, String key) {
+        for (Object f : list(report.get("funcs"))) {
+            if (key.equals(map(f).get("name"))) {
+                return map(f);
+            }
+        }
+        throw new AssertionError("no " + key + " in the report");
     }
 
     // ---- helpers ----

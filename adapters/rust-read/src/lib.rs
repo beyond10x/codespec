@@ -1293,6 +1293,10 @@ impl Reader {
             linknames: vec![],
             inits: vec![],
             interfaces: vec![],
+            entries: vec![],
+            beans: vec![],
+            injects: vec![],
+            transactional: vec![],
         }
     }
 

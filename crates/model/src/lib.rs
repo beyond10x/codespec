@@ -91,6 +91,76 @@ pub struct Module {
     /// module that an `iface_call` goes through, sorted by `path`, then `name`, each once.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub interfaces: Vec<Interface>,
+    /// The functions a framework starts, in the reader's order: an HTTP resource method, a
+    /// scheduled method, a message consumer. Each names a function of `funcs`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entries: Vec<Entry>,
+    /// The types of the module a dependency-injection container manages, in source order. Each
+    /// names a type of `types`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beans: Vec<Bean>,
+    /// Every injection point of the module, in source order, with what the container resolves it
+    /// to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub injects: Vec<Inject>,
+    /// The keys (`F` or `T.m`) of the functions of `funcs` that run in a transaction: the
+    /// container opens one around each call. Source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transactional: Vec<String>,
+}
+
+/// The kinds of [`Entry`] a document may hold.
+pub const ENTRY_KINDS: &[&str] = &["http", "scheduled", "incoming"];
+
+/// A function a framework starts, not the program: a reader recognised it from the framework's
+/// annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Entry {
+    /// One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer)
+    /// or `incoming` (a message consumer).
+    pub kind: String,
+    /// The key of the function in `funcs`: `F` or `T.m`.
+    pub func: String,
+    /// The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub method: String,
+    /// `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:
+    /// `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.
+    pub on: String,
+    /// `http`: the media types the method accepts, as written; empty when it declares none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consumes: Vec<String>,
+    /// `http`: the media types the method produces, as written; empty when it declares none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
+}
+
+/// A type of the module that a dependency-injection container creates and holds: its scope
+/// annotation without the package (`ApplicationScoped`, `Singleton`, `RequestScoped`,
+/// `Dependent`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Bean {
+    /// The name of a type in `types`.
+    pub name: String,
+    pub scope: String,
+    pub pos: Pos,
+}
+
+/// A point the container fills in: a field, or a constructor parameter.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Inject {
+    /// `Type.field`, or `Type.<new>.param` for a constructor parameter.
+    pub at: String,
+    /// The type the point is declared with.
+    pub t: Type,
+    /// The qualified name of the one bean of the read packages that implements the type; empty
+    /// when there is none or several, and the value comes from outside the read code (`t` then
+    /// is an `extern` type).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub bean: String,
 }
 
 /// An interface type: the methods a value of it can be called with. A value of the module's own
@@ -1139,6 +1209,7 @@ impl Module {
         m.check_embedded().map_err(ReadError::Invalid)?;
         m.check_interfaces().map_err(ReadError::Invalid)?;
         m.check_generics().map_err(ReadError::Invalid)?;
+        m.check_framework().map_err(ReadError::Invalid)?;
         Ok(m)
     }
 
@@ -1790,6 +1861,42 @@ impl Module {
                     }
                 }
                 TypeDecl::Newtype { .. } | TypeDecl::Enum { .. } => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Every entry point of a known kind naming a function of `funcs`, every bean naming a type of
+    /// `types`.
+    fn check_framework(&self) -> Result<(), String> {
+        let funcs: std::collections::BTreeSet<String> = self.funcs.iter().map(Func::key).collect();
+        for e in &self.entries {
+            if !ENTRY_KINDS.contains(&e.kind.as_str()) {
+                return Err(format!("entry point of unknown kind {}", e.kind));
+            }
+            if !funcs.contains(&e.func) {
+                return Err(format!(
+                    "entry point names {}, which is no function of the module",
+                    e.func
+                ));
+            }
+        }
+        for t in &self.transactional {
+            if !funcs.contains(t) {
+                return Err(format!(
+                    "transactional names {t}, which is no function of the module"
+                ));
+            }
+        }
+        for b in &self.beans {
+            let declared = self.types.iter().any(|d| match d {
+                TypeDecl::Struct { name, .. }
+                | TypeDecl::Newtype { name, .. }
+                | TypeDecl::Enum { name, .. }
+                | TypeDecl::Union { name, .. } => *name == b.name,
+            });
+            if !declared {
+                return Err(format!("bean {} is no type of the module", b.name));
             }
         }
         Ok(())
