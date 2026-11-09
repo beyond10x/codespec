@@ -14,6 +14,7 @@ the site.
 | `crates/model` (`b10x-codespec-model`) | the definition of `cir/1`: Rust types, strict reading, canonical JSON, the JSON Schema |
 | `crates/passes` (`b10x-codespec-passes`) | the passes: `lookup-guard` and the facts writers read; rules in its crate doc |
 | `crates/effects` (`b10x-codespec-effects`) | the effect summary format `codespec-effects/1`, the closed effect vocabulary and the effects report `codespec-effects-report/1` that `codespec effects` prints; defined in its crate doc, design in `docs/static-analysis.md` |
+| `crates/check` (`b10x-codespec-check`) | the built-in defect checks `codespec check` runs over a set of `cir/1` documents and the report `codespec-check-report/1`; what each check matches is its crate doc, its run on google/capslock `docs/checks-capslock.md` |
 | `summaries/` | checked-in `codespec-effects/1` summaries of standard libraries: `go-std.effects.json` |
 | `crates/harness` (`b10x-codespec-harness`) | the comparison harness: trace format, generator and byte-for-byte comparison, defined in its crate doc |
 | `crates/cli` (`b10x-codespec-cli`, library `codespec_cli`, binary `codespec`) | `validate`, `schema`, `features`, `read`, `pass`, `write`, `conform`, `harness`; runs adapters and validates what crosses to and from them. The clap `Cli` is in `src/lib.rs` so `codespec-docs` can walk it |
@@ -185,6 +186,9 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `adapters/go/cmd/codespec-write-go/extern_test.go::TestExternCaseFixedPoint`.
 - An extern without a summary is `unknown`, never pure, and effects reach every caller:
   `crates/effects/tests/effects.rs::effects_flow_to_callers_and_unsummarised_externs_are_unknown`.
+- Each built-in check finds the true positive of its fixture once and nothing in its near miss,
+  both read with `codespec-read-go`: `crates/check/tests/checks.rs`; `codespec check` exits 0, 1
+  and 2 as documented and its JSON holds the text output's findings: `crates/cli/tests/check.rs`.
 - The harness catches a one-token change:
   `crates/cli/tests/harness.rs::a_planted_one_token_change_in_the_rust_output_fails_with_seed_rust_and_first_line`;
   traces are platform-independent: `crates/harness/tests/harness.rs::a_trace_is_pinned_across_platforms`.

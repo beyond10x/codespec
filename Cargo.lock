@@ -53,9 +53,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "b10x-codespec-check"
+version = "0.6.1"
+dependencies = [
+ "b10x-codespec-effects",
+ "b10x-codespec-model",
+ "b10x-codespec-passes",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "b10x-codespec-cli"
 version = "0.6.1"
 dependencies = [
+ "b10x-codespec-check",
  "b10x-codespec-conformance",
  "b10x-codespec-effects",
  "b10x-codespec-harness",

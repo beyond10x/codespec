@@ -1,0 +1,18 @@
+[package]
+name = "b10x-codespec-check"
+description = "Built-in defect checks over a set of cir/1 documents: growth, randomness, integer ranges, case folding, clones, writers, dropped results, error equality, locks, timers, leaked connections, blocking accepts, waits in loops, frames, quadratic inserts, unreached functions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_check"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-passes = { path = "../passes" }
+b10x-codespec-effects = { path = "../effects" }
+serde.workspace = true
+serde_json.workspace = true

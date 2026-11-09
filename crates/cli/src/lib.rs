@@ -241,6 +241,46 @@ pub enum Cmd {
         #[arg(long, value_parser = ["cha", "rta"], default_value = "rta")]
         dispatch: String,
     },
+    /// Run one built-in defect check over modules read as one program and print one finding per
+    /// line: position, function, check and the evidence it matched (the calls and their
+    /// positions). Exit 0 with no finding, 1 with findings, 2 on an input error.
+    ///
+    /// A check reads only cir/1: read bodies, the call lists of foreign statements and opaque
+    /// functions, method sets and types. --list prints every check, one line on what it finds,
+    /// and the name lists it matches calls against; --names replaces lists. What each check
+    /// matches exactly is the crate doc of b10x-codespec-check.
+    Check {
+        /// The check to run; --list names them.
+        #[arg(required_unless_present = "list")]
+        check: Option<String>,
+        /// The modules to check, cir/1 documents, read as one program.
+        #[arg(required_unless_present = "list")]
+        modules: Vec<PathBuf>,
+        /// Print every check, what it finds and its name lists, and exit.
+        #[arg(long, conflicts_with = "check")]
+        list: bool,
+        /// text, one line per finding; or json, codespec-check-report/1.
+        #[arg(long, value_parser = ["text", "json"], default_value = "text")]
+        format: String,
+        /// insecure-random: report every call into a random package.
+        #[arg(long)]
+        strict: bool,
+        /// A JSON object of list name to an array of entries, each replacing that list.
+        #[arg(long, value_name = "FILE")]
+        names: Option<PathBuf>,
+        /// Report only findings in the module with this import path or name, or under it;
+        /// repeat for several. All when absent.
+        #[arg(long = "report", value_name = "MODULE")]
+        report: Vec<String>,
+        /// unreached: an entry function, `<path>.<name>` or `<path>.<type>.<method>`; repeat for
+        /// several.
+        #[arg(long = "entry", value_name = "FUNC")]
+        entry: Vec<String>,
+        /// unreached: a module, by import path or name, whose every exported function is an
+        /// entry; repeat for several.
+        #[arg(long = "exported", value_name = "MODULE")]
+        exported: Vec<String>,
+    },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
     /// differing line otherwise.

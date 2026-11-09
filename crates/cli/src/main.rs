@@ -1,7 +1,7 @@
 //! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
 //! passes, run reader and writer adapters, compare implementations of an example on seeded traces
-//! (`harness`), run the conformance kit against an adapter (`conform`) and measure how much of a
-//! module a reader read (`measure`).
+//! (`harness`), run the conformance kit against an adapter (`conform`), measure how much of a
+//! module a reader read (`measure`) and run the built-in defect checks (`check`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -20,13 +20,73 @@ use codespec_conformance::conform::{
 use codespec_model::{Module, features_json, schema_json};
 
 fn main() -> ExitCode {
-    match run(Cli::parse().command) {
+    let command = Cli::parse().command;
+    if let Cmd::Check { .. } = command {
+        return match check(command) {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("codespec: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    match run(command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("codespec: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// `codespec check`: exit 0 with no finding, 1 with findings; an input error is the caller's 2.
+fn check(command: Cmd) -> Result<ExitCode, String> {
+    let Cmd::Check {
+        check,
+        modules,
+        list,
+        format,
+        strict,
+        names,
+        report,
+        entry,
+        exported,
+    } = command
+    else {
+        unreachable!("main passes only check");
+    };
+    let names = match names {
+        Some(path) => {
+            let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            codespec_check::Names::from_json(&bytes)
+                .map_err(|e| format!("{}: {e}", path.display()))?
+        }
+        None => codespec_check::Names::default(),
+    };
+    if list {
+        print!("{}", codespec_check::list_text(&names));
+        return Ok(ExitCode::SUCCESS);
+    }
+    let check = check.expect("clap requires a check without --list");
+    let set = read_set(&modules)?;
+    let opts = codespec_check::Options {
+        strict,
+        names,
+        report,
+        entries: entry,
+        exported,
+    };
+    let r = codespec_check::run(&check, &set, &opts)?;
+    if format == "json" {
+        print!("{}", r.to_json());
+    } else {
+        print!("{}", r.to_text());
+    }
+    Ok(if r.findings.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
 }
 
 fn read_module(bytes: &[u8], what: &str) -> Result<Module, String> {
@@ -255,6 +315,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
             print!("{}", t.to_json());
             Ok(())
         }
+        Cmd::Check { .. } => check(cmd).map(|_| ()),
         Cmd::Harness {
             example,
             seeds,
