@@ -685,6 +685,44 @@
         "tolerance": 0.01
       }
     },
+    "page-docs-use-cases": {
+      "always_visible.misses": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "axe.critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "axe.minor": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "axe.moderate": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "axe.serious": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.misses": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout.overflow": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout.page_scroll": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.after_ready": {
+        "value": 0,
+        "tolerance": 0.01
+      }
+    },
     "page-docs-vision": {
       "always_visible.misses": {
         "value": 0,

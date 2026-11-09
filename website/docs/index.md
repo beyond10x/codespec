@@ -54,6 +54,7 @@ checks it. [Vision](/docs/vision) says where it is going.
 
 ## Start
 
+- [Use cases](/docs/use-cases): why you would use codespec
 - [Getting started](/docs/getting-started)
 - [Showcase](/docs/examples/greeter)
 - [Showcase: series](/docs/examples/series)

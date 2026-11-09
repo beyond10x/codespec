@@ -17,6 +17,10 @@
         "kind": "primary"
       },
       {
+        "label": "Why use it",
+        "href": "/docs/use-cases"
+      },
+      {
         "label": "See one program go through",
         "href": "/docs/examples/greeter"
       },
