@@ -24,6 +24,7 @@ the site.
 | `adapters/<language>/` | reader and writer programs for one language, in whatever language has the best tooling for it |
 | `adapters/rust-read` (`codespec-read-rust`, library `codespec_read_rust`) | the Rust reader on `syn`; what it maps, its types and its fixed table of std methods are its crate doc |
 | `adapters/c` (`codespec-write-c`), `adapters/c-run` (`codespec-run-c`, library `codespec_run_c`) | the C writer, C11 with the header-only runtime `codespec_rt.h`, and its runner, which compiles the written C with `cc` and a generated driver; the mappings are the writer's `src/write.rs` doc, the header lines the runner reads its `main.rs` doc |
+| `adapters/c-read` (`codespec-read-c`, library `codespec_read_c`) | the C reader on the JSON AST `clang` prints; what it maps and what it refuses are its crate doc |
 | `examples/<name>/` | a source program, the `cir/1` documents read from it and the code written from them, checked in; `harness.toml` and `drivers/` run every implementation under the harness |
 
 ## Serves
@@ -94,7 +95,7 @@ alone as `task <name>` (`Taskfile.yml`):
 | `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
 | `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
-| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy}` equal to what the kit's case sources build, the seven conformance reports equal to `codespec conform` run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
+| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy,c}` equal to what the kit's case sources build, the eight conformance reports equal to `codespec conform` run again on the Go, Rust, Java, Groovy and C readers and the Go, Rust and C writers (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
 
 Not in the gate: `task examples-netcheck`, which reads `examples/netcheck/source` with every package
 it imports (needs Go 1.27.1, no network), runs `codespec effects`, `reach` and `trace` over the set
@@ -127,8 +128,8 @@ Never edit these by hand; change the generator and regenerate.
 | `schemas/cir-1.features.json` | `codespec features`, from `crates/model/src/features.rs` | `task schema` |
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
-| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs` or `java/Case.java` (Groovy: `groovy/Case.groovy`, else `java/Case.java`, as `Case.groovy`) and `calls.json` | `task docs-generate` |
-| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy; writers go, rust, c | `task docs-generate` |
+| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs`, `c/case.c` or `java/Case.java` (Groovy: `groovy/Case.groovy`, else `java/Case.java`, as `Case.groovy`) and `calls.json` | `task docs-generate` |
+| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy, c; writers go, rust, c | `task docs-generate` |
 | `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
 | `website/docs/examples/netcheck.md`, `website/docs/examples/call-trace.md` | `codespec-docs` (`netcheck.rs`, `calltrace.rs`) from `examples/netcheck` and `examples/envcheck` | `task docs-generate` |

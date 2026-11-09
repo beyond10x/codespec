@@ -1,0 +1,1010 @@
+//! Statements and expressions of one function body, from clang's AST nodes.
+
+use std::collections::BTreeMap;
+
+use codespec_model::{CallRef, Case, Expr, Extern, FieldInit, IntWidth, Refusal, Stmt, Type};
+
+use crate::json::J;
+use crate::types::{Tables, Unit};
+use crate::{Source, pos_of, src_of};
+
+type R<T> = Result<T, String>;
+
+/// What a `break` or `continue` inside leaves.
+#[derive(Clone, Copy, PartialEq)]
+enum Brk {
+    Loop,
+    /// A `do … while`: a `continue` would run its condition, which the `for` it is read as
+    /// checks at the end of its body.
+    DoLoop,
+    Switch,
+}
+
+/// The translation of one function: its locals in scope, the loops and switches around the
+/// statement being read, and what it collects for the module.
+pub struct Body<'a> {
+    pub tables: &'a Tables,
+    pub unit: &'a Unit,
+    pub src: &'a Source,
+    /// Every function declaration of the unit, by id: an extern call's signature.
+    pub decls: &'a BTreeMap<String, &'a J>,
+    pub refusals: Vec<Refusal>,
+    pub externs: Vec<Extern>,
+    scopes: Vec<Vec<(String, String, Type)>>,
+    breakable: Vec<Brk>,
+}
+
+/// The `cir/1` operators of C's binary operators, comparisons and logic apart.
+const ARITH: &[&str] = &["+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"];
+const COMPARE: &[&str] = &["<", ">", "<=", ">=", "==", "!="];
+
+fn strip(mut n: &J) -> &J {
+    while n.kind() == "ParenExpr" {
+        n = &n.inner()[0];
+    }
+    n
+}
+
+fn lit(value: impl Into<String>, t: Type) -> Expr {
+    Expr::Lit {
+        value: value.into(),
+        t,
+    }
+}
+
+/// The value of an integer constant made of a literal under unary `-`, `+` and `~`.
+fn constant(n: &J) -> Option<i128> {
+    let n = strip(n);
+    match n.kind() {
+        "IntegerLiteral" => n.s("value").parse().ok(),
+        "ImplicitCastExpr" if n.s("castKind") == "IntegralCast" => constant(&n.inner()[0]),
+        "ConstantExpr" => constant(&n.inner()[0]),
+        "UnaryOperator" => {
+            let v = constant(&n.inner()[0])?;
+            match n.s("opcode") {
+                "-" => Some(-v),
+                "+" => Some(v),
+                "~" => Some(!v),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn fits(v: i128, t: &Type) -> bool {
+    let Type::Int { width, signed } = t else {
+        return false;
+    };
+    let bits = match width {
+        IntWidth::W8 => 8,
+        IntWidth::W16 => 16,
+        IntWidth::W32 => 32,
+        IntWidth::W64 | IntWidth::Platform => 64,
+    };
+    if *signed {
+        v >= -(1i128 << (bits - 1)) && v < (1i128 << (bits - 1))
+    } else {
+        v >= 0 && v < (1i128 << bits)
+    }
+}
+
+/// A C string literal in Go's spelling: printable ASCII and the escapes both languages share.
+fn string_literal(value: &str) -> R<String> {
+    let inner = value
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .ok_or_else(|| format!("the string literal {value}, which has a prefix"))?;
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('n' | 't' | 'r' | '\\' | '"') => {}
+                _ => {
+                    return Err(format!(
+                        "the string literal {value}, whose escapes Go spells otherwise"
+                    ));
+                }
+            },
+            ' '..='~' => {}
+            _ => {
+                return Err(format!(
+                    "the string literal {value}, which is not printable ASCII"
+                ));
+            }
+        }
+    }
+    Ok(value.to_string())
+}
+
+impl<'a> Body<'a> {
+    pub fn new(
+        tables: &'a Tables,
+        unit: &'a Unit,
+        src: &'a Source,
+        decls: &'a BTreeMap<String, &'a J>,
+        params: Vec<(String, String, Type)>,
+    ) -> Body<'a> {
+        Body {
+            tables,
+            unit,
+            src,
+            decls,
+            refusals: Vec::new(),
+            externs: Vec::new(),
+            scopes: vec![params],
+            breakable: Vec::new(),
+        }
+    }
+
+    fn ty(&self, n: &J) -> R<Type> {
+        self.tables.ty(self.unit, n.get("type"))
+    }
+
+    fn local(&self, id: &str) -> Option<(String, Type)> {
+        self.scopes
+            .iter()
+            .rev()
+            .flat_map(|s| s.iter().rev())
+            .find(|(i, _, _)| i == id)
+            .map(|(_, n, t)| (n.clone(), t.clone()))
+    }
+
+    fn bind(&mut self, id: &str, name: &str, t: Type) {
+        self.scopes
+            .last_mut()
+            .expect("a scope")
+            .push((id.into(), name.into(), t));
+    }
+
+    /// The statements of a function body or of a block.
+    pub fn block(&mut self, n: &J) -> Vec<Stmt> {
+        let mut out = Vec::new();
+        self.scopes.push(Vec::new());
+        if n.kind() == "CompoundStmt" {
+            for s in n.inner() {
+                self.stmt(s, &mut out);
+            }
+        } else {
+            self.stmt(n, &mut out);
+        }
+        self.scopes.pop();
+        out
+    }
+
+    /// Read one statement into `out`; one it cannot read is kept as `foreign` with a refusal.
+    fn stmt(&mut self, n: &J, out: &mut Vec<Stmt>) {
+        let mark = out.len();
+        if let Err(reason) = self.try_stmt(n, out) {
+            out.truncate(mark);
+            let (pos, text) = (pos_of(self.src, n), src_of(self.src, n));
+            let what = text.lines().next().unwrap_or("").trim().to_string();
+            self.refusals.push(Refusal {
+                pos: pos.clone(),
+                what,
+                reason: reason.clone(),
+            });
+            out.push(Stmt::Foreign {
+                lang: "c".into(),
+                src: text,
+                reason,
+                pos,
+                calls: Some(self.calls(n)),
+            });
+        }
+    }
+
+    /// Every call under `n` of a function named directly, in source order.
+    pub fn calls(&self, n: &J) -> Vec<CallRef> {
+        let mut out = Vec::new();
+        self.collect_calls(n, &mut out);
+        out
+    }
+
+    fn collect_calls(&self, n: &J, out: &mut Vec<CallRef>) {
+        if n.kind() == "CallExpr"
+            && let Some(callee) = n.inner().first()
+            && let Some((_, name)) = self.callee(callee)
+        {
+            let path = if self.tables.funcs.contains(name) {
+                String::new()
+            } else {
+                self.extern_path(callee)
+            };
+            out.push(CallRef::Func {
+                path,
+                name: name.to_string(),
+                consts: Vec::new(),
+                pos: pos_of(self.src, n),
+            });
+        }
+        for c in n.inner() {
+            self.collect_calls(c, out);
+        }
+    }
+
+    /// The id and name of the function a call's callee names directly.
+    fn callee<'j>(&self, callee: &'j J) -> Option<(&'j str, &'j str)> {
+        let mut c = strip(callee);
+        while c.kind() == "ImplicitCastExpr" && c.s("castKind") == "FunctionToPointerDecay" {
+            c = strip(&c.inner()[0]);
+        }
+        let d = c.get("referencedDecl");
+        (c.kind() == "DeclRefExpr" && d.s("kind") == "FunctionDecl")
+            .then(|| (d.s("id"), d.s("name")))
+    }
+
+    /// The path of a function the module does not define: `libc` when a header outside the
+    /// source directory declares it (or nothing does), else the declaring file.
+    fn extern_path(&self, callee: &J) -> String {
+        let Some((id, _)) = self.callee(callee) else {
+            return "libc".into();
+        };
+        match self.decls.get(id).map(|d| crate::file_of(d.get("loc"))) {
+            Some(Some(f)) if crate::in_dir(&f) => f,
+            _ => "libc".into(),
+        }
+    }
+
+    fn try_stmt(&mut self, n: &J, out: &mut Vec<Stmt>) -> R<()> {
+        let pos = pos_of(self.src, n);
+        let kids = n.inner();
+        match n.kind() {
+            "NullStmt" => {}
+            "CompoundStmt" => {
+                if kids.iter().any(|k| k.kind() == "DeclStmt") {
+                    return Err("a block with declarations of its own".into());
+                }
+                for k in kids {
+                    self.stmt(k, out);
+                }
+            }
+            "LabelStmt" => self.stmt(&kids[0], out),
+            "GotoStmt" | "IndirectGotoStmt" => return Err("goto".into()),
+            "GCCAsmStmt" | "MSAsmStmt" => return Err("inline assembly".into()),
+            "DeclStmt" => {
+                for d in kids {
+                    out.push(self.decl(d, &pos)?);
+                }
+            }
+            "ReturnStmt" => {
+                let results = match kids.first() {
+                    Some(e) => vec![self.value(e)?],
+                    None => Vec::new(),
+                };
+                out.push(Stmt::Return { results, pos });
+            }
+            "IfStmt" => {
+                let cond = self.cond(&kids[0])?;
+                let then = self.block(&kids[1]);
+                let otherwise = kids.get(2).map(|e| self.block(e)).unwrap_or_default();
+                out.push(Stmt::If {
+                    cond,
+                    then,
+                    otherwise,
+                    pos,
+                });
+            }
+            "WhileStmt" => {
+                let (c, b) = (&kids[kids.len() - 2], &kids[kids.len() - 1]);
+                if kids.len() > 2 {
+                    return Err("a declaration in a while condition".into());
+                }
+                let cond = self.loop_cond(c)?;
+                let body = self.inside(Brk::Loop, b);
+                out.push(Stmt::For {
+                    init: None,
+                    cond,
+                    post: None,
+                    body,
+                    pos,
+                });
+            }
+            "DoStmt" => {
+                let cond = self.cond(&kids[1])?;
+                let mut body = self.inside(Brk::DoLoop, &kids[0]);
+                body.push(Stmt::If {
+                    cond: Expr::Unop {
+                        op: "!".into(),
+                        x: Box::new(cond),
+                        t: Type::Bool,
+                    },
+                    then: vec![Stmt::Break { pos: pos.clone() }],
+                    otherwise: Vec::new(),
+                    pos: pos.clone(),
+                });
+                out.push(Stmt::For {
+                    init: None,
+                    cond: None,
+                    post: None,
+                    body,
+                    pos,
+                });
+            }
+            "ForStmt" => {
+                let [init, condvar, cond, inc, body] = kids else {
+                    return Err("a for statement clang prints otherwise".into());
+                };
+                if !condvar.kind().is_empty() {
+                    return Err("a declaration in a for condition".into());
+                }
+                self.scopes.push(Vec::new());
+                let r = self.for_stmt(init, cond, inc, body, pos);
+                self.scopes.pop();
+                out.push(r?);
+            }
+            "BreakStmt" => match self.breakable.last() {
+                Some(Brk::Loop | Brk::DoLoop) => out.push(Stmt::Break { pos }),
+                Some(Brk::Switch) => {
+                    return Err("a break that leaves a switch before the end of its case".into());
+                }
+                None => return Err("a break outside a loop".into()),
+            },
+            "ContinueStmt" => match self.breakable.iter().rev().find(|b| **b != Brk::Switch) {
+                Some(Brk::Loop) => out.push(Stmt::Continue { pos }),
+                Some(_) => {
+                    return Err("a continue in a do-while loop, which runs its condition".into());
+                }
+                None => return Err("a continue outside a loop".into()),
+            },
+            "SwitchStmt" => out.push(self.switch(n, pos)?),
+            _ => out.push(self.expr_stmt(n, pos)?),
+        }
+        Ok(())
+    }
+
+    fn inside(&mut self, b: Brk, n: &J) -> Vec<Stmt> {
+        self.breakable.push(b);
+        let body = self.block(n);
+        self.breakable.pop();
+        body
+    }
+
+    /// A loop condition: none for a constant true one.
+    fn loop_cond(&mut self, c: &J) -> R<Option<Expr>> {
+        if constant(c).is_some_and(|v| v != 0) {
+            return Ok(None);
+        }
+        self.cond(c).map(Some)
+    }
+
+    fn for_stmt(&mut self, init: &J, cond: &J, inc: &J, body: &J, pos: String) -> R<Stmt> {
+        let init = match init.kind() {
+            "" => None,
+            "DeclStmt" => {
+                let [d] = init.inner() else {
+                    return Err("a for initializer declaring several variables".into());
+                };
+                Some(Box::new(self.decl_let(d, &pos)?))
+            }
+            _ => match self.expr_stmt(init, pos.clone())? {
+                s @ Stmt::Assign { .. } => Some(Box::new(s)),
+                _ => return Err("a for initializer other than a declaration or assignment".into()),
+            },
+        };
+        let cond = match cond.kind() {
+            "" => None,
+            _ => self.loop_cond(cond)?,
+        };
+        let post = match inc.kind() {
+            "" => None,
+            _ => match self.expr_stmt(inc, pos.clone())? {
+                s @ (Stmt::Assign { .. } | Stmt::Incr { .. } | Stmt::Decr { .. }) => {
+                    Some(Box::new(s))
+                }
+                _ => return Err("a for increment other than an assignment, ++ or --".into()),
+            },
+        };
+        let body = self.inside(Brk::Loop, body);
+        Ok(Stmt::For {
+            init,
+            cond,
+            post,
+            body,
+            pos,
+        })
+    }
+
+    /// A local declaration: `var` without an initializer or with a zero one, `let` otherwise.
+    fn decl(&mut self, d: &J, pos: &str) -> R<Stmt> {
+        if d.kind() != "VarDecl" {
+            return Err(format!("a local {}", d.kind()));
+        }
+        let t = self.ty(d)?;
+        let zero = match d.inner().first() {
+            None => true,
+            Some(init) => {
+                constant(init) == Some(0)
+                    || (strip(init).kind() == "InitListExpr"
+                        && strip(init)
+                            .inner()
+                            .iter()
+                            .all(|e| e.kind() == "ImplicitValueInitExpr" || constant(e) == Some(0)))
+            }
+        };
+        if zero && !matches!(t, Type::String) {
+            if !d.s("storageClass").is_empty() {
+                return Err(format!("a {} local", d.s("storageClass")));
+            }
+            self.bind(d.s("id"), d.s("name"), t.clone());
+            return Ok(Stmt::Var {
+                name: d.s("name").into(),
+                t,
+                pos: pos.into(),
+            });
+        }
+        self.decl_let(d, pos)
+    }
+
+    /// A local declaration with an initializer, as `let`.
+    fn decl_let(&mut self, d: &J, pos: &str) -> R<Stmt> {
+        if d.kind() != "VarDecl" {
+            return Err(format!("a local {}", d.kind()));
+        }
+        if !d.s("storageClass").is_empty() {
+            return Err(format!("a {} local", d.s("storageClass")));
+        }
+        let t = self.ty(d)?;
+        let Some(init) = d.inner().first() else {
+            return Err("a declaration without an initializer".into());
+        };
+        let value = self.value(init)?;
+        if *value.t() != t {
+            return Err("an initializer whose type is not the declared one".into());
+        }
+        self.bind(d.s("id"), d.s("name"), t);
+        Ok(Stmt::Let {
+            names: vec![d.s("name").into()],
+            rhs: vec![value],
+            pos: pos.into(),
+        })
+    }
+
+    /// A `switch` whose every case ends in `break`, `return` or `continue`, or is the last.
+    fn switch(&mut self, n: &J, pos: String) -> R<Stmt> {
+        let kids = n.inner();
+        if kids.len() != 2 {
+            return Err("a switch with a declaration in its condition".into());
+        }
+        let tag = self.value(&kids[0])?;
+        if !matches!(tag.t(), Type::Int { .. }) {
+            return Err("a switch on a value other than an integer".into());
+        }
+        let body = &kids[1];
+        if body.kind() != "CompoundStmt" {
+            return Err("a switch whose body is not a block".into());
+        }
+        // Each segment: its labels (None for default) and its statements.
+        let mut segments: Vec<(Vec<Option<&J>>, Vec<&J>)> = Vec::new();
+        for k in body.inner() {
+            let mut k = k;
+            if matches!(k.kind(), "CaseStmt" | "DefaultStmt") {
+                let mut labels = Vec::new();
+                while matches!(k.kind(), "CaseStmt" | "DefaultStmt") {
+                    let parts = k.inner();
+                    if k.kind() == "CaseStmt" {
+                        if parts.len() != 2 {
+                            return Err("a case range".into());
+                        }
+                        labels.push(Some(&parts[0]));
+                    } else {
+                        labels.push(None);
+                    }
+                    k = parts.last().expect("a labelled statement");
+                }
+                segments.push((labels, vec![k]));
+            } else {
+                let Some(last) = segments.last_mut() else {
+                    return Err("a statement before the first case of a switch".into());
+                };
+                last.1.push(k);
+            }
+        }
+        let count = segments.len();
+        let mut cases = Vec::new();
+        for (i, (labels, mut stmts)) in segments.into_iter().enumerate() {
+            let ends = stmts.last().map(|s| s.kind()).unwrap_or("");
+            if i + 1 < count && !matches!(ends, "BreakStmt" | "ReturnStmt" | "ContinueStmt") {
+                return Err("a case that falls through to the next".into());
+            }
+            if ends == "BreakStmt" {
+                stmts.pop();
+            }
+            let default = labels.iter().any(Option::is_none);
+            if default && labels.len() > 1 {
+                return Err("a default that shares its statements with a case".into());
+            }
+            let mut values = Vec::new();
+            for l in labels.into_iter().flatten() {
+                let v = self.value(l)?;
+                if v.t() != tag.t() {
+                    return Err("a case value whose type is not the switch's".into());
+                }
+                values.push(v);
+            }
+            self.breakable.push(Brk::Switch);
+            self.scopes.push(Vec::new());
+            let mut body = Vec::new();
+            for s in stmts {
+                self.stmt(s, &mut body);
+            }
+            self.scopes.pop();
+            self.breakable.pop();
+            cases.push(Case { values, body });
+        }
+        Ok(Stmt::Switch {
+            tag: Some(tag),
+            cases,
+            pos,
+        })
+    }
+
+    /// An expression statement: an assignment, `++`, `--` or a call.
+    fn expr_stmt(&mut self, n: &J, pos: String) -> R<Stmt> {
+        let n = strip(n);
+        let kids = n.inner();
+        match (n.kind(), n.s("opcode")) {
+            ("BinaryOperator", "=") => {
+                let rhs = self.value(&kids[1])?;
+                let lhs = self.place(&kids[0])?;
+                if lhs.t() != rhs.t() {
+                    return Err("an assignment of a value of another type".into());
+                }
+                Ok(Stmt::Assign {
+                    op: String::new(),
+                    lhs: vec![lhs],
+                    rhs: vec![rhs],
+                    pos,
+                })
+            }
+            ("CompoundAssignOperator", op) => {
+                let base = op.strip_suffix('=').unwrap_or(op);
+                self.pointer_operands(n)?;
+                let (op, rhs) = match (base, strip(&kids[1])) {
+                    ("&", r) if r.kind() == "UnaryOperator" && r.s("opcode") == "~" => {
+                        ("&^=".to_string(), self.value(&r.inner()[0])?)
+                    }
+                    _ => (op.to_string(), self.value(&kids[1])?),
+                };
+                let lhs = self.place(&kids[0])?;
+                if !matches!(lhs.t(), Type::Int { .. })
+                    || (!matches!(base, "<<" | ">>") && lhs.t() != rhs.t())
+                {
+                    return Err(format!("{op} on operands of other types"));
+                }
+                Ok(Stmt::Assign {
+                    op,
+                    lhs: vec![lhs],
+                    rhs: vec![rhs],
+                    pos,
+                })
+            }
+            ("UnaryOperator", "++" | "--") => {
+                self.pointer_operands(n)?;
+                let x = self.place(&kids[0])?;
+                if !matches!(x.t(), Type::Int { .. }) {
+                    return Err("++ or -- on a value other than an integer".into());
+                }
+                Ok(if n.s("opcode") == "++" {
+                    Stmt::Incr { x, pos }
+                } else {
+                    Stmt::Decr { x, pos }
+                })
+            }
+            ("CallExpr", _) => Ok(Stmt::Expr {
+                x: self.value(n)?,
+                pos,
+            }),
+            ("", _) => Err("an empty statement".into()),
+            (k, _) => Err(format!(
+                "a {k} as a statement: only an assignment, ++, -- or a call is read"
+            )),
+        }
+    }
+
+    /// Refuse pointer arithmetic: an operator whose operand or result is a pointer.
+    fn pointer_operands(&self, n: &J) -> R<()> {
+        let pointer = |j: &J| {
+            let t = j.get("type");
+            let s = if t.s("desugaredQualType").is_empty() {
+                t.s("qualType")
+            } else {
+                t.s("desugaredQualType")
+            };
+            s.trim_end().ends_with('*') && !s.contains("(*")
+        };
+        if pointer(n) || n.inner().iter().any(pointer) {
+            return Err("pointer arithmetic".into());
+        }
+        Ok(())
+    }
+
+    /// An expression assigned to: a local, a global or a field of one.
+    fn place(&mut self, n: &J) -> R<Expr> {
+        let n = strip(n);
+        match n.kind() {
+            "DeclRefExpr" | "MemberExpr" => self.value(n),
+            k => Err(format!("an assignment to a {k}")),
+        }
+    }
+
+    /// A condition: a comparison or logic reads as `bool`; an integer `x` as `x != 0`.
+    pub fn cond(&mut self, n: &J) -> R<Expr> {
+        let n = strip(n);
+        let kids = n.inner();
+        match n.kind() {
+            "ImplicitCastExpr"
+                if n.s("castKind") == "IntegralCast"
+                    && matches!(
+                        self.tables.ty(self.unit, kids[0].get("type")),
+                        Ok(Type::Bool)
+                    ) =>
+            {
+                return self.cond(&kids[0]);
+            }
+            "ImplicitCastExpr" if n.s("castKind") == "IntegralToBoolean" => {
+                return self.cond(&kids[0]);
+            }
+            "BinaryOperator" if COMPARE.contains(&n.s("opcode")) => {
+                self.pointer_operands(&kids[0])?;
+                let (x, y) = (self.value(&kids[0])?, self.value(&kids[1])?);
+                if x.t() != y.t() || !matches!(x.t(), Type::Int { .. } | Type::Named { .. }) {
+                    return Err(format!(
+                        "{} on operands of other types or not integers",
+                        n.s("opcode")
+                    ));
+                }
+                return Ok(Expr::Binop {
+                    op: n.s("opcode").into(),
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    t: Type::Bool,
+                });
+            }
+            "BinaryOperator" if matches!(n.s("opcode"), "&&" | "||") => {
+                let (x, y) = (self.cond(&kids[0])?, self.cond(&kids[1])?);
+                return Ok(Expr::Binop {
+                    op: n.s("opcode").into(),
+                    x: Box::new(x),
+                    y: Box::new(y),
+                    t: Type::Bool,
+                });
+            }
+            "UnaryOperator" if n.s("opcode") == "!" => {
+                let x = self.cond(&kids[0])?;
+                return Ok(Expr::Unop {
+                    op: "!".into(),
+                    x: Box::new(x),
+                    t: Type::Bool,
+                });
+            }
+            "IntegerLiteral" => {
+                let v = constant(n).unwrap_or(1);
+                return Ok(lit(if v == 0 { "false" } else { "true" }, Type::Bool));
+            }
+            _ => {}
+        }
+        let e = self.value(n)?;
+        match e.t().clone() {
+            Type::Bool => Ok(e),
+            t @ Type::Int { .. } => Ok(Expr::Binop {
+                op: "!=".into(),
+                x: Box::new(e),
+                y: Box::new(lit("0", t)),
+                t: Type::Bool,
+            }),
+            _ => Err("a condition that is not an integer or _Bool".into()),
+        }
+    }
+
+    /// An expression's value.
+    pub fn value(&mut self, n: &J) -> R<Expr> {
+        let n = strip(n);
+        let kids = n.inner();
+        match n.kind() {
+            "ConstantExpr" => self.value(&kids[0]),
+            "ImplicitCastExpr" => self.implicit(n),
+            "CStyleCastExpr" => {
+                let t = self.ty(n)?;
+                if let Some(v) = constant(&kids[0])
+                    && fits(v, &t)
+                {
+                    return Ok(self.folded(v, t));
+                }
+                let x = self.value(&kids[0])?;
+                if *x.t() != t {
+                    return Err("a cast between types cir/1 does not convert".into());
+                }
+                Ok(x)
+            }
+            "IntegerLiteral" => {
+                let t = self.ty(n)?;
+                Ok(lit(n.s("value"), t))
+            }
+            "StringLiteral" => Err("a string literal used as an array".into()),
+            "CharacterLiteral" => Err("a character literal".into()),
+            "FloatingLiteral" => Err("a floating-point literal".into()),
+            "DeclRefExpr" => self.decl_ref(n),
+            "MemberExpr" => {
+                if n.is_true("isArrow") {
+                    return Err("a field read through a pointer (->)".into());
+                }
+                let x = self.value(&kids[0])?;
+                let t = self.ty(n)?;
+                Ok(Expr::Field {
+                    x: Box::new(x),
+                    name: n.s("name").into(),
+                    t,
+                })
+            }
+            "BinaryOperator" => self.binary(n),
+            "UnaryOperator" => self.unary(n),
+            "CallExpr" => self.call(n),
+            "InitListExpr" => self.init_list(n),
+            "CompoundLiteralExpr" => self.value(&kids[0]),
+            "ConditionalOperator" | "BinaryConditionalOperator" => {
+                Err("the conditional operator ?:".into())
+            }
+            "UnaryExprOrTypeTraitExpr" => Err(format!("the operator {}", n.s("name"))),
+            "ArraySubscriptExpr" => Err("indexing an array or a pointer".into()),
+            "CompoundAssignOperator" => Err("an assignment inside an expression".into()),
+            "StmtExpr" => Err("a statement expression".into()),
+            k => Err(format!("a {k} expression")),
+        }
+    }
+
+    /// An integer constant of type `t`: a literal, under `-` when negative.
+    fn folded(&self, v: i128, t: Type) -> Expr {
+        if v < 0 {
+            Expr::Unop {
+                op: "-".into(),
+                x: Box::new(lit((-v).to_string(), t.clone())),
+                t,
+            }
+        } else {
+            lit(v.to_string(), t)
+        }
+    }
+
+    fn implicit(&mut self, n: &J) -> R<Expr> {
+        let inner = &n.inner()[0];
+        match n.s("castKind") {
+            "LValueToRValue" | "NoOp" | "FunctionToPointerDecay" => self.value(inner),
+            "ArrayToPointerDecay" => {
+                let s = strip(inner);
+                if s.kind() == "StringLiteral" {
+                    return Ok(lit(string_literal(s.s("value"))?, Type::String));
+                }
+                Err("an array used as a pointer".into())
+            }
+            "IntegralToBoolean" => self.cond(inner),
+            "IntegralCast" => {
+                let t = self.ty(n)?;
+                if let Some(v) = constant(inner) {
+                    if !fits(v, &t) {
+                        return Err(format!("the constant {v}, which its type does not hold"));
+                    }
+                    return Ok(self.folded(v, t));
+                }
+                let s = strip(inner);
+                if s.kind() == "DeclRefExpr"
+                    && s.get("referencedDecl").s("kind") == "EnumConstantDecl"
+                {
+                    let id = s.get("referencedDecl").s("id");
+                    if let Some(Some(e)) = self.unit.enum_of.get(id)
+                        && t == (Type::Named {
+                            name: e.clone(),
+                            targs: Vec::new(),
+                        })
+                    {
+                        return Ok(Expr::Const {
+                            name: s.get("referencedDecl").s("name").into(),
+                            t,
+                        });
+                    }
+                }
+                let x = self.value(inner)?;
+                if *x.t() == t {
+                    return Ok(x);
+                }
+                Err(match x.t() {
+                    Type::Bool => "a _Bool used as an integer".to_string(),
+                    _ => "an implicit conversion between integer types, which cir/1 does not hold"
+                        .to_string(),
+                })
+            }
+            k => Err(format!("an implicit {k} conversion")),
+        }
+    }
+
+    fn decl_ref(&mut self, n: &J) -> R<Expr> {
+        let d = n.get("referencedDecl");
+        let (id, name) = (d.s("id"), d.s("name"));
+        match d.s("kind") {
+            "ParmVarDecl" | "VarDecl" => {
+                if let Some((name, t)) = self.local(id) {
+                    return Ok(Expr::Var { name, t });
+                }
+                if let Some(g) = self.unit.globals.get(id)
+                    && let Some(t) = self.tables.globals.get(g)
+                {
+                    return Ok(Expr::Global {
+                        name: g.clone(),
+                        t: t.clone(),
+                    });
+                }
+                Err(format!(
+                    "the variable {name}, whose declaration is not read"
+                ))
+            }
+            "EnumConstantDecl" => match self.unit.enum_of.get(id) {
+                Some(None) if self.tables.consts.contains(name) => Ok(Expr::Const {
+                    name: name.into(),
+                    t: crate::types::int(IntWidth::W32, true),
+                }),
+                Some(Some(_)) => Err(format!("the enumerator {name} used as an int")),
+                _ => Err(format!("the enumerator {name}, whose enum is not read")),
+            },
+            "FunctionDecl" => Err(format!("the function {name} used as a value")),
+            k => Err(format!("a reference to a {k}")),
+        }
+    }
+
+    fn binary(&mut self, n: &J) -> R<Expr> {
+        let op = n.s("opcode");
+        let kids = n.inner();
+        if COMPARE.contains(&op) || matches!(op, "&&" | "||") {
+            return Err(format!("{op} used as an int"));
+        }
+        if op == "=" {
+            return Err("an assignment inside an expression".into());
+        }
+        if op == "," {
+            return Err("the comma operator".into());
+        }
+        if !ARITH.contains(&op) {
+            return Err(format!("the operator {op}"));
+        }
+        self.pointer_operands(n)?;
+        let t = self.ty(n)?;
+        let x = self.value(&kids[0])?;
+        let (op, y) = match (op, strip(&kids[1])) {
+            ("&", r) if r.kind() == "UnaryOperator" && r.s("opcode") == "~" => {
+                ("&^", self.value(&r.inner()[0])?)
+            }
+            _ => (op, self.value(&kids[1])?),
+        };
+        let shift = matches!(op, "<<" | ">>");
+        if !matches!(t, Type::Int { .. })
+            || *x.t() != t
+            || (!shift && *y.t() != t)
+            || !matches!(y.t(), Type::Int { .. })
+        {
+            return Err(format!("{op} on operands of other types or not integers"));
+        }
+        Ok(Expr::Binop {
+            op: op.into(),
+            x: Box::new(x),
+            y: Box::new(y),
+            t,
+        })
+    }
+
+    fn unary(&mut self, n: &J) -> R<Expr> {
+        let op = n.s("opcode");
+        match op {
+            "!" => Err("! used as an int".into()),
+            "++" | "--" => {
+                self.pointer_operands(n)?;
+                Err(format!("{op} inside an expression"))
+            }
+            "&" => Err("taking an address, a pointer".into()),
+            "*" => Err("a pointer dereference".into()),
+            "-" | "+" | "~" => {
+                let t = self.ty(n)?;
+                let x = self.value(&n.inner()[0])?;
+                if *x.t() != t || !matches!(t, Type::Int { .. }) {
+                    return Err(format!("{op} on an operand of another type"));
+                }
+                Ok(Expr::Unop {
+                    op: if op == "~" { "^" } else { op }.into(),
+                    x: Box::new(x),
+                    t,
+                })
+            }
+            _ => Err(format!("the operator {op}")),
+        }
+    }
+
+    fn call(&mut self, n: &J) -> R<Expr> {
+        let kids = n.inner();
+        let Some((id, name)) = self.callee(&kids[0]) else {
+            return Err("a call through a function pointer".into());
+        };
+        let (id, name) = (id.to_string(), name.to_string());
+        let t = self.ty(n)?;
+        let mut args = Vec::new();
+        for a in &kids[1..] {
+            args.push(self.value(a)?);
+        }
+        if self.tables.funcs.contains(&name) {
+            return Ok(Expr::Call {
+                name,
+                targs: Vec::new(),
+                args,
+                t,
+            });
+        }
+        let path = self.extern_path(&kids[0]);
+        let decl = self
+            .decls
+            .get(id.as_str())
+            .ok_or_else(|| format!("a call of {name}, whose declaration is not in the unit"))?;
+        let mut params = Vec::new();
+        for p in decl.inner().iter().filter(|p| p.kind() == "ParmVarDecl") {
+            params.push(
+                self.tables
+                    .ty(self.unit, p.get("type"))
+                    .map_err(|e| format!("a call of {name}, whose signature has {e}"))?,
+            );
+        }
+        let variadic = decl.is_true("variadic");
+        if variadic {
+            params.push(Type::Slice {
+                elem: Box::new(Type::Any),
+            });
+        }
+        let results = match &t {
+            Type::Unit => Vec::new(),
+            t => vec![t.clone()],
+        };
+        self.externs.push(Extern {
+            path: path.clone(),
+            name: name.clone(),
+            recv: None,
+            tparams: Vec::new(),
+            params,
+            results,
+            variadic,
+        });
+        Ok(Expr::Extern {
+            path,
+            name,
+            targs: Vec::new(),
+            args,
+            t,
+        })
+    }
+
+    /// A struct's initializer list: its fields by name, those it does not write left out.
+    fn init_list(&mut self, n: &J) -> R<Expr> {
+        let t = self.ty(n)?;
+        let Type::Named { name, .. } = &t else {
+            return Err("an initializer list of a type other than a struct".into());
+        };
+        let Some(fields) = self.tables.structs.get(name).cloned() else {
+            return Err(format!(
+                "an initializer list of {name}, which is not a struct"
+            ));
+        };
+        let kids = n.inner();
+        if kids.len() > fields.len() {
+            return Err("an initializer list longer than its struct".into());
+        }
+        let mut out = Vec::new();
+        for (f, e) in fields.iter().zip(kids) {
+            if e.kind() == "ImplicitValueInitExpr" {
+                continue;
+            }
+            out.push(FieldInit {
+                name: f.clone(),
+                value: self.value(e)?,
+            });
+        }
+        Ok(Expr::Struct {
+            name: name.clone(),
+            fields: out,
+            t,
+        })
+    }
+}

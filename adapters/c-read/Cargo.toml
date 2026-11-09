@@ -1,0 +1,25 @@
+[package]
+name = "codespec-read-c"
+description = "Reads the C11 sources of a directory into one cir/1 module from the typed AST clang prints as JSON, every expression typed from clang's own types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_read_c"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codespec-read-c"
+path = "src/main.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+
+[dev-dependencies]
+b10x-codespec-conformance = { path = "../../crates/conformance" }
+b10x-codespec-effects = { path = "../../crates/effects" }

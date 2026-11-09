@@ -33,6 +33,7 @@ handles its target best:
 | `codespec-write-go` | Go | `go/ast`, `go/printer`, `go/format` | shipped |
 | `codespec-write-rust` | Rust | `syn`, `prettyplease` | shipped |
 | `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
+| `codespec-read-c` | C | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
 
 How to add one: [Add a reader or writer adapter](/docs/guides/add-an-adapter).
 

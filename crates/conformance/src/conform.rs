@@ -85,6 +85,7 @@
 //! | `rust` | `rust/case.rs` | `src/lib.rs` and a `Cargo.toml` naming the package `<case>` with `-` read as `_`, with its own `[workspace]` |
 //! | `java` | `java/Case.java` | `Case.java` |
 //! | `groovy` | `groovy/Case.groovy`, else `java/Case.java` | `Case.groovy`: Groovy 2.4 compiles every Java source of the kit unchanged, and `codespec-run-groovy` runs it to the case's `expected.txt` at step 1; a case whose Java source means something else in Groovy (`/` on integers, a BigDecimal division there) carries its own `groovy/Case.groovy` |
+//! | `c` | `c/case.c` | `case.c` |
 //!
 //! each beside a copy of the case's `calls.json`. A case without the source has no corpus entry.
 //!
@@ -1589,7 +1590,7 @@ pub fn conform_adapter_within(t: &Target, limit: Duration) -> Result<Report, Err
 }
 
 /// The languages whose reader corpus [`reader_corpus`] builds from the kit.
-pub const CORPUS_LANGS: &[&str] = &["go", "rust", "java", "groovy"];
+pub const CORPUS_LANGS: &[&str] = &["go", "rust", "java", "groovy", "c"];
 
 /// The reader corpus of `lang`, one of [`CORPUS_LANGS`], built from the case sources of the kit
 /// at `kit` as the module doc's table says: every file by its path relative to the corpus
@@ -1606,6 +1607,7 @@ pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, E
         let source = match lang {
             "go" => dir.join("case.go"),
             "rust" => dir.join("rust/case.rs"),
+            "c" => dir.join("c/case.c"),
             "groovy" if dir.join("groovy/Case.groovy").is_file() => dir.join("groovy/Case.groovy"),
             _ => dir.join("java/Case.java"),
         };
@@ -1628,6 +1630,7 @@ pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, E
                 out.push((format!("{name}/src/lib.rs"), text));
             }
             "java" => out.push((format!("{name}/Case.java"), text)),
+            "c" => out.push((format!("{name}/case.c"), text)),
             _ => out.push((format!("{name}/Case.groovy"), text)),
         }
         out.push((

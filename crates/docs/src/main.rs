@@ -249,6 +249,7 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "reader",
         "groovy",
     ),
+    ("website/data/conformance/reader-c.json", "reader", "c"),
     ("website/data/conformance/writer-go.json", "writer", "go"),
     (
         "website/data/conformance/writer-rust.json",

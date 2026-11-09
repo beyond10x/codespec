@@ -202,13 +202,14 @@ Exit status 1. There is no Python reader.
 
 Building needs Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
 [go-task](https://taskfile.dev). The Java and Groovy readers also need a JDK 17 or newer (`JDK` in
-`Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). `task build` builds `codespec` into
-`target/debug/` and every adapter into `target/adapters/`:
+`Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). The C reader runs `clang` from `PATH`.
+`task build` builds `codespec` into `target/debug/` and every adapter into `target/adapters/`:
 
 ```shell-session
 $ git clone https://github.com/beyond10x/codespec && cd codespec
 $ task build
 $ ls target/adapters
+codespec-read-c
 codespec-read-go
 codespec-read-groovy
 codespec-read-java

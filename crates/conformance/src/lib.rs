@@ -201,7 +201,7 @@ pub const CASE_FILES: &[&str] = &[
 
 /// The directories a case may hold besides [`CASE_FILES`]: the case in another language, read by
 /// that language's reader tests and never by this crate.
-pub const CASE_SOURCE_DIRS: &[&str] = &["groovy", "java", "rust"];
+pub const CASE_SOURCE_DIRS: &[&str] = &["c", "groovy", "java", "rust"];
 
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;
