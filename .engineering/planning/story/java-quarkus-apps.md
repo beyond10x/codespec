@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:java-quarkus-apps
 kind: story
-status: active
+status: implemented
 title: Read Java projects and Quarkus applications
 summary: codespec-read-java reads a project dir with CODESPEC_JAVA_CLASSPATH; Quarkus annotations become entry points, beans and db/net externs.
 relations:
@@ -14,10 +14,11 @@ scope:
   path: adapters/java
 - confidence: cited
   path: adapters/jvm
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T03:47:11Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-09T03:47:11Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-09T10:00:23Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: Read Java projects and Quarkus applications
 

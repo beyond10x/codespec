@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:builtin-defect-checks
 kind: story
-status: active
+status: implemented
 title: Built-in defect checks over a linked set, tested on google/capslock
 relations:
 - decomposes: epic:codebase-transformations
@@ -14,10 +14,11 @@ scope:
   path: crates/cli/src/lib.rs
 - confidence: cited
   path: docs/checks-capslock.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-11-09T10:00:23Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: Built-in defect checks over a linked set, tested on google/capslock
 

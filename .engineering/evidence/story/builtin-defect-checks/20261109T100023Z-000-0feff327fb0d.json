@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-09T10:00:23Z",
+  "actor": "human:timo",
+  "artifact": "story:builtin-defect-checks",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (merge onto 5d35444, exit 0)",
+    "reference": "https://github.com/beyond10x/codespec/commit/0da2684"
+  }
+}
