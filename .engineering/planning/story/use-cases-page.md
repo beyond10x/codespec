@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:use-cases-page
 kind: story
-status: active
+status: implemented
 title: 'A use-cases page: why use codespec'
 relations:
 - informed_by: story:builtin-defect-checks
@@ -15,10 +15,11 @@ scope:
   path: website/product.json
 - confidence: cited
   path: website/sidebars.ts
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-11-09T09:40:10Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":4}}}
 ---
 # Story: A use-cases page: why use codespec
 

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-09T09:40:10Z",
+  "actor": "human:timo",
+  "artifact": "story:use-cases-page",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check exit 0; task ux-check exit 0, ratchet: no value worse",
+    "reference": "https://github.com/beyond10x/codespec/commit/20e5fd6"
+  }
+}
