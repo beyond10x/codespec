@@ -563,6 +563,18 @@ func recvName(t Type) string {
 // foreign keeps s verbatim as a foreign statement with a refusal. A labeled branch inside s
 // that was already read as an unlabeled break or continue is unmarked: its source survives in
 // the foreign text, so the loop it names must keep its label.
+// rangeName is the name a range clause binds as its key or value: `_` when there is none, "" when
+// it is not an identifier (`for s.f = range xs`).
+func rangeName(e ast.Expr) string {
+	if e == nil {
+		return "_"
+	}
+	if id, ok := e.(*ast.Ident); ok {
+		return id.Name
+	}
+	return ""
+}
+
 func (f *front) foreign(s ast.Stmt, reason string) Stmt {
 	ast.Inspect(s, func(n ast.Node) bool {
 		if b, ok := n.(*ast.BranchStmt); ok {
@@ -834,12 +846,12 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if !ok {
 			return f.foreign(s, "expression outside cir/1")
 		}
-		key, val := "_", "_"
-		if s.Key != nil {
-			key = s.Key.(*ast.Ident).Name
-		}
-		if s.Value != nil {
-			val = s.Value.(*ast.Ident).Name
+		key, val := rangeName(s.Key), rangeName(s.Value)
+		// for_range declares its key and value; `=` assigns variables declared before the loop
+		// (or a field, an element: no name at all), which a for_range would shadow and never
+		// assign. Only `_` means the same either way.
+		if s.Tok == token.ASSIGN && (key != "_" || val != "_") {
+			return f.foreign(s, "range with = assigns variables declared before the loop; cir/1 for_range declares its key and value")
 		}
 		return Stmt{K: "for_range", Key: key, Val: val, Over: &over, Body: f.inside("loop", s.Body.List, results), Pos: pos}
 	case *ast.ForStmt:

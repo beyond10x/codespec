@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "go",
     "version": "0.6.1",
-    "manifest_sha256": "9b3ea714d431ce810604fd1f93713d62e0f40b2535a978d92556de2000e753ab"
+    "manifest_sha256": "b4b8e281c62260efbe8f16c36ecb3bee607b376dadafe509424fad805867aa16"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "c79c66b7e7c6dbd33031ffcd75c6e5ea5d9caf81e5e5ebcdb288dc42de882705"
+    "sha256": "822b2638465b796ecb8162a92ee0374484f4937803ea8728e6476a58fe7a428e"
   },
   "corpus": {
-    "sha256": "6193fa4a31208b68afe4e5f3c8f0bdfbdb75de0e46d6ade3a5b7c6a1bf2f3a25"
+    "sha256": "837f217c825fff9c1a706bb6773cb1cc217da37283da89230b05dc47ad582b0e"
   },
   "codespec": "0.6.1",
   "features": [
@@ -169,7 +169,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-var"
+        "decl-var",
+        "decl-var-int"
       ]
     },
     {
@@ -177,7 +178,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-variadic"
+        "decl-variadic",
+        "decl-variadic-local"
       ]
     },
     {
@@ -356,7 +358,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "expr-spread"
+        "expr-spread",
+        "expr-spread-local"
       ]
     },
     {
@@ -526,7 +529,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "intrinsic-println"
+        "intrinsic-println",
+        "intrinsic-println-int"
       ]
     },
     {
@@ -1016,10 +1020,11 @@
     },
     {
       "id": "type.tuple",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-tuple"
+        "type-tuple",
+        "type-tuple-error"
       ]
     },
     {
@@ -1094,11 +1099,11 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 114,
-    "pass": 114,
+    "claimed": 115,
+    "pass": 115,
     "fail": 0,
     "refused_unclaimed": 12,
-    "pass_unclaimed": 1,
+    "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0
   },

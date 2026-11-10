@@ -64,6 +64,23 @@ func TestADeferIsKeptForeignVerbatimAndTheReaderClaimsStmtForeign(t *testing.T) 
 	}
 }
 
+// The type-tuple case reads to a function of two results with no foreign statement, so the
+// reader claims type.tuple; the five features Go source does not reach stay unclaimed, and
+// nothing else does.
+func TestTheReaderClaimsTypeTupleAndLeavesOnlyTheFiveUnreachableFeaturesUnclaimed(t *testing.T) {
+	m := loadCase(t, "type-tuple")
+	if len(m.Refusals) > 0 {
+		t.Fatalf("type-tuple: refusals %v", m.Refusals)
+	}
+	if !claimed(t, "type.tuple") {
+		t.Fatal("the manifest does not claim type.tuple")
+	}
+	want := []string{"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.unit"}
+	if strings.Join(claimNot, " ") != strings.Join(want, " ") {
+		t.Fatalf("not claimed %v, want %v", claimNot, want)
+	}
+}
+
 // A reader's claim covers what the reader itself prints, not what `codespec pass` makes of it
 // (docs/conformance.md § 5): the stmt-lookup-else case reads to a comma-ok `let` and an `if`, and
 // only the lookup-guard pass turns them into `lookup_else`, so the reader does not claim it.
