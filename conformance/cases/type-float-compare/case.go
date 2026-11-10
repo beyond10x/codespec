@@ -1,16 +1,28 @@
 package type_float_compare
 
-// Third divides a 64-bit and a 32-bit float by three and tells whether the first quotient is
-// more than 0.3 and the second less than 0.34: a variant of type-float whose result is a bool, not
-// the quotients formatted as a string.
+// Exact tells whether a tenth plus two tenths is three tenths: in 64-bit floats it is not, in
+// 32-bit floats the sum rounds to three tenths.
+func Exact(wide bool) bool {
+	if wide {
+		var x float64
+		var y float64
+		x = 0.1
+		y = 0.2
+		return x+y == 0.3
+	}
+	var a float32
+	var b float32
+	a = 0.1
+	b = 0.2
+	return a+b == 0.3
+}
+
+// Third tells whether a third of n, times three, is n again, in 32-bit floats.
 func Third(big bool) bool {
-	var x float64
 	var y float32
-	x = 1
 	y = 1
 	if big {
-		x = 1e21
 		y = 1e21
 	}
-	return x/3 > 0.3 && y/3 < 0.34
+	return y/3*3 == y
 }

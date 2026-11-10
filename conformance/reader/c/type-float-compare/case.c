@@ -2,16 +2,29 @@
 
 #include <stdbool.h>
 
-/* Divides a double and a float by three; tells whether the first quotient is more than 0.3 and
-   the second less than 0.34. */
+/* Tells whether a tenth plus two tenths is three tenths: in doubles it is not, in floats the sum
+   rounds to three tenths. */
+bool exact(bool wide) {
+    if (wide) {
+        double x;
+        double y;
+        x = 0.1;
+        y = 0.2;
+        return x + y == 0.3;
+    }
+    float a;
+    float b;
+    a = 0.1f;
+    b = 0.2f;
+    return a + b == 0.3f;
+}
+
+/* Tells whether a third of y, times three, is y again, in floats. */
 bool third(bool big) {
-    double x;
     float y;
-    x = 1.0;
     y = 1.0f;
     if (big) {
-        x = 1e21;
         y = 1e21f;
     }
-    return x / 3.0 > 0.3 && y / 3.0f < 0.34f;
+    return y / 3.0f * 3.0f == y;
 }

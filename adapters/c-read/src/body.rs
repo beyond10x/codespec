@@ -1,6 +1,6 @@
 //! Statements and expressions of one function body, from clang's AST nodes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use codespec_model::{
     CallRef, Case, Expr, Extern, FieldInit, FloatBits, IntWidth, Refusal, Stmt, Type,
@@ -35,6 +35,34 @@ pub struct Body<'a> {
     pub externs: Vec<Extern>,
     scopes: Vec<Vec<(String, String, Type)>>,
     breakable: Vec<Brk>,
+    /// The declaration ids of the variables a `for` declares: C has one such variable for all
+    /// iterations, Go (1.22 on) one per iteration, so their address is refused.
+    for_vars: BTreeSet<String>,
+}
+
+/// A floating-point constant: a literal, under unary `-`, `+`, a conversion or an operator on
+/// constants. Go evaluates an operator on constants exactly, not in binary floating point.
+fn float_constant(e: &Expr) -> bool {
+    match e {
+        Expr::Float { .. } => true,
+        Expr::Unop { op, x, .. } => matches!(op.as_str(), "-" | "+") && float_constant(x),
+        Expr::Conv { x, .. } => float_constant(x),
+        Expr::Binop { x, y, .. } => float_constant(x) && float_constant(y),
+        _ => false,
+    }
+}
+
+/// The variable a place is part of: `x` of `x`, `x.f`, `x[i]`, through parentheses and implicit
+/// conversions; `None` through a pointer.
+fn base_var(n: &J) -> Option<&J> {
+    let n = strip(n);
+    match n.kind() {
+        "DeclRefExpr" => Some(n),
+        "MemberExpr" if !n.is_true("isArrow") => base_var(&n.inner()[0]),
+        "ArraySubscriptExpr" => base_var(&n.inner()[0]),
+        "ImplicitCastExpr" if n.s("castKind") == "ArrayToPointerDecay" => base_var(&n.inner()[0]),
+        _ => None,
+    }
 }
 
 /// The `cir/1` operators of C's binary operators, comparisons and logic apart.
@@ -172,6 +200,7 @@ impl<'a> Body<'a> {
             externs: Vec::new(),
             scopes: vec![params],
             breakable: Vec::new(),
+            for_vars: BTreeSet::new(),
         }
     }
 
@@ -413,6 +442,7 @@ impl<'a> Body<'a> {
                 let [d] = init.inner() else {
                     return Err("a for initializer declaring several variables".into());
                 };
+                self.for_vars.insert(d.s("id").into());
                 Some(Box::new(self.decl_let(d, &pos)?))
             }
             _ => match self.expr_stmt(init, pos.clone())? {
@@ -690,6 +720,12 @@ impl<'a> Body<'a> {
                     self.pointer_operands(&kids[0])?;
                 }
                 let (x, y) = (self.value(&kids[0])?, self.value(&kids[1])?);
+                if float_constant(&x) && float_constant(&y) {
+                    return Err(format!(
+                        "{} on floating-point constants, which Go evaluates exactly, not in binary floating point",
+                        n.s("opcode")
+                    ));
+                }
                 let nil = matches!(x, Expr::Nil { .. }) || matches!(y, Expr::Nil { .. });
                 let comparable = match x.t() {
                     Type::Int { .. } | Type::Named { .. } | Type::Float { .. } => true,
@@ -875,6 +911,19 @@ impl<'a> Body<'a> {
                 }
                 Ok(Expr::Nil { t })
             }
+            // `NULL` spelled `((void *)0)`, converted to the pointer it is compared with.
+            "BitCast" => {
+                let s = strip(inner);
+                let t = self.ty(n)?;
+                if s.kind() == "CStyleCastExpr"
+                    && s.s("castKind") == "NullToPointer"
+                    && constant(&s.inner()[0]) == Some(0)
+                    && matches!(t, Type::Ptr { .. } | Type::Func { .. })
+                {
+                    return Ok(Expr::Nil { t });
+                }
+                Err("an implicit BitCast conversion".into())
+            }
             "ArrayToPointerDecay" => {
                 let s = strip(inner);
                 if s.kind() == "StringLiteral" {
@@ -979,6 +1028,11 @@ impl<'a> Body<'a> {
             }
             _ => (op, self.value(&kids[1])?),
         };
+        if float_constant(&x) && float_constant(&y) {
+            return Err(format!(
+                "{op} on floating-point constants, which Go evaluates exactly, not in binary floating point"
+            ));
+        }
         let shift = matches!(op, "<<" | ">>");
         if !arith(op, self.under(&t))
             || *x.t() != t
@@ -1018,6 +1072,14 @@ impl<'a> Body<'a> {
                 if !addressable {
                     return Err("taking the address of a value that is not a variable, a field, an element or a struct literal".into());
                 }
+                if let Some(v) = base_var(operand)
+                    && self.for_vars.contains(v.get("referencedDecl").s("id"))
+                {
+                    return Err(format!(
+                        "taking the address of {}, a variable declared by a for loop: C has one for all iterations, Go one per iteration",
+                        v.get("referencedDecl").s("name")
+                    ));
+                }
                 let x = if operand.kind() == "CompoundLiteralExpr" {
                     // `&(struct T){…}` is Go's `&T{…}`: the literal, even of zeros only.
                     self.init_list(strip(&operand.inner()[0]))?
@@ -1051,6 +1113,9 @@ impl<'a> Body<'a> {
             "-" | "+" | "~" => {
                 let t = self.ty(n)?;
                 let x = self.value(&n.inner()[0])?;
+                if op == "-" && float_constant(&x) {
+                    return Err("the negation of a floating-point literal, which Go evaluates as an exact constant: -0.0 is positive zero there".into());
+                }
                 let number = if op == "~" { "&" } else { "+" };
                 if *x.t() != t || !arith(number, self.under(&t)) {
                     return Err(format!("{op} on an operand of another type"));

@@ -22,6 +22,7 @@
 //! | `enum { A = 1, … }` without a name | a `const` of type `int` per enumerator |
 //! | a file-scope variable | `var`; an initializer outside the subset is kept as foreign source |
 //! | `typedef T Name;` in the source directory, `T` an integer, `_Bool` or floating-point type | `newtype` `Name` over `T`: a value clang types `Name` is of that newtype, distinct from `T` |
+//! | a second such `typedef` of `Name` to another type (in another file), one named as a struct, union or enum of the module | refused, and so is a value of it: a module has one type of a name |
 //! | any other `typedef` | nothing: the type it names stands for it |
 //! | `union`, a bit field, an unnamed struct | refused |
 //! | a function the module calls and does not define | `extern` with its declared signature: path `libc` when a header outside the directory declares it, else the declaring file |
@@ -33,14 +34,14 @@
 //! | `_Bool` (`bool`) | `bool` |
 //! | `signed char`, `short`, `int`, `long`, `long long` and their `unsigned` forms, `int8_t`…`uint64_t` | `int` of width 8, 16, 32, 64, 64 (LP64), signed or not |
 //! | `const char *` | `string`: read where a string literal or a parameter of that type flows; nothing indexes, compares or walks it |
-//! | `struct T`, `enum E` the directory declares, a newtype `typedef` | `named` |
+//! | `struct T`, `enum E` the directory declares (a field of `struct T` may point to `T`), a newtype `typedef` | `named` |
 //! | `float`, `double` | `float` of 32, 64 bits |
 //! | `T *`, `const T *` (but `const char *`) | `ptr` to `T` |
 //! | `T[N]` | `array` of `N` `T` |
 //! | `R (*)(P, …)` | `func` from `P, …` to `R`, no result for `void` |
 //! | `void` (a result) | no result; a call of it is typed `unit` |
 //! | variadic extern parameters (`...`) | a last parameter `[]any`, the extern `variadic` |
-//! | plain `char`, `long double`, `void *`, a pointer to or an array of `const char *`, an array without a constant length, a function pointer without a prototype or to a variadic function, `volatile`, `_Atomic` | refused |
+//! | plain `char`, `long double`, `void *`, a pointer to or an array of `const char *`, a pointer to an array, an array without a constant length, a function pointer without a prototype or to a variadic function, `volatile`, `_Atomic` | refused |
 //!
 //! # Statements
 //!
@@ -52,7 +53,7 @@
 //! | `x++;`, `++x;`, `x--;`, `--x;` | `incr`, `decr` |
 //! | `f(…);` | `expr` |
 //! | `if`, `else` | `if` |
-//! | `for (init; cond; inc)` | `for`: `init` a declaration (`let`) or an assignment, `inc` an assignment, `++` or `--` |
+//! | `for (init; cond; inc)` | `for`: `init` a declaration (`let`) or an assignment, `inc` an assignment, `++` or `--`. `&` of a variable `init` declares is refused: C has one such variable for all iterations, Go one per iteration |
 //! | `while (c)`, `for (;;)`, `while (1)` | `for` with or without a condition |
 //! | `do { … } while (c);` | `for { …; if !c { break } }`; a `continue` in it is refused, as it would run `c` |
 //! | `switch` on an integer, `case` values constant | `switch`; stacked labels are one case; a case's trailing `break` leaves the switch, which a `cir/1` case does by ending. A case that falls through, or a `break` elsewhere in a case, is refused |
@@ -69,8 +70,9 @@
 //! |---|---|
 //! | an integer literal; an integer constant converted to the type its context needs | `lit` of that type, under `-` when negative |
 //! | a floating-point literal (`0.25`, `1e21f`) | `float` of its type: the shortest decimal that reads back to clang's value of it |
+//! | `-` of a floating-point literal (`-0.0`), an operator or comparison whose operands are all floating-point constants (`0.1 + 0.2`) | refused: the Go writer writes them as Go constant expressions, which Go evaluates exactly (`-0.0` is positive zero, `0.1 + 0.2 == 0.3` true), not in binary floating point as C does; read once the Go writer writes them as C evaluates them |
 //! | `"…"` (printable ASCII, the escapes `\n \t \r \\ \"`) | `lit` of type `string`, spelled as Go spells it |
-//! | a null pointer constant (`0`, `NULL`) where a pointer or function pointer is expected | `nil` of that type |
+//! | a null pointer constant (`0`, `NULL`, `(void *)0`) where a pointer or function pointer is expected or compared with | `nil` of that type |
 //! | a parameter or local, a file-scope variable | `var`, `global` |
 //! | an enumerator where its enum is expected, an anonymous enum's enumerator | `const` |
 //! | the name of a function the module defines, as a value | `func_ref` |
@@ -280,6 +282,9 @@ struct Assembly<'s> {
     externs: Vec<Extern>,
     layout: Vec<String>,
     refusals: Vec<Refusal>,
+    /// Each typedef name of the source directory read for a newtype, with the position and the
+    /// type of its first typedef.
+    typedef_at: BTreeMap<String, (String, String)>,
 }
 
 /// The typedef names an anonymous record or enum declaration gets, by declaration id.
@@ -316,6 +321,7 @@ impl<'s> Assembly<'s> {
             externs: Vec::new(),
             layout: Vec::new(),
             refusals: Vec::new(),
+            typedef_at: BTreeMap::new(),
         }
     }
 
@@ -328,6 +334,21 @@ impl<'s> Assembly<'s> {
     }
 
     fn run(mut self, asts: &[J], name: String) -> Module {
+        for n in asts.iter().flat_map(|a| a.inner()) {
+            if matches!(n.kind(), "RecordDecl" | "EnumDecl")
+                && !n.s("name").is_empty()
+                && in_dir(&file_of(n.get("loc")).unwrap_or_default())
+            {
+                let tag = match n.kind() {
+                    "EnumDecl" => "enum",
+                    _ => n.s("tagUsed"),
+                };
+                self.tables
+                    .tags
+                    .entry(n.s("name").into())
+                    .or_insert_with(|| tag.into());
+            }
+        }
         let mut units = Vec::new();
         let mut defs = Vec::new();
         for ast in asts {
@@ -516,15 +537,43 @@ impl<'s> Assembly<'s> {
     }
 
     /// A typedef of the source directory: a newtype when it names an integer, `_Bool` or
-    /// floating-point type; any other typedef stands for the type it names.
+    /// floating-point type; any other typedef stands for the type it names. A second typedef of
+    /// the name to another type, and a newtype named as a struct, union or enum of the module, are
+    /// refused: a module has one type of a name.
     fn newtype(&mut self, unit: &Unit, n: &J, target: &str) {
         let name = n.s("name").to_string();
-        let Ok(under) = self.tables.spelled(unit, target) else {
+        let under = self.tables.spelled(unit, target).ok();
+        let newtype = matches!(
+            under,
+            Some(Type::Int { .. } | Type::Bool | Type::Float { .. })
+        );
+        if let Some((first, was)) = self.typedef_at.get(&name).cloned() {
+            let differs = match self.tables.spelled(unit, &was).ok() {
+                Some(t) => under.as_ref() != Some(&t),
+                None => was != target,
+            };
+            if differs && (newtype || self.tables.newtypes.contains_key(&name)) {
+                self.refuse(
+                    n,
+                    format!("typedef {name}"),
+                    format!(
+                        "a second typedef of {name}, as {target}, where {first} has it as {was}: a module has one type of a name"
+                    ),
+                );
+            }
+            return;
+        }
+        self.typedef_at
+            .insert(name.clone(), (pos_of(self.src, n), target.into()));
+        let Some(under) = under.filter(|_| newtype) else {
             return;
         };
-        if !matches!(under, Type::Int { .. } | Type::Bool | Type::Float { .. })
-            || self.tables.newtypes.contains_key(&name)
-        {
+        if let Some(tag) = self.tables.tags.get(&name) {
+            let why = format!(
+                "a typedef of {target} named as the {tag} {name} of the module: a module has one type of a name"
+            );
+            self.tables.bad_typedefs.insert(name.clone(), why.clone());
+            self.refuse(n, format!("typedef {name}"), why);
             return;
         }
         self.tables.newtypes.insert(name.clone(), under.clone());
@@ -550,6 +599,8 @@ impl<'s> Assembly<'s> {
         }
         let mut why = None;
         let mut fields = Vec::new();
+        // Declared before its fields are read: a field may point to the struct itself.
+        self.tables.structs.insert(name.clone(), Vec::new());
         if tag != "struct" {
             why = Some(format!(
                 "a {tag}: cir/1 has no untagged union, and C does not say which member a value holds"
@@ -573,6 +624,7 @@ impl<'s> Assembly<'s> {
             }
         }
         if let Some(why) = why {
+            self.tables.structs.remove(&name);
             self.tables.refused.insert(name.clone(), why.clone());
             self.refuse(n, format!("{tag} {name}"), why);
             return;

@@ -14,10 +14,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
   features whose cases now have a C source: `decl.newtype`, `expr.call_value`, `expr.conv`,
   `expr.float`, `expr.func_ref`, `expr.nil`, `expr.zero`, `stmt.continue`, `stmt.expr`,
   `type.array`, `type.float`, `type.func`, `type.named`, `type.ptr`, `type.unit`, `unop.deref`,
-  `unop.ref`. `decl.variadic` and `expr.index` stay unclaimed; the crate doc says why.
-- Four kit cases are variants of a feature whose first case needs a slice, an error or a string:
+  `unop.ref`. `decl.variadic` and `expr.index` stay unclaimed; the crate doc says why. It refuses
+  by name what the Go written from it would run otherwise: `-` of a floating-point literal and an
+  operator on floating-point constants only, `&` of a variable a `for` declares, a second
+  `typedef` of a name to another type and a `typedef` named as a struct or enum of the module.
+- Three kit cases are variants of a feature whose first case needs a slice, an error or a string:
   `expr-nil-ptr`, `expr-zero-struct` (its `case.cir.json` written by hand, as the Go reader never
-  writes `zero`), `type-array-int` and `type-float-compare`.
+  writes `zero`) and `type-array-int`; `type-float-compare` has a C source.
 - `codespec-run-c` runs C written by hand that declares `typedef long Name;` and passes or returns
   `Name` as an integer, and reads a function pointer or array parameter as one parameter; a call
   of a function taking a float, a pointer, an array or a function pointer is refused naming its

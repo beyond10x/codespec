@@ -636,3 +636,25 @@ fn the_c_corpus_holds_each_case_s_c_source_beside_its_calls() {
         "a case without c/case.c has no corpus entry"
     );
 }
+
+#[test]
+fn a_struct_pointing_to_itself_is_read_and_a_pointer_to_an_array_is_refused_as_one() {
+    let text = "struct Node {\n    long value;\n    struct Node *next;\n};\n\nlong second(struct Node *n) {\n    return n->next->value;\n}\n\nlong head(long (*rows)[3]) {\n    return 0;\n}\n";
+    let dir = source("self-pointer", &[("self-pointer.c", text)]);
+    let m = read(&dir);
+    assert_eq!(m.refusals.len(), 1, "{:#?}", m.refusals);
+    let r = &m.refusals[0];
+    assert_eq!(
+        r.pos,
+        format!("self-pointer.c:{}", line_of(text, "long head"))
+    );
+    assert!(
+        r.reason.contains("a pointer to an array") && !r.reason.contains("function pointer"),
+        "{r:#?}"
+    );
+    assert!(
+        m.funcs.iter().any(|f| f.name == "second"),
+        "{:#?}",
+        m.opaque
+    );
+}

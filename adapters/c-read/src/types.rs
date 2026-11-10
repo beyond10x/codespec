@@ -25,6 +25,12 @@ pub struct Tables {
     /// Each newtype the module declares, a typedef in the source directory of an integer, `_Bool`
     /// or floating-point type, by name, with the type it is defined over.
     pub newtypes: BTreeMap<String, Type>,
+    /// Each typedef of the source directory refused as a newtype, by name, with why: a type it
+    /// names is refused where it is used.
+    pub bad_typedefs: BTreeMap<String, String>,
+    /// The tag of each struct, union and enum the source directory declares (`struct`, `union`,
+    /// `enum`), by name.
+    pub tags: BTreeMap<String, String>,
 }
 
 /// One typedef of a file: the type it names, spelled, and the module type it names when that
@@ -113,7 +119,8 @@ fn params_of(list: &str) -> Option<Vec<String>> {
 
 impl Tables {
     /// The `cir/1` type of a clang type object `{qualType, desugaredQualType}`. The spelling
-    /// with its typedefs is read when it names a newtype of the module, else the desugared one.
+    /// with its typedefs is read when it names a newtype of the module or a refused one, else the
+    /// desugared one.
     pub fn ty(&self, unit: &Unit, t: &J) -> Result<Type, String> {
         let q = clean(t.s("qualType"));
         let bare = q.strip_prefix("const ").unwrap_or(&q);
@@ -123,7 +130,7 @@ impl Tables {
         let d = t.s("desugaredQualType");
         let newtype = q
             .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .any(|w| self.newtypes.contains_key(w));
+            .any(|w| self.newtypes.contains_key(w) || self.bad_typedefs.contains_key(w));
         self.spelled(unit, if d.is_empty() || newtype { &q } else { d })
     }
 
@@ -139,6 +146,9 @@ impl Tables {
             return Err(format!("a volatile or atomic type ({s})"));
         }
         if let Some((result, list)) = s.split_once("(*)") {
+            if list.trim_start().starts_with('[') {
+                return Err(format!("a pointer to an array ({s})"));
+            }
             return self.func(unit, result.trim(), list.trim());
         }
         if s.contains("(*") || s.contains("(^") {
@@ -198,7 +208,20 @@ impl Tables {
             }
             _ => {}
         }
-        if self.newtypes.contains_key(s) {
+        if let Some(why) = self.bad_typedefs.get(s) {
+            return Err(format!("{s}, which is not read: {why}"));
+        }
+        if let Some(under) = self.newtypes.get(s) {
+            // Another file of the directory may typedef the name to another type.
+            if let Some(td) = unit.typedefs.get(s)
+                && td.named.is_none()
+                && self.spelled(unit, &td.target).ok().as_ref() != Some(under)
+            {
+                return Err(format!(
+                    "{s}, whose typedef here ({}) is not the one the module reads as its newtype {s}",
+                    td.target
+                ));
+            }
             return self.named(s);
         }
         for tag in ["struct ", "enum ", "union "] {
@@ -215,7 +238,9 @@ impl Tables {
                     self.enums.contains(name)
                 };
                 if !known {
-                    return Err(format!("{s}, which the source directory does not declare"));
+                    return Err(format!(
+                        "{s}, which the source directory does not declare before it is used"
+                    ));
                 }
                 return Ok(Type::Named {
                     name: name.into(),
