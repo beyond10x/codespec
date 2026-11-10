@@ -22,7 +22,8 @@
 //! A case directory holds exactly these five files, and may hold `groovy/`, `java/` and `rust/` directories,
 //! which the kit checks here do not read; [`conform::reader_corpus`] builds the reader corpora
 //! from them. The Java reader's tests also run `java/` through `codespec read --lang java`, the
-//! passes, the Go writer and `codespec-run-go` against `expected.txt`
+//! passes, the Go writer and `codespec-run-go` against `expected.txt`, a module the Go writer
+//! refuses (`decl.union`) through `codespec-write-cir` and `codespec-run-cir` instead
 //! (`adapters/java/test/codespec/read/ReaderTest.java`). `case.cir.json` and `expected.txt` are
 //! generated (`codespec-conformance check --write`), never edited by hand; the other three are
 //! written by hand. The exception is a case written by hand, below.
@@ -35,7 +36,7 @@
 //!
 //! | id | the Go reader writes instead | reached by |
 //! |---|---|---|
-//! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
+//! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields; the Java reader, for a sealed interface whose permitted classes are records without members |
 //! | `expr.zero` | a literal, `0` or `""`; a struct literal that sets no field | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal; the C reader for a struct literal of zeros, `(struct T){0}` (`expr-zero-struct`) |
 //! | `stmt.raise` | nothing it reads as one: Go has no statement that leaves a function with a value of another package's type to the framework that started it; the case's `panic` is a reference only, and its calls never reach it | the Java reader, for a `throw` of a jar's unchecked exception in a method an entry names |
 //! | `intrinsic.sorted_keys` | a loop and `sort.Strings` or `sort.Ints`, as the case's Go source sorts; the reader reads `slices.Sorted(maps.Keys(m))` as `sorted_keys` over integer keys only, since Go orders strings by byte and `sorted_keys` by UTF-16 code unit | the Java reader, for a loop over a TreeMap's keySet |

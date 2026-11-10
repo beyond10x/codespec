@@ -1448,10 +1448,7 @@
         "decl.newtype": "refused",
         "decl.struct": "verified",
         "decl.type_params": "verified",
-        "decl.union": {
-          "note": "Case decl-union: its module does not use the feature.",
-          "state": "refused"
-        },
+        "decl.union": "verified",
         "decl.var": "verified",
         "decl.variadic": "verified",
         "expr.binop": "verified",

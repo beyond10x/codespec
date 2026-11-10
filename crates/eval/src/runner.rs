@@ -15,8 +15,10 @@
 //! them is copied as it is.
 //!
 //! The runner reads `<written dir>/module.cir.json` and the calls file, runs the calls with
-//! [`crate::run_calls`] and prints what `codespec eval` prints. `--build` (or `-build`) is
-//! accepted and unused: nothing is built.
+//! [`crate::run_calls`] and prints what `codespec eval` prints. A call names a function as Go
+//! spells it, as every kit `calls.json` does: one that names no exported top-level function calls
+//! the one whose name the Go writer exports so, its first letter upper-cased (`Echo` calls a Java
+//! reader's `echo`). `--build` (or `-build`) is accepted and unused: nothing is built.
 //!
 //! | exit | when |
 //! |---|---|
@@ -206,7 +208,33 @@ pub fn run(dir: &Path, calls: &Path) -> Result<Run, Failed> {
     let m = Module::from_json(&bytes).map_err(|e| {
         Failed::Module(format!("{}: {}", path.display(), printable(&e.to_string())))
     })?;
-    let c = codespec_conformance::read_calls(calls).map_err(Failed::Refused)?;
+    let mut c = codespec_conformance::read_calls(calls).map_err(Failed::Refused)?;
+    for call in &mut c.calls {
+        if let Some(name) = go_spelled(&m, &call.func) {
+            call.func = name;
+        }
+    }
     run_calls(&m, &c, &Options::default())
         .map_err(|e| Failed::Refused(format!("{}: {e}", calls.display())))
+}
+
+/// The function a call names as Go spells it: a kit `calls.json` names `Echo` where a Java or
+/// Rust reader's module has `echo`. With no exported top-level function named `func`, the one
+/// exported top-level function whose name with its first letter upper-cased is `func`, as the Go
+/// writer exports it; `None` when there is none or more than one, so the call is refused as one
+/// that does not fit.
+fn go_spelled(m: &Module, func: &str) -> Option<String> {
+    let top = || m.funcs.iter().filter(|f| f.recv.is_none() && f.exported);
+    if top().any(|f| f.name == func) {
+        return None;
+    }
+    let mut found = top().filter(|f| {
+        let mut cs = f.name.chars();
+        cs.next()
+            .is_some_and(|c| c.is_lowercase() && c.to_uppercase().chain(cs).eq(func.chars()))
+    });
+    match (found.next(), found.next()) {
+        (Some(f), None) => Some(f.name.clone()),
+        _ => None,
+    }
 }

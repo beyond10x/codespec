@@ -175,6 +175,66 @@ fn a_module_holding_a_raise_is_refused_naming_the_function_and_stmt_raise_is_unc
     assert!(UNCLAIMED.iter().any(|(id, _)| *id == "stmt.raise"));
 }
 
+/// The kit case `decl-union` with its function renamed `echo`, as a Java reader names it, written
+/// into a directory of its own; `exported` sets the function's flag.
+fn lower_case_echo(name: &str, exported: bool) -> PathBuf {
+    let case = kit().join("cases/decl-union/case.cir.json");
+    let mut doc: serde_json::Value = serde_json::from_slice(&std::fs::read(case).unwrap()).unwrap();
+    let f = doc["funcs"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|f| f["name"] == "Echo")
+        .expect("decl-union declares Echo");
+    f["name"] = "echo".into();
+    f["exported"] = exported.into();
+    let dir = work(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("module.cir.json"),
+        serde_json::to_vec_pretty(&doc).unwrap(),
+    )
+    .unwrap();
+    dir
+}
+
+/// A kit `calls.json` names a function as Go spells it, `Echo`; a module a Java or Rust reader
+/// read names it `echo`. The runner calls the exported function the Go writer would name so, as
+/// the reader check's evaluator step needs for the module the Go writer refuses; an unexported
+/// one stays a call that does not fit.
+#[test]
+fn a_call_names_an_exported_function_as_the_go_writer_spells_it() {
+    let calls = kit().join("cases/decl-union/calls.json");
+    let run = Command::new(RUNNER)
+        .arg(lower_case_echo("run-lower-echo", true))
+        .arg(&calls)
+        .output()
+        .unwrap();
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(run.stdout).unwrap(),
+        std::fs::read_to_string(kit().join("cases/decl-union/expected.txt")).unwrap()
+    );
+
+    let run = Command::new(RUNNER)
+        .arg(lower_case_echo("run-lower-echo-unexported", false))
+        .arg(&calls)
+        .output()
+        .unwrap();
+    assert_eq!(
+        run.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(run.stdout.is_empty());
+}
+
 #[test]
 fn the_runner_exits_1_with_the_stop_and_2_on_calls_that_do_not_fit() {
     let foreign = kit().join("cases/stmt-foreign");

@@ -4,6 +4,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-java` claims `decl.union`, 103 features, up from 102: a sealed interface whose
+  permitted classes are records without members is read as a `union` in a package read, where
+  it was refused at its line. The Go writer refuses a union, and the reader check's evaluator step
+  judges the kit case `decl-union` instead. A sealed interface one of whose records declares a
+  member is still refused at its line, its records with it.
+
+### Fixed
+
+- `codespec-run-cir` calls a function a `calls.json` names as Go spells it (`Echo`) by the name a
+  reader of another language gives it (`echo`), as the Go writer exports it. The reader check's
+  evaluator step refused such a call as one that does not fit, so no reader but Go's could pass a
+  case the Go writer refuses.
+
 ## 0.7.0
 
 ### Added

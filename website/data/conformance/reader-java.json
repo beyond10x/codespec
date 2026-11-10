@@ -4,7 +4,7 @@
     "role": "reader",
     "lang": "java",
     "version": "0.7.0",
-    "manifest_sha256": "ea4cd9843037196f8d25101c9c02858aeebd5fc2e13438479eb4c2e15597022e"
+    "manifest_sha256": "9316a685af420a3340d4e90626ee8ab2a5cca2f11a286c4ca12f84ab004d0170"
   },
   "kit": {
     "version": "0.7.0",
@@ -147,15 +147,12 @@
     },
     {
       "id": "decl.union",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "decl-union"
       ],
-      "case": "decl-union",
-      "step": 3,
-      "reason": "subject_missing",
-      "detail": "the module does not use decl.union outside a foreign statement"
+      "runner": "codespec-run-cir"
     },
     {
       "id": "decl.var",
@@ -997,10 +994,10 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 102,
-    "pass": 102,
+    "claimed": 103,
+    "pass": 103,
     "fail": 0,
-    "refused_unclaimed": 1,
+    "refused_unclaimed": 0,
     "pass_unclaimed": 0,
     "untested": 25,
     "boundary_fail": 0

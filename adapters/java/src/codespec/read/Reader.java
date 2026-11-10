@@ -146,8 +146,7 @@ import javax.tools.ToolProvider;
  * java.util.function} as function types, with lambdas, method references and calls of them;
  * variable arity methods and arrays as slices; an exception leaf whose constructor formats its
  * parameters as {@code errorf}; {@code System.out.println} of an integer, a boolean or a
- * String. A sealed interface whose permitted classes are records without members is a union,
- * refused at its line while {@link #READ_UNIONS} is off.
+ * String; a sealed interface whose permitted classes are records without members as a union.
  *
  * <p>A project directory (one with {@code pom.xml}, {@code build.gradle} or {@code
  * build.gradle.kts}) is read with {@link #readProject}: every package under {@code src/main/java}
@@ -349,12 +348,6 @@ public final class Reader {
      * without members of their own, cir/1 unions, with those records in {@code permits} order.
      */
     private final Map<TypeElement, List<TypeElement>> unions = new HashMap<>();
-    /**
-     * Whether a sealed interface of records is emitted as a union. Off: the reader's check writes
-     * every read as Go, and the Go writer refuses a union, so a union read cannot be checked; the
-     * interface is refused at its line instead, its records with it.
-     */
-    static final boolean READ_UNIONS = false;
     /** The generic static methods the module reads. */
     private final Set<ExecutableElement> genericMethods = new HashSet<>();
     /** The static fields that are module-level variables, with their names. */
@@ -1082,11 +1075,6 @@ public final class Reader {
                     }
                     if (unionWhy.containsKey(te)) {
                         why = unionWhy.get(te);
-                        if (why == null && !READ_UNIONS) {
-                            unions.remove(te);
-                            why = "sealed interface of records: a cir/1 union, which the reader does not emit while the Go writer"
-                                + " that checks a read refuses every union";
-                        }
                         break;
                     }
                     why = interfaceShape(ct);

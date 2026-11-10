@@ -147,7 +147,8 @@ A reader is checked by what it produces, run through a writer this repository tr
 4. `codespec pass` and the Go writer write it; `codespec-run-go` prints `expected.txt`. When the
    Go writer refuses the passed module (it has no form for a tagged union, `decl.union`), the
    evaluator judges it instead: `codespec-write-cir` writes it and `codespec-run-cir` runs the
-   calls, both looked up in `--adapters` when a case first needs them (a run whose every case
+   calls (a call names a function as Go spells it, `Echo` for a Java reader's `echo`, as the Go
+   writer exports it), both looked up in `--adapters` when a case first needs them (a run whose every case
    the Go writer writes does not; a case that needs them while they are missing is an error of
    the run, never a verdict). Its output equal to `expected.txt` is a pass, a different one
    fails with the first differing line. A stop is never a pass, and its kind decides the rest:
