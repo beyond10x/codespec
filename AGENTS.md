@@ -260,6 +260,11 @@ Work in a managed worktree (`worktree` CLI); never in the primary checkout. Rust
 worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
 under `target/`. End a merged tree with `worktree finish --discard-cache --archive <tree>`.
 
+No disk checks around builds (operator's rule, 2026-11-10): no `df`, `du` or `find` over a tree or
+`/` before, during or after a build, no free-space threshold that stops or delays work, and no
+polling script that waits for space. A build that fails with "No space left on device" is reported
+with its output; freeing space is the operator's `disk-doctor` round, not a step of a unit.
+
 ## Delivery
 
 All commits and pushes are `b10x-bot[bot]` through `b10x-gates bot --repository beyond10x/codespec`;
