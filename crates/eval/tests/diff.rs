@@ -62,6 +62,11 @@ fn check(name: &str) -> Plan {
     assert_eq!(one.stdout.lines().count(), calls.calls.len(), "{name}");
     let two = run_calls(&module, &calls, &Options::default()).unwrap();
     assert_eq!(one, two, "{name}: a second run prints the same bytes");
+    // A setup call that would return an error is skipped, so every seed reaches its function.
+    for r in diff::reach(&plan, &calls, &one.stdout) {
+        assert_eq!(r.reached, r.seeds, "{name}: {r:?}");
+        assert!(r.ok <= r.reached, "{name}: {r:?}");
+    }
     assert_eq!(
         diff::calls(&plan, 200),
         calls,

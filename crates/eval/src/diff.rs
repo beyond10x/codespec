@@ -32,17 +32,28 @@
 //!    its results dropped; for an enum, `pick<Enum>` of a drawn `int`; for a
 //!    struct without a constructor whose fields are all drawable, a struct literal of drawn
 //!    fields. A mutator listed `fallible` is called as `…, err := recv.M(…)` followed by `if err !=
-//!    nil { return <zero values>, err }`, so the probe ends with that error, and the probe gets a
-//!    last `error` result;
+//!    nil { return <zero values>, err }`, the one form in which the Rust writer writes a call of
+//!    a fallible function, and the probe gets a last `error` result. The calls never choose a
+//!    setup call that returns an error (§ Calls), so that return is not taken;
 //! 2. the call, its results bound to `res0`, `res1`, …; a result listed `fallible` returns its
 //!    error the same way;
 //! 3. each result returned: a struct whose fields are all printable flattened into its fields in
 //!    declaration order, a slice of integers or strings that the function fills from a loop over
 //!    a map (a position the `unordered_iteration` fact lists inside its body) sorted ascending by
 //!    insertion sort, since Go, Rust and the evaluator iterate a map in three different orders.
+//!    A method that returns no value returns its receiver's state after the call instead: the
+//!    receiver's fields when all are printable (a slice field copied element by element into a
+//!    new slice, since the Rust writer refuses a copy sharing its array), else the results of its
+//!    exported methods that
+//!    `read_only` lists, take no parameters and return one printable value.
 //!
-//! A function none of this reaches (a parameter of another kind, a receiver with neither) is
-//! listed in [`Plan::skipped`] with the reason; `codespec-eval-diff` fails when any is.
+//! A function none of this reaches (a parameter of another kind, a receiver with neither, a
+//! method without a value whose receiver shows no state) is listed in [`Plan::skipped`] with the
+//! reason; `codespec-eval-diff` fails when any is.
+//!
+//! For a probe with a fallible mutator, [`Plan::setup`] also holds its **setup function**
+//! `SetupProbe<…>`: the same parameters, the receiver and the setup slots alone, returning the
+//! first setup call's error or `nil`. Only the evaluator runs it.
 //!
 //! # Calls
 //!
@@ -52,10 +63,24 @@
 //! integers are edge values of the width (`0`, `±1`, its extremes and one off them, and for 64
 //! bits `2147483647`, `46337`, `2^32`), an eighth in `[-1000, 1000)`, the rest in `[-3, 20]`;
 //! strings are one of [`STRINGS`]. A setup call draws integers in `[1, 20]` but for one in 16,
-//! drawn as above, and strings from [`SETUP_STRINGS`], so that its calls mostly succeed and
-//! refer to each other's keys: a failing one ends the probe. Each seed runs its first `k` slots,
-//! `k` drawn from `0..=SLOTS`, each a drawn mutator, and every other seed runs them in the
-//! mutators' declaration order.
+//! drawn as above. Each seed first draws a **key** from [`SETUP_STRINGS`]: a setup call's string
+//! is the key three times in four, else drawn from [`SETUP_STRINGS`], and the probed function's
+//! own string the key half the time, else drawn from [`STRINGS`], so that the calls name what
+//! the setup calls added. Each seed fills its first `k` slots, `k` the larger of two draws from
+//! `0..=SLOTS`, each with a drawn mutator, and every other seed puts them in the mutators'
+//! declaration order (the mutators that add state are declared before those that need it in
+//! both examples).
+//!
+//! A setup call that would return an error is skipped, not made: slot by slot, the evaluator runs
+//! the setup function with the slots before as chosen and those after empty, and a slot whose call
+//! returns an error is drawn again (mutator and arguments) up to [`REDRAWS`] times, then left
+//! empty. So every call reaches the probed function, and a seed whose first draw failed gets a
+//! setup call that succeeds on the state the earlier ones made.
+//!
+//! [`reach`] measures this on a run: per function, how many of its seeds reach it (the setup
+//! function returns `nil` on their arguments) and how many of those print a result rather than an
+//! error. `codespec-eval-diff` prints both sums per example and fails when a function's seeds
+//! reach it fewer than half the time.
 //!
 //! # Comparison
 //!
@@ -69,8 +94,14 @@ use codespec_harness::SplitMix64;
 use codespec_model::{Func, IntWidth, Module, Type, TypeDecl, receiver_type_name};
 use serde_json::{Value, json};
 
+use crate::{Options, run_calls};
+
 /// Setup slots of a probe whose receiver comes from a constructor.
 pub const SLOTS: usize = 4;
+
+/// How many times a setup slot whose call returns an error is drawn again before it is left
+/// empty.
+pub const REDRAWS: usize = 3;
 
 /// The strings a `string` parameter of the probed function draws from: few, so that keys repeat.
 pub const STRINGS: &[&str] = &["a", "b", "", "A b"];
@@ -106,6 +137,11 @@ pub struct Entry {
     pub receiver: Option<String>,
     /// What each parameter of `call` draws, in order.
     pub params: Vec<Draw>,
+    /// Each setup slot's parameters: its operation first, then every mutator's arguments.
+    pub slots: Vec<std::ops::Range<usize>>,
+    /// The function of [`Plan::setup`] that makes the probe's setup calls alone and returns their
+    /// first error, when a mutator can return one.
+    pub setup: Option<String>,
 }
 
 /// The module with its probes, the entries and what has none.
@@ -113,6 +149,9 @@ pub struct Entry {
 pub struct Plan {
     /// The module given, with the probes and helpers added and `codespec pass` run over it.
     pub module: Module,
+    /// [`Plan::module`] with each [`Entry::setup`] function added: the evaluator runs it to choose
+    /// the setup calls (module doc § Calls). No writer is given it.
+    pub setup: Module,
     pub entries: Vec<Entry>,
     /// The constructors, by key, in module order.
     pub constructors: Vec<String>,
@@ -254,6 +293,25 @@ impl<'a> Scope<'a> {
                         .is_some_and(|r| receiver_type_name(&r.t) == t)
                     && !self.read_only.contains(f.key().as_str())
                     && f.params.iter().all(|p| self.draw(&p.t).is_some())
+            })
+            .collect()
+    }
+
+    /// The exported methods of `t` that `read_only` lists, without parameters, whose one result
+    /// is printable: what shows a receiver's state when its fields do not.
+    fn readers(&self, t: &str) -> Vec<&'a Func> {
+        self.m
+            .funcs
+            .iter()
+            .filter(|f| {
+                f.exported
+                    && f.tparams.is_empty()
+                    && f.params.is_empty()
+                    && f.recv
+                        .as_ref()
+                        .is_some_and(|r| receiver_type_name(&r.t) == t)
+                    && self.read_only.contains(f.key().as_str())
+                    && matches!(f.results.as_slice(), [r] if self.printable(r))
             })
             .collect()
     }
@@ -405,6 +463,24 @@ fn bind_checked(
     out
 }
 
+/// An `if op == 0 { … } else if op == 1 { … } …` chain over `arms`, built from the last arm back.
+fn chain(op: &Value, arms: Vec<(usize, Vec<Value>)>, lines: &mut Lines) -> Value {
+    let mut chain: Option<Value> = None;
+    for (j, then) in arms.into_iter().rev() {
+        let mut stmt = json!({
+            "k": "if",
+            "cond": binop("==", op.clone(), int_lit(j as i64), &Type::Bool),
+            "then": then,
+            "pos": lines.pos(),
+        });
+        if let Some(rest) = chain.take() {
+            stmt["else"] = json!([rest]);
+        }
+        chain = Some(stmt);
+    }
+    chain.expect("an arm")
+}
+
 /// Insertion sort of the slice variable `v` of element type `elem`, ascending.
 fn insertion_sort(v: &str, elem: &Type, lines: &mut Lines) -> Value {
     let int = platform_int();
@@ -482,15 +558,24 @@ fn returned_literal(ctor: &Func) -> Option<Value> {
         .then(|| e.clone())
 }
 
-/// The probe of `f`, or why there is none: the function JSON and the entry.
+/// A probe: the function JSON, its setup function's JSON when a setup call can return an error,
+/// and the entry.
+struct Built {
+    func: Value,
+    setup: Option<Value>,
+    entry: Entry,
+}
+
+/// The probe of `f` named `name`, its setup function named `setup_name`, or why there is none.
 fn probe<'a>(
     f: &'a Func,
     name: &str,
+    setup_name: &str,
     s: &Scope<'a>,
     ctors: &BTreeMap<String, String>,
     lines: &mut Lines,
     picks: &mut BTreeSet<String>,
-) -> Result<(Value, Entry), String> {
+) -> Result<Built, String> {
     if !f.tparams.is_empty() {
         return Err("it has type parameters".into());
     }
@@ -561,6 +646,55 @@ fn probe<'a>(
             ));
         }
     }
+    // A method without a value to return shows what it did through its receiver's state after
+    // the call: the receiver's fields when all are printable, else its readers' results.
+    let mut state: Vec<(Value, Type)> = Vec::new();
+    let mut copies: Vec<(String, Value, Type)> = Vec::new();
+    if values.is_empty()
+        && let Some(r) = &f.recv
+    {
+        let Recv::Ctor { rt, .. } = &recv else {
+            return Err(
+                "it returns no value, and only a receiver its constructor makes is read after \
+                 the call"
+                    .into(),
+            );
+        };
+        let t = receiver_type_name(&r.t);
+        let named = Type::Named {
+            name: t.to_string(),
+            targs: Vec::new(),
+        };
+        if let Some(fields) = s.flat_fields(&named) {
+            for (fname, ft) in fields {
+                let field =
+                    json!({"k": "field", "x": var("recv", rt), "name": fname, "t": ty(&ft)});
+                if matches!(ft, Type::Slice { .. }) {
+                    // Copied element by element: the Rust writer refuses a copy of a slice,
+                    // which shares its array with the original in Go.
+                    let v = format!("st{}", copies.len());
+                    copies.push((v.clone(), field, ft.clone()));
+                    state.push((var(&v, &ft), ft));
+                } else {
+                    state.push((field, ft));
+                }
+            }
+        } else {
+            for g in s.readers(t) {
+                let rt1 = g.results[0].clone();
+                state.push((
+                    json!({"k": "method", "x": var("recv", rt), "name": g.name, "args": [], "t": ty(&rt1)}),
+                    rt1,
+                ));
+            }
+        }
+        if state.is_empty() {
+            return Err(format!(
+                "it returns no value, and {t} has neither printable fields nor a method that \
+                 reads them"
+            ));
+        }
+    }
     let fallible = own_err || setup_fallible;
     let mut out_types: Vec<Type> = Vec::new();
     for o in &outs {
@@ -569,6 +703,7 @@ fn probe<'a>(
             Out::Fields(_, fields) => out_types.extend(fields.iter().map(|(_, t)| t.clone())),
         }
     }
+    out_types.extend(state.iter().map(|(_, t)| t.clone()));
     if fallible {
         out_types.push(Type::Error);
     }
@@ -580,6 +715,8 @@ fn probe<'a>(
         picks,
     };
     let mut body: Vec<Value> = Vec::new();
+    let mut setup_body: Vec<Value> = Vec::new();
+    let mut slots = Vec::new();
     let x = match &recv {
         Recv::None => None,
         Recv::Ctor {
@@ -591,43 +728,39 @@ fn probe<'a>(
             let value = inline
                 .clone()
                 .unwrap_or_else(|| json!({"k": "call", "name": ctor, "args": [], "t": ty(rt)}));
-            body.push(
-                json!({"k": "let", "names": ["recv"], "rhs": [value], "pos": pr.lines.pos()}),
-            );
+            let bind =
+                json!({"k": "let", "names": ["recv"], "rhs": [value], "pos": pr.lines.pos()});
+            body.push(bind.clone());
+            setup_body.push(bind);
             for _ in 0..SLOTS {
                 if muts.is_empty() {
                     break;
                 }
+                let start = pr.params.len();
                 let o = pr.op(muts.len());
                 let mut arms = Vec::new();
+                let mut setup_arms = Vec::new();
                 for (j, g) in muts.iter().enumerate() {
                     let args: Vec<Value> = g.params.iter().map(|p| pr.arg("a", &p.t)).collect();
                     let call = json!({"k": "method", "x": var("recv", rt), "name": g.name, "args": args, "t": ty(&result_type(&g.results))});
-                    let then = if s.is_fallible(g) {
+                    let (then, then_setup) = if s.is_fallible(g) {
                         let mut names: Vec<String> =
                             (1..g.results.len()).map(|_| "_".to_string()).collect();
                         names.push("err".into());
-                        bind_checked(names, call, true, &out_types, pr.lines)
+                        (
+                            bind_checked(names.clone(), call.clone(), true, &out_types, pr.lines),
+                            bind_checked(names, call, true, &[Type::Error], pr.lines),
+                        )
                     } else {
-                        vec![json!({"k": "expr", "x": call, "pos": pr.lines.pos()})]
+                        let stmt = json!({"k": "expr", "x": call, "pos": pr.lines.pos()});
+                        (vec![stmt.clone()], vec![stmt])
                     };
                     arms.push((j, then));
+                    setup_arms.push((j, then_setup));
                 }
-                // An `if … else if …` chain, built from the last arm back.
-                let mut chain: Option<Value> = None;
-                for (j, then) in arms.into_iter().rev() {
-                    let mut stmt = json!({
-                        "k": "if",
-                        "cond": binop("==", o.clone(), int_lit(j as i64), &Type::Bool),
-                        "then": then,
-                        "pos": pr.lines.pos(),
-                    });
-                    if let Some(rest) = chain.take() {
-                        stmt["else"] = json!([rest]);
-                    }
-                    chain = Some(stmt);
-                }
-                body.push(chain.expect("a mutator"));
+                body.push(chain(&o, arms, pr.lines));
+                setup_body.push(chain(&o, setup_arms, pr.lines));
+                slots.push(start..pr.params.len());
             }
             Some(var("recv", rt))
         }
@@ -675,6 +808,26 @@ fn probe<'a>(
             }
         }
     }
+    for (v, over, st) in copies {
+        let Type::Slice { elem } = &st else {
+            unreachable!("only a slice is copied")
+        };
+        body.push(json!({"k": "let", "names": [v], "rhs": [{"k": "make", "t": ty(&st)}], "pos": pr.lines.pos()}));
+        body.push(json!({
+            "k": "for_range",
+            "key": "_",
+            "val": "sv",
+            "over": over,
+            "body": [{
+                "k": "assign",
+                "lhs": [var(&v, &st)],
+                "rhs": [{"k": "intrinsic", "name": "append", "args": [var(&v, &st), var("sv", elem)], "t": ty(&st)}],
+                "pos": pr.lines.pos(),
+            }],
+            "pos": pr.lines.pos(),
+        }));
+    }
+    results.extend(state.into_iter().map(|(e, _)| e));
     if fallible {
         results.push(json!({"k": "nil", "t": ty(&Type::Error)}));
     }
@@ -693,6 +846,18 @@ fn probe<'a>(
         "doc": format!("{name} calls {} with drawn values.", f.key()),
         "pos": pr.lines.pos(),
     });
+    let setup = setup_fallible.then(|| {
+        setup_body.push(json!({"k": "return", "results": [{"k": "nil", "t": ty(&Type::Error)}], "pos": pr.lines.pos()}));
+        json!({
+            "name": setup_name,
+            "exported": true,
+            "params": params,
+            "results": [ty(&Type::Error)],
+            "body": setup_body,
+            "doc": format!("{setup_name} makes the setup calls of {name} alone."),
+            "pos": pr.lines.pos(),
+        })
+    });
     let entry = Entry {
         func: f.key(),
         call: name.to_string(),
@@ -701,8 +866,10 @@ fn probe<'a>(
             _ => None,
         },
         params: pr.params.into_iter().map(|(_, _, d)| d).collect(),
+        slots,
+        setup: setup.as_ref().map(|_| setup_name.to_string()),
     };
-    Ok((func, entry))
+    Ok(Built { func, setup, entry })
 }
 
 fn pick_func(e: &str, variants: &[&str], lines: &mut Lines) -> Value {
@@ -751,6 +918,7 @@ pub fn plan(m: &Module) -> Result<Plan, String> {
     let mut entries = Vec::new();
     let mut skipped = Vec::new();
     let mut added: Vec<Value> = Vec::new();
+    let mut setups: Vec<Value> = Vec::new();
     for f in m.funcs.iter().filter(|f| f.exported) {
         if constructors.contains(&f.key()) {
             continue;
@@ -770,6 +938,8 @@ pub fn plan(m: &Module) -> Result<Plan, String> {
                 call: f.name.clone(),
                 receiver: None,
                 params: f.params.iter().filter_map(|p| s.draw(&p.t)).collect(),
+                slots: Vec::new(),
+                setup: None,
             });
             continue;
         }
@@ -777,10 +947,15 @@ pub fn plan(m: &Module) -> Result<Plan, String> {
         while taken.contains(&name) {
             name.push('_');
         }
-        match probe(f, &name, &s, &ctors, &mut lines, &mut picks) {
-            Ok((func, entry)) => {
-                added.push(func);
-                entries.push(entry);
+        let mut setup_name = format!("Setup{name}");
+        while taken.contains(&setup_name) {
+            setup_name.push('_');
+        }
+        match probe(f, &name, &setup_name, &s, &ctors, &mut lines, &mut picks) {
+            Ok(b) => {
+                added.push(b.func);
+                setups.extend(b.setup);
+                entries.push(b.entry);
             }
             Err(why) => skipped.push((f.key(), why)),
         }
@@ -800,18 +975,25 @@ pub fn plan(m: &Module) -> Result<Plan, String> {
         helpers.push(pick_func(e, &variants, &mut lines));
     }
     let mut doc: Value = serde_json::from_str(&m.to_json()).expect("a module is JSON");
-    for f in helpers.into_iter().chain(added) {
-        let key = format!("func:{}", f["name"].as_str().expect("a name"));
-        doc["funcs"].as_array_mut().expect("funcs").push(f);
-        doc["layout"]
-            .as_array_mut()
-            .expect("layout")
-            .push(json!(key));
-    }
+    let add = |doc: &mut Value, funcs: Vec<Value>| {
+        for f in funcs {
+            let key = format!("func:{}", f["name"].as_str().expect("a name"));
+            doc["funcs"].as_array_mut().expect("funcs").push(f);
+            doc["layout"]
+                .as_array_mut()
+                .expect("layout")
+                .push(json!(key));
+        }
+    };
+    add(&mut doc, helpers.into_iter().chain(added).collect());
     let probed = Module::from_json(doc.to_string().as_bytes())
         .map_err(|e| format!("the probe module does not read: {e}"))?;
+    add(&mut doc, setups);
+    let setup = Module::from_json(doc.to_string().as_bytes())
+        .map_err(|e| format!("the setup module does not read: {e}"))?;
     Ok(Plan {
         module: codespec_passes::run(&probed),
+        setup,
         entries,
         constructors,
         skipped,
@@ -846,7 +1028,8 @@ fn pick<'s>(r: &mut SplitMix64, xs: &[&'s str]) -> &'s str {
     xs[(r.next_u64() % xs.len() as u64) as usize]
 }
 
-fn draw(r: &mut SplitMix64, d: &Draw) -> String {
+/// One drawn value; `key` is the seed's key string (module doc § Calls).
+fn draw(r: &mut SplitMix64, d: &Draw, key: &str) -> String {
     match d {
         Draw::Int(bits) => draw_int(r, *bits).to_string(),
         Draw::SetupInt(_) if !r.next_u64().is_multiple_of(16) => {
@@ -854,49 +1037,175 @@ fn draw(r: &mut SplitMix64, d: &Draw) -> String {
         }
         Draw::SetupInt(bits) => draw_int(r, *bits).to_string(),
         Draw::Bool => r.next_u64().is_multiple_of(2).to_string(),
+        Draw::Str if r.next_u64().is_multiple_of(2) => format!("\"{key}\""),
         Draw::Str => format!("\"{}\"", pick(r, STRINGS)),
+        Draw::SetupStr if !r.next_u64().is_multiple_of(4) => format!("\"{key}\""),
         Draw::SetupStr => format!("\"{}\"", pick(r, SETUP_STRINGS)),
         Draw::Pick(n) | Draw::Op(n) => (r.next_u64() % *n as u64).to_string(),
     }
+}
+
+/// The number of mutators slot `s` of `e` chooses from: its "none" value.
+fn none(e: &Entry, s: &std::ops::Range<usize>) -> u64 {
+    match e.params[s.start] {
+        Draw::Op(n) => n as u64,
+        _ => unreachable!("a slot starts with its operation"),
+    }
+}
+
+/// Whether each of `argss`, passed to `func` of `m`, returns without an error: one evaluator run
+/// for them all, again past a call that stops.
+fn ok_each(m: &Module, func: &str, argss: &[Vec<String>]) -> Vec<bool> {
+    let mut ok: Vec<bool> = Vec::with_capacity(argss.len());
+    while ok.len() < argss.len() {
+        let calls = Calls {
+            format: CALLS_FORMAT.into(),
+            calls: argss[ok.len()..]
+                .iter()
+                .map(|a| Call {
+                    func: func.to_string(),
+                    args: a.clone(),
+                })
+                .collect(),
+        };
+        let run = run_calls(m, &calls, &Options::default()).expect("setup calls fit");
+        let before = ok.len();
+        ok.extend(run.stdout.lines().map(|l| l == "ok"));
+        if run.stop.is_some() {
+            ok.push(false);
+        }
+        assert!(ok.len() > before, "a run of setup calls printed nothing");
+    }
+    ok
 }
 
 /// `seeds` calls per entry, seeds `1..=seeds`, in entry order (module doc § Calls).
 pub fn calls(plan: &Plan, seeds: u64) -> Calls {
     let mut calls = Vec::new();
     for e in &plan.entries {
+        let mut rngs = Vec::new();
+        let mut keys = Vec::new();
+        let mut argss = Vec::new();
         for seed in 1..=seeds {
             let mut r = SplitMix64(fnv(&e.call) ^ seed);
-            let mut args: Vec<String> = e.params.iter().map(|d| draw(&mut r, d)).collect();
-            // The first `active` slots run a mutator, the rest none; every other seed runs them
-            // in the mutators' declaration order.
-            let slots: Vec<(usize, usize)> = (0..args.len())
-                .filter_map(|i| match e.params[i] {
-                    Draw::Op(n) => Some((i, n)),
-                    _ => None,
-                })
-                .collect();
-            let active = (r.next_u64() % (slots.len() as u64 + 1)) as usize;
+            let key = pick(&mut r, SETUP_STRINGS);
+            let mut args: Vec<String> = e.params.iter().map(|d| draw(&mut r, d, key)).collect();
+            // The first `active` slots run a mutator, the rest none, `active` the larger of two
+            // draws; every other seed runs them in the mutators' declaration order.
+            let slots = e.slots.len() as u64 + 1;
+            let active = (r.next_u64() % slots).max(r.next_u64() % slots) as usize;
             let sorted = r.next_u64().is_multiple_of(2);
-            let mut ops: Vec<u64> = slots[..active]
+            let mut ops: Vec<u64> = e.slots[..active]
                 .iter()
-                .map(|&(i, _)| args[i].parse().expect("an op is a number"))
+                .map(|s| args[s.start].parse().expect("an op is a number"))
                 .collect();
             if sorted {
                 ops.sort_unstable();
             }
-            for (k, &(i, n)) in slots.iter().enumerate() {
-                args[i] = ops.get(k).copied().unwrap_or(n as u64).to_string();
+            for (k, s) in e.slots.iter().enumerate() {
+                args[s.start] = ops.get(k).copied().unwrap_or(none(e, s)).to_string();
             }
-            calls.push(Call {
-                func: e.call.clone(),
-                args,
-            });
+            rngs.push(r);
+            keys.push(key);
+            argss.push(args);
         }
+        if let Some(setup) = &e.setup {
+            // Slot by slot, for every seed at once: a slot whose call returns an error, the slots
+            // before it as chosen and those after it empty, is drawn again, at most `REDRAWS`
+            // times, then left empty.
+            for (k, s) in e.slots.iter().enumerate() {
+                let empty = none(e, s).to_string();
+                let mut pending: Vec<usize> = (0..argss.len())
+                    .filter(|&i| argss[i][s.start] != empty)
+                    .collect();
+                for round in 0..=REDRAWS {
+                    if pending.is_empty() {
+                        break;
+                    }
+                    let tried: Vec<Vec<String>> = pending
+                        .iter()
+                        .map(|&i| {
+                            let mut a = argss[i].clone();
+                            for later in &e.slots[k + 1..] {
+                                a[later.start] = none(e, later).to_string();
+                            }
+                            a
+                        })
+                        .collect();
+                    let ok = ok_each(&plan.setup, setup, &tried);
+                    pending = pending
+                        .into_iter()
+                        .zip(ok)
+                        .filter(|(_, ok)| !ok)
+                        .map(|(i, _)| i)
+                        .collect();
+                    for &i in &pending {
+                        if round < REDRAWS {
+                            for p in s.clone() {
+                                argss[i][p] = draw(&mut rngs[i], &e.params[p], keys[i]);
+                            }
+                        } else {
+                            argss[i][s.start] = empty.clone();
+                        }
+                    }
+                }
+            }
+        }
+        calls.extend(argss.into_iter().map(|args| Call {
+            func: e.call.clone(),
+            args,
+        }));
     }
     Calls {
         format: CALLS_FORMAT.into(),
         calls,
     }
+}
+
+/// How an entry's seeds fared in one run of its calls.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reach {
+    /// The function's key.
+    pub func: String,
+    pub seeds: usize,
+    /// Seeds whose setup calls all returned without an error, so that the function was called.
+    pub reached: usize,
+    /// Of those, the seeds whose line is a result (`ok …`), not an error.
+    pub ok: usize,
+}
+
+/// Per entry, how many of its calls in `calls` reached the function and how many printed a
+/// result, `out` being the evaluator's output for `calls`, one line per call. Which calls
+/// reached the function, the evaluator tells by running their setup calls alone
+/// ([`Entry::setup`]); an entry without one reaches it on every call.
+pub fn reach(plan: &Plan, calls: &Calls, out: &str) -> Vec<Reach> {
+    let lines: Vec<&str> = out.lines().collect();
+    plan.entries
+        .iter()
+        .map(|e| {
+            let mine: Vec<usize> = (0..calls.calls.len())
+                .filter(|&i| calls.calls[i].func == e.call)
+                .collect();
+            let reached = match &e.setup {
+                Some(setup) => {
+                    let argss: Vec<Vec<String>> =
+                        mine.iter().map(|&i| calls.calls[i].args.clone()).collect();
+                    ok_each(&plan.setup, setup, &argss)
+                }
+                None => vec![true; mine.len()],
+            };
+            Reach {
+                func: e.func.clone(),
+                seeds: mine.len(),
+                reached: reached.iter().filter(|r| **r).count(),
+                ok: mine
+                    .iter()
+                    .zip(&reached)
+                    .filter(|&(&i, &r)| r && lines.get(i).is_some_and(|l| l.starts_with("ok")))
+                    .count(),
+            }
+        })
+        .collect()
 }
 
 /// The calls file's canonical text: two-space indentation, a final newline.

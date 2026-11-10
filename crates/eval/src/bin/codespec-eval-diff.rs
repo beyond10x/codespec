@@ -12,12 +12,17 @@
 //! directory and must exit 0. The evaluator's output must hold one line per call, and each other
 //! language's output must equal the evaluator's lines for the calls it ran, byte for byte.
 //!
+//! Of the evaluator's run, [`diff::reach`] counts per function the calls that reached it past
+//! their setup calls and those of them that printed a result rather than an error; a function
+//! fewer than half of whose seeds reach it fails the run.
+//!
 //! A writer refuses nothing unless `--refused` lists it: `<example>:<lang>:<function key>`
 //! (`inventory:rust:Inventory.Find`) names an entry that language's writer refuses, whose calls
 //! that language then does not run. A listed entry the writer does not refuse fails the run, as
-//! does a refusal not listed. One line per example on success, naming every listed refusal with
-//! the writer's reason; exit 1 naming the first difference, refusal or failed program otherwise,
-//! 2 on a usage error.
+//! do a refusal not listed and a listing naming an example not on the command line. One line per
+//! example on success, with the counts above and every listed refusal with the writer's reason;
+//! exit 1 naming the first difference, refusal, short reach or failed program otherwise, 2 on a
+//! usage error.
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -72,6 +77,16 @@ fn main() -> ExitCode {
     };
     if examples.is_empty() {
         return usage();
+    }
+    let names: BTreeSet<&str> = examples
+        .iter()
+        .filter_map(|x| x.file_name().and_then(|n| n.to_str()))
+        .collect();
+    if let Some((x, lang, func)) = refused.iter().find(|(x, ..)| !names.contains(x.as_str())) {
+        eprintln!(
+            "codespec-eval-diff: --refused {x}:{lang}:{func} names an example not run: remove the listing"
+        );
+        return ExitCode::FAILURE;
     }
     for x in &examples {
         match example(x, &adapters, &build, seeds, &refused) {
@@ -198,6 +213,7 @@ fn example(
     put(&dir.join("calls.json"), &diff::calls_json(&calls))?;
 
     let mut reference: Option<String> = None;
+    let (mut reached, mut ok) = (0, 0);
     let mut notes = Vec::new();
     for lang in LANGS {
         let ldir = dir.join(lang);
@@ -265,6 +281,15 @@ fn example(
                         calls.calls.len()
                     ));
                 }
+                let r = diff::reach(&plan, &calls, &out);
+                if let Some(short) = r.iter().find(|r| r.reached * 2 < r.seeds) {
+                    return Err(format!(
+                        "{}: {} of {} seeds reach it without a setup call's error, fewer than half",
+                        short.func, short.reached, short.seeds
+                    ));
+                }
+                reached = r.iter().map(|r| r.reached).sum();
+                ok = r.iter().map(|r| r.ok).sum();
                 reference = Some(out);
             }
             Some(base) => {
@@ -280,7 +305,7 @@ fn example(
     }
     let probes = plan.entries.iter().filter(|e| e.call != e.func).count();
     let mut line = format!(
-        "eval-diff: {name}: {} exported functions, {} called directly, {} through a probe, constructor {} in every method probe; {seeds} seeds each, {} calls: {} byte-equal",
+        "eval-diff: {name}: {} exported functions, {} called directly, {} through a probe, constructor {} in every method probe; {seeds} seeds each, {} calls, {reached} reaching their function, {ok} of those printing a result and no error: {} byte-equal",
         plan.entries.len() + plan.constructors.len(),
         plan.entries.len() - probes,
         probes,

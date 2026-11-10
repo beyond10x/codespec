@@ -17,8 +17,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `task eval-diff` (in `task check`), per-function differential runs: every exported function of
   `examples/series` and `examples/inventory` gets 200 seeded calls, a method through a generated
   probe function that builds its receiver from the constructor and up to four drawn calls of the
-  type's mutators, and the evaluator, `codespec-run-go` and `codespec-run-rust` must print the same
-  bytes. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
+  type's mutators (one that would return an error is skipped), and the evaluator,
+  `codespec-run-go` and `codespec-run-rust` must print the same bytes. A method returning nothing
+  prints its receiver's state after the call. Each example's line counts the calls that reached
+  their function and those printing a result; a function reached by fewer than half its seeds
+  fails. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
   function. Nothing is timed.
 
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
