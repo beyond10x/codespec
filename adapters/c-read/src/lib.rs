@@ -247,7 +247,7 @@
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | computed by `codespec pass`, never by a reader |
-//! | `stmt.foreign` | what a reader writes for what it cannot read; a corpus case of it would hold the construct the reader refuses, which `codespec conform` counts only for that subject |
+//! | `stmt.foreign` | the source this reader keeps as `foreign` (a `goto`, off the calls' path) is C, which the Go writer refuses, so the evaluator runs the module at step 4; the case `stmt-foreign/c/case.c` exists, the claim is not made in 0.8.0 because the case has not been run since `codespec-run-cir` resolves a call name as Go spells it |
 //! | `expr.spread` | it passes a slice as the arguments of a variadic parameter, which C cannot: a call passes each argument of `...` on its own |
 //! | `decl.interface`, `expr.iface_call`, `expr.to_iface` | C has no interface, and the runtime and the C writer no form of one |
 //! | `decl.type_params`, `expr.instantiate`, `type.param` | C has no type parameter, and the runtime and the C writer no form of one |

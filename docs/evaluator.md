@@ -24,7 +24,10 @@ outputs only. An evaluator sees every node, and every effect passes through a ha
 - **E3.** Effects at a named boundary, supplied by the host, replaceable per call site.
 - **E4.** Never past the unknown: a `foreign` statement, a `raise` (it leaves every caller up to a
   framework the evaluator does not run) or an extern with no handler stops the run with a reason,
-  or is replaced by a stub the user names. The result says which.
+  or is replaced by a stub the user names. The result says which. Only what the run reaches
+  stops it: a module holding one on a path the run does not take runs to the end, and its
+  output is the program's on that path. The reader check of `codespec conform` relies on it
+  (`docs/conformance.md` § 6, step 4): a stop reached is `refused`, never a pass.
 - **E5.** Sites named by the `cq` node id `<module>.<funckey>#<index path>`.
 - **E6.** Rust, in this workspace, minimal dependencies. A solver is an optional external program.
 

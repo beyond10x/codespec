@@ -162,13 +162,14 @@
 //! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
 //! refusal and with its subject, and passed and written as Go runs as the reference does; a module
 //! the Go writer refuses for a subject it does not claim (`decl.union`, Go has no tagged union) the
-//! evaluator runs instead, as the reader check's step 4 does. It claims 112 of the 121; these stay
-//! unclaimed. Each reason says whether it holds of Rust or of this reader only:
+//! evaluator runs instead, as the reader check's step 4 does. `stmt.foreign` is held the same way:
+//! its source keeps a labelled loop as a `foreign` statement with a refusal, on a path the calls
+//! do not take, and the evaluator runs the module the Go writer refuses. It claims 113 of the 121;
+//! these stay unclaimed. Each reason says whether it holds of Rust or of this reader only:
 //!
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | facts are computed by `codespec pass`, never read |
-//! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
 //! | `unop.plus` | Rust: the language has no unary `+` |
 //! | `stmt.raise` | Rust: a `panic!` is no value of another crate's type handed to a framework, and a `Result` is a result; the case's module is written by hand |
 //! | `decl.embedded` | Rust has no struct embedding: every field is named. Its nearest form, `impl Deref<Target = Inner> for Outer`, lets one field's fields and methods be reached through the outer value by auto-deref; this reader refuses an impl of a std trait other than `Display` and so does not read it. Reading it as `embedded` would take mapping that impl and writing each access it makes possible as the explicit path `cir/1` records |

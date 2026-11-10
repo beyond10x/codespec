@@ -39,6 +39,20 @@ Every change a user of `codespec` or of `cir/1` would notice.
   references, followed by `if (v == null)` whose branch ends in a return or a throw, is
   `lookup_else`; any other `get` of such a map is still refused at its line. The kit cases
   `expr-to-error` and `stmt-lookup-else` have Java sources.
+- `codespec-read-rust` claims `stmt.foreign`, 113 of the 121 features a reader can claim. The
+  kit case `stmt-foreign` has a Rust source keeping a labelled loop as a `foreign` statement on
+  a path its calls do not take. `codespec-read-c` and `codespec-read-java` do not claim it
+  yet: their case sources exist and have not been run since `codespec-run-cir` resolves a
+  call name as Go spells it.
+
+### Changed
+
+- The reader check of `codespec conform` judges a module holding a `raise` or a `foreign`
+  statement through the evaluator, which stops only when the run reaches one: a module that holds
+  one on a path the calls do not take passes when it prints `expected.txt`, and a stop reached is
+  still `refused` with the stop as the reason. Before, `codespec-write-cir` refused such a module
+  wherever the statement was. It writes one with the new flag `--stop-when-reached`, which the
+  reader check passes; without the flag it refuses as before.
 
 ### Fixed
 

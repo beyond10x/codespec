@@ -65,19 +65,22 @@
 //! 3. the module uses the case's subject outside a `foreign` statement, as
 //!    [`crate::features_used`] names it (`subject_missing`), and holds no `foreign` statement at
 //!    all (`foreign_statement`), unless the subject is `stmt.foreign`: kept source can hide the
-//!    construct behind a dead copy of it, so a case counts only when nothing of it is foreign;
+//!    construct behind a dead copy of it, so a case counts only when nothing of it is foreign.
+//!    For the subject `stmt.foreign` the rule is that the module holds a `foreign` statement;
 //! 4. `codespec pass` (`codespec_passes::run`) and the Go writer write it, and the Go runner
 //!    prints `expected.txt` with the corpus case's `calls.json`. When the Go writer refuses the
-//!    passed module (Go has no form for `decl.union`), the evaluator judges it: [`EVAL_WRITER`]
-//!    writes it into `<work>/cases/<case>/cir` and [`EVAL_RUNNER`] runs it on the same
-//!    `calls.json`. Exit 0 is compared with `expected.txt` like any runner's output. Exit 1 with a
-//!    stop (`stopped at <node> (<pos>): <kind>: <reason>` on standard error) of a kind that says
-//!    `cir/1` or the evaluator does not give the program's meaning, [`EVAL_REFUSING_STOPS`]
+//!    passed module (Go has no form for `decl.union`, nor for a `raise` or a `foreign` statement
+//!    of another language), the evaluator judges it: [`EVAL_WRITER`] writes it into
+//!    `<work>/cases/<case>/cir`, given [`EVAL_STOP_WHEN_REACHED`] so that a `raise` or a
+//!    `foreign` statement the run does not reach is judged like the rest, and [`EVAL_RUNNER`]
+//!    runs it on the same `calls.json`. Exit 0 is compared with `expected.txt` like any runner's
+//!    output. Exit 1 with a stop (`stopped at <node> (<pos>): <kind>: <reason>` on standard
+//!    error) of a kind that says `cir/1` or the evaluator does not give the program's meaning, [`EVAL_REFUSING_STOPS`]
 //!    (`foreign`, `raise`, `no handler`, `no body`, `unsupported`; `docs/evaluator.md` E4), is
 //!    `refused` with that stop as the detail, or `wrong_output` when what it printed before differs from
 //!    `expected.txt`; a stop is never a pass. A stop of another kind (`panic`, `blocked`,
 //!    `step budget`) or an exit 1 without a stop is `run_failed`, as a Go runner that crashes is.
-//!    [`EVAL_WRITER`] refusing (a `foreign` statement or a `raise`) is `refused` with its message; exit 2 is
+//!    [`EVAL_WRITER`] refusing (a module it cannot read) is `refused` with its message; exit 2 is
 //!    `run_refused`, another exit `run_failed`. The two programs are looked up in `--adapters`
 //!    when a case first needs them: a run whose every case the Go writer writes does not need
 //!    them, and a case that needs them while they are missing ends the run with an error.
@@ -183,6 +186,11 @@ pub const EVAL_WRITER: &str = "codespec-write-cir";
 
 /// The evaluator's runner, named by a feature entry's `runner` when it judged the case.
 pub const EVAL_RUNNER: &str = "codespec-run-cir";
+
+/// The flag a reader's step 4 gives [`EVAL_WRITER`] after the output directory: write a module
+/// holding a `foreign` statement or a `raise` as it is, so that [`EVAL_RUNNER`] stops only when
+/// the run reaches one.
+pub const EVAL_STOP_WHEN_REACHED: &str = "--stop-when-reached";
 
 /// What a program did: its exit code (`None` when a signal ended it), standard output and error.
 #[derive(Debug, Clone)]
@@ -780,8 +788,21 @@ fn write(
     module: &[u8],
     out: &Path,
 ) -> Result<(Wrote, Option<i32>), Error> {
+    write_with(ctx, writer, module, out, &[])
+}
+
+/// [`write`] with `flags` after the output directory.
+fn write_with(
+    ctx: &Ctx,
+    writer: &dyn Program,
+    module: &[u8],
+    out: &Path,
+    flags: &[&str],
+) -> Result<(Wrote, Option<i32>), Error> {
     reset(out)?;
-    let e = match ctx.exec(writer, &[out.as_os_str().to_owned()], Some(module))? {
+    let mut args = vec![out.as_os_str().to_owned()];
+    args.extend(flags.iter().map(OsString::from));
+    let e = match ctx.exec(writer, &args, Some(module))? {
         Ran::Done(e) => e,
         Ran::TimedOut => return Ok((Wrote::TimedOut, None)),
     };
@@ -874,12 +895,13 @@ fn stop_kind(stderr: &str) -> Option<&str> {
 }
 
 /// Step 4 by the evaluator, for a passed `module` the Go writer refused: [`EVAL_WRITER`] writes it
-/// into `<work>/cir` and [`EVAL_RUNNER`] runs `calls`. Exit 0 is compared with `expected`. Exit 1
-/// with a stop of a kind of [`EVAL_REFUSING_STOPS`] is a refusal with the stop as its detail,
-/// unless what it printed differs from `expected` before the stop (`wrong_output`); it is never a
-/// pass. Exit 1 with any other stop, or without one, fails (`run_failed`). [`EVAL_WRITER`]
-/// refusing is a refusal. Also the program that judged: [`EVAL_WRITER`] when it refused, else
-/// [`EVAL_RUNNER`].
+/// into `<work>/cir` with [`EVAL_STOP_WHEN_REACHED`], so a `foreign` statement or a `raise` the
+/// calls do not reach is no refusal, and [`EVAL_RUNNER`] runs `calls`. Exit 0 is compared with
+/// `expected`. Exit 1 with a stop of a kind of [`EVAL_REFUSING_STOPS`] is a refusal with the stop
+/// as its detail, unless what it printed differs from `expected` before the stop
+/// (`wrong_output`); it is never a pass. Exit 1 with any other stop, or without one, fails
+/// (`run_failed`). [`EVAL_WRITER`] refusing is a refusal. Also the program that judged:
+/// [`EVAL_WRITER`] when it refused, else [`EVAL_RUNNER`].
 fn evaluate(
     ctx: &Ctx,
     p: &ReaderPrograms,
@@ -889,7 +911,7 @@ fn evaluate(
     expected: &str,
 ) -> Result<(Outcome, &'static str), Error> {
     let out = work.join("cir");
-    match write(ctx, p.cir_writer, module, &out)?.0 {
+    match write_with(ctx, p.cir_writer, module, &out, &[EVAL_STOP_WHEN_REACHED])?.0 {
         Wrote::Refused(why) => {
             return Ok((refused(Reason::Refused, ctx.clean.text(&why)), EVAL_WRITER));
         }

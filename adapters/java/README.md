@@ -54,7 +54,7 @@ and why:
 | `expr-extern`, `expr-extern-method`, `type-extern` | `expr.extern`, `expr.extern_method`, `type.extern` | a package read maps the JDK calls of its table and refuses the rest; externs come only from a project's jars, which a kit case has none of |
 | `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
 | `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
-| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
+| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write, so the evaluator runs the module; the case `stmt-foreign/java/Case.java` exists, the claim is not made in 0.8.0 because the case has not been run since `codespec-run-cir` resolves a call name as Go spells it |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
 | `stmt-raise` | `stmt.raise` | read only in a project, in a function an entry names (Projects and Quarkus); a kit case is a package read with no entry, so its module is written by hand |
 | `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |
