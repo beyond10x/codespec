@@ -220,7 +220,11 @@ Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
 
 The repository is private since 2026-11-10 (operator's decision; set through `b10x-gates api
---policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`). The Pages site
+--policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`). It goes public again after the
+release that follows wave `query-and-evaluator` passes its gate (operator, 2026-11-10); before that
+flip, search the branch to be pushed for pattern, hunt and finding content: the pattern library,
+the hunts and the findings live in the private `beyond10x/codesec` and nothing of them is copied
+here. The Pages site
 `beyond10x.github.io/codespec` answers 404 since then. Not checked yet: whether
 `b10x-docs-site.yml` still deploys, and what installed codespec from the public URL.
 
