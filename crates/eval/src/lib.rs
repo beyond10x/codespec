@@ -2,11 +2,14 @@
 //! [`run_calls`] runs the calls of a `codespec-calls/1` file against one module and prints what
 //! the kit's native runners print for them; `codespec eval --calls` is its command line.
 //! [`run_session`] runs a `codespec-session/1` file, whose calls reuse earlier results, and gives
-//! its trace, `codespec-eval-trace/1` ([`session`]); `codespec eval --session`.
+//! its trace, `codespec-eval-trace/1` ([`session`]); `codespec eval --session`. A fault plan,
+//! `codespec-faults/1` ([`fault`]), makes an effect fail at a node id and call count in a
+//! session, and [`run_each`] runs a session once per site and call count (`--fault`, `--each`).
 //!
 //! # Handlers and stubs
 //!
-//! An extern call goes, in this order, to a [`Stub`] the user named for its node id, a stub for
+//! An extern call goes, in this order, to a fault of the plan for its node id and call count
+//! ([`fault`], a session's only), a [`Stub`] the user named for its node id, a stub for
 //! its key, then its built-in handler (`builtins`: pure library functions as Go's, and
 //! `os.Getenv` and `os.LookupEnv` reading [`Options::env`], empty unless given); with none of
 //! them the run stops (`no handler`, E4). [`Run::stubbed`] names each site a stub answered at and
@@ -118,6 +121,7 @@
 mod builtins;
 mod check;
 pub mod diff;
+pub mod fault;
 mod gofmt;
 mod growth;
 mod host;
@@ -129,6 +133,7 @@ pub mod session;
 mod trace;
 mod value;
 
+pub use fault::{EachRun, FAULTS_FORMAT, Fault, FaultDo, Nth, read_faults, read_sites, run_each};
 pub use session::{SESSION_FORMAT, Session, SessionCall, TRACE_FORMAT, run_session};
 
 use codespec_conformance::{Calls, calls_go};
@@ -144,6 +149,8 @@ pub struct Options {
     pub env: Vec<(String, String)>,
     /// The stubs that answer in place of a handler (crate doc § Handlers and stubs).
     pub stubs: Vec<Stub>,
+    /// The fault plan, which answers before a stub or a handler ([`fault`]); a session's only.
+    pub faults: Vec<Fault>,
 }
 
 impl Default for Options {
@@ -152,6 +159,7 @@ impl Default for Options {
             max_steps: 10_000_000,
             env: Vec::new(),
             stubs: Vec::new(),
+            faults: Vec::new(),
         }
     }
 }
@@ -287,6 +295,12 @@ pub(crate) const EVAL_STACK: usize = 512 << 20;
 /// arguments of its parameters' kinds, results the driver can print), and the refusals of the
 /// crate doc § Refusals.
 pub fn run_calls(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, String> {
+    if !opts.faults.is_empty() {
+        return Err(
+            "a fault plan runs with a session (--session), whose trace says what each fault did"
+                .into(),
+        );
+    }
     calls_go(m, calls)?;
     check::module(m)?;
     check::calls(m, calls)?;

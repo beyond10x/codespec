@@ -38,6 +38,10 @@
 //! | `return` | `n`, `bind` (if the call binds), `results` | the call returns |
 //! | `panic` | `n`, `node`, `pos`, `reason` | the call panics: it ends, the session goes on |
 //! | `skip` | `n`, `func`, `reason` | an argument or the receiver names a result its call never gave: it panicked or was skipped |
+//! | `fault` | `node`, `pos`, `nth`, `do`, and `message` (`error`, `panic`) or `results` (`value`) | a fault of the plan answers at its site ([`crate::fault`]) |
+//! | `update` | `node`, `pos`, `value` | the call a fault answered in ends (returns, panics or the run stops): one per place of memory older than the call that it left changed, its content now, `node` the statement that wrote it last; a write undone before the end is none |
+//! | `tested`, `propagated`, `wrapped`, `dropped` | `node`, `pos`, `fault`, `nth` | an `error` fault's error is compared, returned, formatted or discarded, in that call or a later one |
+//! | `summary` | `fault`, `nth` (`"*"` for a fault of every call never reached), `do`, `outcome`, `updates` | after the call's `update` events; or `not reached` for a fault that never answered, before a `stop` |
 //! | `stop` | `n` (inside a call), `kind`, `node`, `pos`, `reason` | the run stops (crate doc § Stops); the last line |
 //!
 //! A value is written as Go source spells it, close enough to read: a string quoted, a struct
@@ -86,10 +90,10 @@ pub struct Session {
 
 impl Session {
     /// Reads a session file: refused when it is not JSON, of another format, holds an unknown
-    /// field or no call.
+    /// field, an object giving one key twice, or no call.
     pub fn from_json(bytes: &[u8]) -> Result<Session, String> {
         use serde_json::Value as V;
-        let doc: V = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        let doc = crate::trace::read_json(bytes)?;
         let V::Object(top) = doc else {
             return Err("a session is a JSON object".into());
         };
@@ -384,11 +388,14 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
         ("module", J::Str(module_path(m))),
     ])]);
     let mut stop = None;
+    // The stop's line, written last, after the summaries of faults that never answered.
+    let mut stop_text = None;
     if let Err(h) = it.init_globals().and_then(|()| it.run_inits()) {
         let s = h.stop(m);
-        it.host.emit(stop_line(None, &s));
+        stop_text = Some(stop_line(None, &s));
         stop = Some(s);
     }
+    it.end_call(None, &[], stop.is_some());
     // Each bound name's value, in a cell of its own, so a method on it changes it, and its type.
     let mut bound: HashMap<&str, (HeapId, &Type)> = HashMap::new();
     for (i, (c, p)) in session.calls.iter().zip(&planned).enumerate() {
@@ -462,6 +469,7 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
         fields.push(("args", J::List(&shown)));
         it.host.emit(line(&fields));
         let depth = it.depth();
+        it.begin_call();
         let result = match recv {
             Some((v, t)) => it
                 .receiver(p.f, v, t)
@@ -477,6 +485,7 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
                 }
                 fields.push(("results", J::List(&shown)));
                 it.host.emit(line(&fields));
+                it.end_call(Some(p.f), &vs, false);
                 if let (Some(b), Some(v), Some(t)) =
                     (&c.bind, vs.into_iter().next(), p.f.results.first())
                 {
@@ -495,15 +504,21 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
                         ("pos", J::Str(&s.pos)),
                         ("reason", J::Str(&s.reason)),
                     ]));
+                    it.end_call(None, &[], false);
                     if let Some(b) = &c.bind {
                         bound.remove(b.as_str());
                     }
                 } else {
-                    it.host.emit(stop_line(Some(n), &s));
+                    it.end_call(None, &[], true);
+                    stop_text = Some(stop_line(Some(n), &s));
                     stop = Some(s);
                 }
             }
         }
+    }
+    it.unreached();
+    if let Some(t) = stop_text {
+        it.host.emit(t);
     }
     let mut text = it.host.trace.take().unwrap_or_default().join("\n");
     text.push('\n');

@@ -45,15 +45,32 @@ fn main() -> ExitCode {
         session,
         env,
         stub,
+        fault,
+        faults,
+        each,
+        sites,
+        max_nth,
+        out,
         max_steps,
     } = &command
     {
-        let input = match (calls, session) {
-            (Some(c), _) => codespec_cli::eval::Input::Calls(c),
-            (None, Some(s)) => codespec_cli::eval::Input::Session(s),
-            (None, None) => unreachable!("clap requires --calls or --session"),
+        use codespec_cli::eval::Input;
+        let input = match (calls, session, sites, out) {
+            (Some(c), ..) => Input::Calls(c),
+            (None, Some(s), Some(sites), Some(out)) if *each => Input::Each {
+                session: s,
+                sites,
+                max_nth: *max_nth,
+                out,
+            },
+            (None, Some(s), ..) => Input::Session(s),
+            (None, None, ..) => unreachable!("clap requires --calls or --session"),
         };
-        return codespec_cli::eval::main(module, input, env, stub, *max_steps);
+        let plan = codespec_cli::eval::Plan {
+            fault,
+            faults: faults.as_deref(),
+        };
+        return codespec_cli::eval::main(module, input, env, stub, &plan, *max_steps);
     }
     match run(command) {
         Ok(()) => ExitCode::SUCCESS,
