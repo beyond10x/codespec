@@ -2,22 +2,15 @@
 format: aep.planning-md/3
 id: story:unhandled-branches
 kind: story
-status: draft
+status: archived
 title: Report branches a program does not handle
 relations:
 - decomposes: epic:analysis-questions
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "archived", at: "2026-11-10T03:26:10Z", actor: "human:timo", revision: 3}
 ---
-# Story: Report branches a program does not handle
+# Story: moved out of this repository
 
-## Outcome
-
-`codespec check unhandled <documents…>` lists, with positions: a `switch` over a value of a
-type with a closed set (a newtype with declared constants, a type switch over an interface's known
-implementations in the set) missing a member and with no `default`; and every call of a fallible
-function whose error result is assigned to `_` or dropped (`crates/passes` `fallible`).
-
-## Acceptance
-
-- A fixture with one incomplete switch and one dropped error yields exactly those two entries.
-- The result on the measured library is recorded with its count, outside the repository like the library itself.
+Moved on 2026-11-10 to the planning store of another repository, by the operator's decision to
+keep the pattern library apart from the engine. Nothing of it is built here.

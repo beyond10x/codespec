@@ -223,38 +223,8 @@ check lock-without-unlock {
 
 ## 6. Examples
 
-The checks from the hunt, written in cq. Relation names are those of § 4.2.
-
-**Unbounded growth.** An insert on a receive path with no remove reachable from the same receiver
-type.
-
-```
-receives(F) :- call{func: F, callee: C}, C.name in @names.receive.
-inserts(F, T, Site) :- call{func: F, site: Site, callee: C, recv: R}, expr{id: R, t: T},
-                       C.name in @names.insert.
-removes(T) :- call{func: G, callee: C, recv: R}, expr{id: R, t: T}, C.name in @names.remove.
-growth(F, Site, T) :- receives(F), inserts(F, T, Site), !removes(T).
-```
-
-**Text to integer, narrowed without a range check.**
-
-```
-parsed(V, Site) :- call{site: Site, callee: ~"^strconv\.(Atoi|ParseInt|ParseUint)$"},
-                   def{var: V, node: Site}.
-narrowed(E, V, To) :- expr{id: E, kind: "conv", t: To, x: X}, value(X, V),
-                      expr{id: X, t: From}, To.bits < From.bits.
-checked(V, E) :- guards(C, E, _), expr{id: C, kind: "binop", op: ~"^(<|<=|>|>=)$"},
-                 (expr{id: C, x: X} or expr{id: C, y: X}), value(X, V).
-int_from_text(E, Site) :- parsed(V, Site), narrowed(E, V, _), !checked(V, E).
-```
-
-**Insecure random.** `math/rand` reachable from a function that builds a token, key, nonce or id.
-
-```
-token_builder(F) :- func{id: F, name: N}, N ~ @names.token.
-insecure_random(F, G, P) :- token_builder(F), reaches_path(F, G, P),
-                            func{id: G, module: "math/rand"}.
-```
+Two queries in cq. Relation names are those of § 4.2. The pattern library itself is kept outside
+this repository.
 
 **Dropped error.** A fallible call whose error result is discarded.
 
@@ -269,15 +239,6 @@ dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item:
 
 ```
 ?- reaches_path(F, G, P), syscall(G, "connect", _), func{id: F, exported: true}.
-```
-
-**Case-fold asymmetry.** Sibling methods of one type, one folding case and one comparing with `==`.
-
-```
-folds(T, M) :- func{id: M, recv: T}, reaches(M, G), G ~ @names.fold.
-compares(T, M) :- func{id: M, recv: T}, expr{func: M, kind: "binop", op: "==", t: Ts},
-                  Ts.kind == "string".
-asym(T, A, B) :- folds(T, A), compares(T, B), !folds(T, B), stem(A) == stem(B).
 ```
 
 ## 7. Engine

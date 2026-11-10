@@ -9,7 +9,7 @@ relations:
 scope:
 - confidence: inferred
   path: crates/eval
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:37Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":2}}}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":2}}}
@@ -25,7 +25,11 @@ new crate `crates/eval` (`docs/evaluator.md` § 4 and § 5), and prints what the
 
 - Every conformance kit case under `conformance/cases/` evaluated on its `calls.json` prints its
   `expected.txt`, twice byte-equal, as a step of `task check` (requirements E1 and E2). A case
-  that does not is a failure of the step. The built-in pure handlers the kit cases call
+  that does not is a failure of the step. One exception, checked in as data: a case whose
+  run executes a `foreign` statement (today `stmt-foreign`, a `defer`) is listed in
+  `crates/eval/tests/kit-stops.txt` with the stop it must give (node id and reason). The step
+  fails when a listed case does not stop with that line, when it prints its `expected.txt` after
+  all, or when an unlisted case stops. `story:cir1-defer-receiver-root` removes the entry. The built-in pure handlers the kit cases call
   (`docs/evaluator.md` § 6.1, such as the one `expr-extern` needs) are part of this story.
 - Outside the kit: on a checked-in fixture module whose called function executes a `foreign`
   statement, and on one that calls an extern with no built-in handler, the run stops with a

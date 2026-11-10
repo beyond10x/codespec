@@ -219,6 +219,11 @@ every other GitHub write (pull request, release, re-run, dispatch) goes through 
 Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
 
+The repository is private since 2026-11-10 (operator's decision; set through `b10x-gates api
+--policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`). The Pages site
+`beyond10x.github.io/codespec` answers 404 since then. Not checked yet: whether
+`b10x-docs-site.yml` still deploys, and what installed codespec from the public URL.
+
 The site: `.github/workflows/pages.yml` ("Documentation validation") builds it on every push and
 pull request, runs `cargo test -p codespec-docs`, binds the build to its commit with
 `codespec-docs provenance --site website/build --commit "$GITHUB_SHA"`, and on a push to `main`
