@@ -402,6 +402,7 @@ impl<'s> Assembly<'s> {
             beans: Vec::new(),
             injects: Vec::new(),
             transactional: Vec::new(),
+            persistence: Vec::new(),
         }
     }
 

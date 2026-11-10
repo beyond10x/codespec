@@ -135,7 +135,18 @@ or Gradle. `task java-classpath -- <project>` writes the value to `target/java-c
 the variable.
 
 A call into a jar is an extern with its declared signature, a class of another package of the
-project an extern of that package. Extern overloads and generic signatures are refused or erased.
+project an extern of that package, named as that package's module declares it. A call of another
+package's method or constructor is an extern with the parameters and results that package's module
+declares for it (its structs, enums and interfaces the extern types of the package). It is refused
+when that module declares no function for it, when it returns an error (a checked exception) or an
+Optional's value and `bool`, which the call would have to handle, when it is generic or of variable
+arity, and when it goes through an interface. Extern overloads and generic signatures of a jar are
+refused or erased. A static method of `PanacheEntityBase` called on an entity (`Fruit.deleteAll()`)
+is a generic extern with one type parameter `E`, the entity its type argument: Panache gives each
+entity its own copy of the method, run on that entity's table, and the jar's own body only throws.
+The entity is the class javac calls the method on: the one the call names, the calling class when
+it inherits the method, the one a static import names. A call javac makes on the base itself (one
+naming it, or an unqualified one in a class nested in an entity) is refused.
 Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
 
 | Source | Module |
@@ -143,14 +154,34 @@ Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
 | `@Path` with `@GET`, `@POST`, `@PUT`, `@DELETE` or `@PATCH` | `http` entry with the method and the joined path |
 | `@Scheduled`, `@Incoming` | `scheduled`, `incoming` entry |
 | `@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent` | bean with its scope |
-| `@Inject` | injection, resolved to the one bean, else an extern |
+| `@Inject` | injection, resolved to the one bean when its package lists it (the bean is read as a struct), else an extern |
 | `@RegisterRestClient` interface | externs, summarised `net` |
 | Panache, `EntityManager`, JDBC calls | externs, summarised `db` |
 
-What the reader cannot map stays `foreign` with one refusal. `@Entity` and the other persistence
-annotations are such refusals. `@Transactional` is recorded in `transactional`, the keys of the functions
+What the reader cannot map stays `foreign` with one refusal. `@Entity`, `@Cacheable`, `@Id`,
+`@GeneratedValue` and `@Column` on a class or on one of its instance fields are recorded in
+`persistence`, one mark each: `at` the type (`Fruit`) or field (`Fruit.name`), `mark` the
+annotation's simple name and `args` its arguments as written (`length = 40`), each on one line:
+comments dropped, single spaces outside its literals, each literal byte for byte. They tell what Hibernate does with the objects: a field write to
+a managed entity reaches the database at commit, `persist()` sets the generated key, a unique column
+refuses a duplicate. Elsewhere (a method, a static field, an interface, a class read as no struct)
+they stay refusals, and so does one whose argument holds a tab or line break inside a literal. `@Transactional` is recorded in `transactional`, the keys of the functions
 that run in a transaction, a class-level one for each of its methods. `@Produces` and `@Consumes` are
 recorded as `produces` and `consumes` on the `http` entry, the method's own or else its class's.
+
+A project read maps these where a package read refuses them, each with what Java does that the
+module keeps, and refuses at its line the forms it cannot keep (`testdata/project-forms`, one
+`ReaderTest` case each; `testdata/quarkus` holds one source per mapped form):
+
+| Java | Module | Refused |
+|---|---|---|
+| a second constructor | `New<Class>2`, the n-th `New<Class><n>` in source order; each starts from the field initializers, then runs its body, and `new C(…)` calls the one javac chose | a constructor calling `this(…)`: Java runs the field initializers once, in the constructor it calls; a constructor whose function name another function of the package has |
+| a static nested class | a struct of its simple name with its constructors and methods: it has no object of the class it is nested in | an inner class, whose objects hold one; a nested interface, enum or record; a class nested in a nested class; a nested class named as another type of the package |
+| a `static final` field that is not a compile-time constant, set by a literal or by a call of a jar's static method whose arguments are literals, constants or `C.class.getName()` | a module-level `var` with that initializer, `C.class.getName()` the literal of the class's binary name | any other initializer: Java runs it when it first uses the class, the module when it is loaded, and a call of the package's own code or of a value computed at run time can see another state; a second module-level variable of one name |
+| a field of a class of another package of the project | — | every read and write: the object is an `extern` here, whose fields are not part of the module, and a write Java makes to the caller's object would change a copy |
+| `id` of a class extending `PanacheEntity` | the struct's first field `id`, a pointer nil until `persist()` sets it: the jar declares `public Long id` without an initializer and no constructor assigns it; a class extending `PanacheEntityBase` has only its own fields | a class declaring its own `id`, which hides it; a field of any other jar superclass, whose constructor the reader cannot see |
+| a public field of a class Quarkus manages (`@Entity`, `@MappedSuperclass`, `@Embeddable`, or a Panache entity), read or written anywhere, the class's own methods included | a field, as above | when the class the access goes through, or a managed superclass up to the field's, declares the field's getter or setter by Quarkus's name and descriptor: `get` (`is` for a `boolean`) without parameters and of the field's type, `set` with one parameter of the field's type and no result, then the field's name with its first letter upper-cased, unchanged when its second letter is upper case (`getxCoord`). Quarkus turns the access into a call of it everywhere but in a constructor of that class or of a managed subclass (not in a lambda there) and in the getter or setter itself; a `@Transient` field is not rewritten, a non-public one only into Hibernate's own read or write of the field |
+| a class implementing `ExceptionMapper` | — | the class: the framework calls it with an exception a resource method throws, and `cir/1` has no thrown exception to hand it |
 
 A `throw` of an exception outside the package's checked-exception hierarchy (the quickstart's
 `WebApplicationException`) stays refused and `foreign`: `cir/1` has no statement that leaves a
@@ -158,7 +189,10 @@ function by an exception no caller declares, and an error result would change th
 framework calls.
 
 `testdata/quarkus` is a Quarkus 3.27.0 project: one resource with two HTTP methods, a service bean,
-a Panache entity, a REST client interface and a `@Scheduled` method. `task java-quarkus-prepare`
+a Panache entity, a REST client interface, a `@Scheduled` method, and a source for each form
+above: `Crate` (two constructors), `Prices` (a static nested class), `Audit` (a `static final`
+logger), `Stock` (the entity's `id` and `name`) and `Basket` (an entity with each persistence
+annotation). `task java-quarkus-prepare`
 builds it with `mvn -o -q package`, `task java-quarkus-check` reads it twice, byte-equal, against
 `testdata/quarkus.read.cir.json`, and runs `codespec effects` over it: `FruitResource.create` is
 `db`, `FruitResource.origin` is `net`, `Cleanup.sweep` is `db`.
@@ -171,15 +205,25 @@ commit `81a58443e92d0080c962f4ef01aa9e6118deb7a5`, read against the class path o
 repository):
 
 - modules: 2 (`org.acme.hibernate.orm.panache.entity`, `org.acme.hibernate.orm.panache.repository`)
-- functions: 15
-- refusals: 25 (35 before `@Transactional`, `@Produces` and `@Consumes` were recorded: 6, 2 and 2 fewer)
+- functions: 17 (the second constructors of `FruitEntity` and `Fruit`)
+- refusals: 13 (25 before the forms of a project read above were mapped and the persistence
+  annotations recorded; 35 before `@Transactional`, `@Produces` and `@Consumes` were recorded)
+- persistence marks: 8 (`Entity`, `Cacheable` and `Column` in each package, `Id` and
+  `GeneratedValue` on the repository's `Fruit.id`)
 
 | Count | Reason |
 |---|---|
-| 8 | throw of an exception outside the package's checked-exception hierarchy |
-| 2 each | annotations `Cacheable`, `Column`, `Entity` |
-| 2 each | a second constructor; nested class; static field other than a constant; field of `Fruit`, which is not read |
-| 1 each | annotations `GeneratedValue`, `Id`; field of `PanacheEntity`, which is not read |
+| 9 | throw of `WebApplicationException`, outside the package's checked-exception hierarchy: `cir/1` has no statement that leaves a function by an exception, and an error result would change the signature the framework calls. 8 as before; 1 in `FruitEntityResource.create` was inside an `if` refused whole for its condition (`fruit.id`), which now reads |
+| 2 | `ErrorMapper`, a static nested class implementing `ExceptionMapper`: the framework calls it with the exception a resource method throws, which `cir/1` has no form for |
+| 2 | `fruit.name` in `FruitEntityResource.update`, a field of `Fruit` of the `repository` package: the object is an extern in the `entity` module. The refused `if` holds the throw of line 67 |
+
+The second constructors, the static `LOGGER` fields and the fields of `Fruit` and `PanacheEntity`
+read now, and the persistence annotations are marks, not refusals; the two nested classes are
+refused as exception mappers, no longer as nested classes. No entity declares a getter or setter,
+so no field access is refused as one Quarkus rewrites. At most 10 refusals is out of reach without
+a change of `cir/1`: the 9 throws stay, and so does each `ErrorMapper`, whose `@Provider`
+registration has no entry kind and whose body tests and casts the exception's runtime type and
+calls overloaded jar methods. The 2 field refusals stay while a module holds one package.
 
 Reproduce with a clone at that commit:
 
@@ -212,3 +256,6 @@ them.
 - A mutable static field is initialized before any function of the module runs, as a module-level
   `var` is; Java initializes it when the class is first used, which for a literal initializer is
   the same value.
+- In a project read, a `static final` field set by a call of a jar's static method with constant
+  arguments (`Logger.getLogger(C.class.getName())`) holds what that call gives whenever it runs:
+  Java calls it when the class is first used, the module's `var` when the module is loaded.

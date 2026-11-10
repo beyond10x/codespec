@@ -193,6 +193,7 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         beans: vec![],
         injects: vec![],
         transactional: vec![],
+        persistence: vec![],
     }
 }
 

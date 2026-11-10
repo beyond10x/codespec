@@ -1636,6 +1636,63 @@ fn media_types_on_an_entry_and_transactional_functions_read_and_are_canonical() 
 }
 
 #[test]
+fn a_persistence_mark_reads_and_one_on_a_type_or_field_the_module_lacks_is_refused() {
+    let mut v = with_framework();
+    let (ty, field) = {
+        let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+        m.types
+            .iter()
+            .find_map(|d| match d {
+                codespec_model::TypeDecl::Struct { name, fields, .. } if !fields.is_empty() => {
+                    Some((name.clone(), fields[0].name.clone()))
+                }
+                _ => None,
+            })
+            .expect("a struct with a field")
+    };
+    v["persistence"] = serde_json::json!([{"at": ty, "mark": "Entity"},
+        {"at": format!("{ty}.{field}"), "mark": "Column", "args": ["length = 40", "unique = true"]}]);
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert_eq!(m.persistence.len(), 2);
+    assert_eq!(
+        Module::from_json(m.to_json().as_bytes()).expect("canonical reads"),
+        m
+    );
+    for (bad, want) in [
+        (
+            serde_json::json!({"at": "Ghost", "mark": "Entity"}),
+            "persistence mark Entity on Ghost, which is no type",
+        ),
+        (
+            serde_json::json!({"at": format!("{ty}.ghost"), "mark": "Column"}),
+            "which is no field of a struct",
+        ),
+        (
+            serde_json::json!({"at": ty, "mark": ""}),
+            "a mark is an annotation's simple name",
+        ),
+        (
+            serde_json::json!({"at": ty, "mark": "Entity", "args": ["a\nb"]}),
+            "holds a control",
+        ),
+    ] {
+        v["persistence"] = serde_json::json!([bad]);
+        let err = Module::from_json(&serde_json::to_vec(&v).expect("json"))
+            .expect_err("refused")
+            .to_string();
+        assert!(err.contains(want), "{err}");
+    }
+}
+
+#[test]
+fn a_module_without_persistence_reads_as_before_and_writes_no_field() {
+    let v = with_framework();
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert!(m.persistence.is_empty());
+    assert!(!m.to_json().contains("\"persistence\""));
+}
+
+#[test]
 fn a_transactional_mark_on_a_function_the_module_lacks_is_refused() {
     let mut v = with_framework();
     v["transactional"] = serde_json::json!(["nope"]);

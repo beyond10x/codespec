@@ -107,6 +107,24 @@ pub struct Module {
     /// container opens one around each call. Source order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub transactional: Vec<String>,
+    /// The marks (Java: JPA annotations) by which an object-relational mapper stores the module's
+    /// types: on a type of `types` (`T`) or a field of one (`T.f`). Source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub persistence: Vec<Persistence>,
+}
+
+/// One persistence mark: an annotation of a type or of a field of it that tells an object-relational
+/// mapper how its objects are stored.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Persistence {
+    /// `T`, a type of `types`, or `T.f`, a field of it.
+    pub at: String,
+    /// The annotation without its package: `Entity`, `Cacheable`, `Id`, `GeneratedValue`, `Column`.
+    pub mark: String,
+    /// Its arguments as written, `name = value` each, in source order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
 }
 
 /// The kinds of [`Entry`] a document may hold.
@@ -2371,7 +2389,8 @@ impl Module {
     }
 
     /// Every entry point of a known kind naming a function of `funcs`, every bean naming a type of
-    /// `types`.
+    /// `types`, every persistence mark an annotation's simple name with arguments of one line each,
+    /// on a type of `types` or a field of one of its structs.
     fn check_framework(&self) -> Result<(), String> {
         let funcs: std::collections::BTreeSet<String> = self.funcs.iter().map(Func::key).collect();
         for e in &self.entries {
@@ -2401,6 +2420,46 @@ impl Module {
             });
             if !declared {
                 return Err(format!("bean {} is no type of the module", b.name));
+            }
+        }
+        for p in &self.persistence {
+            let mut first = p.mark.chars();
+            let ident = first.next().is_some_and(|c| c.is_ascii_alphabetic())
+                && first.all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !ident {
+                return Err(format!(
+                    "persistence mark {:?} on {}: a mark is an annotation's simple name",
+                    p.mark, p.at
+                ));
+            }
+            if let Some(a) = p
+                .args
+                .iter()
+                .find(|a| a.is_empty() || a.chars().any(char::is_control))
+            {
+                return Err(format!(
+                    "persistence mark {} on {}: argument {a:?} is empty or holds a control character",
+                    p.mark, p.at
+                ));
+            }
+            let (ty, field) = match p.at.split_once('.') {
+                Some((t, f)) => (t, Some(f)),
+                None => (p.at.as_str(), None),
+            };
+            let Some(decl) = self.types.iter().find(|d| d.name() == ty) else {
+                return Err(format!(
+                    "persistence mark {} on {}, which is no type of the module",
+                    p.mark, p.at
+                ));
+            };
+            if let Some(f) = field {
+                let has = matches!(decl, TypeDecl::Struct { fields, .. } if fields.iter().any(|x| x.name == f));
+                if !has {
+                    return Err(format!(
+                        "persistence mark {} on {}, which is no field of a struct of the module",
+                        p.mark, p.at
+                    ));
+                }
             }
         }
         Ok(())
