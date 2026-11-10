@@ -29,14 +29,15 @@
 //!
 //! # Cases written by hand
 //!
-//! Every id of the vocabulary is the subject of a case (`tests/cases.rs`). Some ids no Go source
-//! reaches through `codespec-read-go` and `codespec pass`; another reader produces them:
+//! Every id of the vocabulary is the subject of a case (`tests/cases.rs`). Some ids
+//! `codespec-read-go` and `codespec pass` do not produce from the case's Go source; another reader
+//! produces them:
 //!
 //! | id | the Go reader writes instead | reached by |
 //! |---|---|---|
 //! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
 //! | `expr.zero` | a literal, `0` or `""`; a struct literal that sets no field | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal; the C reader for a struct literal of zeros, `(struct T){0}` (`expr-zero-struct`) |
-//! | `intrinsic.sorted_keys` | nothing: Go has no expression for a map's keys in order | the Java reader, for a loop over a TreeMap's keySet |
+//! | `intrinsic.sorted_keys` | a loop and `sort.Strings` or `sort.Ints`, as the case's Go source sorts; the reader reads `slices.Sorted(maps.Keys(m))` as `sorted_keys` over integer keys only, since Go orders strings by byte and `sorted_keys` by UTF-16 code unit | the Java reader, for a loop over a TreeMap's keySet |
 //! | `type.unit` | an empty tuple for a call of a function without results | the Rust and Java readers |
 //!
 //! Such a case's `case.cir.json` is written by hand in the form those readers give, with

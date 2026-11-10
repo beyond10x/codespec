@@ -6,15 +6,20 @@ import "strings"
 // Go source of their conformance cases, plus `foreign`, which the stmt-foreign case reads to (a
 // `defer` kept verbatim). No fact: facts are computed by `codespec pass`.
 //
-// claimNot is every feature Go source does not reach, each with its reason (crates/conformance
-// src/lib.rs § Cases written by hand; another reader produces it, and its case is written by hand):
+// claimNot is every feature whose kit case this reader does not read to it, each with its reason
+// (README.md § Features left unclaimed):
 //
-//   - decl.union: Go has no tagged union; the reader writes nothing for it.
-//   - expr.zero: the reader writes a literal (`0`, `""`) or a struct literal that sets no field.
-//   - intrinsic.sorted_keys: Go has no expression for a map's keys in order.
-//   - type.unit: a call of a function without results is typed as an empty tuple.
-//   - stmt.lookup_else: the reader writes a comma-ok `let` and an `if`; only the lookup-guard pass
-//     makes them a `lookup_else`, and a reader's claim covers only what the reader prints
+//   - decl.union: Go has no tagged union.
+//   - expr.zero: this reader never writes `zero`; it reads a zero value as the Go source writes
+//     it: a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T`.
+//   - intrinsic.sorted_keys: this reader reads `slices.Sorted(maps.Keys(m))` as sorted_keys over
+//     integer keys only (Go orders strings by byte, sorted_keys by UTF-16 code unit); the kit
+//     case's Go source collects the keys in a loop and sorts them with `sort.Strings` and
+//     `sort.Ints`, which it does not read as sorted_keys.
+//   - type.unit: Go gives a call of a function without results no type; this reader types it as
+//     an empty tuple.
+//   - stmt.lookup_else: this reader writes a comma-ok `let` and an `if`; only the lookup-guard
+//     pass makes them a `lookup_else`, and a reader's claim covers only what the reader prints
 //     (docs/conformance.md § 5).
 var (
 	claimFeatures = []string{
