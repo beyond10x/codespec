@@ -8,8 +8,8 @@
 {"event":"return","n":3,"results":["\"\"","error(\"total must be positive\")"]}
 {"event":"call","n":4,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}
 {"event":"fault","node":"orders.Service.Pay#3","pos":"orders.go:82","nth":1,"do":"closed"}
-{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}
 {"event":"panic","n":4,"node":"orders.Service.Pay#3","pos":"orders.go:82","reason":"send on closed channel"}
+{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}
 {"event":"summary","fault":"orders.Service.Pay#3","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":1}
 {"event":"call","n":5,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}
 {"event":"return","n":5,"results":["error(ErrWrongState{Status: \"paid\"})"]}

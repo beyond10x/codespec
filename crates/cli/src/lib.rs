@@ -314,8 +314,9 @@ pub enum Cmd {
     ///
     /// A fault plan, --fault or --faults (codespec-faults/1), makes the effect at a node id (an
     /// extern call or a send) fail at a call count, before a stub or handler answers: error,
-    /// value, closed, block or panic. The trace says where it fired, what its call had written
-    /// before it, and whether its error was propagated, handled or dropped. --each runs the
+    /// value, closed, block or panic. The trace says where it fired, what its call left changed
+    /// in older memory, and whether its error was propagated, kept, handled or dropped, or live
+    /// when the run stopped. --each runs the
     /// session once per site of the --sites file and call count up to --max-nth, a send closed,
     /// a call returning an error given one, another call panicking, and writes each trace into
     /// --out, printing its path; exit 1 when a run stopped.

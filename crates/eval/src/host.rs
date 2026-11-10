@@ -118,7 +118,8 @@ impl<'m> Interp<'m> {
     /// calls it names, a key every call of that extern, a node id one call, which wins over a key
     /// at its site; its values read as the call's results. Refused: a site given twice, a stub
     /// naming no extern call of the module, a key's stub every call of which a node id's stub
-    /// answers instead, so that it answers none, or values the call's results cannot hold.
+    /// answers instead, so that it answers none, a stub each of whose sites a fault of every call
+    /// answers (`fault`), or values the call's results cannot hold.
     pub(crate) fn install(&mut self, opts: &Options) -> Result<(), String> {
         self.host.env = opts.env.clone();
         let m = self.m;
@@ -178,7 +179,22 @@ impl<'m> Interp<'m> {
                 ));
             }
         }
-        self.install_faults(&opts.faults)
+        self.install_faults(&opts.faults)?;
+        // A fault of every call answers before a stub: a stub all of whose sites have one
+        // answers no call.
+        for (n, stub) in ordered.iter().enumerate() {
+            if owner
+                .iter()
+                .filter(|&(_, &o)| o == n)
+                .all(|(addr, _)| self.host.faults.every_call(*addr))
+            {
+                return Err(format!(
+                    "stub {}: answers no call: a fault of every call (nth *) answers at each of its sites",
+                    stub.site
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// The results `values` give a call of the type `t`: one per result, none for a call

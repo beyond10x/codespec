@@ -11,7 +11,7 @@ use crate::interp::Home;
 pub type HeapId = usize;
 
 /// One step from a cell into the value it holds: a struct field or an array element.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
     Field(usize),
     Index(usize),
@@ -19,7 +19,7 @@ pub enum Step {
 
 /// A pointer: a cell of the arena and the path of field and index steps inside it, so `&o.Status`
 /// and `&xs[3]` are pointers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Place {
     pub cell: HeapId,
     pub path: Vec<Step>,

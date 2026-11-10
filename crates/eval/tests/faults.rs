@@ -94,7 +94,8 @@ fn lines(text: &str) -> Vec<&str> {
 }
 
 /// § 8.1: `closed` injected into the first `Pay` of the `orders` session panics the send; the
-/// status written the line before stays, the trace names it, and a later `Get` sees `o-1` paid.
+/// status written the line before stays, the trace names it when the call ends (an `update`
+/// after the panic), and a later `Get` sees `o-1` paid.
 /// `task eval-traces` writes the checked-in trace.
 #[test]
 fn a_closed_fault_at_the_first_pay_reproduces_section_8_1_as_the_checked_in_trace() {
@@ -112,8 +113,8 @@ fn a_closed_fault_at_the_first_pay_reproduces_section_8_1_as_the_checked_in_trac
             r#"{"event":"return","n":2,"bind":"id","results":["\"o-1\"","nil"]}"#,
             r#"{"event":"call","n":3,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}"#,
             r#"{"event":"fault","node":"orders.Service.Pay#3","pos":"orders.go:82","nth":1,"do":"closed"}"#,
-            r#"{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}"#,
             r#"{"event":"panic","n":3,"node":"orders.Service.Pay#3","pos":"orders.go:82","reason":"send on closed channel"}"#,
+            r#"{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}"#,
             r#"{"event":"summary","fault":"orders.Service.Pay#3","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":1}"#,
             r#"{"event":"call","n":4,"func":"Service.Get","recv":"s","args":["\"o-1\""]}"#,
             r#"{"event":"return","n":4,"results":["Order{ID: \"o-1\", Customer: \"ann\", Total: 30, Status: \"paid\", Tracking: \"\", Gift: false}","true"]}"#,
@@ -139,8 +140,8 @@ fn a_panic_fault_panics_its_call_and_the_session_goes_on() {
         lines(&run.stdout)[7..],
         [
             r#"{"event":"fault","node":"orders.Service.Pay#3","pos":"orders.go:82","nth":1,"do":"panic","message":"disk gone"}"#,
-            r#"{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}"#,
             r#"{"event":"panic","n":3,"node":"orders.Service.Pay#3","pos":"orders.go:82","reason":"disk gone"}"#,
+            r#"{"event":"update","node":"orders.Service.Pay#2","pos":"orders.go:81","value":"\"paid\""}"#,
             r#"{"event":"summary","fault":"orders.Service.Pay#3","nth":1,"do":"panic","outcome":"panic, not handled in module","updates":1}"#,
             r#"{"event":"call","n":4,"func":"Service.Get","recv":"s","args":["\"o-1\""]}"#,
             r#"{"event":"return","n":4,"results":["Order{ID: \"o-1\", Customer: \"ann\", Total: 30, Status: \"paid\", Tracking: \"\", Gift: false}","true"]}"#,
@@ -481,4 +482,40 @@ fn a_fault_that_answers_no_site_or_does_not_fit_it_is_refused() {
     )
     .unwrap_err();
     assert!(e.contains("max-nth"), "{e}");
+}
+
+/// Two sites whose trace files differ only in letter case would be one file where the file
+/// system ignores case: `--each` refuses them before anything runs.
+#[test]
+fn each_refuses_two_sites_whose_trace_files_differ_only_in_case() {
+    let m = read("casesites");
+    let s = session(
+        r#"{"format": "codespec-session/1", "calls": [{"func": "Parse", "args": ["\"1\""]}]}"#,
+    );
+    let path = "example.com/eval/casesites";
+    let sites = [
+        format!("{path}.Parse#0.rhs.0"),
+        format!("{path}.parse#0.rhs.0"),
+    ];
+    let e = run_each(&m, &s, &sites, 1, &Options::default()).unwrap_err();
+    assert!(e.contains("letter case"), "{e}");
+    assert!(e.contains(&sites[1]), "{e}");
+    let one = run_each(&m, &s, &sites[..1], 1, &Options::default()).unwrap();
+    assert_eq!(one.len(), 1);
+}
+
+/// A plan or session file whose object gives one key twice is refused, as JSON readers differ
+/// on which of the two counts.
+#[test]
+fn a_key_given_twice_is_refused_in_a_plan_and_in_a_session() {
+    let e = read_faults(
+        br#"{"format": "codespec-faults/1", "faults": [{"at": "a#0", "nth": 1, "nth": 2, "do": "closed"}]}"#,
+    )
+    .unwrap_err();
+    assert!(e.contains("\"nth\""), "{e}");
+    let e = Session::from_json(
+        br#"{"format": "codespec-session/1", "calls": [{"func": "New", "func": "Get", "args": []}]}"#,
+    )
+    .unwrap_err();
+    assert!(e.contains("\"func\""), "{e}");
 }

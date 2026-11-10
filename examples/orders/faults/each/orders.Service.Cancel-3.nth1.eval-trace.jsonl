@@ -23,8 +23,8 @@
 {"event":"return","n":9,"results":["[Order{ID: \"o-2\", Customer: \"cy\", Total: 12, Status: \"pending\", Tracking: \"\", Gift: true}]"]}
 {"event":"call","n":10,"func":"Service.Cancel","recv":"s","args":["\"o-2\""]}
 {"event":"fault","node":"orders.Service.Cancel#3","pos":"orders.go:109","nth":1,"do":"closed"}
-{"event":"update","node":"orders.Service.Cancel#2","pos":"orders.go:108","value":"\"cancelled\""}
 {"event":"panic","n":10,"node":"orders.Service.Cancel#3","pos":"orders.go:109","reason":"send on closed channel"}
+{"event":"update","node":"orders.Service.Cancel#2","pos":"orders.go:108","value":"\"cancelled\""}
 {"event":"summary","fault":"orders.Service.Cancel#3","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":1}
 {"event":"call","n":11,"func":"Service.Pay","recv":"s","args":["\"o-9\""]}
 {"event":"return","n":11,"results":["error(\"no order o-9\")"]}

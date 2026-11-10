@@ -29,31 +29,40 @@
 //! | `panic` | either | panics with `message` (default `injected panic`) |
 //!
 //! A fault answers before a stub or a handler would. Refused before anything runs: another
-//! format, an unknown field, an `nth` below 1, a `do` the site cannot take, values its call's
-//! results cannot hold, a site that is no effect site of the module, a second fault for one site,
-//! and a plan given to a run of a calls file, which writes no trace to say what it did.
+//! format, an unknown field, an object giving one key twice, an `nth` below 1, a `do` the site
+//! cannot take, values its call's results cannot hold, a site that is no effect site of the
+//! module, a second fault for one site, a stub each of whose sites a fault of every call answers
+//! (it answers no call), and a plan given to a run of a calls file, which writes no trace to say
+//! what it did.
 //!
 //! # What the trace says
 //!
-//! When a fault answers, the trace has a `fault` event, then an `update` event for each statement
-//! of the session's call that wrote, before the fault, into memory older than the call (a field,
-//! element or map entry reached through a pointer, a map or a bound receiver), with the last
-//! value it wrote: the partial update a caller that recovers sees. An `error` fault's error, and
-//! an `errorf` that wraps it, carries the fault it came from, and the trace follows it:
+//! When a fault answers, the trace has a `fault` event. When the session's call it answered in
+//! ends (it returns, panics, or the run stops), an `update` event for each place of memory older
+//! than the call (a field, element or map entry reached through a pointer, a map or a bound
+//! receiver) that the call left holding other than before, with what it holds then and the
+//! statement that wrote it last: the partial update a caller that recovers sees. A write the call
+//! undid is none; a pointer the call stored shows what it points to at the end.
+//!
+//! An `error` fault's error carries the fault it came from, and so does what holds it: an
+//! `errorf` that wraps it, a value of an error type with it in a field, a struct, array, slice or
+//! map with it inside, a pointer to one. The trace follows it, in later calls too:
 //!
 //! | event | the error |
 //! |---|---|
-//! | `tested` | is an operand of `==` or `!=`, a `switch`'s tag or one of its case values |
-//! | `propagated` | is a result of a `return` |
-//! | `wrapped` | is an argument of `errorf` or `sprintf` |
-//! | `dropped` | is bound to `_`, or a result of a call a statement discards |
+//! | `tested` | is, or an error wrapping it is, an operand of `==` or `!=`, a `switch`'s tag or one of its case values |
+//! | `propagated` | is held by a result of a `return` |
+//! | `wrapped` | is, or an error wrapping it is, an argument of `errorf` or `sprintf` |
+//! | `dropped` | is, or an error wrapping it is, bound to `_` or a result of a call a statement discards |
 //!
-//! When the session's call ends, each fault that fired in it ends in one `summary` event, its
-//! `outcome`: `panic, not handled in module` (`closed`, `panic`: `cir/1` has no `recover`),
-//! `blocked`, `answered` (`value`), and for `error` `propagated to <entry>` when the call returns
-//! it to the session, else `handled at <node>` or `dropped at <node>` at the first test or drop of
-//! it, else `dropped at <site>`: it went out of scope unread. A fault the run never reaches gets a
-//! summary `not reached` at the end of the trace, before a `stop`.
+//! Then each fault that answered in the call ends in one `summary` event, its `outcome`: `panic,
+//! not handled in module` (`closed`, `panic`: `cir/1` has no `recover`), `blocked`, `answered`
+//! (`value`), and for `error`, the first that holds of: `propagated to <entry>` when the call
+//! returns it to the session; `kept at <node>` when the call left it in older memory, `node` the
+//! statement that wrote it there; `handled at <node>` or `dropped at <node>` at its first test or
+//! drop; `live at stop` when the run stopped first; else `dropped at <site>`, it went out of scope
+//! unread. A fault the run never reaches gets a summary `not reached` at the end of the trace,
+//! before a `stop`.
 //!
 //! # Each site
 //!
@@ -61,7 +70,7 @@
 //! site given the fault Go defines for it: `closed` at a send, `error` at an extern call whose
 //! last result is an error, `panic` at another call (`codespec eval --each`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use codespec_model::{Expr, Func, Module, Stmt, Type, walk};
@@ -69,7 +78,7 @@ use codespec_model::{Expr, Func, Module, Stmt, Type, walk};
 use crate::id::{Node, func_id, node_id, var_node_id};
 use crate::interp::{Interp, R};
 use crate::trace::{J, line};
-use crate::value::{ErrorVal, HeapId, Value};
+use crate::value::{ErrorVal, HeapId, Place, Value};
 use crate::{Options, Run, Session, StopKind};
 
 /// The format of a fault plan.
@@ -237,7 +246,7 @@ impl Fault {
 /// Reads a `codespec-faults/1` plan.
 pub fn read_faults(bytes: &[u8]) -> Result<Vec<Fault>, String> {
     use serde_json::Value as V;
-    let doc: V = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    let doc = crate::trace::read_json(bytes)?;
     let V::Object(top) = doc else {
         return Err("a fault plan is a JSON object".into());
     };
@@ -333,7 +342,7 @@ pub struct EachRun {
 /// Runs `session` once per site of `sites` and call count from 1 to `max_nth`, each with the one
 /// fault Go defines for its site (module doc § Each site). Refused before anything runs: no
 /// site, a site given twice or that is no effect site of the module, two sites whose trace files
-/// would be one, `max_nth` 0, and faults in `opts`.
+/// would be one (letter case ignored), `max_nth` 0, and faults in `opts`.
 pub fn run_each(
     m: &Module,
     session: &Session,
@@ -363,9 +372,14 @@ pub fn run_each(
             Kind::Extern { error: true } => FaultDo::Error(DEFAULT_ERROR.into()),
             Kind::Extern { error: false } => FaultDo::Panic(DEFAULT_PANIC.into()),
         };
-        let file = trace_file(s, 1);
+        // Compared without case: on a file system that ignores it, two names differing only in
+        // case are one file, and one trace would overwrite the other.
+        let file = trace_file(s, 1).to_lowercase();
         if files.contains(&file) {
-            return Err(format!("site {s}: its trace file {file} is another site's"));
+            return Err(format!(
+                "site {s}: its trace file {} is another site's, letter case aside",
+                trace_file(s, 1)
+            ));
         }
         files.push(file);
         planned.push((s, act));
@@ -527,19 +541,26 @@ struct Fired {
     site: String,
     nth: u64,
     act: &'static str,
-    updates: u64,
     /// Decided when it answered: every kind's but `error`'s.
     outcome: Option<String>,
     /// `handled at <node>` or `dropped at <node>`: the first test or drop of its error.
     first: Option<String>,
 }
 
-/// One statement's write into memory older than the session's call.
-struct Write {
+/// A place in memory older than the session's call that the call wrote: a value's place, or
+/// the entry at a position of a map (entries keep their positions: a map only grows).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Loc {
+    Place(Place),
+    Entry(HeapId, usize),
+}
+
+/// What a place held before the call first wrote it (`None`: a map entry the call added), and
+/// the statement that wrote it last.
+struct Written<'m> {
+    at: Loc,
+    before: Option<Value<'m>>,
     stmt: usize,
-    node: String,
-    pos: String,
-    value: String,
 }
 
 /// The run's fault plan and what its faults did.
@@ -553,25 +574,74 @@ pub(crate) struct Faults<'m> {
     pending: Vec<usize>,
     /// The memory's size when the session's call began: a cell below it is older than the call.
     mark: Option<HeapId>,
-    writes: Vec<Write>,
+    /// The places of older memory the call wrote, in the order of their first write.
+    written: Vec<Written<'m>>,
+    index: HashMap<Loc, usize>,
+    /// The id and position of each statement that wrote, by its address.
+    ids: HashMap<usize, (String, String)>,
 }
 
 impl Faults<'_> {
-    /// Whether a write into `cell` is a partial update to record.
+    /// Whether a write into `cell` is one into memory older than the session's call.
     pub(crate) fn older(&self, cell: HeapId) -> bool {
         self.mark.is_some_and(|m| cell < m)
     }
+
+    /// Whether a fault of every call (`nth *`) is armed at the node at `addr`.
+    pub(crate) fn every_call(&self, addr: usize) -> bool {
+        self.armed.get(&addr).is_some_and(|a| a.nth == Nth::Every)
+    }
 }
 
-/// The fault an error value came from.
-fn origin(v: &Value<'_>) -> Option<usize> {
+/// Whether `v` is an error, or an interface holding one.
+fn is_error(v: &Value<'_>) -> bool {
     match v {
-        Value::Error(e) => match e.as_ref() {
-            ErrorVal::Message { origin, .. } => *origin,
-            _ => None,
-        },
-        Value::Iface(_, x) => origin(x),
-        _ => None,
+        Value::Error(_) => true,
+        Value::Iface(_, x) => is_error(x),
+        _ => false,
+    }
+}
+
+/// Whether `a` and `b` are the same contents of one place: equal values, the same slice header,
+/// function or error.
+fn same(a: &Value<'_>, b: &Value<'_>) -> bool {
+    let all = |xs: &[Value<'_>], ys: &[Value<'_>]| {
+        xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| same(x, y))
+    };
+    match (a, b) {
+        (Value::Float(x), Value::Float(y)) => x.to_bits() == y.to_bits(),
+        (
+            Value::Slice {
+                arr: a1,
+                off: o1,
+                len: l1,
+                cap: c1,
+            },
+            Value::Slice {
+                arr: a2,
+                off: o2,
+                len: l2,
+                cap: c2,
+            },
+        ) => (a1, o1, l1, c1) == (a2, o2, l2, c2),
+        (Value::Func(f), Value::Func(g)) => Rc::ptr_eq(f, g),
+        (Value::Opaque(x), Value::Opaque(y)) => x == y,
+        (Value::Host(k, x), Value::Host(l, y)) => k == l && same(x, y),
+        (Value::Struct(n, xs), Value::Struct(m, ys)) => n == m && all(xs, ys),
+        (Value::Array(xs), Value::Array(ys)) | (Value::Tuple(xs), Value::Tuple(ys)) => all(xs, ys),
+        (Value::Iface(t, x), Value::Iface(u, y)) => t == u && same(x, y),
+        (Value::Error(x), Value::Error(y)) => {
+            Rc::ptr_eq(x, y)
+                || match (x.as_ref(), y.as_ref()) {
+                    (ErrorVal::Sentinel { name: n, .. }, ErrorVal::Sentinel { name: m, .. }) => {
+                        n == m
+                    }
+                    (ErrorVal::Value(t, v), ErrorVal::Value(u, w)) => t == u && same(v, w),
+                    _ => false,
+                }
+        }
+        (Value::MapData(_), _) | (Value::ChanData(..), _) => false,
+        _ => crate::interp::equal(a, b),
     }
 }
 
@@ -683,24 +753,6 @@ impl<'m> Interp<'m> {
         }
         let fault_line = line(&fields);
         self.host.emit(fault_line);
-        let updates: Vec<String> = self
-            .host
-            .faults
-            .writes
-            .iter()
-            .map(|w| {
-                line(&[
-                    ("event", J::Str("update")),
-                    ("node", J::Str(&w.node)),
-                    ("pos", J::Str(&w.pos)),
-                    ("value", J::Str(&w.value)),
-                ])
-            })
-            .collect();
-        let count = updates.len() as u64;
-        for u in updates {
-            self.host.emit(u);
-        }
         let outcome = match act {
             FaultDo::Closed | FaultDo::Panic(_) => Some("panic, not handled in module".into()),
             FaultDo::Block => Some("blocked".into()),
@@ -711,7 +763,6 @@ impl<'m> Interp<'m> {
             site,
             nth,
             act: act.name(),
-            updates: count,
             outcome,
             first: None,
         });
@@ -759,80 +810,204 @@ impl<'m> Interp<'m> {
         }
     }
 
-    /// Writes the trace's `event` (`tested`, `propagated`, `wrapped`, `dropped`) at `node` when
-    /// `v` is an error a fault gave, and gives that fault.
+    /// The faults whose errors `v` holds, in the order met: inside an error (a wrapping
+    /// `errorf`, a field of an error type), and through struct fields, array, slice and map
+    /// elements and what pointers point to. Not `deep`, only when `v` is itself an error.
+    fn holds(&self, v: &Value<'m>, deep: bool) -> Vec<usize> {
+        let mut out = Vec::new();
+        if !deep && !is_error(v) {
+            return out;
+        }
+        let mut places: HashSet<Place> = HashSet::new();
+        let mut slices: HashSet<(HeapId, usize, usize)> = HashSet::new();
+        let mut maps: HashSet<HeapId> = HashSet::new();
+        let mut work = vec![v.clone()];
+        while let Some(x) = work.pop() {
+            match x {
+                Value::Error(e) => match e.as_ref() {
+                    ErrorVal::Message {
+                        origin: Some(k), ..
+                    } => {
+                        if !out.contains(k) {
+                            out.push(*k);
+                        }
+                    }
+                    ErrorVal::Value(_, inner) => work.push(inner.clone()),
+                    _ => {}
+                },
+                Value::Iface(_, b) | Value::Host(_, b) => work.push(*b),
+                Value::Struct(_, xs) | Value::Array(xs) | Value::Tuple(xs) => {
+                    work.extend(xs.into_iter().rev());
+                }
+                Value::Ptr(p) => {
+                    if let Some(y) = self.read(&p).cloned()
+                        && places.insert(p)
+                    {
+                        work.push(y);
+                    }
+                }
+                Value::Slice { arr, off, len, .. } => {
+                    if slices.insert((arr, off, len))
+                        && let Some(xs) = self.elems(&x)
+                    {
+                        work.extend(xs.into_iter().rev());
+                    }
+                }
+                Value::Map(id) if maps.insert(id) => {
+                    for (k, v) in self.map_entries(id).iter().rev() {
+                        work.push(v.clone());
+                        work.push(k.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Writes the trace's `event` (`tested`, `propagated`, `wrapped`, `dropped`) at `node` for
+    /// each fault whose error `v` holds (an error itself, but for `propagated`: anything that
+    /// holds one), and gives the first of them.
     pub(crate) fn traced(&mut self, event: &str, v: &Value<'m>, node: Node<'m>) -> Option<usize> {
         if self.host.faults.fired.is_empty() {
             return None;
         }
-        let k = origin(v)?;
+        let ks = self.holds(v, event == "propagated");
+        if ks.is_empty() {
+            return None;
+        }
         let (id, pos) = self.site(node);
-        let f = &mut self.host.faults.fired[k];
         let verb = match event {
             "tested" => Some("handled"),
             "dropped" => Some("dropped"),
             _ => None,
         };
-        if let Some(verb) = verb
-            && f.first.is_none()
-        {
-            f.first = Some(format!("{verb} at {id}"));
+        for &k in &ks {
+            let f = &mut self.host.faults.fired[k];
+            if let Some(verb) = verb
+                && f.first.is_none()
+            {
+                f.first = Some(format!("{verb} at {id}"));
+            }
+            let (site, nth) = (f.site.clone(), f.nth);
+            self.host.emit(line(&[
+                ("event", J::Str(event)),
+                ("node", J::Str(&id)),
+                ("pos", J::Str(&pos)),
+                ("fault", J::Str(&site)),
+                ("nth", J::Num(nth)),
+            ]));
         }
-        let (site, nth) = (f.site.clone(), f.nth);
-        self.host.emit(line(&[
-            ("event", J::Str(event)),
-            ("node", J::Str(&id)),
-            ("pos", J::Str(&pos)),
-            ("fault", J::Str(&site)),
-            ("nth", J::Num(nth)),
-        ]));
-        Some(k)
+        ks.first().copied()
     }
 
-    /// Records a write of `v` by the running statement into memory older than the session's call.
-    pub(crate) fn record_write(&mut self, v: &Value<'m>) {
+    /// Notes that the running statement writes the place `p` of memory older than the session's
+    /// call, keeping what it held before the call's first write of it.
+    pub(crate) fn record_place(&mut self, p: &Place) {
+        let before = self.read(p).cloned();
+        self.record(Loc::Place(p.clone()), before);
+    }
+
+    /// Notes that the running statement sets the entry for `k` of the older map in `id`.
+    pub(crate) fn record_entry(&mut self, id: HeapId, k: &Value<'m>) {
+        let es = self.map_entries(id);
+        let (pos, before) = match es.iter().position(|(ek, _)| crate::interp::equal(ek, k)) {
+            Some(i) => (i, Some(es[i].1.clone())),
+            None => (es.len(), None),
+        };
+        self.record(Loc::Entry(id, pos), before);
+    }
+
+    fn record(&mut self, at: Loc, before: Option<Value<'m>>) {
         let Some(s) = self.cur else {
             return;
         };
-        let value = self.render(v);
         let stmt = s as *const Stmt as usize;
-        if let Some(w) = self.host.faults.writes.iter_mut().find(|w| w.stmt == stmt) {
-            w.value = value;
-            return;
+        if !self.host.faults.ids.contains_key(&stmt) {
+            let id = self.site(Node::Stmt(s));
+            self.host.faults.ids.insert(stmt, id);
         }
-        let (node, pos) = self.site(Node::Stmt(s));
-        self.host.faults.writes.push(Write {
-            stmt,
-            node,
-            pos,
-            value,
-        });
+        let faults = &mut self.host.faults;
+        match faults.index.get(&at) {
+            Some(&i) => faults.written[i].stmt = stmt,
+            None => {
+                faults.index.insert(at.clone(), faults.written.len());
+                faults.written.push(Written { at, before, stmt });
+            }
+        }
     }
 
-    /// A session's call begins: writes into older memory are partial updates from here.
+    /// A session's call begins: its writes into older memory are noted from here.
     pub(crate) fn begin_call(&mut self) {
         if !self.host.faults.armed.is_empty() {
             self.host.faults.mark = Some(self.heap_len());
-            self.host.faults.writes.clear();
+            self.host.faults.written.clear();
+            self.host.faults.index.clear();
         }
     }
 
-    /// A session's call ended, returning `results` from `entry` if it returned: one `summary`
-    /// for each fault that answered in it.
-    pub(crate) fn end_call(&mut self, entry: Option<&'m Func>, results: &[Value<'m>]) {
-        self.host.faults.mark = None;
-        self.host.faults.writes.clear();
-        for k in std::mem::take(&mut self.host.faults.pending) {
+    /// A session's call ended: it returned `results` from `entry`, or `entry` is `None` (a panic
+    /// or, `stopped`, a stop). When a fault answered in it: an `update` for each place of older
+    /// memory the call left changed, as it is now, then one `summary` per fault.
+    pub(crate) fn end_call(
+        &mut self,
+        entry: Option<&'m Func>,
+        results: &[Value<'m>],
+        stopped: bool,
+    ) {
+        let faults = &mut self.host.faults;
+        faults.mark = None;
+        faults.index.clear();
+        let written = std::mem::take(&mut faults.written);
+        let pending = std::mem::take(&mut faults.pending);
+        if pending.is_empty() {
+            return;
+        }
+        // What the call left: each place it wrote that now holds other than before.
+        let mut left: Vec<(usize, Value<'m>)> = Vec::new();
+        for w in &written {
+            let now = match &w.at {
+                Loc::Place(p) => self.read(p).cloned(),
+                Loc::Entry(id, pos) => self.map_entries(*id).get(*pos).map(|(_, v)| v.clone()),
+            };
+            let changed = match (&w.before, &now) {
+                (Some(a), Some(b)) => !same(a, b),
+                (None, None) => false,
+                _ => true,
+            };
+            if let (true, Some(now)) = (changed, now) {
+                left.push((w.stmt, now));
+            }
+        }
+        let updates = left.len() as u64;
+        for (stmt, now) in &left {
+            let value = self.render(now);
+            let (node, pos) = &self.host.faults.ids[stmt];
+            let l = line(&[
+                ("event", J::Str("update")),
+                ("node", J::Str(node)),
+                ("pos", J::Str(pos)),
+                ("value", J::Str(&value)),
+            ]);
+            self.host.emit(l);
+        }
+        let returned: Vec<usize> = results.iter().flat_map(|v| self.holds(v, true)).collect();
+        let kept: Vec<Vec<usize>> = left.iter().map(|(_, v)| self.holds(v, true)).collect();
+        for k in pending {
             let f = &self.host.faults.fired[k];
-            let outcome = match (&f.outcome, entry) {
-                (Some(o), _) => o.clone(),
-                (None, Some(e)) if results.iter().any(|v| origin(v) == Some(k)) => {
-                    format!("propagated to {}", func_id(self.m, e))
-                }
-                (None, _) => f
-                    .first
-                    .clone()
-                    .unwrap_or_else(|| format!("dropped at {}", f.site)),
+            let at = |stmt: &usize| self.host.faults.ids[stmt].0.clone();
+            let outcome = if let Some(o) = &f.outcome {
+                o.clone()
+            } else if let (Some(e), true) = (entry, returned.contains(&k)) {
+                format!("propagated to {}", func_id(self.m, e))
+            } else if let Some(i) = kept.iter().position(|ks| ks.contains(&k)) {
+                format!("kept at {}", at(&left[i].0))
+            } else if let Some(first) = &f.first {
+                first.clone()
+            } else if stopped {
+                "live at stop".to_string()
+            } else {
+                format!("dropped at {}", f.site)
             };
             let summary = line(&[
                 ("event", J::Str("summary")),
@@ -840,7 +1015,7 @@ impl<'m> Interp<'m> {
                 ("nth", J::Num(f.nth)),
                 ("do", J::Str(f.act)),
                 ("outcome", J::Str(&outcome)),
-                ("updates", J::Num(f.updates)),
+                ("updates", J::Num(updates)),
             ]);
             self.host.emit(summary);
         }

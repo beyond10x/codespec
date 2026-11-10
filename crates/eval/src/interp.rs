@@ -375,7 +375,7 @@ impl<'m> Interp<'m> {
 
     pub(crate) fn write(&mut self, p: &Place, new: Value<'m>) -> Option<()> {
         if self.host.faults.older(p.cell) {
-            self.record_write(&new);
+            self.record_place(p);
         }
         let mut v = &mut self.heap[p.cell];
         for s in &p.path {
@@ -413,7 +413,7 @@ impl<'m> Interp<'m> {
         }
     }
 
-    fn map_entries(&self, id: HeapId) -> &[(Value<'m>, Value<'m>)] {
+    pub(crate) fn map_entries(&self, id: HeapId) -> &[(Value<'m>, Value<'m>)] {
         match &self.heap[id] {
             Value::MapData(es) => es,
             _ => &[],
@@ -433,7 +433,7 @@ impl<'m> Interp<'m> {
 
     fn map_set(&mut self, id: HeapId, k: Value<'m>, v: Value<'m>) {
         if self.host.faults.older(id) {
-            self.record_write(&v);
+            self.record_entry(id, &k);
         }
         if let Value::MapData(es) = &mut self.heap[id] {
             match es.iter_mut().find(|(ek, _)| equal(ek, &k)) {

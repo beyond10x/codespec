@@ -10,14 +10,19 @@ Every change a user of `codespec` or of `cir/1` would notice.
   (`codespec-faults/1`) make the effect at a node id, an extern call or a send, fail at a call
   count (`*` for every call) before a stub or handler answers: `error` (the call's last result an
   error, the others zero), `value`, `closed` (a send panics as on a closed channel), `block` (the
-  run stops `blocked`) or `panic`. The trace gains `fault`, `update` (a statement of the call
-  wrote into older memory before the fault: the partial update), `tested`, `propagated`,
-  `wrapped` and `dropped` for the fault's error, and one `summary` per fault: `panic, not handled
-  in module`, `blocked`, `answered`, `propagated to <entry>`, `handled at <node>`, `dropped at
-  <node>`, or `not reached`. `--each --sites FILE --max-nth N --out DIR` runs the session once per
-  site and call count, a send `closed`, a call returning an error given one, another call
-  `panic`, and writes one trace per run. A fault naming no effect site, a second for one site, a
-  kind its site cannot take or a plan on a `--calls` run is refused (exit 2). `docs/evaluator.md`
+  run stops `blocked`) or `panic`. The trace gains `fault`; `update`, written when the faulted
+  call ends, for each place of memory older than the call that the call left changed, as it is
+  then (the partial update; a write undone is none); `tested`, `propagated`, `wrapped` and
+  `dropped` for the fault's error, followed through errors, structs, slices, maps and pointers
+  that hold it and into later calls; and one `summary` per fault: `panic, not handled in module`,
+  `blocked`, `answered`, `propagated to <entry>`, `kept at <node>`, `handled at <node>`, `dropped
+  at <node>`, `live at stop`, or `not reached`. `--each --sites FILE --max-nth N --out DIR` runs
+  the session once per site and call count, a send `closed`, a call returning an error given
+  one, another call `panic`, and writes one trace per run. A fault naming no effect site, a
+  second for one site, a kind its site cannot take, a stub that a fault of every call leaves
+  without a call, two `--each` sites whose trace files differ only in letter case, or a plan on a
+  `--calls` run is refused (exit 2). A session or plan file whose object gives one key twice is
+  refused. `docs/evaluator.md`
   § 8.1 is reproduced as `examples/orders/faults/pay-closed.eval-trace.jsonl`, and every send of
   `orders` faulted at its first call as `examples/orders/faults/each/` (`task eval-traces`). In
   the library, `Options` has `faults`, and `fault` has the plan, `read_sites` and `run_each`.

@@ -13,9 +13,9 @@
 {"event":"return","n":5,"results":["error(ErrWrongState{Status: \"paid\"})"]}
 {"event":"call","n":6,"func":"Service.Ship","recv":"s","args":["\"o-1\"","\"TRK-1\""]}
 {"event":"fault","node":"orders.Service.Ship#4","pos":"orders.go:96","nth":1,"do":"closed"}
+{"event":"panic","n":6,"node":"orders.Service.Ship#4","pos":"orders.go:96","reason":"send on closed channel"}
 {"event":"update","node":"orders.Service.Ship#2","pos":"orders.go:94","value":"\"shipped\""}
 {"event":"update","node":"orders.Service.Ship#3","pos":"orders.go:95","value":"\"TRK-1\""}
-{"event":"panic","n":6,"node":"orders.Service.Ship#4","pos":"orders.go:96","reason":"send on closed channel"}
 {"event":"summary","fault":"orders.Service.Ship#4","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":2}
 {"event":"call","n":7,"func":"Service.Cancel","recv":"s","args":["\"o-1\""]}
 {"event":"return","n":7,"results":["error(ErrWrongState{Status: \"shipped\"})"]}
