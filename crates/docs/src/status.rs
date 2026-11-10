@@ -276,6 +276,22 @@ pub const CAPABILITIES: &[Capability] = &[
         href: "/docs/guides/add-an-adapter",
     },
     Capability {
+        area: "Conformance",
+        label: "Evaluator conforms to the kit",
+        detail: "codespec conform --lang cir --role writer copies every case of the kit with codespec-write-cir and runs it with the evaluator through codespec-run-cir; it claims every feature but the two it gives a reason for, stmt.foreign, which it refuses, and intrinsic.append, whose case passes.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-cir.json::conforms"),
+        href: "/docs/reference/support",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Differential runs against the evaluator",
+        detail: "Every exported function of the series and inventory examples gets 200 seeded calls, a method through a generated probe that builds its receiver, and the evaluator, codespec-run-go and codespec-run-rust print the same bytes; Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::eval-diff"),
+        href: "/docs/concepts/harness",
+    },
+    Capability {
         area: "Analysis",
         label: "Extern calls",
         detail: "A call of a function of another package is an extern call, declared with its signature; the Go reader reads standard library calls so and the Go writer writes them back, the Rust writer refuses them.",

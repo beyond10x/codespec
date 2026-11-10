@@ -19,8 +19,9 @@
 //!   reports and trees of `examples/netcheck`;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
-//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers and the Go,
-//!   Rust and C writers (`website/data/conformance/<role>-<lang>.json`), by running `codespec
+//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers, the Go,
+//!   Rust and C writers and the evaluator's `cir` writer
+//!   (`website/data/conformance/<role>-<lang>.json`), by running `codespec
 //!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
 //!   (`target/adapters`, `task build`);
 //! - the support matrix (`website/data/support-matrix.json`, [`support`]), from the feature list,
@@ -257,6 +258,7 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "rust",
     ),
     ("website/data/conformance/writer-c.json", "writer", "c"),
+    ("website/data/conformance/writer-cir.json", "writer", "cir"),
 ];
 
 /// One generated directory: its path relative to the root and every file under it, by path
@@ -401,6 +403,11 @@ fn support_matrix(
             lang,
             manifest,
             report: Some(report.clone()),
+            reasons: if *lang == "cir" {
+                codespec_eval::runner::UNCLAIMED
+            } else {
+                &[]
+            },
         });
     }
     let features = fs::read(root.join("schemas/cir-1.features.json"))

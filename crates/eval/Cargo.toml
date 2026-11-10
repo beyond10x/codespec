@@ -13,3 +13,6 @@ name = "codespec_eval"
 [dependencies]
 b10x-codespec-model = { path = "../model" }
 b10x-codespec-conformance = { path = "../conformance" }
+b10x-codespec-passes = { path = "../passes" }
+b10x-codespec-harness = { path = "../harness" }
+serde_json.workspace = true

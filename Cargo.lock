@@ -107,7 +107,10 @@ name = "b10x-codespec-eval"
 version = "0.6.1"
 dependencies = [
  "b10x-codespec-conformance",
+ "b10x-codespec-harness",
  "b10x-codespec-model",
+ "b10x-codespec-passes",
+ "serde_json",
 ]
 
 [[package]]
@@ -208,6 +211,7 @@ dependencies = [
  "b10x-codespec-cli",
  "b10x-codespec-conformance",
  "b10x-codespec-effects",
+ "b10x-codespec-eval",
  "b10x-codespec-model",
  "clap",
  "serde_json",

@@ -6,6 +6,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- The evaluator is a conformance adapter: `codespec-write-cir` copies a module and refuses one
+  holding a `foreign` statement, `codespec-run-cir` runs the calls with the evaluator, so
+  `codespec conform --lang cir --role writer` judges it like any writer. It claims every kit
+  feature but `stmt.foreign`, which it refuses, and `intrinsic.append`, whose case passes but
+  whose sharing of a backing array may differ from Go's where Go's compiler puts a slice on the
+  stack; its report is `website/data/conformance/writer-cir.json` and the support matrix has an
+  Evaluator column, whose notes give the reason for each unclaimed feature. Both programs ship in
+  the release archives.
+- `task eval-diff` (in `task check`), per-function differential runs: every exported function of
+  `examples/series` and `examples/inventory` gets 200 seeded calls, a method through a generated
+  probe function that builds its receiver from the constructor and up to four drawn calls of the
+  type's mutators, and the evaluator, `codespec-run-go` and `codespec-run-rust` must print the same
+  bytes. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
+  function. Nothing is timed.
+
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
   `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a
