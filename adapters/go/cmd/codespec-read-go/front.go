@@ -574,6 +574,18 @@ func (f *front) foreign(s ast.Stmt, reason string) Stmt {
 	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos()), Calls: f.callsOf(s)}
 }
 
+// rangeName is the name a range clause binds as its key or value, parentheses removed: `_` when
+// there is none, "" when it is not an identifier (`for s.f = range xs`).
+func rangeName(e ast.Expr) string {
+	if e == nil {
+		return "_"
+	}
+	if id, ok := ast.Unparen(e).(*ast.Ident); ok {
+		return id.Name
+	}
+	return ""
+}
+
 func hasNamedResults(ft *ast.FuncType) bool {
 	if ft.Results == nil {
 		return false
@@ -732,6 +744,10 @@ func (f *front) labeled(s *ast.LabeledStmt, results []Type) Stmt {
 	f.label = s.Label.Name
 	st := f.stmt(s.Stmt, results)
 	f.label = ""
+	if st.K == "foreign" {
+		// the loop itself is outside cir/1: the labeled statement is refused for that reason
+		reason = st.Reason
+	}
 	for _, b := range branches {
 		if !f.unlabeled[b] {
 			st.K = "foreign"
@@ -834,12 +850,12 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if !ok {
 			return f.foreign(s, "expression outside cir/1")
 		}
-		key, val := "_", "_"
-		if s.Key != nil {
-			key = s.Key.(*ast.Ident).Name
-		}
-		if s.Value != nil {
-			val = s.Value.(*ast.Ident).Name
+		key, val := rangeName(s.Key), rangeName(s.Value)
+		// for_range declares its key and value; `=` assigns variables declared before the loop
+		// (or a field, an element: no name at all), which a for_range would shadow and never
+		// assign. Only `_` means the same either way.
+		if s.Tok == token.ASSIGN && (key != "_" || val != "_") {
+			return f.foreign(s, "range with = assigns variables declared before the loop; cir/1 for_range declares its key and value")
 		}
 		return Stmt{K: "for_range", Key: key, Val: val, Over: &over, Body: f.inside("loop", s.Body.List, results), Pos: pos}
 	case *ast.ForStmt:
@@ -1214,6 +1230,16 @@ func hasForeign(t Type) bool {
 }
 
 func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
+	// f(g()) passes each result of a multi-valued g as its own argument; cir/1 has no argument
+	// that spreads a tuple over parameters, so the call is outside it.
+	if len(e.Args) == 1 {
+		if _, multi := f.info.TypeOf(e.Args[0]).(*types.Tuple); multi {
+			return Expr{}, false
+		}
+	}
+	if sk, ok := f.sortedKeys(e, t); ok {
+		return sk, true
+	}
 	args, ok := f.exprs(e.Args)
 	if !ok {
 		return Expr{}, false
@@ -1312,6 +1338,32 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 		}
 	}
 	return Expr{}, false
+}
+
+// sortedKeys reads `slices.Sorted(maps.Keys(m))`, the keys of m in ascending order, as cir/1's
+// sorted_keys when m is a map (not a named type over one) whose keys are integers. Over string
+// keys it is not sorted_keys: Go orders strings by byte, sorted_keys by UTF-16 code unit. Any
+// other shape is not this intrinsic.
+func (f *front) sortedKeys(e *ast.CallExpr, t *Type) (Expr, bool) {
+	if !f.isPkgFunc(e.Fun, "slices", "Sorted") || len(e.Args) != 1 || e.Ellipsis.IsValid() {
+		return Expr{}, false
+	}
+	keys, ok := ast.Unparen(e.Args[0]).(*ast.CallExpr)
+	if !ok || !f.isPkgFunc(keys.Fun, "maps", "Keys") || len(keys.Args) != 1 {
+		return Expr{}, false
+	}
+	mt, ok := f.info.TypeOf(keys.Args[0]).Underlying().(*types.Map)
+	if !ok {
+		return Expr{}, false
+	}
+	if b, ok := mt.Key().Underlying().(*types.Basic); !ok || b.Info()&types.IsInteger == 0 {
+		return Expr{}, false
+	}
+	m, ok := f.expr(keys.Args[0])
+	if !ok || m.T == nil || m.T.K != "map" {
+		return Expr{}, false // sorted_keys takes a map, not a named type over one
+	}
+	return Expr{K: "intrinsic", Name: "sorted_keys", Args: []Expr{m}, T: t}, true
 }
 
 // cir/1 has no block statement, so an `if` whose init statement declares names cannot keep them

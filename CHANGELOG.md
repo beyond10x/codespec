@@ -76,6 +76,22 @@ Every change a user of `codespec` or of `cir/1` would notice.
   parameter's width, are refused with exit 2. The gate step `eval-kit` runs every kit case twice
   and requires both runs equal to its `expected.txt`, or, for a case listed in
   `crates/eval/tests/kit-stops.txt`, the stop listed there after a prefix of its `expected.txt`.
+- `codespec-read-go` claims `type.tuple`, which its case already passed, and its
+  `adapters/go/cmd/codespec-read-go/README.md` names the five features it leaves unclaimed, each
+  with its reason: `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.unit` and
+  `stmt.lookup_else`.
+- `codespec-read-go` reads `slices.Sorted(maps.Keys(m))` over integer keys as `sorted_keys`. Over
+  string keys it stays as before: Go orders strings by byte, `sorted_keys` by UTF-16 code unit.
+
+### Fixed
+
+- `codespec-read-go` keeps a range with `=` that assigns a variable declared before the loop
+  (`for i = range xs`), labelled or not, foreign with a refusal at its line that says so. It was
+  read as a `for_range` that declares its own `i`, so the outer `i` was never assigned; a key
+  that is not a name (`for s.f = range xs`) stopped the reader with a panic.
+- `codespec-read-go` keeps `f(g())` with a multi-valued `g` foreign with a refusal at its line. It
+  was read as a call with one argument of tuple type, which `cir/1` does not define and the
+  writers refused.
 
 ## 0.6.1
 

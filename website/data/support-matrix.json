@@ -936,10 +936,7 @@
         "type.ptr": "verified",
         "type.slice": "verified",
         "type.string": "verified",
-        "type.tuple": {
-          "note": "Not claimed, though its case type-tuple, type-tuple-error passes.",
-          "state": "refused"
-        },
+        "type.tuple": "verified",
         "type.unit": {
           "note": "Case type-unit: its module does not use the feature.",
           "state": "refused"
