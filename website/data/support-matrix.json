@@ -1474,7 +1474,7 @@
         "expr.nil": "verified",
         "expr.spread": "verified",
         "expr.struct": "verified",
-        "expr.to_error": "refused",
+        "expr.to_error": "verified",
         "expr.to_iface": "verified",
         "expr.unop": "verified",
         "expr.var": "verified",
@@ -1529,7 +1529,7 @@
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
-        "stmt.lookup_else": "refused",
+        "stmt.lookup_else": "verified",
         "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
@@ -1788,7 +1788,10 @@
           "state": "refused"
         },
         "expr.struct": "verified",
-        "expr.to_error": "refused",
+        "expr.to_error": {
+          "note": "Case expr-to-error: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.to_iface": {
           "note": "Case expr-to-iface: its module does not use the feature.",
           "state": "refused"
@@ -1867,7 +1870,10 @@
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
-        "stmt.lookup_else": "refused",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: its module does not use the feature.",
+          "state": "refused"
+        },
         "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",

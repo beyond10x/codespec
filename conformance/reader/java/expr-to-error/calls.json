@@ -1,0 +1,11 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Get",
+      "args": [
+        "\"x\""
+      ]
+    }
+  ]
+}
