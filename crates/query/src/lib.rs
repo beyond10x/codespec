@@ -95,8 +95,11 @@
 //! site could add to the avoided ones adds its sites to every path through it (a wild node: to
 //! every path). A negated path holds definitely when no path passes the definitely avoided nodes
 //! alone; when only the possibly avoided ones block every path it holds possibly, resting on
-//! them. Over calls, a function the walk reaches that holds an unknown site makes a negated path
-//! possible, resting on that site.
+//! them. A node the walk reaches that holds an unknown site (over calls, a function with a call
+//! nothing links or a wild call; over `cfg`, a foreign statement without a call list) could lead
+//! anywhere: it makes a negated path possible, resting on that site, and in the upper bound a
+//! positive path reaches through it any end the walk did not, so a rule over the path that is
+//! then negated is possible too.
 //!
 //! # Properties
 //!
@@ -107,9 +110,10 @@
 //! of every body (a function's or a function literal's, `Start` its id) and follows `cfg_next`;
 //! at each statement its calls are its events, a call's operands before it, and at each exit
 //! (a `return`, a statement falling off the end) the event `exit`. With `scope: calls` a run
-//! starts at each entry of the call graph (a function no linked call reaches) and follows each
-//! of its calls, then the function the call links to, the calls of a call path in order; `exit`
-//! is refused there. A run takes every transition out of its state whose call matches and stays
+//! starts at each entry of the call graph, a function no linked call from outside its own
+//! strongly connected component (`scc`) reaches, so a function that calls itself, or each of a
+//! cycle of functions nothing else calls, is an entry; it follows each of its calls, then the
+//! function the call links to, the calls of a call path in order; `exit` is refused there. A run takes every transition out of its state whose call matches and stays
 //! when none does; in `start` it may always stay, so each matching call starts a run of its
 //! own. A transition's event is a record pattern of `call`; a lower-case name in a field is a
 //! register, and it matches when the field's value is the register's: the local an expression
@@ -120,8 +124,12 @@
 //!
 //! A run over a body that passes a foreign statement without a call list rests on it, and in the
 //! upper bound such a statement, or an opaque function, may make the property fail anywhere in
-//! its body; over calls, a function from which an unknown site is reached may make it fail. So
-//! a negated property across code nothing read is possible, naming it.
+//! its body; over calls, a function from which an unknown site is reached may make it fail. A
+//! listed call (of a foreign statement's call list) reads neither its receiver nor its
+//! arguments: a register compared with its `recv` or `args`, or set from one and compared later,
+//! matches possibly, so the run both moves and stays, each resting on a site naming that call
+//! (`the recv of a listed call, not read`). So a negated property across code nothing read is
+//! possible, naming it, and a property never fails definitely on a value nothing read.
 //!
 //! # Limits
 //!

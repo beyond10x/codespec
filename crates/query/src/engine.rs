@@ -359,10 +359,13 @@ enum CEvent {
     Exit,
     /// The call sites the event's relation holds in column 0, each with the values of its
     /// variables: (register, column) pairs the register must equal, and the registers set.
+    /// `fields` names the `call` field each column holding a variable comes from, for the
+    /// fields a listed call does not read (`recv`, `args`).
     Call {
         rel: usize,
         checks: Vec<(usize, usize)>,
         assigns: Vec<(usize, usize)>,
+        fields: Vec<(usize, &'static str)>,
     },
 }
 
@@ -1503,6 +1506,14 @@ impl Compiler<'_> {
                         }
                         None => fields.push(("site".into(), Field::Term(Term::Var(site.clone())))),
                     }
+                    let mut unread: Vec<(&'static str, String)> = Vec::new();
+                    for (n, f) in &fields {
+                        if let (Some(n), Field::Term(Term::Var(v))) =
+                            (UNREAD.iter().find(|u| **u == n.as_str()), f)
+                        {
+                            unread.push((n, v.clone()));
+                        }
+                    }
                     let atom = Atom {
                         rel: "call".into(),
                         args: Args::Named(fields),
@@ -1532,10 +1543,12 @@ impl Compiler<'_> {
                         d,
                     )?;
                     let col = |v: &str| vars.iter().position(|x| x == v).expect("a column");
+                    let unread = unread.iter().map(|(n, v)| (col(v), *n)).collect();
                     CEvent::Call {
                         rel: d,
                         checks: registers_read(t).iter().map(|r| (reg(r), col(r))).collect(),
                         assigns: t.assign.iter().map(|(r, v)| (reg(r), col(v))).collect(),
+                        fields: unread,
                     }
                 }
             };
@@ -1710,6 +1723,9 @@ struct Eval<'a> {
     in_upper: Vec<bool>,
     closure: RefCell<Option<Closure>>,
     graphs: RefCell<Option<Rc<Graphs>>>,
+    /// Sites the evaluation names beyond the fact base's, numbered after them: the values of a
+    /// listed call nothing read that a register met.
+    extra: RefCell<Vec<crate::Site>>,
 }
 
 /// The graphs path patterns and properties walk, built from the fact base once.
@@ -1722,7 +1738,7 @@ struct Graphs {
     /// The linked calls: each function's callees, sorted.
     calls: BTreeMap<Rc<str>, Vec<Rc<str>>>,
     funcs: BTreeSet<Rc<str>>,
-    /// The functions a linked call reaches.
+    /// The functions a linked call from outside their own strongly connected component reaches.
     called: HashSet<Rc<str>>,
     /// Each function's own unknown sites: its wild calls and the calls nothing links.
     own: HashMap<Rc<str>, Ann>,
@@ -1745,6 +1761,9 @@ struct Graphs {
     hidden: HashMap<Rc<str>, u32>,
     /// The opaque functions, with their site.
     opaque: Vec<(Rc<str>, u32)>,
+    /// The listed calls (of a foreign statement's call list): whether a receiver it has goes
+    /// unread, and its position.
+    listed: HashMap<Rc<str>, (bool, Rc<str>)>,
 }
 
 impl Graphs {
@@ -1898,8 +1917,14 @@ fn walk<'g>(
 struct Run {
     state: usize,
     regs: Vec<Option<V>>,
+    /// For each register set from a value nothing read, the site naming it.
+    unread: Vec<Option<u32>>,
     marks: Vec<Option<Rc<str>>>,
 }
+
+/// The fields of `call` a listed call does not read: its receiver (of a method, interface or
+/// reference call) and its argument count. A register meeting one matches only possibly.
+const UNREAD: &[&str] = &["recv", "args"];
 
 /// Each function, the functions it reaches and the unknown sites it reaches ([`Eval::closure`]).
 type Closure = Rc<Vec<(Rc<str>, Vec<Rc<str>>, Ann)>>;
@@ -1922,6 +1947,31 @@ fn arith(a: &V, op: char, b: &V) -> Option<V> {
         }
         .map(V::Int),
         _ => None,
+    }
+}
+
+/// Whether a property's walk goes on with `key` resting on `a`: when it is new, or when it
+/// was seen only resting on something and now holds definitely.
+fn visit(seen: &mut HashMap<(Rc<str>, Run), Ann>, key: (Rc<str>, Run), a: &Ann) -> bool {
+    match seen.get_mut(&key) {
+        None => {
+            seen.insert(key, a.clone());
+            true
+        }
+        Some(old) if a.is_empty() && !old.is_empty() => {
+            old.clear();
+            true
+        }
+        Some(_) => false,
+    }
+}
+
+/// Adds the run `x` resting on `a` to `runs`, a definite one replacing a possible one.
+fn keep(runs: &mut Vec<(Run, Ann)>, x: Run, a: Ann) {
+    match runs.iter_mut().find(|(r, _)| *r == x) {
+        Some((_, b)) if a.is_empty() => b.clear(),
+        Some(_) => {}
+        None => runs.push((x, a)),
     }
 }
 
@@ -2131,6 +2181,10 @@ impl<'a> Eval<'a> {
         for r in rows("call") {
             let (site, f) = (rc(&r[0]), rc(&r[1]));
             func_of.insert(site.clone(), f.clone());
+            if r[11] == Value::Bool(true) {
+                let recv = matches!(&*rc(&r[2]), "method" | "iface" | "ref");
+                g.listed.insert(site.clone(), (recv, rc(&r[9])));
+            }
             g.func_calls.entry(f).or_default().push(site.clone());
             let in_body = g.stmt_of.contains_key(&site) || site.contains(".calls.");
             if in_body {
@@ -2138,13 +2192,21 @@ impl<'a> Eval<'a> {
                 g.events.entry(st).or_default().push(site);
             }
         }
+        let comp: HashMap<Rc<str>, Rc<str>> = rows("scc").map(|r| (rc(&r[0]), rc(&r[1]))).collect();
         for r in rows("calls") {
             let (site, t) = (rc(&r[0]), rc(&r[1]));
             g.targets.entry(site.clone()).or_default().push(t.clone());
-            if let Some(f) = func_of.get(&site) {
+            let caller = func_of.get(&site);
+            if let Some(f) = caller {
                 g.calls.entry(f.clone()).or_default().push(t.clone());
             }
-            g.called.insert(t);
+            // A call within the callee's own strongly connected component (recursion) does not
+            // make it a callee: it is still an entry if nothing outside calls it.
+            let within =
+                caller.is_some_and(|f| comp.get(f).is_some_and(|c| comp.get(&t) == Some(c)));
+            if !within {
+                g.called.insert(t);
+            }
         }
         for (row, site) in fb.wild.get("call").into_iter().flatten() {
             if let Some(f) = &row[1] {
@@ -2207,9 +2269,10 @@ impl<'a> Eval<'a> {
     /// (`up`; a wild node avoids every node). A path passing no `maybe` node is definite but for
     /// the `up` nodes on it; one passing some rests on their sites. A negated path holds
     /// definitely when no path passes the `def` nodes alone, else possibly when the others
-    /// would block every path. Over calls, a function the walk reaches that holds an unknown
-    /// site could reach any function: a negated path rests on it, and the upper bound gives the
-    /// wild end.
+    /// would block every path. A node the walk reaches that holds an unknown site (a function
+    /// with a wild call or a call nothing links, a foreign statement without a call list) could
+    /// lead anywhere: a negated path rests on it, and the upper bound gives the wild end, or
+    /// the bound end when no path reached it.
     fn path_ways(&self, p: &PathStep, b: &[Option<V>], ann: &Ann, mode: Mode) -> Ways<'_> {
         let g = self.graphs();
         let from = value_of(&p.from, b);
@@ -2296,10 +2359,17 @@ impl<'a> Eval<'a> {
                 )
             });
             let mut wild: Ann = Vec::new();
-            if p.over == Over::Calls {
-                for u in &tdef.reached {
-                    if let Some(s) = g.own.get(u) {
-                        union(&mut wild, s);
+            for u in &tdef.reached {
+                match p.over {
+                    Over::Calls => {
+                        if let Some(s) = g.own.get(u) {
+                            union(&mut wild, s);
+                        }
+                    }
+                    Over::Cfg => {
+                        if let Some(&s) = g.hidden.get(u) {
+                            union(&mut wild, &[s]);
+                        }
                     }
                 }
             }
@@ -2382,8 +2452,15 @@ impl<'a> Eval<'a> {
                     a,
                 ));
             }
-            if mode == Mode::Upper && !wild.is_empty() && to_node.is_none() {
-                ends.push((Some(V::Top), Some(V::Top), wild.clone()));
+            if mode == Mode::Upper && !wild.is_empty() {
+                match &to_node {
+                    None => ends.push((Some(V::Top), Some(V::Top), wild.clone())),
+                    // A bound end no path reaches may still be reached through the unknown.
+                    Some(t) if ends.is_empty() => {
+                        ends.push((Some(V::Str(t.clone())), Some(V::Top), wild.clone()))
+                    }
+                    Some(_) => {}
+                }
             }
             for (end, w, a) in ends {
                 let mut binds = Vec::new();
@@ -2395,7 +2472,7 @@ impl<'a> Eval<'a> {
                 }
                 if let (Some(wi), Some(w)) = (p.witness, w) {
                     match &b[wi] {
-                        Some(v) if *v != w => continue,
+                        Some(v) if *v != w && w != V::Top => continue,
                         Some(_) => {}
                         None => binds.push((wi, w)),
                     }
@@ -2408,45 +2485,101 @@ impl<'a> Eval<'a> {
         Ways::Binds(ways)
     }
 
-    /// The runs `run` goes on to at the call `site`: every transition out of its state whose
-    /// event matches, its registers equal and set; else it stays, as it always may in `start`.
-    fn fire(&self, g: &Graphs, p: &CProp, run: &Run, site: &Rc<str>) -> Vec<Run> {
-        let mut out: Vec<Run> = Vec::new();
+    /// The site naming the field `field` of the listed call `site`, which nothing read.
+    fn unread_site(&self, fb_sites: usize, site: &str, pos: &str, field: &str) -> u32 {
+        let x = crate::Site {
+            site: site.to_string(),
+            pos: pos.to_string(),
+            reason: format!("the {field} of a listed call, not read"),
+        };
+        let mut extra = self.extra.borrow_mut();
+        let k = match extra.iter().position(|s| *s == x) {
+            Some(k) => k,
+            None => {
+                extra.push(x);
+                extra.len() - 1
+            }
+        };
+        (fb_sites + k) as u32
+    }
+
+    /// The runs `run` goes on to at the call `site`, each with what it rests on: every
+    /// transition out of its state whose event matches, its registers equal and set; else it
+    /// stays, as it always may in `start`. A register compared with a value nothing read (the
+    /// receiver of a listed call, or a register set from one) matches only possibly: the run
+    /// both moves and stays, each resting on the site naming that value.
+    fn fire(&self, g: &Graphs, p: &CProp, run: &Run, site: &Rc<str>) -> Vec<(Run, Ann)> {
+        let mut out: Vec<(Run, Ann)> = Vec::new();
+        let mut moved = false;
+        let mut stays: Ann = Vec::new();
         let key = [V::Str(site.clone())];
+        let listed = g.listed.get(site);
         for t in p.trans.iter().filter(|t| t.from == run.state) {
             let CEvent::Call {
                 rel,
                 checks,
                 assigns,
+                fields,
             } = &t.event
             else {
                 continue;
             };
+            let unread = |c: usize| -> Option<u32> {
+                let (recv, pos) = listed?;
+                let &(_, field) = fields
+                    .iter()
+                    .find(|(x, f)| *x == c && (*f != "recv" || *recv))?;
+                Some(self.unread_site(self.fb.sites.len(), site, pos, field))
+            };
             let st = &self.lower[*rel];
             for k in st.candidates(&[0], &key) {
                 let tuple = &st.tuples[k];
-                if tuple[0] != key[0]
-                    || !checks
-                        .iter()
-                        .all(|&(r, c)| run.regs[r].as_ref() == Some(&g.canon(&tuple[c])))
-                {
+                if tuple[0] != key[0] {
+                    continue;
+                }
+                let mut a: Ann = Vec::new();
+                let mut holds = true;
+                for &(r, c) in checks {
+                    if let Some(s) = unread(c).or(run.unread[r]) {
+                        union(&mut a, &[s]);
+                    } else if run.regs[r].as_ref() != Some(&g.canon(&tuple[c])) {
+                        holds = false;
+                        break;
+                    }
+                }
+                if !holds {
                     continue;
                 }
                 let mut next = run.clone();
                 for &(r, c) in assigns {
                     next.regs[r] = Some(g.canon(&tuple[c]));
+                    next.unread[r] = unread(c);
                 }
                 if p.marked[run.state] {
                     next.marks[run.state] = Some(site.clone());
                 }
                 next.state = t.to;
-                if !out.contains(&next) {
-                    out.push(next);
+                if a.is_empty() {
+                    moved = true;
+                } else {
+                    union(&mut stays, &a);
+                }
+                match out.iter_mut().find(|(x, _)| *x == next) {
+                    Some((_, b)) if a.is_empty() => b.clear(),
+                    Some(_) => {}
+                    None => out.push((next, a)),
                 }
             }
         }
-        if (out.is_empty() || run.state == 0) && !out.contains(run) {
-            out.push(run.clone());
+        if run.state == 0 {
+            stays.clear();
+        }
+        if run.state == 0 || !moved {
+            match out.iter_mut().find(|(x, _)| x == run) {
+                Some((_, b)) if stays.is_empty() => b.clear(),
+                Some(_) => {}
+                None => out.push((run.clone(), stays)),
+            }
         }
         out
     }
@@ -2459,6 +2592,7 @@ impl<'a> Eval<'a> {
         let init = Run {
             state: 0,
             regs: vec![None; p.regs],
+            unread: vec![None; p.regs],
             marks: vec![None; p.states.len()],
         };
         let mut out: Vec<(Vec<V>, Ann)> = Vec::new();
@@ -2499,9 +2633,9 @@ impl<'a> Eval<'a> {
                         if through && !blocked {
                             break;
                         }
-                        let mut seen: HashSet<(Rc<str>, Run)> = HashSet::new();
+                        let mut seen: HashMap<(Rc<str>, Run), Ann> = HashMap::new();
                         let mut queue = std::collections::VecDeque::new();
-                        seen.insert((entry.clone(), init.clone()));
+                        visit(&mut seen, (entry.clone(), init.clone()), &Ann::new());
                         queue.push_back((entry.clone(), init.clone(), Ann::new()));
                         let mut passed = Ann::new();
                         while let Some((n, run, mut a)) = queue.pop_front() {
@@ -2513,22 +2647,23 @@ impl<'a> Eval<'a> {
                                 union(&mut a, &[site]);
                                 union(&mut passed, &[site]);
                             }
-                            let mut runs = vec![run];
+                            let mut runs = vec![(run, a)];
                             for site in g.events.get(&n).into_iter().flatten() {
-                                let mut next: Vec<Run> = Vec::new();
-                                for r in &runs {
-                                    for x in self.fire(&g, p, r, site) {
+                                let mut next: Vec<(Run, Ann)> = Vec::new();
+                                for (r, ra) in &runs {
+                                    for (x, mut xa) in self.fire(&g, p, r, site) {
+                                        union(&mut xa, ra);
                                         if x.state == p.error {
-                                            emit(&mut out, owner, site, &x, &a);
-                                        } else if !next.contains(&x) {
-                                            next.push(x);
+                                            emit(&mut out, owner, site, &x, &xa);
+                                        } else {
+                                            keep(&mut next, x, xa);
                                         }
                                     }
                                 }
                                 runs = next;
                             }
                             if g.exits.contains(&n) {
-                                for r in &runs {
+                                for (r, ra) in &runs {
                                     let fails = p.trans.iter().any(|t| {
                                         t.from == r.state
                                             && t.to == p.error
@@ -2539,14 +2674,14 @@ impl<'a> Eval<'a> {
                                         if p.marked[r.state] {
                                             x.marks[r.state] = Some(n.clone());
                                         }
-                                        emit(&mut out, owner, &n, &x, &a);
+                                        emit(&mut out, owner, &n, &x, ra);
                                     }
                                 }
                             }
                             for s in g.cfg.get(&n).into_iter().flatten() {
-                                for r in &runs {
-                                    if seen.insert((s.clone(), r.clone())) {
-                                        queue.push_back((s.clone(), r.clone(), a.clone()));
+                                for (r, ra) in &runs {
+                                    if visit(&mut seen, (s.clone(), r.clone()), ra) {
+                                        queue.push_back((s.clone(), r.clone(), ra.clone()));
                                     }
                                 }
                             }
@@ -2571,19 +2706,20 @@ impl<'a> Eval<'a> {
                     None
                 };
                 for e in g.funcs.iter().filter(|f| !g.called.contains(*f)) {
-                    let mut seen: HashSet<(Rc<str>, Run)> = HashSet::new();
-                    let mut stack = vec![(e.clone(), init.clone())];
-                    seen.insert((e.clone(), init.clone()));
-                    while let Some((f, run)) = stack.pop() {
+                    let mut seen: HashMap<(Rc<str>, Run), Ann> = HashMap::new();
+                    let mut stack = vec![(e.clone(), init.clone(), Ann::new())];
+                    visit(&mut seen, (e.clone(), init.clone()), &Ann::new());
+                    while let Some((f, run, a)) = stack.pop() {
                         for site in g.func_calls.get(&f).into_iter().flatten() {
-                            for x in self.fire(&g, p, &run, site) {
+                            for (x, mut xa) in self.fire(&g, p, &run, site) {
+                                union(&mut xa, &a);
                                 if x.state == p.error {
-                                    emit(&mut out, e, site, &x, &Vec::new());
+                                    emit(&mut out, e, site, &x, &xa);
                                     continue;
                                 }
                                 for t in g.targets.get(site).into_iter().flatten() {
-                                    if seen.insert((t.clone(), x.clone())) {
-                                        stack.push((t.clone(), x.clone()));
+                                    if visit(&mut seen, (t.clone(), x.clone()), &xa) {
+                                        stack.push((t.clone(), x.clone(), xa.clone()));
                                     }
                                 }
                             }
@@ -3258,6 +3394,7 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         in_upper,
         closure: RefCell::new(None),
         graphs: RefCell::new(None),
+        extra: RefCell::new(Vec::new()),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {
@@ -3278,8 +3415,14 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         rows: rows
             .into_iter()
             .map(|(t, a)| {
-                let mut unknown: Vec<crate::Site> =
-                    a.iter().map(|&k| fb.sites[k as usize].clone()).collect();
+                let extra = ev.extra.borrow();
+                let mut unknown: Vec<crate::Site> = a
+                    .iter()
+                    .map(|&k| match fb.sites.get(k as usize) {
+                        Some(s) => s.clone(),
+                        None => extra[k as usize - fb.sites.len()].clone(),
+                    })
+                    .collect();
                 unknown.sort_by(|x, y| {
                     (&x.site, &x.pos, &x.reason).cmp(&(&y.site, &y.pos, &y.reason))
                 });

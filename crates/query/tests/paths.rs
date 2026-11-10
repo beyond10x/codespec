@@ -218,6 +218,85 @@ fn an_answer_across_code_nothing_read_is_possible_and_names_the_site() {
     );
 }
 
+/// The other places a positive path or a register meets what nothing read: a cfg path from a
+/// foreign statement without a call list, `reaches_path` with its end bound, a register set from
+/// the receiver of a listed call; and a calls property starts at each function of a cycle no
+/// outside call reaches.
+#[test]
+fn a_bound_end_a_hidden_statement_an_unread_receiver_and_a_cycle_stay_answered() {
+    let flow = edited("paths/flow.cir.json", |funcs| {
+        let f = funcs.iter_mut().find(|f| f["name"] == "Leaky").unwrap();
+        f["body"][2] = serde_json::json!({
+            "k": "foreign", "lang": "go", "src": "goto top", "reason": "goto", "pos": "flow.go:8"
+        });
+    });
+    let back = answer(
+        "back(F) :- call{func: F, callee: \"example.com/flow.check\", site: S}, entry(F, A),\n\
+         \x20 path(S -> A, over: cfg).\n\
+         ?- func{id: F, name: \"Leaky\"}, !back(F).",
+        &[flow],
+    );
+    assert_eq!(
+        back,
+        "example.com/flow.Leaky\tpossible: example.com/flow.Leaky#2 at example.com/flow/flow.go:8 (foreign statement without a call list: goto)\n"
+    );
+    let calls = edited("paths/calls.cir.json", |funcs| {
+        let f = funcs.iter_mut().find(|f| f["name"] == "EntryA").unwrap();
+        let func_t = serde_json::json!({"k": "func", "params": [], "results": []});
+        f["params"] = serde_json::json!([{"name": "next", "t": func_t}]);
+        f["body"][0]["x"] = serde_json::json!({
+            "k": "call_value", "f": {"k": "var", "name": "next", "t": func_t}, "args": [], "t": {"k": "unit"}
+        });
+    });
+    assert_eq!(
+        answer(
+            "reach_write(F) :- func{id: G, name: \"write\"}, reaches_path(F, G, _).\n\
+             ?- func{id: F, name: \"EntryA\"}, !reach_write(F).",
+            &[calls]
+        ),
+        "example.com/calls.EntryA\tpossible: example.com/calls.EntryA#0.x at example.com/calls/calls.go:4 (call of a function value, not linked by calls)\n"
+    );
+    let locks = edited("properties/locks.cir.json", |funcs| {
+        let f = funcs.iter_mut().find(|f| f["name"] == "Balanced").unwrap();
+        f["body"][0] = serde_json::json!({
+            "k": "foreign", "lang": "go", "src": "defer lockAll(mu)", "reason": "defer",
+            "pos": "locks.go:6",
+            "calls": [{"k": "method", "path": "sync", "recv": "Mutex", "name": "Lock", "pos": "locks.go:6"}]
+        });
+    });
+    let lock = std::fs::read_to_string(fixture("properties/lock.cq")).unwrap();
+    assert_eq!(
+        answer(&lock, &[locks]),
+        format!(
+            "example.com/locks.Balanced\texample.com/locks.Balanced#2\tLock at example.com/locks.Balanced#0.calls.0 has a path to return without Unlock\tpossible: example.com/locks.Balanced#0.calls.0 at example.com/locks/locks.go:6 (the recv of a listed call, not read)\n{}",
+            expected("properties-lock.txt")
+        )
+    );
+    let layers = edited("properties/layers.cir.json", |funcs| {
+        for (from, to, pos) in [
+            ("ServeUsers", "ServeOrders", "layers.go:9"),
+            ("ServeOrders", "ServeUsers", "layers.go:5"),
+        ] {
+            let f = funcs.iter_mut().find(|f| f["name"] == from).unwrap();
+            f["body"].as_array_mut().unwrap().push(serde_json::json!({
+                "k": "expr",
+                "x": {"k": "call", "name": to, "args": [], "t": {"k": "unit"}},
+                "pos": pos
+            }));
+        }
+    });
+    let q = std::fs::read_to_string(fixture("properties/layers.cq")).unwrap();
+    let out = answer(&q, &[layers]);
+    for entry in ["ServeOrders", "ServeUsers"] {
+        assert!(
+            out.contains(&format!(
+                "example.com/layers.{entry}\texample.com/layers.dbUsers#0.x\t"
+            )),
+            "{entry}: {out}"
+        );
+    }
+}
+
 #[test]
 fn a_property_over_a_call_path_reports_the_one_entry_whose_callee_chain_breaks_the_order() {
     let out = twice("properties/layers.cq", "properties/layers.cir.json");

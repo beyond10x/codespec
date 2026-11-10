@@ -12,12 +12,15 @@ Every change a user of `codespec` or of `cir/1` would notice.
   witness, the least of the shortest paths by node id; `!path(…)` and `every_path(A -> B,
   through: P)` are its negation. `property name(scope: body|calls) { … }` declares a small
   automaton over the calls of a body along its control flow, with `exit` at each return, or
-  over the calls of a call path from each entry of the call graph; transitions match record
-  patterns of `call`, at most three registers carry a value from one to the next, and the
-  property is the relation `name(Start, At, Message)` of the runs that reach `error`. The
-  relation `reaches_path(from, to, path)` gives `reaches` its witness. Code nothing read makes a
-  path, a negated path or a property possible, naming the site. `defer call{…}` is refused until
-  `cir/1` has the `defer` statement (§ 8); `lock-without-unlock` waits for that alone now.
+  over the calls of a call path from each entry of the call graph (a function no call from
+  outside its own strongly connected component reaches, so recursion hides no entry);
+  transitions match record patterns of `call`, at most three registers carry a value from one
+  to the next, and the property is the relation `name(Start, At, Message)` of the runs that
+  reach `error`. The relation `reaches_path(from, to, path)` gives `reaches` its witness. Code
+  nothing read makes a path, a negated path, a rule over a path or a property possible, naming
+  the site; so does a register compared with the receiver of a listed call, which nothing read.
+  `defer call{…}` is refused until `cir/1` has the `defer` statement (§ 8);
+  `lock-without-unlock` waits for that alone now.
 - The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
   module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
   `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which
