@@ -28,7 +28,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use codespec_conformance::conform::{FeatureResult, Reason, Report, Verdict, claim, read_kit};
+use codespec_conformance::conform::{
+    EVAL_RUNNER, EVAL_WRITER, FeatureResult, Reason, Report, Verdict, claim, read_kit,
+};
 use codespec_conformance::load_cases;
 use serde_json::{Map, Value, json};
 
@@ -247,8 +249,12 @@ fn refusal(e: &FeatureResult) -> String {
             None,
         ),
         Some(Reason::ReadFailed) => ("the reader refuses it".to_string(), e.detail.as_deref()),
-        Some(Reason::Refused) if e.runner.is_some() => (
-            "the Go writer refuses it and the evaluator does not run it".to_string(),
+        Some(Reason::Refused) if e.runner.as_deref() == Some(EVAL_RUNNER) => (
+            "the Go writer refuses it and the evaluator stops in it".to_string(),
+            e.detail.as_deref(),
+        ),
+        Some(Reason::Refused) if e.runner.as_deref() == Some(EVAL_WRITER) => (
+            "the Go writer and the evaluator's writer refuse it".to_string(),
             e.detail.as_deref(),
         ),
         Some(Reason::Refused) => ("the writer refuses it".to_string(), e.detail.as_deref()),
@@ -495,5 +501,34 @@ mod tests {
         };
         let e = document(&features, &root.join("conformance"), &[stale]).unwrap_err();
         assert!(e.contains("manifest only: [\"op.sub\"]"), "{e}");
+    }
+
+    /// A reader's case the Go writer refuses: the note says whether the evaluator's writer refused
+    /// the module or the evaluator ran it and stopped, with the evaluator's own message.
+    #[test]
+    fn a_refusal_judged_by_the_evaluator_says_whether_it_ran_and_stopped_or_was_not_run() {
+        let judged = |runner: &str, detail: &str| {
+            let mut e = entry("decl.union", false, Verdict::Refused, Some(Reason::Refused));
+            e.step = Some(4);
+            e.runner = Some(runner.into());
+            e.detail = Some(detail.into());
+            state(false, true, Some(&e), "Rust").1.unwrap()
+        };
+        assert_eq!(
+            judged(
+                "codespec-run-cir",
+                "codespec-run-cir: stopped at m.F#0 (case.rs:3): unsupported: a verb"
+            ),
+            "Case some-case: the Go writer refuses it and the evaluator stops in it: \
+             codespec-run-cir: stopped at m.F#0 (case.rs:3): unsupported: a verb."
+        );
+        assert_eq!(
+            judged(
+                "codespec-write-cir",
+                "codespec-write-cir: refused F (case.rs:3): foreign rust statement: kept"
+            ),
+            "Case some-case: the Go writer and the evaluator's writer refuse it: \
+             codespec-write-cir: refused F (case.rs:3): foreign rust statement: kept."
+        );
     }
 }

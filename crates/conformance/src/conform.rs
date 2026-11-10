@@ -70,11 +70,17 @@
 //!    prints `expected.txt` with the corpus case's `calls.json`. When the Go writer refuses the
 //!    passed module (Go has no form for `decl.union`), the evaluator judges it: [`EVAL_WRITER`]
 //!    writes it into `<work>/cases/<case>/cir` and [`EVAL_RUNNER`] runs it on the same
-//!    `calls.json`. Exit 0 is compared with `expected.txt` like any runner's output; exit 1 with
-//!    standard error naming where it `stopped at` (`docs/evaluator.md` E4) is `refused` with that
-//!    stop as the detail when what it printed before is a prefix of `expected.txt`, and
-//!    `wrong_output` when it is not; [`EVAL_WRITER`] refusing (a `foreign` statement) is `refused`
-//!    with its message; another exit is `run_refused` (2) or `run_failed`.
+//!    `calls.json`. Exit 0 is compared with `expected.txt` like any runner's output. Exit 1 with a
+//!    stop (`stopped at <node> (<pos>): <kind>: <reason>` on standard error) of a kind that says
+//!    `cir/1` or the evaluator does not give the program's meaning, [`EVAL_REFUSING_STOPS`]
+//!    (`foreign`, `no handler`, `no body`, `unsupported`; `docs/evaluator.md` E4), is `refused`
+//!    with that stop as the detail, or `wrong_output` when what it printed before differs from
+//!    `expected.txt`; a stop is never a pass. A stop of another kind (`panic`, `blocked`,
+//!    `step budget`) or an exit 1 without a stop is `run_failed`, as a Go runner that crashes is.
+//!    [`EVAL_WRITER`] refusing (a `foreign` statement) is `refused` with its message; exit 2 is
+//!    `run_refused`, another exit `run_failed`. The two programs are looked up in `--adapters`
+//!    when a case first needs them: a run whose every case the Go writer writes does not need
+//!    them, and a case that needs them while they are missing ends the run with an error.
 //!
 //! An unclaimed feature whose case stops at step 2 by `read_failed`, at step 3, or at step 4 by
 //! the evaluator's refusal or stop is *refused*; a claimed one fails.
@@ -139,7 +145,7 @@
 //! | `reason` | string, optional | `no_case`, `refused`, `wrong_output`, `run_failed`, `run_refused`, `read_failed`, `invalid_module`, `not_deterministic`, `subject_missing`, `foreign_statement` or `timeout` |
 //! | `first_difference` | object, optional | `line` (1-based), `expected`, `got`, for `wrong_output` |
 //! | `detail` | string, optional | the program's message, its first lines, with the work, kit and corpus directories written as `<work>`, `<kit>`, `<corpus>` |
-//! | `runner` | string, optional | for a reader, `codespec-run-cir` ([`EVAL_RUNNER`]) when the evaluator judged at step 4 the case the entry describes: the first that did not pass, or, when every case passed, any of them; absent when the Go runner did, and in every report written before the field |
+//! | `runner` | string, optional | for a reader, the evaluator's program that judged at step 4 the case the entry describes (the first that did not pass, or, when every case passed, any of them): `codespec-write-cir` ([`EVAL_WRITER`]) when it refused the module, so nothing ran, `codespec-run-cir` ([`EVAL_RUNNER`]) when it ran it; absent when the Go runner did, and in every report written before the field |
 //!
 //! A cell of the support matrix for one feature and one adapter follows from `claimed` and
 //! `verdict`: claimed and `pass` is verified; `fail` is failing; unclaimed and `refused` or
@@ -471,8 +477,8 @@ pub struct FeatureResult {
     pub first_difference: Option<FirstDifference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
-    /// For a reader, [`EVAL_RUNNER`] when the evaluator judged the case at step 4; `None` is the
-    /// Go runner.
+    /// For a reader, the evaluator's program that judged the case at step 4: [`EVAL_WRITER`] when
+    /// it refused the module, [`EVAL_RUNNER`] when it ran it; `None` is the Go runner.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runner: Option<String>,
 }
@@ -852,11 +858,27 @@ fn refused(reason: Reason, detail: Option<String>) -> Outcome {
     }
 }
 
+/// The kinds of an evaluator stop that say `cir/1` or the evaluator does not give the program's
+/// meaning (`docs/evaluator.md` E4, the stops of `codespec_eval`): a stop of one of them is a
+/// refusal. Any other stop, `panic`, `blocked` or `step budget` among them, is the program
+/// running wrong, and fails.
+pub const EVAL_REFUSING_STOPS: &[&str] = &["foreign", "no handler", "no body", "unsupported"];
+
+/// The kind of the stop the evaluator's standard error names, `stopped at <node> (<pos>): <kind>:
+/// <reason>`.
+fn stop_kind(stderr: &str) -> Option<&str> {
+    let rest = &stderr[stderr.find("stopped at ")?..];
+    let rest = &rest[rest.find("): ")? + 3..];
+    rest.split(": ").next()
+}
+
 /// Step 4 by the evaluator, for a passed `module` the Go writer refused: [`EVAL_WRITER`] writes it
-/// into `<work>/cir` and [`EVAL_RUNNER`] runs `calls`. Exit 0 is compared with `expected`; exit 1
-/// with standard error naming where it `stopped at`, after a prefix of `expected`, is a refusal
-/// with the stop as its detail, and after a line that differs `wrong_output`; [`EVAL_WRITER`]
-/// refusing is a refusal.
+/// into `<work>/cir` and [`EVAL_RUNNER`] runs `calls`. Exit 0 is compared with `expected`. Exit 1
+/// with a stop of a kind of [`EVAL_REFUSING_STOPS`] is a refusal with the stop as its detail,
+/// unless what it printed differs from `expected` before the stop (`wrong_output`); it is never a
+/// pass. Exit 1 with any other stop, or without one, fails (`run_failed`). [`EVAL_WRITER`]
+/// refusing is a refusal. Also the program that judged: [`EVAL_WRITER`] when it refused, else
+/// [`EVAL_RUNNER`].
 fn evaluate(
     ctx: &Ctx,
     p: &ReaderPrograms,
@@ -864,14 +886,16 @@ fn evaluate(
     work: &Path,
     calls: &Path,
     expected: &str,
-) -> Result<Outcome, Error> {
+) -> Result<(Outcome, &'static str), Error> {
     let out = work.join("cir");
     match write(ctx, p.cir_writer, module, &out)?.0 {
-        Wrote::Refused(why) => return Ok(refused(Reason::Refused, ctx.clean.text(&why))),
+        Wrote::Refused(why) => {
+            return Ok((refused(Reason::Refused, ctx.clean.text(&why)), EVAL_WRITER));
+        }
         Wrote::TimedOut => {
-            return Ok(not_pass(
-                Reason::Timeout,
-                Some(ctx.overran("the evaluator's writer")),
+            return Ok((
+                not_pass(Reason::Timeout, Some(ctx.overran("the evaluator's writer"))),
+                EVAL_WRITER,
             ));
         }
         Wrote::Done => {}
@@ -885,26 +909,27 @@ fn evaluate(
     let e = match ctx.exec(p.cir_runner, &args, None)? {
         Ran::Done(e) => e,
         Ran::TimedOut => {
-            return Ok(not_pass(
-                Reason::Timeout,
-                Some(ctx.overran("the evaluator")),
+            return Ok((
+                not_pass(Reason::Timeout, Some(ctx.overran("the evaluator"))),
+                EVAL_RUNNER,
             ));
         }
     };
     let got = String::from_utf8_lossy(&e.stdout);
-    let prefix = expected.starts_with(&*got) && (got.is_empty() || got.ends_with('\n'));
-    Ok(match e.code {
+    let stop = || refused(Reason::Refused, ctx.clean.text(&e.stderr));
+    let outcome = match e.code {
         Some(0) => compared(expected, &got),
-        Some(1) if e.stderr.contains("stopped at ") => {
-            if prefix {
-                refused(Reason::Refused, ctx.clean.text(&e.stderr))
-            } else {
-                compared(expected, &got)
+        Some(1) if stop_kind(&e.stderr).is_some_and(|k| EVAL_REFUSING_STOPS.contains(&k)) => {
+            let prefix = expected.starts_with(&*got) && (got.is_empty() || got.ends_with('\n'));
+            match compared(expected, &got) {
+                wrong @ Outcome::NotPass { .. } if !prefix => wrong,
+                _ => stop(),
             }
         }
         Some(2) => not_pass(Reason::RunRefused, ctx.clean.text(&e.stderr)),
         _ => not_pass(Reason::RunFailed, ctx.clean.text(&e.stderr)),
-    })
+    };
+    Ok((outcome, EVAL_RUNNER))
 }
 
 /// A kit case with the inputs the run compares against, read before any adapter program runs.
@@ -1421,8 +1446,8 @@ fn reader_case(
     let out = work.join("go");
     match write(ctx, p.go_writer, passed.as_bytes(), &out)?.0 {
         Wrote::Refused(_) => {
-            let o = evaluate(ctx, p, passed.as_bytes(), work, calls, &l.expected)?;
-            return Ok((at_step(o, 4), Some(EVAL_RUNNER)));
+            let (o, judged) = evaluate(ctx, p, passed.as_bytes(), work, calls, &l.expected)?;
+            return Ok((at_step(o, 4), Some(judged)));
         }
         Wrote::TimedOut => {
             return Ok((
@@ -1626,6 +1651,34 @@ fn program(dir: &Path, name: &str) -> Result<Process, Error> {
     }
 }
 
+/// A program of the adapters directory looked up when it is first called, not before the run: a
+/// reader run calls the evaluator's pair only for a case the Go writer refuses. Missing then, it
+/// is an error of the run, never a verdict.
+struct OnCall<'a>(&'a Path, &'static str);
+
+impl Program for OnCall<'_> {
+    fn exec(&self, args: &[OsString], stdin: Option<&[u8]>) -> Result<Exec, Error> {
+        self.found()?.exec(args, stdin)
+    }
+
+    fn exec_within(
+        &self,
+        args: &[OsString],
+        stdin: Option<&[u8]>,
+        limit: Duration,
+    ) -> Result<Ran, Error> {
+        self.found()?.exec_within(args, stdin, limit)
+    }
+}
+
+impl OnCall<'_> {
+    fn found(&self) -> Result<Process, Error> {
+        program(self.0, self.1).map_err(|e| {
+            format!("{e}: the Go writer refused a case, which the evaluator's pair judges then")
+        })
+    }
+}
+
 /// Run the kit against `codespec-<role>-<lang>` in `adapters`, by the manifest its `--describe`
 /// prints, which must name the same role and language; each program within [`DEFAULT_TIMEOUT`].
 pub fn conform_adapter(t: &Target) -> Result<Report, Error> {
@@ -1677,8 +1730,8 @@ pub fn conform_adapter_within(t: &Target, limit: Duration) -> Result<Report, Err
             runner: &runner,
             go_writer: &program(&t.adapters, "codespec-write-go")?,
             go_runner: &program(&t.adapters, "codespec-run-go")?,
-            cir_writer: &program(&t.adapters, EVAL_WRITER)?,
-            cir_runner: &program(&t.adapters, EVAL_RUNNER)?,
+            cir_writer: &OnCall(&t.adapters, EVAL_WRITER),
+            cir_runner: &OnCall(&t.adapters, EVAL_RUNNER),
         },
     )
 }

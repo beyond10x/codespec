@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use codespec_conformance::conform::{
-    Exec, OUTPUT_LIMIT, Process, Program, Ran, ReaderPrograms, Reason, Report, Run, UNKNOWN_KIND,
-    Verdict, claim, conform_reader, conform_writer, conform_writer_within, read_kit, read_report,
-    reader_corpus, report_json,
+    Exec, OUTPUT_LIMIT, Process, Program, Ran, ReaderPrograms, Reason, Report, Run, Target,
+    UNKNOWN_KIND, Verdict, claim, conform_adapter, conform_reader, conform_writer,
+    conform_writer_within, read_kit, read_report, reader_corpus, report_json,
 };
 use codespec_conformance::load_cases;
 use codespec_model::Module;
@@ -567,7 +567,9 @@ fn a_case_the_go_writer_refuses_is_judged_by_the_evaluator_pass_fail_or_refused_
     let w = work("stub-reader-evaluator");
     let corpus = stub_corpus_of(
         &w,
-        &["op-add", "op-and", "op-eq", "op-mul", "op-sub", "stmt-if"],
+        &[
+            "op-add", "op-and", "op-eq", "op-ge", "op-mul", "op-sub", "stmt-if",
+        ],
     );
     let m = manifest(
         "reader",
@@ -603,6 +605,11 @@ fn a_case_the_go_writer_refuses_is_judged_by_the_evaluator_pass_fail_or_refused_
                 1,
                 "ok wrong\n",
                 "codespec-run-cir: stopped at op_eq.Eq#0 (case.go:4): unsupported: stub stop",
+            ),
+            "op_ge" => exec(
+                1,
+                "ok true\n",
+                "codespec-run-cir: stopped at op_ge.Ge#0 (case.go:4): panic: index out of range",
             ),
             other => panic!("the evaluator ran {other}, which the Go writer wrote"),
         }
@@ -675,17 +682,120 @@ fn a_case_the_go_writer_refuses_is_judged_by_the_evaluator_pass_fail_or_refused_
             .is_some_and(|d| d.starts_with("codespec-write-cir: refused And")),
         "{json}"
     );
-    assert_eq!(cir_refused.runner.as_deref(), cir);
+    assert_eq!(
+        cir_refused.runner.as_deref(),
+        Some("codespec-write-cir"),
+        "the evaluator's writer refused it: the runner never ran"
+    );
+
+    // A stop that is not about a construct the evaluator does not reproduce (here `panic`, as
+    // `blocked` and `step budget`) is a failure even after a prefix and unclaimed, as a Go
+    // runner that crashes is.
+    let crashed = feature(&report, "op.ge");
+    assert_eq!(
+        (crashed.claimed, crashed.verdict),
+        (false, Verdict::Fail),
+        "{json}"
+    );
+    assert_eq!(
+        (crashed.step, crashed.reason),
+        (Some(4), Some(Reason::RunFailed))
+    );
+    assert!(
+        crashed
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("panic: index out of range")),
+        "{json}"
+    );
+    assert_eq!(crashed.runner.as_deref(), cir);
 
     let by_go = feature(&report, "op.mul");
     assert_eq!(by_go.verdict, Verdict::Pass, "{json}");
     assert_eq!(by_go.runner, None, "{json}");
     assert!(!json.contains("\"runner\": \"codespec-run-go\""), "{json}");
 
-    assert_eq!(cir_calls.load(Ordering::SeqCst), 4);
+    assert_eq!(cir_calls.load(Ordering::SeqCst), 5);
     assert_eq!(report.summary.pass, 2);
-    assert_eq!(report.summary.fail, 2);
+    assert_eq!(report.summary.fail, 3);
     assert_eq!(report.summary.refused_unclaimed, 2);
+}
+
+/// `dir/name`, an executable shell script of `body`.
+fn script(dir: &Path, name: &str, body: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let p = dir.join(name);
+    std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// An `--adapters` directory for a reader of the stub language over a one-case kit `op-add`: the
+/// reader prints the corpus case's `module.json`, its runner the case's output, and the Go pair
+/// is the real one unless `go_writer_refuses`; the evaluator's pair is absent.
+fn reader_adapters_without_the_evaluator(w: &Path, go_writer_refuses: bool) -> Target {
+    let k = mini_kit(w, &["op-add"]);
+    let corpus = stub_corpus_of(w, &["op-add"]);
+    let adapters = w.join("adapters");
+    std::fs::create_dir_all(&adapters).unwrap();
+    let m = w.join("manifest.json");
+    std::fs::write(&m, manifest("reader", &["op.add".to_string()])).unwrap();
+    script(
+        &adapters,
+        "codespec-read-stub",
+        &format!(
+            "if [ \"$1\" = --describe ]; then cat '{}'; exit 0; fi\ncat \"$1/module.json\"",
+            m.display()
+        ),
+    );
+    script(&adapters, "codespec-run-stub", "printf 'ok 5\\nok -5\\n'");
+    if go_writer_refuses {
+        script(
+            &adapters,
+            "codespec-write-go",
+            "echo 'codespec-write-go: no form for it' >&2; exit 1",
+        );
+    } else {
+        std::fs::copy(
+            go_bin().join("codespec-write-go"),
+            adapters.join("codespec-write-go"),
+        )
+        .unwrap();
+    }
+    std::fs::copy(
+        go_bin().join("codespec-run-go"),
+        adapters.join("codespec-run-go"),
+    )
+    .unwrap();
+    Target {
+        adapters,
+        role: "reader".into(),
+        lang: "stub".into(),
+        kit: k,
+        corpus: Some(corpus),
+        work: w.join("work"),
+    }
+}
+
+/// The evaluator's pair is looked up only when the Go writer refuses a case: a reader run whose
+/// every case the Go writer writes needs only the Go pair.
+#[test]
+fn a_reader_run_the_go_writer_writes_through_needs_no_evaluator_programs() {
+    let w = work("reader-no-evaluator-needed");
+    let report = conform_adapter(&reader_adapters_without_the_evaluator(&w, false))
+        .expect("a reader run with the Go pair only");
+    let add = feature(&report, "op.add");
+    assert_eq!(add.verdict, Verdict::Pass, "{}", report_json(&report));
+    assert_eq!(add.runner, None);
+}
+
+/// A case the Go writer refuses with no evaluator in `--adapters` is an error naming the missing
+/// program, never a verdict.
+#[test]
+fn a_case_the_go_writer_refuses_without_the_evaluator_programs_is_an_error_naming_them() {
+    let w = work("reader-evaluator-missing");
+    let e = conform_adapter(&reader_adapters_without_the_evaluator(&w, true))
+        .expect_err("a case needs the evaluator and it is missing");
+    assert!(e.contains("codespec-write-cir does not exist"), "{e}");
 }
 
 /// The Rust writer and runner, built once with cargo.

@@ -123,7 +123,7 @@ Usage: codespec conform [OPTIONS] --adapters <ADAPTERS>
 | `--check <CHECK>` | no | none | none | A report to check: run again and compare. |
 | `--kit <KIT>` | no | `conformance` | none | The kit directory: kit.json and cases/. |
 | `--corpus <CORPUS>` | no | none | none | A reader's corpus: one directory per kit case, its source and calls.json. Defaults to KIT/reader/LANG. |
-| `--adapters <ADAPTERS>` | yes | none | `CODESPEC_ADAPTERS` | Directory holding the adapter, its runner and, for a reader, codespec-write-go and codespec-run-go. |
+| `--adapters <ADAPTERS>` | yes | none | `CODESPEC_ADAPTERS` | Directory holding the adapter, its runner and, for a reader, codespec-write-go and codespec-run-go, and codespec-write-cir and codespec-run-cir, which judge a case the Go writer refuses. |
 | `--work <WORK>` | no | none | none | Where each case is written, read and built; emptied first. Defaults to target/conform/ROLE-LANG. |
 | `--timeout <TIMEOUT>` | no | `300` | none | Seconds one program (adapter, runner) may run before it is killed and the case recorded as `timeout`. |
 

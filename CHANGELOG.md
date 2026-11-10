@@ -8,11 +8,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 - The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
   module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
-  `--adapters` like the Go pair, so a reader can be judged on `decl.union`, for which Go has no
-  form. Output equal to `expected.txt` passes, different output fails, a stop of the evaluator
-  after a prefix of it is `refused` with the stop as the detail. Such a feature entry carries the
-  new optional field `"runner": "codespec-run-cir"`. In the library, `conform_reader` and
-  `conform_reader_within` take the programs as one `ReaderPrograms`.
+  `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which
+  Go has no form. Output equal to `expected.txt` passes, different output fails; a stop is never a
+  pass: a `foreign`, `no handler`, `no body` or `unsupported` stop is `refused` with the stop as
+  the detail, a `panic`, `blocked` or `step budget` stop is `run_failed`. Such a feature entry
+  carries the new optional field `runner`, the evaluator's program that judged it
+  (`codespec-run-cir`, or `codespec-write-cir` when it refused the module). In the library,
+  `conform_reader` and `conform_reader_within` take the programs as one `ReaderPrograms`.
 - The evaluator is a conformance adapter: `codespec-write-cir` copies a module and refuses one
   holding a `foreign` statement, `codespec-run-cir` runs the calls with the evaluator, so
   `codespec conform --lang cir --role writer` judges it like any writer. It claims every kit
