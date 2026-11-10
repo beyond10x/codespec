@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:reader-java-decl-union
 kind: story
-status: active
+status: implemented
 title: The Java reader claims decl.union
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T20:14:32Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T20:14:32Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-10T21:15:36Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: the Java reader claims decl.union
 

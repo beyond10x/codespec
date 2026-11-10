@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T21:01:49Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-c-to-error-variadic",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task docs-generate; task docs-check on the merged wave tree: reader c 105 claimed, 105 pass, 0 fail",
+    "reference": "4ceaf217"
+  }
+}
