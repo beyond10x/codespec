@@ -2508,8 +2508,9 @@ impl Module {
     /// or in a `foreign` statement's call list), to a fixed point, sorted by `path`, then `name`,
     /// each once. A function that raises is named by an entry or unexported, and is never used as
     /// a value, called inside a lambda, called through an interface (a method of its name), nor
-    /// called by an opaque function or a variable's initializer: only callers that list what it
-    /// raises reach it, up to an entry.
+    /// called by an opaque function or a variable's initializer (its `inits` list or its `init`
+    /// expression), and is not `init`, which the module runs when it loads: only callers that
+    /// list what it raises reach it, up to an entry.
     fn check_raises(&self) -> Result<(), String> {
         use std::collections::{BTreeMap, BTreeSet};
         let index: BTreeMap<String, usize> = self
@@ -2584,6 +2585,33 @@ impl Module {
         self.foreign_callees(&self.inits, &index, &own_module, &mut |j, _, how| {
             escapes.push((j, format!("{how} in a variable's initializer")));
         });
+        // A variable's initializer runs when the module loads, before any entry: what its
+        // expression calls or uses as a value counts as well as what `inits` lists.
+        for v in &self.vars {
+            let Some(init) = &v.init else { continue };
+            let name = &v.name;
+            let mut err = None;
+            walk::walk_expr(init, &mut |x| {
+                if let Expr::Lambda { body, .. } = x {
+                    walk::walk_stmts(body, &mut |s| {
+                        if let Stmt::Raise { pos, .. } = s {
+                            err.get_or_insert(format!(
+                                "raise at {pos} in the initializer of the variable {name}: inside a lambda, which runs wherever its value is called"
+                            ));
+                        }
+                    });
+                }
+            });
+            if let Some(e) = err {
+                return Err(e);
+            }
+            self.expr_callees(init, &index, false, &mut |j, _, how| {
+                escapes.push((
+                    j,
+                    format!("{how} in the initializer of the variable {name}"),
+                ));
+            });
+        }
         let mut raises = own;
         loop {
             let mut changed = false;
@@ -2643,6 +2671,11 @@ impl Module {
             if f.exported && !entries.contains(key.as_str()) {
                 return Err(format!(
                     "function {what}, no entry names it and it is exported: a caller outside the module would not see the raise"
+                ));
+            }
+            if f.name == "init" && f.recv.is_none() && f.params.is_empty() {
+                return Err(format!(
+                    "function {what}, and the module runs init when it loads, before any entry: no caller lists what it raises"
                 ));
             }
             if let Some((_, how)) = escapes.iter().find(|(j, _)| *j == i) {

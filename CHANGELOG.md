@@ -11,16 +11,18 @@ Every change a user of `codespec` or of `cir/1` would notice.
   own and its callees', outside its results. The entry kind `exception-mapper` names the
   function the framework hands them to, `on` the extern type it takes. Additive: a document
   without them reads and writes byte for byte as before. Strict reading admits `raise` only in a
-  function an entry names or one only callers listing what it raises reach, and refuses a
-  `raises` that differs from what the bodies raise. `codespec effects` lists a function's
-  `raises` with its callees', `codespec check` (`lock-without-unlock`) finds a lock held at a
-  `raise` or at a call of a function that raises, `codespec query` has the relation `raises`
-  and counts a `raise` as an exit, and `codespec eval` stops at a `raise` by name with its node
-  id. `codespec-write-go` and `codespec-write-c` refuse a function holding `raise` by name with
-  exit 1, `codespec-write-rust` lists it in `refusals.json`, and `codespec-write-cir` refuses
-  it as it does a `foreign` statement; no reader or writer claims `stmt.raise`. The reader
-  check counts an evaluator stop at a `raise` as `refused`, and `codespec-eval-diff` skips a
-  function that raises, naming why. The kit case `stmt-raise` is written by hand.
+  function an entry names or one only callers listing what it raises reach (never from a
+  variable's initializer or `init`, which run when the module loads), and refuses a `raises`
+  that differs from what the bodies raise. `codespec effects` lists a function's `raises` with
+  its callees', `codespec check` (`lock-without-unlock`) finds a lock held at a `raise` or at a
+  call of a function that raises, `codespec query` has the relation `raises` and counts a
+  `raise` and a call of a function that raises as exits, and `codespec eval` stops at a `raise`
+  by name with its node id. `codespec-write-go` and `codespec-write-c` refuse a function holding
+  `raise` by name with exit 1, `codespec-write-rust` lists it in `refusals.json`, and
+  `codespec-write-cir` refuses it as it does a `foreign` statement; no reader or writer claims
+  `stmt.raise`. The reader check counts an evaluator stop at a `raise` as `refused`, and
+  `codespec-eval-diff` skips a function that raises, naming why. The kit case `stmt-raise` is
+  written by hand.
 - `codespec-read-java` reads, in a project, a `throw new X(…)` of a jar's unchecked exception in a
   method an entry names as `raise`, a `@Provider` `ExceptionMapper` as an `exception-mapper` entry,
   and prints a path parameter only the framework passes. The Quarkus quickstart reads with 8

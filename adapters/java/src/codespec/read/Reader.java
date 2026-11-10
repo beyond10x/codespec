@@ -1329,8 +1329,9 @@ public final class Reader {
     }
 
     /**
-     * Whether a method of the project may hold a {@code raise}: an entry names it and its body holds a
-     * {@code throw} outside a lambda or a class body. A call of it is refused: what it raises leaves
+     * Whether a method of the project may hold a {@code raise}: an entry names it and its body holds,
+     * outside a lambda or a class body, a {@code throw} that {@link #throwStmt} reads as a {@code raise}
+     * ({@link #throwRaises}); a {@code throw} of the package's checked exceptions is a return. A call of it is refused: what it raises leaves
      * every caller up to the framework, and only a function the framework calls lists it.
      */
     private boolean mayRaise(ExecutableElement m) {
@@ -1341,10 +1342,10 @@ public final class Reader {
         boolean[] found = {false};
         TreePath mp = trees.getPath(m);
         if (mp != null && mp.getLeaf() instanceof MethodTree && ((MethodTree) mp.getLeaf()).getBody() != null && entryMethod(m)) {
-            new TreeScanner<Void, Void>() {
+            new TreePathScanner<Void, Void>() {
                 @Override
                 public Void visitThrow(ThrowTree t, Void x) {
-                    found[0] = true;
+                    found[0] |= throwRaises(getCurrentPath());
                     return null;
                 }
 
@@ -1357,7 +1358,7 @@ public final class Reader {
                 public Void visitClass(ClassTree c, Void x) {
                     return null;
                 }
-            }.scan(((MethodTree) mp.getLeaf()).getBody(), null);
+            }.scan(new TreePath(mp, ((MethodTree) mp.getLeaf()).getBody()), null);
         }
         analysis.mayRaise.put(m, found[0]);
         return found[0];
@@ -3791,6 +3792,23 @@ public final class Reader {
         return st;
     }
 
+    /**
+     * Whether {@link #throwStmt} reads the {@code throw} at {@code p} as a {@code raise}: in project mode,
+     * {@code throw new X(…)} of a jar's unchecked exception, not a sentinel or formatted error of the
+     * package's checked-exception hierarchy, without a class body.
+     */
+    private boolean throwRaises(TreePath p) {
+        ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
+        if (!project || !(e instanceof NewClassTree)) {
+            return false;
+        }
+        NewClassTree nc = (NewClassTree) e;
+        TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(new TreePath(p, e)));
+        boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
+        return !sentinel && !formattedLeaves.containsKey(te) && nc.getClassBody() == null && !isProjectClass(te)
+            && unchecked(te);
+    }
+
     private List<Object> throwStmt(TreePath p, Ctx ctx, String pos) {
         ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
         if (!(e instanceof NewClassTree)) {
@@ -3800,8 +3818,7 @@ public final class Reader {
         TreePath np = new TreePath(p, e);
         TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(np));
         boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
-        if (project && !sentinel && !formattedLeaves.containsKey(te) && nc.getClassBody() == null && !isProjectClass(te)
-            && unchecked(te)) {
+        if (throwRaises(p)) {
             return List.of(raise(np, te, ctx, pos));
         }
         if (!sentinel && !formattedLeaves.containsKey(te) || nc.getClassBody() != null) {

@@ -51,7 +51,7 @@ cfg_next{from: node, to: node}
 entry{func: node, node: node}
     the first statement of a body (a function or a function literal)
 exit{func: node, node: node}
-    every return or raise of a body and every statement that falls off its end
+    every return or raise of a body, every statement calling a function that lists raises, and every statement that falls off its end
 dominates{a: node, b: node}
     every path from the entry to b passes a; a dominates itself
 postdominates{a: node, b: node}
