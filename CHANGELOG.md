@@ -47,13 +47,18 @@ Every change a user of `codespec` or of `cir/1` would notice.
   holds.
 - A project read of `codespec-read-java` reads a second constructor (`New<Class>2`), a static
   nested class, a `static final` field set by a literal or by a jar's static method with constant
-  arguments (`Logger.getLogger(C.class.getName())`) as a module-level variable, a field of a class
-  of another package of the project, and the `id` an entity inherits from `PanacheEntity`. It
-  refuses at its line a constructor calling `this(…)`, an inner class, a `static final` field set
-  otherwise, an access of a Panache entity's field whose getter or setter the entity declares, and
-  a class implementing `ExceptionMapper`. It records `@Entity`, `@Cacheable`, `@Id`,
-  `@GeneratedValue` and `@Column` on a class or its instance field in `persistence`. A package
-  read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 12 refusals, down
+  arguments (`Logger.getLogger(C.class.getName())`) as a module-level variable, the `id` an entity
+  inherits from `PanacheEntity`, and a static Panache method called on an entity
+  (`Fruit.deleteAll()`) as an extern call with the entity as its type argument. It refuses at its
+  line a constructor calling `this(…)`, an inner class, a `static final` field set otherwise, a
+  field of a class of another package (an opaque extern there), a call of another package's
+  method or constructor that package does not read, an access of a Panache entity's field whose
+  getter or setter (Quarkus's names: `getxCoord` for `xCoord`, `isLit` for a `boolean`) the
+  entity declares, and a class implementing `ExceptionMapper`. It records `@Entity`, `@Cacheable`,
+  `@Id`, `@GeneratedValue` and `@Column` on a struct or its instance field in `persistence`, each
+  argument on one line; on a class read as no struct they are refused. A refusal of a construct
+  read more than once, such as a field initializer each constructor starts from, is listed once.
+  A package read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 12 refusals, down
   from 25: 10 throws of a jar exception and 2 exception mappers, neither of which `cir/1` has a
   form for.
 - `cir/1` modules have an optional field `persistence`: the persistence annotations of the module,

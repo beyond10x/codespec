@@ -166,12 +166,14 @@ import javax.tools.ToolProvider;
  * refused forms in README.md: a second constructor as {@code New<Class>2}, the n-th as {@code
  * New<Class><n>}; a static nested class as a struct of its simple name; a {@code static final}
  * field set by a literal or by a jar's static method with constant arguments as a module-level
- * variable, {@code C.class.getName()} as the literal of the class's binary name; a field of a class
- * another package of the project reads, as that package types it; and the {@code id} a class
- * extending {@code PanacheEntity} inherits, as the struct's first field. It records the JPA
- * annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and {@code
- * @Column} on a class or its instance field in {@code persistence}, each with what it marks and its
- * arguments as written. A class implementing {@code ExceptionMapper} is refused at its line.
+ * variable, {@code C.class.getName()} as the literal of the class's binary name; the {@code id} a
+ * class extending {@code PanacheEntity} inherits, as the struct's first field; and a static Panache
+ * method called on an entity as an extern call with the entity as its type argument. It records the
+ * JPA annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and
+ * {@code @Column} on a struct or its instance field in {@code persistence}, each with what it marks
+ * and its arguments on one line. A class implementing {@code ExceptionMapper} is refused at its
+ * line, and so is a field of a class of another package, whose object is an opaque extern here, and
+ * a call of another package's method or constructor that package's module does not declare.
  *
  * <p>Everything else is kept as a {@code foreign} statement holding its Java source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line; either way it is listed as a
@@ -316,8 +318,10 @@ public final class Reader {
     private final Set<Tree> nested = new HashSet<>();
     /** Why each class nested in a top-level class of a project read is not read. */
     private final Map<Tree, String> nestedWhy = new HashMap<>();
-    /** The structs the other packages of a project read, whose fields this module reads too. */
+    /** The structs the other packages of a project read, which this module names as their modules do. */
     private final Set<TypeElement> otherStructs = new HashSet<>();
+    /** Whether {@link #declared} ran {@link #signatures} on this package's classification. */
+    private boolean signed;
     private final Set<TypeElement> structs = new HashSet<>();
     private final Set<TypeElement> enums = new HashSet<>();
     private final Set<TypeElement> interfaces = new HashSet<>();
@@ -747,23 +751,59 @@ public final class Reader {
     }
 
     /**
-     * What the other packages of the project read, which this module's reads of their classes
-     * follow: the structs they make, and the fields of those that hold null until assigned.
+     * What the other packages of the project read, which this module's names of their classes
+     * follow: the structs they make.
      */
     private void otherPackages() throws Failure {
-        for (Map.Entry<String, List<CompilationUnitTree>> e : analysis.packages.entrySet()) {
-            if (e.getKey().equals(pkgName)) {
-                continue;
+        for (String pkg : analysis.packages.keySet()) {
+            if (!pkg.equals(pkgName)) {
+                otherStructs.addAll(declarer(pkg).structs);
             }
-            Reader other = analysis.classified.get(e.getKey());
-            if (other == null) {
-                other = new Reader(analysis, true);
-                other.prepare(e.getValue());
-                analysis.classified.put(e.getKey(), other);
-            }
-            otherStructs.addAll(other.structs);
-            unassigned.addAll(other.unassigned);
         }
+    }
+
+    /**
+     * The classification of package {@code pkg} of the project, made once and shared: its structs,
+     * and, once {@link #declared} asks, the functions its module declares.
+     */
+    private Reader declarer(String pkg) throws Failure {
+        Reader other = analysis.classified.get(pkg);
+        if (other == null) {
+            other = new Reader(analysis, true);
+            other.prepare(analysis.packages.get(pkg));
+            analysis.classified.put(pkg, other);
+        }
+        return other;
+    }
+
+    /**
+     * Whether the module of another package of the project declares what {@code e} names there: the
+     * function of a method or constructor, the struct of a class, the interface of an interface. A
+     * call or type of a class of another package names only what that module holds.
+     */
+    private boolean declared(Element e) {
+        TypeElement te = e instanceof TypeElement ? (TypeElement) e : (TypeElement) e.getEnclosingElement();
+        Reader other;
+        try {
+            other = declarer(packageOf(te));
+        } catch (Failure f) {
+            return false;
+        }
+        if (e instanceof TypeElement) {
+            return other.structs.contains(te) || other.interfaces.contains(te) || other.enums.contains(te);
+        }
+        if (te.getKind() == ElementKind.INTERFACE) {
+            return other.interfaces.contains(te);
+        }
+        if (!other.signed) {
+            other.signed = true;
+            other.signatures();
+        }
+        if (other.fns.containsKey(e)) {
+            return true;
+        }
+        Fn made = other.ctors.get(te);
+        return e.getKind() == ElementKind.CONSTRUCTOR && generated(e) && made != null && !other.fns.containsValue(made);
     }
 
     /** Take in the units of one package and classify its declarations. */
@@ -1097,6 +1137,22 @@ public final class Reader {
                 }
                 if (extendsPanacheEntity(element(p))) {
                     unassigned.add(panacheId());
+                }
+            }
+        }
+        // A persistence annotation is a mark only on a struct: on a class read otherwise, or not at
+        // all, it is refused like any other annotation.
+        for (TreePath p : decls) {
+            TypeElement te = element(p);
+            if (project && te.getKind() == ElementKind.CLASS && !structs.contains(te) && !exceptionMapper(te)) {
+                CompilationUnitTree cu = p.getCompilationUnit();
+                for (AnnotationTree a : classTree(p).getModifiers().getAnnotations()) {
+                    TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
+                    String qn = at == null ? "" : qname(at);
+                    if (PERSISTENCE.contains(qn)) {
+                        refuse(pos(cu, a), source(cu, a), "annotation " + qn + " on a class read as no struct: annotations"
+                            + " with behaviour are outside cir/1, and a persistence mark is on a struct or its field");
+                    }
                 }
             }
         }
@@ -2127,6 +2183,41 @@ public final class Reader {
         }
     }
 
+    /**
+     * Java source text on one line: every run of white space outside a string or character literal
+     * one space. A literal keeps what it holds, so a tab or a text block's line break stays.
+     */
+    private static String oneLine(String src) {
+        StringBuilder b = new StringBuilder();
+        char quote = 0;
+        boolean space = false;
+        for (int i = 0; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (quote != 0) {
+                b.append(c);
+                if (c == '\\' && i + 1 < src.length()) {
+                    b.append(src.charAt(++i));
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (Character.isWhitespace(c)) {
+                space = true;
+                continue;
+            }
+            if (space && b.length() > 0) {
+                b.append(' ');
+            }
+            space = false;
+            if (c == '"' || c == '\'') {
+                quote = c;
+            }
+            b.append(c);
+        }
+        return b.toString();
+    }
+
     /** The JPA annotations of a struct or of one of its fields, {@code at}, as {@code persistence} marks. */
     private void persistence(CompilationUnitTree cu, String at, ModifiersTree mods) {
         for (AnnotationTree a : mods.getAnnotations()) {
@@ -2140,7 +2231,17 @@ public final class Reader {
             x.put("mark", qn.substring(qn.lastIndexOf('.') + 1));
             List<Object> args = new ArrayList<>();
             for (ExpressionTree e : a.getArguments()) {
-                args.add(source(cu, e));
+                String arg = oneLine(source(cu, e));
+                if (arg.chars().anyMatch(Character::isISOControl)) {
+                    refuse(pos(cu, a), source(cu, a), "annotation " + qn + " with an argument holding a control character in"
+                        + " a literal: a persistence mark's arguments are one line each");
+                    args = null;
+                    break;
+                }
+                args.add(arg);
+            }
+            if (args == null) {
+                continue;
             }
             if (!args.isEmpty()) {
                 x.put("args", args);
@@ -2268,18 +2369,25 @@ public final class Reader {
         outInjects.add(x);
     }
 
-    /** The qualified name of the one bean of the project that is a {@code t}; empty when none or several are. */
+    /**
+     * The one bean of the project that is a {@code t}, as its package and the name its module lists
+     * it by; empty when none or several are, or when its package reads it as no struct and so lists
+     * no bean of it.
+     */
     private String resolveBean(TypeMirror t) {
         TypeMirror want = types.erasure(t);
-        String found = "";
+        TypeElement found = null;
         int n = 0;
         for (TypeElement b : analysis.beans) {
             if (types.isAssignable(types.erasure(b.asType()), want)) {
-                found = b.getQualifiedName().toString();
+                found = b;
                 n++;
             }
         }
-        return n == 1 ? found : "";
+        if (n != 1 || !structs.contains(found) && !otherStructs.contains(found)) {
+            return "";
+        }
+        return packageOf(found) + "." + found.getSimpleName();
     }
 
     /** The resource's path and the method's joined: every segment, one {@code /} between, a leading {@code /}. */
@@ -3747,17 +3855,19 @@ public final class Reader {
             }
             throw new Unsupported("static field " + owner.getSimpleName() + "." + name);
         }
-        boolean inherited = project && el.equals(panacheId()) && holder != null
-            && (structs.contains(holder) || otherStructs.contains(holder)) && extendsPanacheEntity(holder);
-        boolean other = project && otherStructs.contains(owner) && recv != null;
-        if (!structs.contains(owner) && !inherited && !other) {
-            if (project && isProjectClass(owner) && !packageOf(owner).equals(pkgName)) {
-                throw new Unsupported("field of " + owner.getQualifiedName() + ", which its package does not read");
-            }
+        TypeElement through = holder != null ? holder : owner;
+        if (project && (inOtherPackage(owner) || inOtherPackage(through))) {
+            throw new Unsupported("field " + name + " of " + through.getQualifiedName() + ", a class of another package: its"
+                + " object is an extern here, whose fields are not part of the module, and Java reads and writes the one"
+                + " object the caller holds");
+        }
+        boolean inherited = project && el.equals(panacheId()) && holder != null && structs.contains(holder)
+            && extendsPanacheEntity(holder);
+        if (!structs.contains(owner) && !inherited) {
             throw new Unsupported("field of " + owner.getQualifiedName() + ", which is not read");
         }
         if (project) {
-            String accessor = panacheAccessor(holder != null ? holder : owner, owner, name, ctx);
+            String accessor = panacheAccessor(holder != null ? holder : owner, owner, el, ctx);
             if (accessor != null) {
                 throw new Unsupported("field " + name + " of the Panache entity " + (holder != null ? holder : owner).getSimpleName()
                     + " outside it: Panache makes the access a call of " + accessor + ", which the entity declares");
@@ -3773,11 +3883,14 @@ public final class Reader {
     }
 
     /**
-     * The getter or setter of field {@code name} a Panache entity declares, when the access is from
+     * The getter or setter of field {@code el} a Panache entity declares, when the access is from
      * outside the entity: Panache turns such an access into a call of it, which runs the entity's own
-     * code. Null for any other access.
+     * code. Null for any other access. The names are Quarkus's ({@code JavaBeanUtil}): {@code is} for
+     * a {@code boolean} field, {@code get} for any other, {@code set}, each before the field's name
+     * with its first letter upper-cased, or unchanged when its second letter is upper case ({@code
+     * xCoord} gives {@code getxCoord}).
      */
-    private String panacheAccessor(TypeElement holder, TypeElement owner, String name, Ctx ctx) {
+    private String panacheAccessor(TypeElement holder, TypeElement owner, VariableElement el, Ctx ctx) {
         if (!panacheEntity(holder)) {
             return null;
         }
@@ -3785,8 +3898,10 @@ public final class Reader {
         if (holder.equals(from) || owner.equals(from)) {
             return null;
         }
-        String cap = Character.toUpperCase(name.charAt(0)) + name.substring(1);
-        Set<String> accessors = Set.of("get" + cap, "is" + cap, "set" + cap);
+        String name = el.getSimpleName().toString();
+        String cap = name.length() > 1 && Character.isUpperCase(name.charAt(1)) ? name
+            : Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        Set<String> accessors = Set.of((el.asType().getKind() == TypeKind.BOOLEAN ? "is" : "get") + cap, "set" + cap);
         for (TypeElement c = holder; c != null; ) {
             for (Element m : c.getEnclosedElements()) {
                 if (m.getKind() == ElementKind.METHOD && accessors.contains(m.getSimpleName().toString())) {
@@ -4037,6 +4152,10 @@ public final class Reader {
                                            TreePath recvPath, Ctx ctx) {
         boolean isStatic = m.getModifiers().contains(Modifier.STATIC);
         String name = m.getSimpleName().toString();
+        if (inOtherPackage(owner) && !declared(m)) {
+            throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + ", which its package does not read:"
+                + " the module of the package declares no function for it");
+        }
         Map<String, Object> recv = null;
         if (!isStatic) {
             recv = recvPath == null ? thisRef(ctx) : expr(recvPath, ctx);
@@ -4065,6 +4184,13 @@ public final class Reader {
         if (!isStatic) {
             declared.put("recv", externType(owner, List.of()));
         }
+        Map<String, Object> entity = isStatic ? panacheStaticEntity(owner, recvPath, ctx) : null;
+        if (entity != null) {
+            Map<String, Object> tp = Json.obj();
+            tp.put("name", "E");
+            tp.put("constraint", kind("any"));
+            declared.put("tparams", new ArrayList<Object>(List.of(tp)));
+        }
         declared.put("params", new ArrayList<Object>(sigParams));
         declared.put("results", new ArrayList<Object>(sigResults));
         if (variadic) {
@@ -4086,6 +4212,9 @@ public final class Reader {
             c.put("k", "extern");
             c.put("path", path);
             c.put("name", name);
+            if (entity != null) {
+                c.put("targs", new ArrayList<Object>(List.of(entity)));
+            }
         } else {
             c.put("k", "extern_method");
             c.put("path", path);
@@ -4096,6 +4225,33 @@ public final class Reader {
         c.put("args", args);
         c.put("t", t);
         return c;
+    }
+
+    /**
+     * The entity a static method of a Panache entity base is called on, as the type argument of the
+     * extern's one type parameter {@code E}, or null for any other static method. Panache gives each
+     * entity its own copy of the method, run on that entity's table: {@code Fruit.deleteAll()} and
+     * {@code Other.deleteAll()} are one Java method and two operations. The entity is the class the
+     * call names, the class of the calling method when it names none, and the base itself when the
+     * call names it.
+     */
+    private Map<String, Object> panacheStaticEntity(TypeElement owner, TreePath recvPath, Ctx ctx) {
+        if (!project || !PANACHE_ENTITY_BASES.contains(owner.getQualifiedName().toString())) {
+            return null;
+        }
+        TypeElement entity = owner;
+        if (recvPath != null && trees.getElement(recvPath) instanceof TypeElement) {
+            entity = (TypeElement) trees.getElement(recvPath);
+        } else if (recvPath == null && ctx != null && ctx.fn != null) {
+            entity = ctx.fn.cls;
+        }
+        if (structs.contains(entity)) {
+            return tNamed(entity.getSimpleName().toString());
+        }
+        if (inPackage(entity) || inOtherPackage(entity) && !declared(entity)) {
+            throw new Unsupported("a Panache static method called on " + entity.getSimpleName() + ", which is not read");
+        }
+        return externType(entity, List.of());
     }
 
     /** The path of a static extern: the package of another package's class, else the class. */
@@ -4262,6 +4418,10 @@ public final class Reader {
      * class for a jar's, {@code New<C>} of the package for a class of another package.
      */
     private Map<String, Object> externNew(TreePath p, NewClassTree nc, TypeElement te, ExecutableElement ce, TypeMirror tm, Ctx ctx) {
+        if (inOtherPackage(te) && !declared(ce)) {
+            throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " that its package does not read:"
+                + " the module of the package declares no function for it");
+        }
         List<Map<String, Object>> sigParams = new ArrayList<>();
         for (VariableElement v : ce.getParameters()) {
             sigParams.add(signatureType(v.asType()));
@@ -5198,8 +5358,13 @@ public final class Reader {
         return inOtherPackage(te) ? packageOf(te) : te.getQualifiedName().toString();
     }
 
+    /**
+     * The name of an extern type: the simple name, which is also the one another package's module
+     * declares a static nested class by; a class nested otherwise in another package, which its
+     * module does not declare, keeps the names of the classes it is nested in ({@code Outer.Inner}).
+     */
     private String externName(TypeElement te) {
-        if (inOtherPackage(te)) {
+        if (inOtherPackage(te) && te.getNestingKind() != javax.lang.model.element.NestingKind.TOP_LEVEL && !declared(te)) {
             String q = te.getQualifiedName().toString();
             return q.substring(packageOf(te).length() + 1);
         }
@@ -5736,11 +5901,18 @@ public final class Reader {
         return i < 0 ? s : s.substring(0, i) + " …";
     }
 
+    /**
+     * List a refusal. In a project read a construct read more than once, such as a field initializer
+     * each constructor starts from, is listed once: one construct, one refusal.
+     */
     private void refuse(String pos, String what, String reason) {
         Map<String, Object> r = Json.obj();
         r.put("pos", pos);
         r.put("what", what);
         r.put("reason", reason);
+        if (project && refusals.contains(r)) {
+            return;
+        }
         refusals.add(r);
     }
 

@@ -135,7 +135,12 @@ or Gradle. `task java-classpath -- <project>` writes the value to `target/java-c
 the variable.
 
 A call into a jar is an extern with its declared signature, a class of another package of the
-project an extern of that package. Extern overloads and generic signatures are refused or erased.
+project an extern of that package, named as that package's module declares it. A call of another
+package's method or constructor which that package does not read is refused: its module declares no
+function for it. Extern overloads and generic signatures are refused or erased. A static method of
+`PanacheEntityBase` called on an entity (`Fruit.deleteAll()`) is a generic extern with one type
+parameter `E`, the entity its type argument: Panache gives each entity its own copy of the method,
+run on that entity's table, and the jar's own body only throws.
 Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
 
 | Source | Module |
@@ -143,17 +148,18 @@ Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
 | `@Path` with `@GET`, `@POST`, `@PUT`, `@DELETE` or `@PATCH` | `http` entry with the method and the joined path |
 | `@Scheduled`, `@Incoming` | `scheduled`, `incoming` entry |
 | `@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent` | bean with its scope |
-| `@Inject` | injection, resolved to the one bean, else an extern |
+| `@Inject` | injection, resolved to the one bean when its package lists it (the bean is read as a struct), else an extern |
 | `@RegisterRestClient` interface | externs, summarised `net` |
 | Panache, `EntityManager`, JDBC calls | externs, summarised `db` |
 
 What the reader cannot map stays `foreign` with one refusal. `@Entity`, `@Cacheable`, `@Id`,
 `@GeneratedValue` and `@Column` on a class or on one of its instance fields are recorded in
 `persistence`, one mark each: `at` the type (`Fruit`) or field (`Fruit.name`), `mark` the
-annotation's simple name and `args` its arguments as written (`length = 40`). They tell what
-Hibernate does with the objects: a field write to a managed entity reaches the database at commit,
-`persist()` sets the generated key, a unique column refuses a duplicate. Elsewhere (a method, a
-static field) they stay refusals. `@Transactional` is recorded in `transactional`, the keys of the functions
+annotation's simple name and `args` its arguments as written (`length = 40`), each on one line with
+single spaces outside its literals. They tell what Hibernate does with the objects: a field write to
+a managed entity reaches the database at commit, `persist()` sets the generated key, a unique column
+refuses a duplicate. Elsewhere (a method, a static field, an interface, a class read as no struct)
+they stay refusals, and so does one whose argument holds a tab or line break inside a literal. `@Transactional` is recorded in `transactional`, the keys of the functions
 that run in a transaction, a class-level one for each of its methods. `@Produces` and `@Consumes` are
 recorded as `produces` and `consumes` on the `http` entry, the method's own or else its class's.
 
@@ -166,9 +172,9 @@ module keeps, and refuses at its line the forms it cannot keep (`testdata/projec
 | a second constructor | `New<Class>2`, the n-th `New<Class><n>` in source order; each starts from the field initializers, then runs its body, and `new C(…)` calls the one javac chose | a constructor calling `this(…)`: Java runs the field initializers once, in the constructor it calls; a constructor whose function name another function of the package has |
 | a static nested class | a struct of its simple name with its constructors and methods: it has no object of the class it is nested in | an inner class, whose objects hold one; a nested interface, enum or record; a class nested in a nested class; a nested class named as another type of the package |
 | a `static final` field that is not a compile-time constant, set by a literal or by a call of a jar's static method whose arguments are literals, constants or `C.class.getName()` | a module-level `var` with that initializer, `C.class.getName()` the literal of the class's binary name | any other initializer: Java runs it when it first uses the class, the module when it is loaded, and a call of the package's own code or of a value computed at run time can see another state; a second module-level variable of one name |
-| a field of a class of another package of the project | a `field` of the extern-typed value, of the type that package's module gives it, a pointer where the field holds null until assigned there | a field of a class that package does not read |
-| `id` of a class extending `PanacheEntity` | the struct's first field `id`, a pointer nil until `persist()` sets it: the jar declares `public Long id` without an initializer and no constructor assigns it | a class declaring its own `id`, which hides it; a field of any other jar superclass, whose constructor the reader cannot see |
-| a field of a Panache entity, read or written outside the entity | a field, as above | when the entity declares the field's getter or setter: Panache turns the access into a call of it |
+| a field of a class of another package of the project | — | every read and write: the object is an `extern` here, whose fields are not part of the module, and a write Java makes to the caller's object would change a copy |
+| `id` of a class extending `PanacheEntity` | the struct's first field `id`, a pointer nil until `persist()` sets it: the jar declares `public Long id` without an initializer and no constructor assigns it; a class extending `PanacheEntityBase` has only its own fields | a class declaring its own `id`, which hides it; a field of any other jar superclass, whose constructor the reader cannot see |
+| a field of a Panache entity, read or written outside the entity | a field, as above | when the entity declares the field's getter or setter by Quarkus's names: `get`, `is` for a `boolean`, or `set`, then the field's name with its first letter upper-cased, unchanged when its second letter is upper case (`getxCoord`); Panache turns the access into a call of it |
 | a class implementing `ExceptionMapper` | — | the class: the framework calls it with an exception a resource method throws, and `cir/1` has no thrown exception to hand it |
 
 A `throw` of an exception outside the package's checked-exception hierarchy (the quickstart's

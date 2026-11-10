@@ -157,6 +157,7 @@ tasks:
       - task: java-quarkus-prepare
       - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work {{.ADAPTERS}}'
       - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.AdversaryTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work/adversary1 {{.ADAPTERS}}'
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.Adversary2Test {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work/adversary2 {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
       - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json

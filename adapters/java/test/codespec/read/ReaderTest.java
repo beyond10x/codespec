@@ -164,8 +164,16 @@ public final class ReaderTest {
         cases.add(t::quarkusAStaticFinalFieldSetByAJarCallOfConstantsIsAModuleLevelVariable);
         names.add("quarkus_panache_entity_id_is_a_field_of_the_entity_null_until_persisted");
         cases.add(t::quarkusPanacheEntityIdIsAFieldOfTheEntityNullUntilPersisted);
-        names.add("project_a_field_of_a_class_of_another_package_is_read_as_that_package_reads_it");
-        cases.add(t::projectAFieldOfAClassOfAnotherPackageIsReadAsThatPackageReadsIt);
+        names.add("project_a_field_of_a_class_of_another_package_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Reach.java", "a class of another package"));
+        names.add("project_an_entity_extending_panache_entity_base_has_only_its_own_fields");
+        cases.add(t::projectAnEntityExtendingPanacheEntityBaseHasOnlyItsOwnFields);
+        names.add("project_an_entity_annotation_on_an_interface_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Shape.java", "annotation jakarta.persistence.Entity"));
+        names.add("project_a_boolean_field_whose_is_getter_the_entity_declares_is_refused");
+        cases.add(() -> t.formsRefused("Switch.java", "Panache"));
+        names.add("project_a_panache_static_call_carries_its_entity_as_a_type_argument");
+        cases.add(t::projectAPanacheStaticCallCarriesItsEntityAsATypeArgument);
         names.add("project_a_constructor_calling_this_is_refused_and_no_constructor_is_made_up");
         cases.add(t::projectAConstructorCallingThisIsRefusedAndNoConstructorIsMadeUp);
         names.add("project_an_inner_class_is_refused_at_its_line");
@@ -190,8 +198,6 @@ public final class ReaderTest {
         cases.add(() -> t.formsRefused("Tag.java", "hides"));
         names.add("project_a_field_of_a_jar_superclass_other_than_panache_entity_id_is_refused");
         cases.add(() -> t.formsRefused("Spot.java", "field of java.awt.Point, which is not read"));
-        names.add("project_a_field_of_a_class_its_package_does_not_read_is_refused");
-        cases.add(() -> t.formsRefused("Reach.java", "which its package does not read"));
         names.add("project_the_forms_fixture_refuses_exactly_at_its_markers");
         cases.add(t::projectTheFormsFixtureRefusesExactlyAtItsMarkers);
         int passed = 0;
@@ -1168,22 +1174,34 @@ public final class ReaderTest {
     }
 
     /**
-     * {@code t.count} and {@code t.label} of {@code forms.other.Thing}: a field of the other package's
-     * struct, of the type that package gives it, {@code label} a pointer nil until assigned there and
-     * so here.
+     * {@code Keyed extends PanacheEntityBase} and declares its own {@code @Id key}: only {@code
+     * PanacheEntity} declares {@code id}, so the struct holds {@code key} alone.
      */
-    private void projectAFieldOfAClassOfAnotherPackageIsReadAsThatPackageReadsIt() throws Exception {
-        Map<String, Map<String, Object>> modules = forms();
-        Map<String, Object> doc = modules.get("forms");
-        String thing = "{\"k\":\"extern\",\"path\":\"forms.other\",\"name\":\"Thing\"}";
-        Object count = returned(funcByKey(doc, "Reach.count"));
-        check(same(count, "{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"t\",\"t\":" + thing + "},\"name\":\"count\","
-            + "\"t\":{\"k\":\"int\",\"width\":\"64\",\"signed\":true}}"), "Reach.count returns " + Json.write(count));
-        String labelled = Json.write(returned(funcByKey(doc, "Reach.labelled"))).replaceAll("\\s+", "");
-        check(labelled.contains("{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"t\",\"t\":" + thing + "},\"name\":\"label\",\"t\":{\"k\":\"ptr\","
-            + "\"elem\":{\"k\":\"string\"}}}") && labelled.contains("\"k\":\"nil\""), "Reach.labelled " + labelled);
-        List<Object> there = list(byName(list(modules.get("forms.other").get("types")), "Thing").get("fields"));
-        check(same(map(byName(there, "label")).get("t"), "{\"k\":\"ptr\",\"elem\":{\"k\":\"string\"}}"), "Thing.label in forms.other");
+    private void projectAnEntityExtendingPanacheEntityBaseHasOnlyItsOwnFields() throws Exception {
+        List<String> names = new ArrayList<>();
+        for (Object f : list(byName(list(forms().get("forms").get("types")), "Keyed").get("fields"))) {
+            names.add((String) map(f).get("name"));
+        }
+        check(names.equals(List.of("key")), "Keyed fields " + names);
+    }
+
+    /**
+     * {@code Item.deleteAll()} and {@code Keyed.deleteAll()}: Panache runs each on its own entity's
+     * table, so each call of the static extern {@code PanacheEntityBase.deleteAll} gives its entity as
+     * the type argument of the one type parameter the extern declares.
+     */
+    private void projectAPanacheStaticCallCarriesItsEntityAsATypeArgument() throws Exception {
+        Map<String, Object> doc = forms().get("forms");
+        String purge = Json.write(returned(funcByKey(doc, "Purge.purge"))).replaceAll("\\s+", "");
+        check(purge.contains("\"name\":\"deleteAll\",\"targs\":[{\"k\":\"named\",\"name\":\"Item\"}]")
+            && purge.contains("\"name\":\"deleteAll\",\"targs\":[{\"k\":\"named\",\"name\":\"Keyed\"}]"), "Purge.purge returns " + purge);
+        Map<String, Object> decl = null;
+        for (Object x : list(doc.get("externs"))) {
+            if ("deleteAll".equals(map(x).get("name"))) {
+                decl = map(x);
+            }
+        }
+        check(decl != null && same(decl.get("tparams"), "[{\"name\":\"E\",\"constraint\":{\"k\":\"any\"}}]"), "deleteAll " + Json.write(decl));
     }
 
     /**

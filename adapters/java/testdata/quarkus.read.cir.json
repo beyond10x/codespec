@@ -453,6 +453,12 @@
             "k": "extern",
             "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
             "name": "deleteAll",
+            "targs": [
+              {
+                "k": "named",
+                "name": "Fruit"
+              }
+            ],
             "args": [],
             "t": {
               "k": "int",
@@ -1668,6 +1674,14 @@
     {
       "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
       "name": "deleteAll",
+      "tparams": [
+        {
+          "name": "E",
+          "constraint": {
+            "k": "any"
+          }
+        }
+      ],
       "params": [],
       "results": [
         {
