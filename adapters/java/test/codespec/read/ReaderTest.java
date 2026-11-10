@@ -174,6 +174,10 @@ public final class ReaderTest {
         cases.add(() -> t.formsRefused("Switch.java", "Panache"));
         names.add("project_a_panache_static_call_carries_its_entity_as_a_type_argument");
         cases.add(t::projectAPanacheStaticCallCarriesItsEntityAsATypeArgument);
+        names.add("project_every_extern_of_another_package_is_the_function_its_module_declares");
+        cases.add(t::projectEveryExternOfAnotherPackageIsTheFunctionItsModuleDeclares);
+        names.add("project_a_persistence_argument_keeps_its_literals_byte_for_byte_and_drops_comments");
+        cases.add(t::projectAPersistenceArgumentKeepsItsLiteralsAndDropsComments);
         names.add("project_a_constructor_calling_this_is_refused_and_no_constructor_is_made_up");
         cases.add(t::projectAConstructorCallingThisIsRefusedAndNoConstructorIsMadeUp);
         names.add("project_an_inner_class_is_refused_at_its_line");
@@ -1183,6 +1187,102 @@ public final class ReaderTest {
             names.add((String) map(f).get("name"));
         }
         check(names.equals(List.of("key")), "Keyed fields " + names);
+    }
+
+    /**
+     * Every extern of a project read whose path is another package of the read names a function
+     * that package's module declares, with its parameters and results as that module declares them
+     * (its own struct, enum or interface, or a pointer to one, being the extern type of the package
+     * here). Two modules that each pass validate cannot then disagree on one function's signature.
+     */
+    private void projectEveryExternOfAnotherPackageIsTheFunctionItsModuleDeclares() throws Exception {
+        List<String> bad = new ArrayList<>();
+        int compared = 0;
+        List<Map<String, Map<String, Object>>> reads = List.of(forms(),
+            Reader.readProject(testdata.resolve("adversary2/project-packages"), classpath()),
+            Reader.readProject(testdata.resolve("adversary3/project-throws"), classpath()),
+            Reader.readProject(testdata.resolve("adversary3/project-statics"), classpath()),
+            Reader.readProject(testdata.resolve("adversary3/project-access"), classpath()));
+        for (Map<String, Map<String, Object>> modules : reads) {
+            for (Map.Entry<String, Map<String, Object>> m : modules.entrySet()) {
+                for (Object o : list(m.getValue().get("externs"))) {
+                    Map<String, Object> x = map(o);
+                    String path = (String) x.get("path");
+                    if (path.equals(m.getKey()) || !modules.containsKey(path)) {
+                        continue;
+                    }
+                    String recv = "";
+                    if (x.containsKey("recv")) {
+                        Map<String, Object> r = map(x.get("recv"));
+                        recv = (String) ("ptr".equals(r.get("k")) ? map(r.get("elem")) : r).get("name");
+                    }
+                    String key = recv.isEmpty() ? (String) x.get("name") : recv + "." + x.get("name");
+                    Map<String, Object> f = funcByKeyOrNull(modules.get(path), key);
+                    if (f == null) {
+                        bad.add(m.getKey() + " calls " + path + "." + key + ", which " + path + " does not declare");
+                        continue;
+                    }
+                    List<Object> params = new ArrayList<>();
+                    for (Object p : list(f.get("params"))) {
+                        params.add(map(p).get("t"));
+                    }
+                    String want = Json.write(foreign(params, path)).replaceAll("\\s+", "") + Json.write(foreign(f.get("results"), path)).replaceAll("\\s+", "");
+                    String got = Json.write(x.get("params")).replaceAll("\\s+", "") + Json.write(x.get("results")).replaceAll("\\s+", "");
+                    if (!want.equals(got)) {
+                        bad.add(m.getKey() + " calls " + path + "." + key + " as " + got + ", declared " + want);
+                    }
+                    compared++;
+                }
+            }
+        }
+        check(compared >= 6, "only " + compared + " externs of another package compared");
+        check(bad.isEmpty(), String.join("; ", bad));
+    }
+
+    /** A type of the module of {@code pkg} as another module of the read names it. */
+    private static Object foreign(Object t, String pkg) {
+        if (t instanceof Map) {
+            Map<String, Object> m = map(t);
+            if ("ptr".equals(m.get("k")) && "named".equals(map(m.get("elem")).get("k"))) {
+                return foreign(m.get("elem"), pkg);
+            }
+            if ("named".equals(m.get("k"))) {
+                Map<String, Object> x = new java.util.LinkedHashMap<>();
+                x.put("k", "extern");
+                x.put("path", pkg);
+                x.put("name", m.get("name"));
+                return x;
+            }
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : m.entrySet()) {
+                out.put(e.getKey(), foreign(e.getValue(), pkg));
+            }
+            return out;
+        }
+        if (t instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object o : list(t)) {
+                out.add(foreign(o, pkg));
+            }
+            return out;
+        }
+        return t;
+    }
+
+    /**
+     * {@code Notes} has a {@code @Column} whose arguments hold a character literal {@code '"'}, a
+     * string literal with two spaces, and comments: the mark keeps each literal byte for byte, drops
+     * the comments, and puts one space between the rest.
+     */
+    private void projectAPersistenceArgumentKeepsItsLiteralsAndDropsComments() throws Exception {
+        Map<String, Object> m = null;
+        for (Object o : list(forms().get("forms").get("persistence"))) {
+            if ("Notes.text".equals(map(o).get("at"))) {
+                m = map(o);
+            }
+        }
+        check(m != null, "no mark on Notes.text");
+        check(same(m.get("args"), "[\"name = \\\"a\\\" + '\\\"' + \\\"b  c\\\"\", \"length = 40\"]"), "Notes.text args " + Json.write(m.get("args")));
     }
 
     /**

@@ -52,15 +52,19 @@ Every change a user of `codespec` or of `cir/1` would notice.
   (`Fruit.deleteAll()`) as an extern call with the entity as its type argument. It refuses at its
   line a constructor calling `this(…)`, an inner class, a `static final` field set otherwise, a
   field of a class of another package (an opaque extern there), a call of another package's
-  method or constructor that package does not read, an access of a Panache entity's field whose
-  getter or setter (Quarkus's names: `getxCoord` for `xCoord`, `isLit` for a `boolean`) the
-  entity declares, and a class implementing `ExceptionMapper`. It records `@Entity`, `@Cacheable`,
-  `@Id`, `@GeneratedValue` and `@Column` on a struct or its instance field in `persistence`, each
-  argument on one line; on a class read as no struct they are refused. A refusal of a construct
+  method or constructor that package does not read or that returns an error or an Optional there,
+  a Panache static method javac calls on the base itself, an access of a public field of an
+  `@Entity`, `@MappedSuperclass`, `@Embeddable` or Panache class, outside its constructors,
+  whose getter or setter (Quarkus's name and descriptor: `getxCoord()` for `xCoord`, `isLit()`
+  for a `boolean`) the class declares, and a class implementing `ExceptionMapper`. A call of
+  another package's function is an extern with the signature that package's module declares. It
+  records `@Entity`, `@Cacheable`, `@Id`, `@GeneratedValue` and `@Column` on a struct or its
+  instance field in `persistence`, each argument on one line without comments; on a class read as
+  no struct they are refused. A refusal of a construct
   read more than once, such as a field initializer each constructor starts from, is listed once.
-  A package read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 12 refusals, down
-  from 25: 10 throws of a jar exception and 2 exception mappers, neither of which `cir/1` has a
-  form for.
+  A package read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 13 refusals, down
+  from 25: 9 throws of a jar exception and 2 exception mappers, neither of which `cir/1` has a
+  form for, and 2 reads of a field of an entity of the other package.
 - `cir/1` modules have an optional field `persistence`: the persistence annotations of the module,
   each with the type or field (`Type.field`) it marks, the annotation's simple name and its
   arguments as written. Strict reading refuses a mark on a type or field the module lacks, a mark

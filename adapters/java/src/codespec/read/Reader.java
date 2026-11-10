@@ -16,6 +16,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
+import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.LabeledStatementTree;
 import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
@@ -172,8 +173,11 @@ import javax.tools.ToolProvider;
  * JPA annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and
  * {@code @Column} on a struct or its instance field in {@code persistence}, each with what it marks
  * and its arguments on one line. A class implementing {@code ExceptionMapper} is refused at its
- * line, and so is a field of a class of another package, whose object is an opaque extern here, and
- * a call of another package's method or constructor that package's module does not declare.
+ * line, and so is a field of a class of another package, whose object is an opaque extern here, a
+ * call of another package's method or constructor that package's module does not declare in a form
+ * this module can call ({@link #declaredFn}; the extern takes that module's signature), and an
+ * access of a managed class's field that Quarkus turns into a call of code ({@link
+ * #managedAccessor}).
  *
  * <p>Everything else is kept as a {@code foreign} statement holding its Java source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line; either way it is listed as a
@@ -242,6 +246,9 @@ public final class Reader {
     private static final String PANACHE_ENTITY = "io.quarkus.hibernate.orm.panache.PanacheEntity";
     private static final List<String> PANACHE_ENTITY_BASES = List.of(
         "io.quarkus.hibernate.orm.panache.PanacheEntityBase", "io.quarkus.hibernate.reactive.panache.PanacheEntityBase");
+    /** The JPA annotations of a class Quarkus manages: it rewrites accesses of its public fields into accessor calls. */
+    private static final List<String> MANAGED = List.of(
+        "jakarta.persistence.Entity", "jakarta.persistence.MappedSuperclass", "jakarta.persistence.Embeddable");
     private static final List<String> SCOPES = List.of(
         "jakarta.enterprise.context.ApplicationScoped", "jakarta.inject.Singleton",
         "jakarta.enterprise.context.RequestScoped", "jakarta.enterprise.context.Dependent");
@@ -388,6 +395,8 @@ public final class Reader {
         /** The type parameters of a generic static method, each over {@code any}. */
         List<String> tparams = new ArrayList<>();
         TreePath path;
+        /** A lambda's body: Java compiles it to a method of its own, neither a constructor nor an accessor. */
+        boolean inLambda;
 
         List<Map<String, Object>> results() {
             List<Map<String, Object>> r = new ArrayList<>(values);
@@ -795,15 +804,95 @@ public final class Reader {
         if (te.getKind() == ElementKind.INTERFACE) {
             return other.interfaces.contains(te);
         }
+        return declaredFn(e) != null;
+    }
+
+    /**
+     * The function the module of another package of the project declares for the method or
+     * constructor {@code e}, or null when it declares none: its signature, not the Java one, is what
+     * a call of it from this module must use. The default constructor javac adds is the {@code
+     * New<Class>} that module makes up; a class declaring a constructor has no default one.
+     */
+    private Fn declaredFn(Element e) {
+        TypeElement te = (TypeElement) e.getEnclosingElement();
+        Reader other;
+        try {
+            other = declarer(packageOf(te));
+        } catch (Failure f) {
+            return null;
+        }
         if (!other.signed) {
             other.signed = true;
             other.signatures();
         }
         if (other.fns.containsKey(e)) {
-            return true;
+            return other.fns.get(e);
         }
-        Fn made = other.ctors.get(te);
-        return e.getKind() == ElementKind.CONSTRUCTOR && generated(e) && made != null && !other.fns.containsValue(made);
+        return e.getKind() == ElementKind.CONSTRUCTOR && generated(e) ? other.ctors.get(te) : null;
+    }
+
+    /**
+     * Why a call of {@code fn}, a function another package's module declares, is not read here, or
+     * null: its signature as that module declares it is what the extern must say, and this module has
+     * no form for a call of one that returns an error (a checked exception), an Optional's {@code (T,
+     * bool)}, or that is generic or variable arity.
+     */
+    private static String foreignCallShape(Fn fn) {
+        if (fn.throwsErr || fn.foreignThrows != null) {
+            return "it throws a checked exception, which its module declares as an error result this call would have to"
+                + " handle";
+        }
+        if (fn.optional) {
+            return "it returns an Optional, which its module declares as a value and a bool";
+        }
+        if (!fn.tparams.isEmpty() || fn.variadic) {
+            return "its module declares it generic or of variable arity";
+        }
+        return null;
+    }
+
+    /** {@link #foreignType} of each of {@code ts}. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> foreignTypes(List<Map<String, Object>> ts, String pkg) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> t : ts) {
+            out.add((Map<String, Object>) foreignType(t, pkg));
+        }
+        return out;
+    }
+
+    /**
+     * A type of another package's module as this module names it: a struct, enum or interface of
+     * that package, or a pointer to one, is the extern type of the package.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object foreignType(Object t, String pkg) {
+        if (t instanceof Map) {
+            Map<String, Object> m = (Map<String, Object>) t;
+            if ("ptr".equals(m.get("k")) && m.get("elem") instanceof Map && "named".equals(((Map<String, Object>) m.get("elem")).get("k"))) {
+                return foreignType(m.get("elem"), pkg);
+            }
+            if ("named".equals(m.get("k"))) {
+                Map<String, Object> x = Json.obj();
+                x.put("k", "extern");
+                x.put("path", pkg);
+                x.put("name", m.get("name"));
+                return x;
+            }
+            Map<String, Object> out = Json.obj();
+            for (Map.Entry<String, Object> en : m.entrySet()) {
+                out.put(en.getKey(), foreignType(en.getValue(), pkg));
+            }
+            return out;
+        }
+        if (t instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object o : (List<Object>) t) {
+                out.add(foreignType(o, pkg));
+            }
+            return out;
+        }
+        return t;
     }
 
     /** Take in the units of one package and classify its declarations. */
@@ -1191,8 +1280,7 @@ public final class Reader {
     }
 
     /**
-     * Whether {@code te} is a Panache entity: Panache makes every access of a public field of one
-     * from outside the class a call of the field's getter or setter.
+     * Whether {@code te} is a Panache entity, a subclass of a Panache entity base.
      */
     private boolean panacheEntity(TypeElement te) {
         for (String b : PANACHE_ENTITY_BASES) {
@@ -2184,25 +2272,32 @@ public final class Reader {
     }
 
     /**
-     * Java source text on one line: every run of white space outside a string or character literal
-     * one space. A literal keeps what it holds, so a tab or a text block's line break stays.
+     * Java source text on one line: comments dropped, and every run of white space and comments
+     * outside a literal one space. A string, character or text block literal is copied byte for
+     * byte, so a tab or a text block's line break stays in it.
      */
     private static String oneLine(String src) {
         StringBuilder b = new StringBuilder();
-        char quote = 0;
         boolean space = false;
-        for (int i = 0; i < src.length(); i++) {
+        int i = 0;
+        int n = src.length();
+        while (i < n) {
             char c = src.charAt(i);
-            if (quote != 0) {
-                b.append(c);
-                if (c == '\\' && i + 1 < src.length()) {
-                    b.append(src.charAt(++i));
-                } else if (c == quote) {
-                    quote = 0;
-                }
+            if (Character.isWhitespace(c)) {
+                space = true;
+                i++;
                 continue;
             }
-            if (Character.isWhitespace(c)) {
+            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '/') {
+                while (i < n && src.charAt(i) != '\n' && src.charAt(i) != '\r') {
+                    i++;
+                }
+                space = true;
+                continue;
+            }
+            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '*') {
+                int end = src.indexOf("*/", i + 2);
+                i = end < 0 ? n : end + 2;
                 space = true;
                 continue;
             }
@@ -2210,12 +2305,31 @@ public final class Reader {
                 b.append(' ');
             }
             space = false;
-            if (c == '"' || c == '\'') {
-                quote = c;
+            int end = i + 1;
+            if (src.startsWith("\"\"\"", i)) {
+                end = literalEnd(src, i + 3, "\"\"\"");
+            } else if (c == '"' || c == '\'') {
+                end = literalEnd(src, i + 1, String.valueOf(c));
             }
-            b.append(c);
+            b.append(src, i, end);
+            i = end;
         }
         return b.toString();
+    }
+
+    /** The index after the {@code close} that ends a literal whose content starts at {@code from}, skipping escapes. */
+    private static int literalEnd(String src, int from, String close) {
+        int i = from;
+        while (i < src.length()) {
+            if (src.charAt(i) == '\\') {
+                i += 2;
+            } else if (src.startsWith(close, i)) {
+                return i + close.length();
+            } else {
+                i++;
+            }
+        }
+        return src.length();
     }
 
     /** The JPA annotations of a struct or of one of its fields, {@code at}, as {@code persistence} marks. */
@@ -3867,10 +3981,10 @@ public final class Reader {
             throw new Unsupported("field of " + owner.getQualifiedName() + ", which is not read");
         }
         if (project) {
-            String accessor = panacheAccessor(holder != null ? holder : owner, owner, el, ctx);
+            String accessor = managedAccessor(holder != null ? holder : owner, owner, el, ctx);
             if (accessor != null) {
-                throw new Unsupported("field " + name + " of the Panache entity " + (holder != null ? holder : owner).getSimpleName()
-                    + " outside it: Panache makes the access a call of " + accessor + ", which the entity declares");
+                throw new Unsupported("field " + name + " of the managed class " + (holder != null ? holder : owner).getSimpleName()
+                    + ": Quarkus (Panache or Hibernate ORM) makes the access a call of " + accessor + ", which the class declares");
             }
         }
         Map<String, Object> x = recv != null ? recv : thisRef(ctx);
@@ -3883,37 +3997,107 @@ public final class Reader {
     }
 
     /**
-     * The getter or setter of field {@code el} a Panache entity declares, when the access is from
-     * outside the entity: Panache turns such an access into a call of it, which runs the entity's own
-     * code. Null for any other access. The names are Quarkus's ({@code JavaBeanUtil}): {@code is} for
-     * a {@code boolean} field, {@code get} for any other, {@code set}, each before the field's name
-     * with its first letter upper-cased, or unchanged when its second letter is upper case ({@code
-     * xCoord} gives {@code getxCoord}).
+     * The getter or setter of field {@code el} that a managed class declares, when Quarkus turns the
+     * access into a call of it, which runs that method's code; null for any other access.
+     *
+     * <p>Quarkus 3 ({@code PanacheHibernateCommonResourceProcessor}, Panache or plain Hibernate ORM)
+     * rewrites every read and write of a public, non-static, non-{@code @Transient} field of a
+     * managed class ({@code @Entity}, {@code @MappedSuperclass}, {@code @Embeddable}, not a record)
+     * into a call of its getter or setter, in every class, the managed class's own methods included,
+     * except in a constructor of the class the access goes through or of a managed subclass of it,
+     * and in that class's getter or setter of the field itself. A class without that method gets a
+     * generated one, which only reads or writes the field. The method is matched by name and
+     * descriptor: {@code is} for a {@code boolean} field, {@code get} for any other, without
+     * parameters and of the field's type; {@code set} with one parameter of the field's type and no
+     * result; each before the field's name with its first letter upper-cased, or unchanged when its
+     * second letter is upper case ({@code xCoord} gives {@code getxCoord}). A class extending a
+     * Panache entity base counts as managed whether it is annotated or not.
      */
-    private String panacheAccessor(TypeElement holder, TypeElement owner, VariableElement el, Ctx ctx) {
-        if (!panacheEntity(holder)) {
+    private String managedAccessor(TypeElement holder, TypeElement owner, VariableElement el, Ctx ctx) {
+        if (!el.getModifiers().contains(Modifier.PUBLIC) || el.getModifiers().contains(Modifier.STATIC)
+            || annotation(el, "jakarta.persistence.Transient") != null) {
             return null;
         }
-        TypeElement from = ctx == null || ctx.fn == null ? null : ctx.fn.cls;
-        if (holder.equals(from) || owner.equals(from)) {
-            return null;
+        List<TypeElement> chain = new ArrayList<>();
+        for (TypeElement c = holder; ; c = (TypeElement) types.asElement(c.getSuperclass())) {
+            if (!managed(c)) {
+                return null;
+            }
+            chain.add(c);
+            if (c.equals(owner)) {
+                break;
+            }
+            if (c.getSuperclass().getKind() != TypeKind.DECLARED) {
+                return null;
+            }
         }
         String name = el.getSimpleName().toString();
         String cap = name.length() > 1 && Character.isUpperCase(name.charAt(1)) ? name
             : Character.toUpperCase(name.charAt(0)) + name.substring(1);
-        Set<String> accessors = Set.of((el.asType().getKind() == TypeKind.BOOLEAN ? "is" : "get") + cap, "set" + cap);
-        for (TypeElement c = holder; c != null; ) {
+        String getter = (el.asType().getKind() == TypeKind.BOOLEAN ? "is" : "get") + cap;
+        String setter = "set" + cap;
+        TypeMirror ft = types.erasure(el.asType());
+        Fn fn = ctx == null ? null : ctx.fn;
+        Element self = null;
+        if (fn != null && !fn.inLambda && fn.cls != null) {
+            if (fn.isCtor && inManagedHierarchy(fn.cls, holder)) {
+                return null;
+            }
+            Element m = fn.path != null && fn.path.getLeaf() instanceof MethodTree ? trees.getElement(fn.path) : null;
+            if (m instanceof ExecutableElement && fn.cls.equals(holder) && holder.equals(owner)
+                && isAccessor((ExecutableElement) m, getter, setter, ft)) {
+                // Inside the getter its read is direct and a write calls the setter; inside the setter
+                // the other way round. Whether this access reads or writes is not known here, so only
+                // the other accessor, declared, makes it a call of code.
+                self = m;
+            }
+        }
+        for (TypeElement c : chain) {
             for (Element m : c.getEnclosedElements()) {
-                if (m.getKind() == ElementKind.METHOD && accessors.contains(m.getSimpleName().toString())) {
+                if (m.getKind() == ElementKind.METHOD && !m.equals(self) && isAccessor((ExecutableElement) m, getter, setter, ft)) {
                     return c.getSimpleName() + "." + m.getSimpleName();
                 }
             }
-            if (c.equals(owner) || c.getSuperclass().getKind() != TypeKind.DECLARED) {
-                break;
-            }
-            c = (TypeElement) types.asElement(c.getSuperclass());
         }
         return null;
+    }
+
+    /** Whether {@code m} is the getter {@code getter} or the setter {@code setter} of a field of erased type {@code ft}. */
+    private boolean isAccessor(ExecutableElement m, String getter, String setter, TypeMirror ft) {
+        String n = m.getSimpleName().toString();
+        if (n.equals(getter)) {
+            return m.getParameters().isEmpty() && types.isSameType(types.erasure(m.getReturnType()), ft);
+        }
+        return n.equals(setter) && m.getParameters().size() == 1 && m.getReturnType().getKind() == TypeKind.VOID
+            && types.isSameType(types.erasure(m.getParameters().get(0).asType()), ft);
+    }
+
+    /** Whether Quarkus manages {@code c}: an {@code @Entity}, {@code @MappedSuperclass} or {@code @Embeddable} class, or a Panache entity. */
+    private boolean managed(TypeElement c) {
+        if (c.getKind() != ElementKind.CLASS) {
+            return false;
+        }
+        for (String a : MANAGED) {
+            if (annotation(c, a) != null) {
+                return true;
+            }
+        }
+        return panacheEntity(c);
+    }
+
+    /**
+     * Whether {@code cls} is {@code target} or reaches it through managed superclasses: a constructor
+     * of such a class accesses the field directly.
+     */
+    private boolean inManagedHierarchy(TypeElement cls, TypeElement target) {
+        for (TypeElement c = cls; ; c = (TypeElement) types.asElement(c.getSuperclass())) {
+            if (c.equals(target)) {
+                return true;
+            }
+            if (!managed(c) || c.getSuperclass().getKind() != TypeKind.DECLARED) {
+                return false;
+            }
+        }
     }
 
     /**
@@ -4152,9 +4336,21 @@ public final class Reader {
                                            TreePath recvPath, Ctx ctx) {
         boolean isStatic = m.getModifiers().contains(Modifier.STATIC);
         String name = m.getSimpleName().toString();
-        if (inOtherPackage(owner) && !declared(m)) {
-            throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + ", which its package does not read:"
-                + " the module of the package declares no function for it");
+        Fn foreign = null;
+        if (inOtherPackage(owner)) {
+            if (owner.getKind() == ElementKind.INTERFACE) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + " through an interface of another"
+                    + " package: the reader builds a call of another package only from a function its module declares");
+            }
+            foreign = declaredFn(m);
+            if (foreign == null) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + ", which its package does not read:"
+                    + " the module of the package declares no function for it");
+            }
+            String why = foreignCallShape(foreign);
+            if (why != null) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + " of another package: " + why);
+            }
         }
         Map<String, Object> recv = null;
         if (!isStatic) {
@@ -4168,12 +4364,17 @@ public final class Reader {
             }
         }
         List<Map<String, Object>> sigParams = new ArrayList<>();
-        for (VariableElement v : m.getParameters()) {
-            sigParams.add(signatureType(v.asType()));
-        }
         List<Map<String, Object>> sigResults = new ArrayList<>();
-        if (m.getReturnType().getKind() != TypeKind.VOID) {
-            sigResults.add(signatureType(m.getReturnType()));
+        if (foreign != null) {
+            sigParams.addAll(foreignTypes(foreign.params, packageOf(owner)));
+            sigResults.addAll(foreignTypes(foreign.results(), packageOf(owner)));
+        } else {
+            for (VariableElement v : m.getParameters()) {
+                sigParams.add(signatureType(v.asType()));
+            }
+            if (m.getReturnType().getKind() != TypeKind.VOID) {
+                sigResults.add(signatureType(m.getReturnType()));
+            }
         }
         boolean variadic = m.isVarArgs();
         Map<String, Object> declared = Json.obj();
@@ -4184,7 +4385,7 @@ public final class Reader {
         if (!isStatic) {
             declared.put("recv", externType(owner, List.of()));
         }
-        Map<String, Object> entity = isStatic ? panacheStaticEntity(owner, recvPath, ctx) : null;
+        Map<String, Object> entity = isStatic ? panacheStaticEntity(owner, name, recvPath, ctx) : null;
         if (entity != null) {
             Map<String, Object> tp = Json.obj();
             tp.put("name", "E");
@@ -4205,7 +4406,8 @@ public final class Reader {
                 : variadic ? sub(sigParams.get(sigParams.size() - 1), "elem") : null;
             args.add(externArg(expr(ap, ctx), want));
         }
-        Map<String, Object> t = m.getReturnType().getKind() == TypeKind.VOID ? tUnit() : signatureType(trees.getTypeMirror(p));
+        Map<String, Object> t = m.getReturnType().getKind() == TypeKind.VOID ? tUnit()
+            : foreign != null ? sigResults.get(0) : signatureType(trees.getTypeMirror(p));
         registerExtern(path, typeName, name, declared);
         Map<String, Object> c = Json.obj();
         if (isStatic) {
@@ -4231,19 +4433,35 @@ public final class Reader {
      * The entity a static method of a Panache entity base is called on, as the type argument of the
      * extern's one type parameter {@code E}, or null for any other static method. Panache gives each
      * entity its own copy of the method, run on that entity's table: {@code Fruit.deleteAll()} and
-     * {@code Other.deleteAll()} are one Java method and two operations. The entity is the class the
-     * call names, the class of the calling method when it names none, and the base itself when the
-     * call names it.
+     * {@code Other.deleteAll()} are one Java method and two operations. The entity is the class javac
+     * calls the method on: the class the call names; for an unqualified call, the calling class when
+     * it inherits the method, else the class a static import names. javac calls the base itself for
+     * a call naming the base and for an unqualified call in a class nested in an entity; Panache gives
+     * the base no copy and its own method only throws, so such a call is refused, as is one where
+     * javac's class is not known (a static field's initializer).
      */
-    private Map<String, Object> panacheStaticEntity(TypeElement owner, TreePath recvPath, Ctx ctx) {
+    private Map<String, Object> panacheStaticEntity(TypeElement owner, String name, TreePath recvPath, Ctx ctx) {
         if (!project || !PANACHE_ENTITY_BASES.contains(owner.getQualifiedName().toString())) {
             return null;
         }
-        TypeElement entity = owner;
+        TypeElement entity = null;
         if (recvPath != null && trees.getElement(recvPath) instanceof TypeElement) {
             entity = (TypeElement) trees.getElement(recvPath);
-        } else if (recvPath == null && ctx != null && ctx.fn != null) {
-            entity = ctx.fn.cls;
+        } else if (recvPath == null && ctx != null && ctx.fn != null && ctx.fn.cls != null) {
+            if (types.isSubtype(types.erasure(ctx.fn.cls.asType()), types.erasure(owner.asType()))) {
+                entity = ctx.fn.cls;
+            } else {
+                boolean outer = false;
+                for (Element e = ctx.fn.cls.getEnclosingElement(); e instanceof TypeElement; e = e.getEnclosingElement()) {
+                    outer |= types.isSubtype(types.erasure(e.asType()), types.erasure(owner.asType()));
+                }
+                entity = outer ? owner : staticImport(ctx.cu, name, owner);
+            }
+        }
+        if (entity == null || entity.equals(owner)) {
+            throw new Unsupported("a Panache static method " + name + " that javac calls on " + owner.getSimpleName()
+                + " itself, or on a class not known here: Panache runs a copy of it for each entity, and the base's own"
+                + " method only throws");
         }
         if (structs.contains(entity)) {
             return tNamed(entity.getSimpleName().toString());
@@ -4252,6 +4470,31 @@ public final class Reader {
             throw new Unsupported("a Panache static method called on " + entity.getSimpleName() + ", which is not read");
         }
         return externType(entity, List.of());
+    }
+
+    /**
+     * The class a static import of {@code cu} brings the method {@code name} in from, a subclass of
+     * {@code base}: a single-static-import of it, else an on-demand one; null when none does.
+     */
+    private TypeElement staticImport(CompilationUnitTree cu, String name, TypeElement base) {
+        TypeElement onDemand = null;
+        for (ImportTree it : cu.getImports()) {
+            if (!it.isStatic() || !(it.getQualifiedIdentifier() instanceof MemberSelectTree)) {
+                continue;
+            }
+            MemberSelectTree q = (MemberSelectTree) it.getQualifiedIdentifier();
+            TypeElement from = elements.getTypeElement(q.getExpression().toString());
+            if (from == null || !types.isSubtype(types.erasure(from.asType()), types.erasure(base.asType()))) {
+                continue;
+            }
+            if (q.getIdentifier().contentEquals(name)) {
+                return from;
+            }
+            if (q.getIdentifier().contentEquals("*") && onDemand == null) {
+                onDemand = from;
+            }
+        }
+        return onDemand;
     }
 
     /** The path of a static extern: the package of another package's class, else the class. */
@@ -4418,22 +4661,37 @@ public final class Reader {
      * class for a jar's, {@code New<C>} of the package for a class of another package.
      */
     private Map<String, Object> externNew(TreePath p, NewClassTree nc, TypeElement te, ExecutableElement ce, TypeMirror tm, Ctx ctx) {
-        if (inOtherPackage(te) && !declared(ce)) {
-            throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " that its package does not read:"
-                + " the module of the package declares no function for it");
+        Fn foreign = null;
+        if (inOtherPackage(te)) {
+            foreign = declaredFn(ce);
+            if (foreign == null) {
+                throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " that its package does not read:"
+                    + " the module of the package declares no function for it");
+            }
+            String why = foreignCallShape(foreign);
+            if (why != null) {
+                throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " of another package: " + why);
+            }
         }
         List<Map<String, Object>> sigParams = new ArrayList<>();
-        for (VariableElement v : ce.getParameters()) {
-            sigParams.add(signatureType(v.asType()));
+        List<Map<String, Object>> sigResults = new ArrayList<>();
+        if (foreign != null) {
+            sigParams.addAll(foreignTypes(foreign.params, packageOf(te)));
+            sigResults.addAll(foreignTypes(foreign.results(), packageOf(te)));
+        } else {
+            for (VariableElement v : ce.getParameters()) {
+                sigParams.add(signatureType(v.asType()));
+            }
+            sigResults.add(externType(te, List.of()));
         }
         boolean variadic = ce.isVarArgs();
         String path = staticPath(te);
-        String name = inOtherPackage(te) ? ctorName(ce) : "<init>";
+        String name = foreign != null ? foreign.name : "<init>";
         Map<String, Object> declared = Json.obj();
         declared.put("path", path);
         declared.put("name", name);
         declared.put("params", new ArrayList<Object>(sigParams));
-        declared.put("results", new ArrayList<Object>(List.of(externType(te, List.of()))));
+        declared.put("results", new ArrayList<Object>(sigResults));
         if (variadic) {
             declared.put("variadic", Boolean.TRUE);
         }
@@ -4452,7 +4710,7 @@ public final class Reader {
         c.put("path", path);
         c.put("name", name);
         c.put("args", args);
-        c.put("t", signatureType(tm));
+        c.put("t", foreign != null ? sigResults.get(0) : signatureType(tm));
         return c;
     }
 
@@ -4658,6 +4916,7 @@ public final class Reader {
         lf.isStatic = ctx.fn.isStatic;
         lf.cls = ctx.fn.cls;
         lf.path = ctx.fn.path;
+        lf.inLambda = true;
         lf.values.addAll(frs);
         Ctx lc = new Ctx(lf, ctx.cu, ctx.hasThis);
         lc.used.addAll(ctx.used);

@@ -71,10 +71,15 @@ A project read also maps what a package read refuses:
 It refuses, each at its line: a constructor calling `this(…)`, an inner class, a `static final`
 field set by anything else, a read or write of a field of a class of another package (the object is
 an opaque extern there), a call of another package's method or constructor which that package does
-not read, a read of a Panache entity's field from outside it when the entity declares the field's
-getter or setter by Quarkus's names (Panache calls it instead), and a class implementing
-`ExceptionMapper`. `@Transactional` is recorded in `transactional`, the keys of the functions that
-run in a transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the
+not read, or which returns an error or an Optional there, a Panache static method javac calls on
+the base itself, a read or write of a public field of an `@Entity`, `@MappedSuperclass`,
+`@Embeddable` or Panache class, anywhere but in its constructors and in that getter or setter
+itself, when the class declares the field's getter or setter by Quarkus's name and descriptor
+(Quarkus calls it instead), and a class implementing `ExceptionMapper`. A call of another
+package's function is an extern with the signature that package's module declares.
+
+`@Transactional` is recorded in `transactional`, the keys of the functions that run in a
+transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the
 `http` entry. `@Entity`, `@Cacheable`, `@Id`, `@GeneratedValue` and `@Column` on a class read as a struct
 or on its instance field are recorded in `persistence`, each with the type or field it marks and its
 arguments on one line; elsewhere they are refusals.
