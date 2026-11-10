@@ -64,8 +64,8 @@ pub(crate) fn module(m: &Module) -> Result<(), String> {
     types.into_iter().try_for_each(|t| c.ty(t))
 }
 
-/// Every argument of `calls` fits its parameter: an integer within its parameter's width, a
-/// bool `true` or `false`.
+/// Every integer argument of `calls` fits its parameter's width (`calls_go` has already
+/// refused a bool other than `true` or `false`).
 pub(crate) fn calls(m: &Module, calls: &Calls) -> Result<(), String> {
     let c = Check::new(m);
     for call in &calls.calls {
@@ -77,29 +77,20 @@ pub(crate) fn calls(m: &Module, calls: &Calls) -> Result<(), String> {
             continue;
         };
         for (a, p) in call.args.iter().zip(&f.params) {
-            match c.under(&p.t, 0) {
-                Some(Type::Int { width, signed }) => {
-                    let bits = match width {
-                        IntWidth::W8 => 8,
-                        IntWidth::W16 => 16,
-                        IntWidth::W32 => 32,
-                        IntWidth::W64 | IntWidth::Platform => 64,
-                    };
-                    let fits = a.parse::<i128>().is_ok_and(|n| wrap(n, bits, signed) == n);
-                    if !fits {
-                        return Err(format!(
-                            "{}: the argument {a} does not fit the parameter {}",
-                            call.func, p.name
-                        ));
-                    }
-                }
-                Some(Type::Bool) if a != "true" && a != "false" => {
+            if let Some(Type::Int { width, signed }) = c.under(&p.t, 0) {
+                let bits = match width {
+                    IntWidth::W8 => 8,
+                    IntWidth::W16 => 16,
+                    IntWidth::W32 => 32,
+                    IntWidth::W64 | IntWidth::Platform => 64,
+                };
+                let fits = a.parse::<i128>().is_ok_and(|n| wrap(n, bits, signed) == n);
+                if !fits {
                     return Err(format!(
-                        "{}: the argument {a} is not a bool, as the parameter {} is",
+                        "{}: the argument {a} does not fit the parameter {}",
                         call.func, p.name
                     ));
                 }
-                _ => {}
             }
         }
     }
@@ -339,15 +330,16 @@ impl<'m> Check<'m> {
 
 #[cfg(test)]
 mod tests {
-    use crate::interp::{MAX_DEPTH, MAX_TYPE_DEPTH, MAX_VALUE_CELLS};
+    use crate::interp::{MAX_DEPTH, MAX_NEST, MAX_TYPE_DEPTH, MAX_VALUE_CELLS};
 
     /// The crate doc and `codespec eval --help` state these numbers.
     #[test]
     fn the_stated_limits_are_the_limits() {
         assert_eq!(
-            (MAX_DEPTH, MAX_TYPE_DEPTH, MAX_VALUE_CELLS),
-            (1000, 100, 4_194_304)
+            (MAX_DEPTH, MAX_NEST, MAX_TYPE_DEPTH, MAX_VALUE_CELLS),
+            (1000, 10_000, 100, 4_194_304)
         );
+        assert_eq!(crate::EVAL_STACK, 512 << 20);
         assert_eq!(crate::Options::default().max_steps, 10_000_000);
     }
 }

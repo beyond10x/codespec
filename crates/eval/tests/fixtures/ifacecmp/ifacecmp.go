@@ -33,11 +33,12 @@ func Keys() int {
 	return len(m)
 }
 
-// Held reports whether a Named(1) appended to a []any equals the int 1.
+// Held reports whether a Named(1) appended to a []any equals the int 1, or differs from the
+// Named(1): neither, as an append converts n to any keeping its type.
 func Held() bool {
 	var n Named
 	n = 1
 	xs := []any{}
 	xs = append(xs, n)
-	return xs[0] == 1
+	return xs[0] == 1 || xs[0] != n
 }

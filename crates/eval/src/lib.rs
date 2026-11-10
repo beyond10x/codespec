@@ -20,10 +20,10 @@
 //! | `foreign` | a `foreign` statement is executed, or a variable's initializer is foreign source; one the run does not reach does not stop it |
 //! | `no handler` | an extern with no built-in handler is called; the handlers are `path.Join`, `strconv.Itoa`, `strings.Repeat` and `strings.Builder`'s `WriteString`, `Len` and `String`, each as Go's |
 //! | `no body` | a function the module declares without a body (`opaque`) is called |
-//! | `panic` | Go would panic: an index out of range, a nil dereference, a zero divisor, a send on a closed channel, a handler's panic |
+//! | `panic` | Go would panic: an index out of range, a nil dereference, a zero divisor, a send on a closed channel, a handler's panic (a write to a copied non-zero `strings.Builder`) |
 //! | `blocked` | a send on a full channel or a receive from an empty one, which only another goroutine could end |
-//! | `step budget` | the run took more than [`Options::max_steps`] steps (default 10,000,000; each statement, call and loop iteration is one), or calls nest deeper than 1000 |
-//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v` (and `%w` outside `errorf`), a string outside ASCII in a result, a value the kit's driver cannot print, an `append` growing a slice of an extern type, a zero value a generic type's arguments make over the limit below |
+//! | `step budget` | the run took more than [`Options::max_steps`] steps (default 10,000,000; each statement, call and loop iteration is one; an element or field of a value with a place, an array's `len` and a range's next iteration are read in place, so a step copies no more than Go copies), calls nest deeper than 1000, statements and expressions nest deeper than 10,000 levels counting through calls, or the evaluator's 512 MiB stack has less than 64 MiB left |
+//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v` (and `%w` outside `errorf`), a string outside ASCII in a result, a value the kit's driver cannot print, an `append` growing a slice of an extern type, a zero value a generic type's arguments make over the limit below, an entry added to a map during a range over it |
 //!
 //! A panic inside a function literal a module variable holds names its node as
 //! `<module path>.<var>#init.…` ([`id`]).
@@ -38,8 +38,7 @@
 //! - a type the module does not declare, a struct or newtype that holds itself, a type nested
 //!   deeper than 100 inside a value;
 //! - a type whose zero value takes more than 4,194,304 cells (one per scalar or reference);
-//! - an argument of the calls file its parameter cannot hold: an integer outside its width, a
-//!   bool other than `true` or `false`.
+//! - an argument of the calls file its parameter cannot hold: an integer outside its width.
 //!
 //! # Semantics
 //!
@@ -51,10 +50,36 @@
 //! loop, through a `switch` (`sem.switch.break`). Structs and arrays are values; a slice shares
 //! its array with the slices `append` made from it while it has room, and grows to the capacity
 //! Go's runtime gives it (`runtime.growslice` with its size classes, on amd64). `len` counts a
-//! string's bytes. A concrete value compared with an interface, switched on against one, used as
-//! a key of a map with interface keys or appended to a slice of interfaces is converted to the
-//! interface type first. Module variables are initialised in Go's dependency order. `fmt` calls
-//! no `String` or `Error` method of a value it reaches through an unexported struct field.
+//! string's bytes. Module variables are initialised in Go's dependency order, then the `init`
+//! functions run by file name and line, before the first call. A `range` reads each element,
+//! entry value or rune when it reaches it. `fmt` calls a value's `Error` or `String` method for
+//! `%v` and `%s`, but none of a value it reaches through an unexported struct field. A value
+//! held as `error` and the same value held as another interface are equal.
+//!
+//! # Interfaces
+//!
+//! A concrete value entering a slot of interface type is converted to it, keeping its type, in
+//! one place (`Interp::enter_slot`). The `cir/1` nodes that put a value into a typed slot, and so
+//! the crossings that pass through it:
+//!
+//! - `assign`: each value into its target's type, one value per target or a multi-valued call
+//!   spread over the targets;
+//! - `return`: each result into the function's result type, a multi-valued call spread;
+//! - a call's arguments into its parameters: `call`, `method`, `iface_call`, `call_value`
+//!   of a function, a method value or a function literal, `extern` and `extern_method` with
+//!   their declared parameters; a variadic tail's values into the slice's element type, a
+//!   multi-valued call spread over the parameters;
+//! - `send`: the value into the channel's element type;
+//! - `struct`: each field's value into the field's type;
+//! - `append`: each value into the slice's element type;
+//! - `index` of a map (read, assign, comma-ok) and `lookup_else`: the key into the key type;
+//! - `binop` `==` and `!=`: either operand into the other's interface type; `switch`: the tag
+//!   and each case value likewise;
+//! - `conv` to an interface type, `to_iface` (and `to_error` into `error`);
+//! - a module variable's initializer into the variable's type.
+//!
+//! `let`, `for_range`, `lookup_else`'s name and a receive declare variables of the value's own
+//! type, and a `var` holds a zero value: no crossing.
 //!
 //! # Limits
 //!
@@ -65,6 +90,8 @@
 //!   stack, with a capacity its escape analysis decides; the evaluator gives every slice the
 //!   heap's capacity, so a program whose result depends on whether two such appends share an
 //!   array may print otherwise than Go.
+//! - Several `init` functions share the function key `init`, so the node ids inside them do
+//!   too; a stop in one is told apart by its position only.
 
 mod builtins;
 mod check;
@@ -151,8 +178,9 @@ pub struct Run {
     pub stop: Option<Stop>,
 }
 
-/// The stack the evaluator runs on: room for its deepest call nesting in a debug build.
-const EVAL_STACK: usize = 512 << 20;
+/// The stack the evaluator runs on: room for [`interp::MAX_NEST`] levels of its own recursion
+/// in a debug build (about 33 KiB a level), with a margin the run stops at besides.
+pub(crate) const EVAL_STACK: usize = 512 << 20;
 
 /// Run `calls` against `m` and give what it prints. Refused (`Err`) before anything runs: calls
 /// that do not fit the module as the kit's driver requires (an exported top-level function,
@@ -175,7 +203,13 @@ pub fn run_calls(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, Strin
 
 fn run_on_this_thread(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, String> {
     let mut it = interp::Interp::new(m, opts.max_steps);
-    let mut stop = it.init_globals().err().map(|h| h.stop(m));
+    let base = 0u8;
+    it.stack_base = &base as *const u8 as usize;
+    let mut stop = it
+        .init_globals()
+        .and_then(|()| it.run_inits())
+        .err()
+        .map(|h| h.stop(m));
     if stop.is_none() {
         for c in &calls.calls {
             let f = m

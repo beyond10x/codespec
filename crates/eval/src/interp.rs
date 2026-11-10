@@ -19,6 +19,14 @@ use crate::{Stop, StopKind};
 /// How deep calls may nest before the run stops.
 pub(crate) const MAX_DEPTH: usize = 1000;
 
+/// How deep the evaluator's own recursion, `eval` and `exec` with the calls between them, may
+/// nest before the run stops: bounded so the stack it runs on cannot overflow.
+pub(crate) const MAX_NEST: usize = 10_000;
+
+/// The stack left free below which the run stops even within [`MAX_NEST`]: room for the
+/// recursion the count does not see (formatting, zero values, equality of nested values).
+const STACK_MARGIN: usize = 64 << 20;
+
 /// How deep types may nest inside a value (struct fields, array elements) before the evaluator
 /// refuses the type.
 pub(crate) const MAX_TYPE_DEPTH: usize = 100;
@@ -104,6 +112,10 @@ pub(crate) struct Interp<'m> {
     frames: Vec<Frame<'m>>,
     out: Vec<u8>,
     steps: u64,
+    /// How deep `eval` and `exec` nest now, calls included.
+    nest: usize,
+    /// The address of the evaluator thread's first frame, for the stack margin.
+    pub(crate) stack_base: usize,
     max_steps: u64,
 }
 
@@ -158,6 +170,8 @@ impl<'m> Interp<'m> {
             frames: Vec::new(),
             out: Vec::new(),
             steps: 0,
+            nest: 0,
+            stack_base: 0,
             max_steps,
         }
     }
@@ -380,9 +394,11 @@ impl<'m> Interp<'m> {
         }
     }
 
-    /// `v`, of static type `from`, stored where a value of `to` is expected: held with its type
-    /// when `to` is an interface and `from` is not, as Go converts it implicitly.
-    fn boxed(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
+    /// `v`, of static type `from`, entering a slot of type `to`: held with its type when `to` is
+    /// an interface and `from` is not, as Go converts it implicitly. The one place a concrete
+    /// value becomes an interface value; every crossing the crate doc lists (§ Interfaces) calls
+    /// it, a list of expressions through [`Self::eval_into`].
+    fn enter_slot(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
         if !self.is_iface(to) || self.is_iface(from) {
             return v;
         }
@@ -451,7 +467,7 @@ impl<'m> Interp<'m> {
     /// that is an interface, as Go converts it.
     fn map_key(&self, k: Value<'m>, from: &Type, map: &Type) -> Value<'m> {
         match self.resolve(map) {
-            Type::Map { key, .. } => self.boxed(k, from, &key),
+            Type::Map { key, .. } => self.enter_slot(k, from, &key),
             _ => k,
         }
     }
@@ -732,61 +748,121 @@ impl<'m> Interp<'m> {
         })
     }
 
-    /// The arguments of a call of a function with `params`, the last variadic when `variadic`:
-    /// a variadic tail packed into a slice (nil when empty) unless it is one `spread`, and one
-    /// multi-valued argument spread over several parameters.
-    fn args(
+    /// The values of `exprs` stored into slots of the types `slots`, the last a slice whose
+    /// elements a variadic tail fills when `variadic`: one expression per slot, or one
+    /// multi-valued expression spread over the slots; a variadic tail is packed into a new slice
+    /// (nil when empty) unless it is one `spread`. Each value enters its slot through
+    /// [`Self::enter_slot`]. `slots` are the receiving side's types with its type parameters
+    /// already bound.
+    fn eval_into(
         &mut self,
-        nparams: usize,
+        exprs: &'m [Expr],
+        slots: &[Type],
         variadic: bool,
-        args: &'m [Expr],
         node: Node<'m>,
     ) -> R<'m, Vec<Value<'m>>> {
-        if variadic {
-            let fixed = nparams.saturating_sub(1);
-            let mut out = Vec::with_capacity(nparams);
-            for a in args.iter().take(fixed) {
-                out.push(self.eval(a)?);
-            }
-            let rest = &args[fixed.min(args.len())..];
-            match rest {
-                [Expr::Spread { x, .. }] => out.push(self.eval(x)?),
-                [] => out.push(Value::Nil),
+        let mut typed: Vec<(Value<'m>, Type)> = Vec::with_capacity(exprs.len());
+        let spread_tuple = match exprs {
+            [one] => match self.subst(one.t()) {
+                Type::Tuple { elems } if elems.len() != 1 || slots.len() != 1 => Some(elems),
+                _ => None,
+            },
+            _ => None,
+        };
+        let mut spread_slice = None;
+        if let Some(elems) = spread_tuple {
+            match self.eval(&exprs[0])? {
+                Value::Tuple(vs) if vs.len() == elems.len() => {
+                    typed.extend(vs.into_iter().zip(elems));
+                }
                 _ => {
-                    let mut xs = Vec::with_capacity(rest.len());
-                    for a in rest {
-                        xs.push(self.eval(a)?);
-                    }
-                    let s = self.new_slice(xs);
-                    out.push(s);
+                    return Err(
+                        self.unsupported(node, "a multi-valued expression without its values")
+                    );
                 }
             }
-            return Ok(out);
+        } else {
+            for (i, e) in exprs.iter().enumerate() {
+                if variadic
+                    && i + 1 == exprs.len()
+                    && i + 1 == slots.len()
+                    && let Expr::Spread { x, .. } = e
+                {
+                    spread_slice = Some(self.eval(x)?);
+                    break;
+                }
+                let v = self.eval(e)?;
+                typed.push((v, self.subst(e.t())));
+            }
         }
-        if args.len() == 1 && nparams > 1 {
-            return match self.eval(&args[0])? {
-                Value::Tuple(vs) if vs.len() == nparams => Ok(vs),
-                _ => Err(self.unsupported(node, "one argument for several parameters")),
-            };
+        let fixed = if variadic {
+            slots.len().saturating_sub(1)
+        } else {
+            slots.len()
+        };
+        if typed.len() < fixed || (!variadic && typed.len() != fixed) {
+            return Err(self.unsupported(
+                node,
+                format!("{} values for {} slots", typed.len(), slots.len()),
+            ));
         }
-        args.iter().map(|a| self.eval(a)).collect()
+        let mut rest = typed.split_off(fixed);
+        let mut out = Vec::with_capacity(slots.len());
+        for ((v, from), to) in typed.into_iter().zip(slots) {
+            out.push(self.enter_slot(v, &from, to));
+        }
+        if variadic {
+            if let Some(s) = spread_slice {
+                out.push(s);
+            } else if rest.is_empty() {
+                out.push(Value::Nil);
+            } else {
+                let elem = match self.resolve(&slots[fixed]) {
+                    Type::Slice { elem } => *elem,
+                    _ => Type::Unit,
+                };
+                let xs: Vec<Value<'m>> = rest
+                    .drain(..)
+                    .map(|(v, from)| self.enter_slot(v, &from, &elem))
+                    .collect();
+                let s = self.new_slice(xs);
+                out.push(s);
+            }
+        }
+        Ok(out)
     }
 
+    /// The static types of `exprs`, as slots that convert nothing: the arguments of an extern
+    /// the module does not declare.
+    fn own_types(&self, exprs: &[Expr]) -> Vec<Type> {
+        match exprs {
+            [one] => match self.subst(one.t()) {
+                Type::Tuple { elems } => elems,
+                t => vec![t],
+            },
+            _ => exprs.iter().map(|e| self.subst(e.t())).collect(),
+        }
+    }
+
+    /// The parameter types of `f` with the type arguments `tb` bound, and whether it is
+    /// variadic.
+    fn param_slots(params: &[Param], tb: &[(String, Type)]) -> (Vec<Type>, bool) {
+        (
+            params.iter().map(|p| subst(&p.t, tb)).collect(),
+            params.last().is_some_and(|p| p.variadic),
+        )
+    }
+
+    /// The arguments `args` of a call of `f`, its type parameters bound by `tb`.
     fn func_args(
         &mut self,
         f: &'m Func,
+        tb: &[(String, Type)],
         args: &'m [Expr],
         node: Node<'m>,
     ) -> R<'m, Vec<Value<'m>>> {
-        let variadic = f.params.last().is_some_and(|p| p.variadic);
-        let mut vs = self.args(f.params.len(), variadic, args, node)?;
-        if args.len() == f.params.len() && !variadic {
-            for (i, v) in vs.iter_mut().enumerate() {
-                let taken = std::mem::replace(v, Value::Unit);
-                *v = self.boxed(taken, args[i].t(), &f.params[i].t);
-            }
-        }
-        Ok(vs)
+        let (slots, variadic) = Self::param_slots(&f.params, tb);
+        self.eval_into(args, &slots, variadic, node)
     }
 
     /// The receiver `f` takes, from the expression `x`: its address for a pointer receiver on
@@ -853,12 +929,14 @@ impl<'m> Interp<'m> {
                 let wants_ptr = f.recv.as_ref().is_some_and(|r| self.is_ptr(&r.t));
                 let recv = match (wants_ptr, v) {
                     (true, Value::Ptr(p)) => Value::Ptr(p),
+                    // A nil pointer held by an interface: the method receives nil.
+                    (true, Value::Nil) if matches!(t, Type::Ptr { .. }) => Value::Nil,
                     (true, other) => Value::Ptr(Place::cell(self.alloc(other))),
                     (false, Value::Ptr(p)) => self.deref(&Value::Ptr(p), node)?,
                     (false, other) => other,
                 };
-                let argv = self.func_args(f, args, node)?;
                 let tb = self.recv_binds(f, t);
+                let argv = self.func_args(f, &tb, args, node)?;
                 let vs = self.call_func(f, Some(recv), argv, tb, Some(node))?;
                 Ok(Self::result(vs))
             }
@@ -950,6 +1028,36 @@ impl<'m> Interp<'m> {
     }
 
     fn exec(&mut self, s: &'m Stmt) -> R<'m, Flow<'m>> {
+        self.nested(Node::Stmt(s))?;
+        let r = self.exec_inner(s);
+        self.nest -= 1;
+        r
+    }
+
+    /// One level deeper: a stop past [`MAX_NEST`], before the evaluator's own stack could
+    /// overflow.
+    fn nested(&mut self, node: Node<'m>) -> R<'m, ()> {
+        if self.nest >= MAX_NEST {
+            return Err(self.halt(
+                StopKind::Budget,
+                node,
+                format!("calls and expressions nest deeper than the evaluator's {MAX_NEST}"),
+            ));
+        }
+        let here = 0u8;
+        let used = self.stack_base.saturating_sub(&here as *const u8 as usize);
+        if self.stack_base != 0 && used > crate::EVAL_STACK - STACK_MARGIN {
+            return Err(self.halt(
+                StopKind::Budget,
+                node,
+                "calls and expressions nest so deep the evaluator's stack is nearly full",
+            ));
+        }
+        self.nest += 1;
+        Ok(())
+    }
+
+    fn exec_inner(&mut self, s: &'m Stmt) -> R<'m, Flow<'m>> {
         let node = Node::Stmt(s);
         self.step(Some(node))?;
         match s {
@@ -971,14 +1079,9 @@ impl<'m> Interp<'m> {
                     for l in lhs {
                         targets.push(self.target(l)?);
                     }
-                    let vs = self.values(rhs, lhs.len(), node)?;
-                    let one_to_one = rhs.len() == lhs.len();
-                    for (i, (t, v)) in targets.into_iter().zip(vs).enumerate() {
-                        let v = if one_to_one {
-                            self.boxed(v, rhs[i].t(), lhs[i].t())
-                        } else {
-                            v
-                        };
+                    let slots: Vec<Type> = lhs.iter().map(|l| self.subst(l.t())).collect();
+                    let vs = self.eval_into(rhs, &slots, false, node)?;
+                    for (t, v) in targets.into_iter().zip(vs) {
                         self.store(t, v, node)?;
                     }
                 } else {
@@ -1048,8 +1151,8 @@ impl<'m> Interp<'m> {
                 for c in cases {
                     for v in &c.values {
                         let cv = self.eval(v)?;
-                        let cv = self.boxed(cv, v.t(), tag_t);
-                        let tv = self.boxed(tagv.clone(), tag_t, v.t());
+                        let cv = self.enter_slot(cv, v.t(), tag_t);
+                        let tv = self.enter_slot(tagv.clone(), tag_t, v.t());
                         if equal(&tv, &cv) {
                             return self.exec_block(&c.body);
                         }
@@ -1061,19 +1164,12 @@ impl<'m> Interp<'m> {
             }
             Stmt::Return { results, .. } => {
                 let want: &'m [Type] = self.frames.last().map_or(&[], |f| f.results);
-                let mut vs = if results.is_empty() {
+                let vs = if results.is_empty() {
                     Vec::new()
                 } else {
-                    self.values(results, want.len(), node)?
+                    let slots: Vec<Type> = want.iter().map(|t| self.subst(t)).collect();
+                    self.eval_into(results, &slots, false, node)?
                 };
-                if results.len() == vs.len() {
-                    vs = vs
-                        .into_iter()
-                        .zip(results)
-                        .zip(want)
-                        .map(|((v, e), t)| self.boxed(v, e.t(), t))
-                        .collect();
-                }
                 return Ok(Flow::Return(vs));
             }
             Stmt::Expr { x, .. } => {
@@ -1081,11 +1177,14 @@ impl<'m> Interp<'m> {
             }
             Stmt::Send { chan, x, .. } => {
                 let c = self.eval(chan)?;
-                let v = self.eval(x)?;
-                let v = match self.resolve(chan.t()) {
-                    Type::Chan { elem, .. } => self.boxed(v, x.t(), &elem),
-                    _ => v,
+                let elem = match self.resolve(chan.t()) {
+                    Type::Chan { elem, .. } => *elem,
+                    _ => self.subst(x.t()),
                 };
+                let v = self
+                    .eval_into(std::slice::from_ref(x), &[elem], false, node)?
+                    .pop()
+                    .expect("one value");
                 self.send(c, v, node)?;
             }
             Stmt::LookupElse {
@@ -1201,74 +1300,116 @@ impl<'m> Interp<'m> {
         body: &'m [Stmt],
         node: Node<'m>,
     ) -> R<'m, Flow<'m>> {
-        let v = self.eval(over)?;
-        if let Value::Int(n) = v {
-            // Counted as it goes: no list of the integers is built.
-            let mut i = 0i128;
-            while i < n {
-                self.step(Some(node))?;
-                match self.range_body(key, val, Value::Int(i), None, body)? {
-                    Flow::Break => break,
-                    Flow::Return(vs) => return Ok(Flow::Return(vs)),
-                    Flow::Next | Flow::Continue => {}
-                }
-                i += 1;
-            }
-            return Ok(Flow::Next);
+        // Every kind is iterated as it goes, one step per iteration, each element read when the
+        // loop reaches it: no list of the iterations is built.
+        let wants_val = !(val.is_empty() || val == "_");
+        if let Type::Array { len, .. } = self.resolve(over.t())
+            && !wants_val
+            && Self::addressable(over)
+        {
+            // Go does not evaluate the array when only the index is used.
+            return self.range_count(key, val, len as i128, body, node);
         }
-        let items: Vec<(Value<'m>, Option<Value<'m>>)> = match &v {
-            Value::Nil => Vec::new(),
+        let v = self.eval(over)?;
+        match v {
+            Value::Int(n) => self.range_count(key, val, n, body, node),
+            Value::Nil => Ok(Flow::Next),
             Value::Slice { arr, off, len, .. } => {
-                // The length is fixed when the loop starts; each element is read as it is
-                // reached.
-                let (arr, off, len) = (*arr, *off, *len);
-                let mut out = Vec::new();
+                // The length is fixed when the loop starts.
                 for i in 0..len {
-                    let p = Place {
-                        cell: arr,
-                        path: vec![Step::Index(off + i)],
-                    };
-                    let e = if val.is_empty() || val == "_" {
-                        None
+                    self.step(Some(node))?;
+                    let e = if wants_val {
+                        let p = Place {
+                            cell: arr,
+                            path: vec![Step::Index(off + i)],
+                        };
+                        Some(self.read(&p).cloned().ok_or_else(|| {
+                            self.unsupported(node, "a slice element out of its array")
+                        })?)
                     } else {
-                        Some(p)
+                        None
                     };
-                    out.push((Value::Int(i as i128), e.map(Value::Ptr)));
+                    match self.range_body(key, val, Value::Int(i as i128), e, body)? {
+                        Flow::Break => break,
+                        Flow::Return(vs) => return Ok(Flow::Return(vs)),
+                        Flow::Next | Flow::Continue => {}
+                    }
                 }
-                out
+                Ok(Flow::Next)
             }
-            Value::Array(xs) => xs
-                .iter()
-                .enumerate()
-                .map(|(i, x)| (Value::Int(i as i128), Some(x.clone())))
-                .collect(),
-            Value::Map(id) => self
-                .map_entries(*id)
-                .iter()
-                .map(|(k, v)| (k.clone(), Some(v.clone())))
-                .collect(),
-            Value::Str(s) => runes(s)
-                .into_iter()
-                .map(|(i, r)| (Value::Int(i as i128), Some(Value::Int(r as i128))))
-                .collect(),
-            _ => return Err(self.unsupported(node, "a range over this value")),
-        };
-        let slice = matches!(v, Value::Slice { .. });
-        for (k, e) in items {
-            self.step(Some(node))?;
-            let e = match (slice, e) {
-                (true, Some(Value::Ptr(p))) => {
-                    Some(self.read(&p).cloned().ok_or_else(|| {
-                        self.unsupported(node, "a slice element out of its array")
-                    })?)
+            Value::Array(xs) => {
+                // The copy Go ranges over when the value is used.
+                for (i, x) in xs.into_iter().enumerate() {
+                    self.step(Some(node))?;
+                    let e = wants_val.then_some(x);
+                    match self.range_body(key, val, Value::Int(i as i128), e, body)? {
+                        Flow::Break => break,
+                        Flow::Return(vs) => return Ok(Flow::Return(vs)),
+                        Flow::Next | Flow::Continue => {}
+                    }
                 }
-                (_, e) => e,
-            };
-            match self.range_body(key, val, k, e, body)? {
+                Ok(Flow::Next)
+            }
+            Value::Map(id) => {
+                // Each entry's value is read when the loop reaches it. `cir/1` deletes no entry;
+                // an entry added during the loop Go may or may not visit.
+                let n = self.map_entries(id).len();
+                for i in 0..n {
+                    self.step(Some(node))?;
+                    let (k, e) = self.map_entries(id)[i].clone();
+                    let flow = self.range_body(key, val, k, Some(e), body)?;
+                    if self.map_entries(id).len() != n {
+                        return Err(self.unsupported(
+                            node,
+                            "an entry added to a map during a range over it, which Go visits \
+                             or not by chance",
+                        ));
+                    }
+                    match flow {
+                        Flow::Break => break,
+                        Flow::Return(vs) => return Ok(Flow::Return(vs)),
+                        Flow::Next | Flow::Continue => {}
+                    }
+                }
+                Ok(Flow::Next)
+            }
+            Value::Str(s) => {
+                let mut i = 0;
+                while i < s.len() {
+                    self.step(Some(node))?;
+                    let (r, width) = rune_at(&s, i);
+                    let e = Some(Value::Int(r as i128));
+                    match self.range_body(key, val, Value::Int(i as i128), e, body)? {
+                        Flow::Break => break,
+                        Flow::Return(vs) => return Ok(Flow::Return(vs)),
+                        Flow::Next | Flow::Continue => {}
+                    }
+                    i += width;
+                }
+                Ok(Flow::Next)
+            }
+            _ => Err(self.unsupported(node, "a range over this value")),
+        }
+    }
+
+    /// A range over the integers `0..n`, counted as it goes.
+    fn range_count(
+        &mut self,
+        key: &'m str,
+        val: &'m str,
+        n: i128,
+        body: &'m [Stmt],
+        node: Node<'m>,
+    ) -> R<'m, Flow<'m>> {
+        let mut i = 0i128;
+        while i < n {
+            self.step(Some(node))?;
+            match self.range_body(key, val, Value::Int(i), None, body)? {
                 Flow::Break => break,
                 Flow::Return(vs) => return Ok(Flow::Return(vs)),
                 Flow::Next | Flow::Continue => {}
             }
+            i += 1;
         }
         Ok(Flow::Next)
     }
@@ -1440,6 +1581,25 @@ impl<'m> Interp<'m> {
         }
     }
 
+    /// Whether [`Self::place`] names `e`'s place, so a part of it can be read without copying
+    /// the whole: a variable, a field of one or through a pointer, an element of a slice, of an
+    /// array with a place, or through a pointer to an array.
+    fn has_place(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Var { name, .. } => name != "_",
+            Expr::Global { .. } => true,
+            Expr::Field { x, .. } => self.is_ptr(x.t()) || self.has_place(x),
+            Expr::Index { x, .. } => match self.resolve(x.t()) {
+                Type::Slice { .. } => true,
+                Type::Array { .. } => self.has_place(x),
+                Type::Ptr { elem } => matches!(*elem, Type::Array { .. }),
+                _ => false,
+            },
+            Expr::Unop { op, .. } => op == "*",
+            _ => false,
+        }
+    }
+
     fn addressable(e: &Expr) -> bool {
         match e {
             Expr::Var { .. } | Expr::Global { .. } => true,
@@ -1515,6 +1675,13 @@ impl<'m> Interp<'m> {
     // ---- expressions ----
 
     pub(crate) fn eval(&mut self, e: &'m Expr) -> R<'m, Value<'m>> {
+        self.nested(Node::Expr(e))?;
+        let r = self.eval_inner(e);
+        self.nest -= 1;
+        r
+    }
+
+    fn eval_inner(&mut self, e: &'m Expr) -> R<'m, Value<'m>> {
         let node = Node::Expr(e);
         match e {
             Expr::Lit { value, t } => self.lit(value, t, node),
@@ -1548,6 +1715,22 @@ impl<'m> Interp<'m> {
             Expr::Global { name, .. } => {
                 let id = self.global(name, node)?;
                 Ok(self.heap[id].clone())
+            }
+            // A part of a value with a place is read there, without copying the whole value.
+            Expr::Field { .. } if self.has_place(e) => {
+                let p = self.place(e)?;
+                self.read(&p)
+                    .cloned()
+                    .ok_or_else(|| self.unsupported(node, "a pointer outside its cell"))
+            }
+            Expr::Index { x, .. }
+                if matches!(self.resolve(x.t()), Type::Array { .. } | Type::Ptr { .. })
+                    && self.has_place(e) =>
+            {
+                let p = self.place(e)?;
+                self.read(&p)
+                    .cloned()
+                    .ok_or_else(|| self.unsupported(node, "a pointer outside its cell"))
             }
             Expr::Field { x, name, .. } => {
                 let v = self.eval(x)?;
@@ -1631,7 +1814,7 @@ impl<'m> Interp<'m> {
                     .map(|p| p.name.clone())
                     .zip(targs.iter().map(|t| self.subst(t)))
                     .collect();
-                let argv = self.func_args(f, args, node)?;
+                let argv = self.func_args(f, &tb, args, node)?;
                 let vs = self.call_func(f, None, argv, tb, Some(node))?;
                 Ok(Self::result(vs))
             }
@@ -1641,7 +1824,7 @@ impl<'m> Interp<'m> {
                 let f = self.func(&format!("{tn}.{name}"), node)?;
                 let recv = self.recv_for(f, x)?;
                 let tb = self.recv_binds(f, &xt);
-                let argv = self.func_args(f, args, node)?;
+                let argv = self.func_args(f, &tb, args, node)?;
                 let vs = self.call_func(f, Some(recv), argv, tb, Some(node))?;
                 Ok(Self::result(vs))
             }
@@ -1649,11 +1832,11 @@ impl<'m> Interp<'m> {
                 path, name, args, ..
             } => {
                 let key = format!("{path}.{name}");
-                let (n, variadic) = self
-                    .m
-                    .extern_decl(path, name)
-                    .map_or((args.len(), false), |d| (d.params.len(), d.variadic));
-                let argv = self.args(n, variadic, args, node)?;
+                let (slots, variadic) = match self.m.extern_decl(path, name) {
+                    Some(d) => (d.params.clone(), d.variadic),
+                    None => (self.own_types(args), false),
+                };
+                let argv = self.eval_into(args, &slots, variadic, node)?;
                 self.builtin(&key, None, argv, node)
             }
             Expr::ExternMethod {
@@ -1679,11 +1862,11 @@ impl<'m> Interp<'m> {
                         _ => unreachable!("addr gives a pointer"),
                     }
                 };
-                let (n, variadic) = self
-                    .m
-                    .extern_method_decl(path, type_name, name)
-                    .map_or((args.len(), false), |d| (d.params.len(), d.variadic));
-                let argv = self.args(n, variadic, args, node)?;
+                let (slots, variadic) = match self.m.extern_method_decl(path, type_name, name) {
+                    Some(d) => (d.params.clone(), d.variadic),
+                    None => (self.own_types(args), false),
+                };
+                let argv = self.eval_into(args, &slots, variadic, node)?;
                 self.builtin(&key, Some(place), argv, node)
             }
             Expr::Binop { op, x, y, t } => match op.as_str() {
@@ -1693,9 +1876,9 @@ impl<'m> Interp<'m> {
                     // An interface compared with a concrete value: Go converts the concrete one
                     // to the interface type first.
                     let a = self.eval(x)?;
-                    let a = self.boxed(a, x.t(), y.t());
+                    let a = self.enter_slot(a, x.t(), y.t());
                     let b = self.eval(y)?;
-                    let b = self.boxed(b, y.t(), x.t());
+                    let b = self.enter_slot(b, y.t(), x.t());
                     self.compare(op, &a, &b, node).map(Value::Bool)
                 }
                 _ => {
@@ -1757,7 +1940,7 @@ impl<'m> Interp<'m> {
                 for fi in fields {
                     let v = self.eval(&fi.value)?;
                     let v = match decl.iter().find(|f| f.name == fi.name) {
-                        Some(f) => self.boxed(v, fi.value.t(), &subst(&f.t, &b)),
+                        Some(f) => self.enter_slot(v, fi.value.t(), &subst(&f.t, &b)),
                         None => v,
                     };
                     given.push((fi.name.as_str(), v));
@@ -1773,6 +1956,9 @@ impl<'m> Interp<'m> {
             }
             Expr::Conv { x, t, .. } => {
                 let v = self.eval(x)?;
+                if self.is_iface(t) {
+                    return Ok(self.enter_slot(v, x.t(), t));
+                }
                 self.convert(v, t, node)
             }
             Expr::Make { t } => match self.resolve(t) {
@@ -1832,13 +2018,11 @@ impl<'m> Interp<'m> {
                         self.panic(node, "invalid memory address or nil pointer dereference")
                     );
                 };
-                let (n, variadic) = match c.as_ref() {
-                    Closure::Func(f) | Closure::Bound(f, _) => {
-                        (f.params.len(), f.params.last().is_some_and(|p| p.variadic))
-                    }
-                    Closure::Lambda { params, .. } => (params.len(), false),
+                let (slots, variadic) = match c.as_ref() {
+                    Closure::Func(f) | Closure::Bound(f, _) => Self::param_slots(&f.params, &[]),
+                    Closure::Lambda { params, tbind, .. } => Self::param_slots(params, tbind),
                 };
-                let argv = self.args(n, variadic, args, node)?;
+                let argv = self.eval_into(args, &slots, variadic, node)?;
                 let vs = self.call_closure(&c, argv, node)?;
                 Ok(Self::result(vs))
             }
@@ -2075,6 +2259,12 @@ impl<'m> Interp<'m> {
                 let [x] = args else {
                     return Err(self.unsupported(node, "len of several"));
                 };
+                // An array's length is its type's: Go evaluates no array with a place for it.
+                if let Type::Array { len, .. } = self.resolve(x.t())
+                    && self.has_place(x)
+                {
+                    return Ok(Value::Int(len as i128));
+                }
                 let n = match self.eval(x)? {
                     Value::Str(s) => s.len(),
                     Value::Slice { len, .. } => len,
@@ -2094,6 +2284,10 @@ impl<'m> Interp<'m> {
                     return Err(self.unsupported(node, "append of nothing"));
                 };
                 let base = self.eval(first)?;
+                let elem = match self.resolve(first.t()) {
+                    Type::Slice { elem } => *elem,
+                    _ => Type::Unit,
+                };
                 let extra = match rest {
                     [Expr::Spread { x, .. }] => {
                         let s = self.eval(x)?;
@@ -2101,22 +2295,7 @@ impl<'m> Interp<'m> {
                             self.unsupported(node, "append of a spread that is not a slice")
                         })?
                     }
-                    _ => {
-                        let elem = match self.resolve(first.t()) {
-                            Type::Slice { elem } => *elem,
-                            _ => Type::Unit,
-                        };
-                        let mut xs = Vec::with_capacity(rest.len());
-                        for a in rest {
-                            let v = self.eval(a)?;
-                            xs.push(self.boxed(v, a.t(), &elem));
-                        }
-                        xs
-                    }
-                };
-                let elem = match self.resolve(first.t()) {
-                    Type::Slice { elem } => *elem,
-                    _ => Type::Unit,
+                    _ => self.eval_into(rest, &vec![elem.clone(); rest.len()], false, node)?,
                 };
                 self.append(base, extra, &elem, node)
             }
@@ -2296,11 +2475,12 @@ impl<'m> Interp<'m> {
                         );
                     }
                 },
-                b's' => match self.unwrap_iface(&v) {
-                    Value::Str(s) => out.extend_from_slice(s),
-                    _ => match self.method_text(&v, t, node)? {
-                        Some(s) => out.extend_from_slice(&s),
-                        None => {
+                // `%s`, as `%v`, prints through an `Error` or `String` method first.
+                b's' => match self.method_text(&v, t, node)? {
+                    Some(s) => out.extend_from_slice(&s),
+                    None => match self.unwrap_iface(&v) {
+                        Value::Str(s) => out.extend_from_slice(s),
+                        _ => {
                             return Err(self
                                 .unsupported(node, "sprintf %s of a value that is not a string"));
                         }
@@ -2555,7 +2735,7 @@ impl<'m> Interp<'m> {
                     }
                     h
                 })?;
-                self.boxed(value, init.t(), &v.t)
+                self.enter_slot(value, init.t(), &v.t)
             } else {
                 self.zero(&v.t, Node::Expr(&NIL)).map_err(|mut h| {
                     h.at = at(v);
@@ -2565,6 +2745,26 @@ impl<'m> Interp<'m> {
             self.frames.pop();
             let id = self.alloc(value);
             self.globals.push((&v.name, id));
+        }
+        Ok(())
+    }
+
+    /// Runs the module's `init` functions, after its variables are initialised and before the
+    /// first call, in Go's order: by file name, then by line. Several share the function key
+    /// `init`, so the node ids of their trees do too; a stop's position tells them apart.
+    pub(crate) fn run_inits(&mut self) -> R<'m, ()> {
+        let m = self.m;
+        let mut inits: Vec<&'m Func> = m
+            .funcs
+            .iter()
+            .filter(|f| f.name == "init" && f.recv.is_none() && f.params.is_empty())
+            .collect();
+        inits.sort_by_key(|f| {
+            let (file, line) = f.pos.rsplit_once(':').unwrap_or((&f.pos, "0"));
+            (file.to_string(), line.parse::<u64>().unwrap_or(0))
+        });
+        for f in inits {
+            self.call_func(f, None, Vec::new(), Vec::new(), None)?;
         }
         Ok(())
     }
@@ -2765,6 +2965,11 @@ fn init_deps(m: &Module) -> Vec<Vec<String>> {
 
 /// Go's `==` on two values of one comparable type.
 pub(crate) fn equal(a: &Value<'_>, b: &Value<'_>) -> bool {
+    // A value held by an interface, as an `error` (`to_error`) or as any other interface, is
+    // its dynamic type and value: two such are equal when both are.
+    if let (Some((t, v)), Some((u, w))) = (dynamic(a), dynamic(b)) {
+        return t == u && equal(v, w);
+    }
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => x == y,
         (Value::Float(x), Value::Float(y)) => x == y,
@@ -2786,6 +2991,19 @@ pub(crate) fn equal(a: &Value<'_>, b: &Value<'_>) -> bool {
         },
         (Value::Iface(t, v), Value::Iface(u, w)) => t == u && equal(v, w),
         _ => false,
+    }
+}
+
+/// The dynamic type and value of a value held by an interface of the module's types; `None`
+/// for a concrete value and for an error the module does not type (`errvar`, `errorf`).
+fn dynamic<'a, 'm>(v: &'a Value<'m>) -> Option<(&'a Type, &'a Value<'m>)> {
+    match v {
+        Value::Iface(t, x) => Some((t, x)),
+        Value::Error(e) => match e.as_ref() {
+            ErrorVal::Value(t, x) => Some((t, x)),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -2864,34 +3082,23 @@ fn serde_kind(t: &Type) -> String {
     .to_string()
 }
 
-/// The runes of a string with the byte offset of each, invalid UTF-8 read as U+FFFD one byte
-/// at a time, as Go's `range` over a string reads it.
-fn runes(s: &[u8]) -> Vec<(usize, u32)> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < s.len() {
-        let width = match s[i] {
-            0x00..=0x7f => 1,
-            0xc0..=0xdf => 2,
-            0xe0..=0xef => 3,
-            0xf0..=0xf7 => 4,
-            _ => 0,
-        };
-        match s
-            .get(i..i + width)
-            .and_then(|b| std::str::from_utf8(b).ok())
-        {
-            Some(t) if width > 0 => {
-                out.push((i, t.chars().next().expect("a char") as u32));
-                i += width;
-            }
-            _ => {
-                out.push((i, 0xfffd));
-                i += 1;
-            }
-        }
+/// The rune at byte `i` of a string and its width, invalid UTF-8 read as U+FFFD one byte at a
+/// time, as Go's `range` over a string reads it.
+fn rune_at(s: &[u8], i: usize) -> (u32, usize) {
+    let width = match s[i] {
+        0x00..=0x7f => 1,
+        0xc0..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf7 => 4,
+        _ => 0,
+    };
+    match s
+        .get(i..i + width)
+        .and_then(|b| std::str::from_utf8(b).ok())
+    {
+        Some(t) if width > 0 => (t.chars().next().expect("a char") as u32, width),
+        _ => (0xfffd, 1),
     }
-    out
 }
 
 /// A string's UTF-16 code units, the order `sorted_keys` sorts strings in.

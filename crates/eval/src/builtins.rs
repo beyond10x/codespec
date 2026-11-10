@@ -26,9 +26,14 @@ pub(crate) enum Fail {
 
 const BUILDER: &str = "strings.Builder";
 
-/// The zero value of an extern type a handler owns.
+/// The zero value of an extern type a handler owns. A `strings.Builder` holds its text and the
+/// place of its first write (nil before it), as Go's holds its own address to refuse a copy.
 pub(crate) fn zero<'m>(key: &str) -> Option<Value<'m>> {
-    (key == BUILDER).then(|| Value::Host(Rc::from(BUILDER), Box::new(Value::str(""))))
+    (key == BUILDER).then(|| builder(Value::str(""), Value::Nil))
+}
+
+fn builder<'m>(text: Value<'m>, addr: Value<'m>) -> Value<'m> {
+    Value::Host(Rc::from(BUILDER), Box::new(Value::Tuple(vec![text, addr])))
 }
 
 /// The handler `key` called on `recv` (the receiver's place, for a method) and `args` (a
@@ -68,18 +73,30 @@ pub(crate) fn call<'m>(
             let Some(place) = recv else {
                 return Some(unsupported("no receiver"));
             };
-            let buf = match it.read(&place) {
+            let (buf, addr) = match it.read(&place) {
                 Some(Value::Host(t, state)) if t.as_ref() == BUILDER => match state.as_ref() {
-                    Value::Str(s) => s.to_vec(),
+                    Value::Tuple(parts) => match parts.as_slice() {
+                        [Value::Str(s), addr] => (s.to_vec(), addr.clone()),
+                        _ => return Some(unsupported("a builder without its text")),
+                    },
                     _ => return Some(unsupported("a builder without its text")),
                 },
                 _ => return Some(unsupported("a receiver that is not a strings.Builder")),
             };
             match (key, args.as_slice()) {
                 ("strings.Builder.WriteString", [Value::Str(s)]) => {
+                    // Go's copyCheck: a write to a builder another one's first write marked.
+                    match &addr {
+                        Value::Ptr(p) if *p != place => {
+                            return Some(Err(Fail::Panic(
+                                "strings: illegal use of non-zero Builder copied by value".into(),
+                            )));
+                        }
+                        _ => {}
+                    }
                     let mut buf = buf;
                     buf.extend_from_slice(s);
-                    let host = Value::Host(Rc::from(BUILDER), Box::new(Value::bytes(buf)));
+                    let host = builder(Value::bytes(buf), Value::Ptr(place.clone()));
                     if it.write(&place, host).is_none() {
                         return Some(unsupported("a receiver outside its cell"));
                     }

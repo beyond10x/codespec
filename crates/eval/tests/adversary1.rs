@@ -155,7 +155,8 @@ fn adv_constant_expressions_are_exact_as_go_folds_them() {
     assert_eq!(r.stdout, "ok 2305843009213693952\n0.3\nok\n");
 }
 
-/// `go run`: IsOne(1) true, Which(1) "one", Keys() 2, Held() false.
+/// `go run`: IsOne(1) true, Which(1) "one", Keys() 2, Held() false (true when the append
+/// does not convert n, which then equals neither 1 held as any nor n converted).
 #[test]
 fn adv_an_interface_compares_with_a_concrete_value_as_go_converts_it() {
     let m = read("ifacecmp");
