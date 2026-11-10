@@ -263,7 +263,9 @@ under `target/`. End a merged tree with `worktree finish --discard-cache --archi
 No disk checks around builds (operator's rule, 2026-11-10): no `df`, `du` or `find` over a tree or
 `/` before, during or after a build, no free-space threshold that stops or delays work, and no
 polling script that waits for space. A build that fails with "No space left on device" is reported
-with its output; freeing space is the operator's `disk-doctor` round, not a step of a unit.
+with its output. Disk space is the `disk-doctor` round's job, never an agent's: an implementor,
+adversary or coordinator does not measure, watch or free disk space, and deletes build output only
+as `worktree finish --discard-cache` of its own merged tree or when `disk-doctor` asks it to.
 
 ## Delivery
 
