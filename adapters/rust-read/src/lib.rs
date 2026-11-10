@@ -173,6 +173,17 @@
 //! | `decl.variadic`, `expr.spread` | Rust: a function takes a fixed number of arguments (C-variadic `...` exists only on `extern "C"` declarations, and a variadic-looking `println!` is a macro); a slice parameter is a `slice` |
 //! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |
 //! | `decl.union` | this conformance run, not Rust: an enum of struct variants reads as a `union`, but step 4 cannot run it, as the Go writer has no form for a union. A case source would make the case fail at step 4 rather than be refused, so the kit has none for it yet |
+//!
+//! # Limits
+//!
+//! A source is untrusted: what it can cost the reader is bounded, and a source past a bound is
+//! refused, exit 1 and the reason on stderr, not a crash.
+//!
+//! | bound | limit |
+//! |---|---|
+//! | size | `Cargo.toml` and `src/lib.rs` up to [`MAX_SOURCE_BYTES`], 4 MiB each, read no further than one byte past it |
+//! | nesting | [`MAX_NESTING`], 256 levels, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item; a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
+//! | stack | parsing, lifting and dropping the syntax tree run on a thread with a 256 MiB stack |
 
 mod body;
 mod names;
@@ -194,8 +205,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Read `<dir>/src/lib.rs`; the module is named after the crate's `[package] name`.
 pub fn read_crate(dir: &Path) -> Result<Module, String> {
     let manifest = dir.join("Cargo.toml");
-    let text =
-        std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let text = read_bounded(&manifest)?;
     let table: toml::Table =
         toml::from_str(&text).map_err(|e| format!("{}: {e}", manifest.display()))?;
     let name = table
@@ -205,12 +215,31 @@ pub fn read_crate(dir: &Path) -> Result<Module, String> {
         .ok_or_else(|| format!("{}: no [package] name", manifest.display()))?
         .replace('-', "_");
     let lib = dir.join("src/lib.rs");
-    let src = std::fs::read_to_string(&lib).map_err(|e| format!("{}: {e}", lib.display()))?;
+    let src = read_bounded(&lib)?;
     read_source(&name, "lib.rs", &src)
 }
 
-/// Read one source file as the module `name`; positions are `<file>:<line>`.
+/// Read one source file as the module `name`; positions are `<file>:<line>`. A source nested
+/// deeper than [`MAX_NESTING`] is refused before it is parsed; parsing and lifting run on a thread
+/// with a stack of [`STACK_BYTES`].
 pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> {
+    if let Some(line) = too_deep_source(src) {
+        return Err(format!(
+            "{file}:{line}: nested deeper than {MAX_NESTING} levels, this reader's limit"
+        ));
+    }
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .name("rust-read".into())
+            .stack_size(STACK_BYTES)
+            .spawn_scoped(s, || parse_and_read(name, file, src))
+            .map_err(|e| format!("cannot start a thread to read on: {e}"))?
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
+fn parse_and_read(name: &str, file: &str, src: &str) -> Result<Module, String> {
     let mut ast = syn::parse_file(src).map_err(|e| {
         let at = e.span().start();
         format!("{file}:{}: {e}", at.line)
@@ -224,6 +253,170 @@ pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> 
     });
     r.scan(&ast);
     Ok(r.module(name, &ast))
+}
+
+/// The deepest a source may nest, as [`too_deep`] counts it: deeper is refused before parsing.
+pub const MAX_NESTING: usize = 256;
+
+/// The largest `Cargo.toml` and `src/lib.rs` the reader reads, in bytes.
+pub const MAX_SOURCE_BYTES: u64 = 4 << 20;
+
+/// The stack parsing and lifting run on: each recurses a few frames per level, and dropping the
+/// syntax tree does too; this holds [`MAX_NESTING`] levels with room to spare.
+const STACK_BYTES: usize = 256 << 20;
+
+/// The text of `path`, read up to [`MAX_SOURCE_BYTES`]: a larger file, or one that never ends, is
+/// refused.
+fn read_bounded(path: &Path) -> Result<String, String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SOURCE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if bytes.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(format!(
+            "{}: over {MAX_SOURCE_BYTES} bytes, this reader's limit",
+            path.display()
+        ));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| format!("{}: stream did not contain valid UTF-8", path.display()))
+}
+
+/// The line at which `src` nests deeper than [`MAX_NESTING`], if it does, counted on the tokens
+/// `syn` would parse: the text without a byte order mark, and without a first line `#!…` that is
+/// no inner attribute; both texts are counted, so the count never misses what `syn` parses.
+fn too_deep_source(src: &str) -> Option<usize> {
+    let text = src.strip_prefix('\u{feff}').unwrap_or(src);
+    let mut texts = vec![text];
+    if text.starts_with("#!")
+        && let Some(nl) = text.find('\n')
+    {
+        texts.push(&text[nl..]);
+    }
+    texts
+        .into_iter()
+        .filter_map(|t| t.parse::<proc_macro2::TokenStream>().ok())
+        .find_map(too_deep)
+}
+
+/// The line at which `ts` nests deeper than [`MAX_NESTING`], if it does.
+///
+/// A level is each delimited group (`(…)`, `[…]`, `{…}`), each keyword and each punctuation
+/// character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of the group,
+/// a `;`, a `=>`, or a block that ends a statement or an item (one an identifier other than `else`
+/// or `as` follows). A `,` goes back to the count at the last unclosed `<` or the last `|`, so
+/// generic arguments and closures nested in one another keep counting. An attribute's `#[…]` is no
+/// level. These are what `syn` and the reader recurse on, a few frames a level at most. The walk
+/// keeps its own stack: a source of any depth costs it no call stack.
+fn too_deep(ts: proc_macro2::TokenStream) -> Option<usize> {
+    use proc_macro2::{Delimiter, Spacing, TokenTree};
+    struct Level {
+        tokens: std::iter::Peekable<proc_macro2::token_stream::IntoIter>,
+        base: usize,
+        run: usize,
+        /// The run at each unclosed `<`, and at the last `|`.
+        angles: Vec<usize>,
+        pipe: usize,
+        attr: bool,
+        joint: Option<char>,
+    }
+    impl Level {
+        fn new(ts: proc_macro2::TokenStream, base: usize) -> Level {
+            Level {
+                tokens: ts.into_iter().peekable(),
+                base,
+                run: 0,
+                angles: Vec::new(),
+                pipe: 0,
+                attr: false,
+                joint: None,
+            }
+        }
+        fn reset(&mut self) {
+            self.run = 0;
+            self.angles.clear();
+            self.pipe = 0;
+        }
+    }
+    let mut stack = vec![Level::new(ts, 0)];
+    while let Some(level) = stack.last_mut() {
+        let Some(tt) = level.tokens.next() else {
+            stack.pop();
+            continue;
+        };
+        let attr = std::mem::take(&mut level.attr);
+        let joint = level.joint.take();
+        let counts = match &tt {
+            TokenTree::Punct(p) => {
+                let c = p.as_char();
+                if p.spacing() == Spacing::Joint {
+                    level.joint = Some(c);
+                }
+                match c {
+                    ';' => {
+                        level.reset();
+                        false
+                    }
+                    ',' => {
+                        level.run = level.angles.last().copied().unwrap_or(0).max(level.pipe);
+                        false
+                    }
+                    ':' | '\'' => false,
+                    '#' => {
+                        level.attr = true;
+                        false
+                    }
+                    '!' if attr => {
+                        level.attr = true;
+                        false
+                    }
+                    '>' if joint == Some('=') => {
+                        level.reset();
+                        false
+                    }
+                    '>' => {
+                        let closes = joint != Some('-')
+                            && !(p.spacing() == Spacing::Joint
+                                && matches!(level.tokens.peek(), Some(TokenTree::Punct(q)) if q.as_char() == '='));
+                        if closes {
+                            level.angles.pop();
+                        }
+                        true
+                    }
+                    '<' => {
+                        level.run += 1;
+                        level.angles.push(level.run);
+                        false
+                    }
+                    '|' => {
+                        level.run += 1;
+                        level.pipe = level.run;
+                        false
+                    }
+                    _ => true,
+                }
+            }
+            TokenTree::Ident(i) => RUST_KEYWORDS.contains(&i.to_string().as_str()),
+            TokenTree::Literal(_) => false,
+            TokenTree::Group(_) => !attr,
+        };
+        level.run += usize::from(counts);
+        let depth = level.base + level.run;
+        if depth > MAX_NESTING {
+            return Some(tt.span().start().line);
+        }
+        if let TokenTree::Group(g) = tt {
+            let ends = g.delimiter() == Delimiter::Brace
+                && matches!(level.tokens.peek(), Some(TokenTree::Ident(i)) if i != "else" && i != "as");
+            if ends {
+                level.reset();
+            }
+            stack.push(Level::new(g.stream(), depth));
+        }
+    }
+    None
 }
 
 /// Rust's keywords, strict and reserved, of the 2018 edition and later: a raw identifier exists to

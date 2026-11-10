@@ -230,6 +230,17 @@ Reproduce with a clone at that commit:
 ```console
 task java-quickstart QUICKSTARTS=<clone>
 ```
+
+## Limits
+
+javac does not bound nesting depth: its parser and attribution recurse a level per parenthesis or
+operand, and so does the reader over the trees. The reader runs on a thread with a 64 MiB stack,
+64 times the JVM's default (`codespec.jvm.Bounded`, shared with the Groovy reader); a source
+nested deeper than that holds is refused with exit 1 and
+`codespec-read-java: the source nests deeper than the reader's stack of 64 MiB holds`, not a
+crash. The reader sets no size limit of its own. `codespec.jvm.BoundsTest` reads a source a
+million parentheses deep.
+
 ## Assumptions
 
 The document describes the Java program only under these assumptions; the reader does not check

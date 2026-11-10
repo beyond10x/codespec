@@ -246,6 +246,27 @@
 //! | `expr.to_error` | a value of a type of the module as an error is `cs_error_of(fn, &v)`, a function giving the message and a copy of the value, a form the reader does not read |
 //! | `decl.union` | a C `union` has no tag, a `cir/1` union does: refused |
 //! | `expr.extern`, `expr.extern_method`, `type.extern` | their cases call Go's standard library (`strings`, `strconv`), which C has not; a C function the module does not define is read as an `extern` of `libc`, which no case of them holds |
+//!
+//! # Limits
+//!
+//! A source is untrusted: what it can cost the reader is bounded, and a source past a bound is
+//! refused, exit 1 and the reason on stderr, not a crash.
+//!
+//! | bound | limit |
+//! |---|---|
+//! | sources | the `.c` and `.h` files of the directory up to [`MAX_SOURCE_BYTES`], 16 MiB together |
+//! | clang's JSON | up to [`MAX_JSON_BYTES`], 64 MiB per `.c` file, read from clang's stdout as a stream and refused, clang stopped, one byte past it (`clang's JSON AST of f.c is over 67108864 bytes, this reader's limit`). clang indents each level two more spaces, so the JSON of a deep expression grows with the square of its source: `a + a + … + a` of 1000 operands, 2 kB, prints about 150 MB |
+//! | depth | that JSON up to 4096 levels of arrays and objects, checked by a scan before it is read; it is read, and the reader's passes recurse, on a thread with a 256 MiB stack |
+//!
+//! The tree read from the JSON is linear in its size: each value and each string of it is one of
+//! the JSON's, but for the `file` and `line` completed into each location, and those share the
+//! file name clang printed once rather than copy it. `json::tests` holds the budget, no more
+//! values and bytes of text than the JSON has bytes, on a header included through a 2 kB path,
+//! which before cost every location in it that path again. Some of the reader's passes walk a
+//! subtree once per level around it: the check that no two operands of a statement have an effect
+//! whose order C leaves unspecified
+//! (`body::ordered`, `body::has_effect`) runs for each statement and each node over what lies
+//! below it. Their work is at most the tree's size times its depth, which the depth limit bounds.
 
 mod body;
 mod json;
@@ -434,9 +455,9 @@ pub(crate) fn src_of(src: &Source, n: &J) -> String {
         .unwrap_or_default()
 }
 
-/// Read every `.c` file of `dir` into one module.
+/// Read every `.c` file of `dir` into one module, within the limits the crate doc states.
 pub fn read_dir(dir: &Path) -> Result<Module, String> {
-    // The AST nests a level per operand; read it on a stack that holds a deep one.
+    // The AST nests a level per operand; read it on a stack that holds one `json::MAX_DEPTH` deep.
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("c-read".into())
@@ -448,39 +469,90 @@ pub fn read_dir(dir: &Path) -> Result<Module, String> {
     })
 }
 
-/// `clang`'s JSON AST of `file`, run in `dir`.
+/// The most bytes of `.c` and `.h` files the reader reads from one directory, together.
+pub const MAX_SOURCE_BYTES: u64 = 16 << 20;
+
+/// The most bytes of JSON AST the reader takes from clang for one `.c` file. clang indents each
+/// level two more spaces, so the JSON of a deep expression grows with the square of its source
+/// (`a + a + … + a` of 1000 operands, 2 kB, prints about 150 MB): the reader reads it as a stream
+/// and stops, refusing the file, one byte past this.
+pub const MAX_JSON_BYTES: u64 = 64 << 20;
+
+/// What clang prints on stderr that the reader keeps for its message.
+const STDERR_KEPT: u64 = 64 << 10;
+
+/// `clang`'s JSON AST of `file`, run in `dir`, read up to [`MAX_JSON_BYTES`].
 fn clang(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
-    let out = Command::new("clang")
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = Command::new("clang")
         .args(["-Xclang", "-ast-dump=json", "-fsyntax-only", "-std=c11"])
         .arg(file)
         .current_dir(dir)
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => "clang not found".to_string(),
             _ => format!("cannot run clang: {e}"),
         })?;
-    if !out.status.success() {
+    let (Some(mut out), Some(mut err)) = (child.stdout.take(), child.stderr.take()) else {
+        return Err("cannot run clang: no pipes".into());
+    };
+    let (json, read, stderr) = std::thread::scope(|s| {
+        let stderr = s.spawn(move || {
+            let mut kept = Vec::new();
+            let _ = (&mut err).take(STDERR_KEPT).read_to_end(&mut kept);
+            let _ = std::io::copy(&mut err, &mut std::io::sink());
+            kept
+        });
+        let mut json = Vec::new();
+        let read = (&mut out).take(MAX_JSON_BYTES + 1).read_to_end(&mut json);
+        if read.is_err() || json.len() as u64 > MAX_JSON_BYTES {
+            let _ = child.kill();
+        }
+        drop(out);
+        (json, read, stderr.join().unwrap_or_default())
+    });
+    let status = child.wait().map_err(|e| format!("cannot run clang: {e}"))?;
+    if json.len() as u64 > MAX_JSON_BYTES {
         return Err(format!(
-            "clang rejects {file}:\n{}",
-            String::from_utf8_lossy(&out.stderr)
+            "clang's JSON AST of {file} is over {MAX_JSON_BYTES} bytes, this reader's limit"
         ));
     }
-    Ok(out.stdout)
+    read.map_err(|e| format!("clang's JSON AST of {file}: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "clang rejects {file}:\n{}",
+            String::from_utf8_lossy(&stderr)
+        ));
+    }
+    Ok(json)
 }
 
 fn read(dir: &Path) -> Result<Module, String> {
+    use std::io::Read;
     let mut names = Vec::new();
     let mut files = BTreeMap::new();
+    let mut left = MAX_SOURCE_BYTES;
     for e in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
         let e = e.map_err(|e| format!("{}: {e}", dir.display()))?;
         let name = e.file_name().to_string_lossy().into_owned();
         if !e.path().is_file() || !(name.ends_with(".c") || name.ends_with(".h")) {
             continue;
         }
-        files.insert(
-            name.clone(),
-            std::fs::read(e.path()).map_err(|e| format!("{name}: {e}"))?,
-        );
+        let mut text = Vec::new();
+        std::fs::File::open(e.path())
+            .and_then(|f| f.take(left + 1).read_to_end(&mut text))
+            .map_err(|e| format!("{name}: {e}"))?;
+        left = left.checked_sub(text.len() as u64).ok_or_else(|| {
+            format!(
+                "{}: the .c and .h files are over {MAX_SOURCE_BYTES} bytes, this reader's limit",
+                dir.display()
+            )
+        })?;
+        files.insert(name.clone(), text);
         if name.ends_with(".c") {
             names.push(name);
         }

@@ -227,6 +227,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec-read-go` keeps `f(g())` with a multi-valued `g` foreign with a refusal at its line. It
   was read as a call with one argument of tuple type, which `cir/1` does not define and the
   writers refused.
+- Readers bound what an untrusted source can cost: past a limit is a refusal, exit 1 and a
+  message, not a crash. `codespec-read-rust` refuses a `Cargo.toml` or `src/lib.rs` over 4 MiB and
+  a source nested past 256 levels, counted on its tokens before parsing, and parses and lifts on a
+  256 MiB stack; nesting crashed it with a stack overflow. `codespec-read-c` reads clang's JSON AST
+  as a stream and refuses it past 64 MiB per file or 4096 levels, and refuses `.c` and `.h` files
+  over 16 MiB together; clang indents a level two spaces, so the JSON of a deep expression grows
+  with the square of the source, and the reader held all of it. A file name clang printed once is
+  held once, not once per location. `codespec-read-java` and `codespec-read-groovy` run on a 64 MiB
+  stack and refuse a source nested deeper than it holds; they crashed with a stack overflow.
+  `codespec-read-go`'s libraries bound depth already. The limits are in each reader's crate doc or
+  README and in `docs/conformance.md`.
 
 ## 0.6.1
 
