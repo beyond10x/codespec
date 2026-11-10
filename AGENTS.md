@@ -301,6 +301,9 @@ to `main` only.
    `target/release-assets/` and run `b10x-gates gh -- release create <tag> --verify-tag --notes-file …` from
    the checkout with paths relative to it; Gates refuses an argument holding a home-directory path.
 6. Report released only after the release, its assets and their checksums are verified.
+7. Announce it through the Claude session named `brain` (`SendMessage`), asking it to forward the
+   announcement to AI autodev (operator, 2026-11-10). Send the path of a ready file, not the text:
+   Slack mrkdwn (`<url|label>` links), every line at most 200 characters; `brain` posts it as is.
 
 ## Never
 
