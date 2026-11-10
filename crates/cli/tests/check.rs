@@ -71,8 +71,15 @@ fn codespec(args: &[&str]) -> Output {
 
 /// The fixture `crates/check/tests/fixtures/<check>/<case>` read into a cir/1 document.
 fn document(check: &str, case: &str) -> String {
+    // A directory per test (libtest names each test's thread after it): two tests reading the
+    // same fixture at once never write one file.
+    let test = std::thread::current()
+        .name()
+        .unwrap_or("main")
+        .replace("::", "-");
     let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("check-docs")
+        .join(test)
         .join(format!("{check}-{case}.cir.json"));
     std::fs::create_dir_all(out.parent().unwrap()).unwrap();
     let source = root()

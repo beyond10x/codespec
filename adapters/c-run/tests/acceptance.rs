@@ -150,6 +150,33 @@ fn op_add_runs_to_its_expected_output_and_an_empty_directory_fails() {
     assert_eq!(e.status.code(), Some(1));
 }
 
+/// The written directory is searched by `#include "…"` only: a module header there named like a
+/// system header (`stdint.h`, by hand: the writer refuses that name) never stands in for
+/// `<stdint.h>` in the runtime or the C library.
+#[test]
+fn a_header_in_the_written_directory_never_shadows_a_system_header() {
+    let w = work("shadow");
+    let written = w.join("written");
+    write_case("op-add", &written);
+    let out = w.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    for e in std::fs::read_dir(&written).unwrap() {
+        let p = e.unwrap().path();
+        let name = p
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .replace("op_add", "stdint");
+        let text = std::fs::read_to_string(&p)
+            .unwrap()
+            .replace("op_add", "stdint");
+        std::fs::write(out.join(name), text).unwrap();
+    }
+    assert!(out.join("stdint.h").exists());
+    let o = run_c(&w.join("build"), &out, "op-add", "");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+}
+
 /// A C source as a C reader reads it: lowerCamel names, `const char *` strings, a `typedef enum`,
 /// a `static` helper and a name `<stdlib.h>` declares too.
 const PLAIN_C: &str = r#"#include <stdbool.h>
@@ -257,6 +284,173 @@ fn a_c_source_without_a_module_header_runs_with_its_lower_camel_names_and_c_stri
             "{err}"
         );
     }
+}
+
+/// C written by hand whose functions take and return what the C reader reads: a `typedef` of an
+/// integer type, floats, pointers, arrays and function pointers. The functions with external
+/// linkage that take or return them are read, and only the ones `calls.json` can call are called.
+const PLAIN_TYPES_C: &str = r#"#include <stdbool.h>
+
+typedef long Celsius;
+
+Celsius warm(long n) {
+    Celsius c = (Celsius)n;
+    return c + 1;
+}
+
+double half(double x) {
+    return x / 2.0;
+}
+
+float third(float x) {
+    return x / 3.0f;
+}
+
+bool halfOver(bool big) {
+    double x = 0.5;
+    if (big) {
+        x = 1e300;
+    }
+    return half(x) > 1.0 && third(3.0f) == 1.0f;
+}
+
+long *at(long *p) {
+    return p;
+}
+
+long sum3(long xs[3]) {
+    return xs[0] + xs[1] + xs[2];
+}
+
+long run(long (*f)(long), long n) {
+    return f(n);
+}
+
+static long twice(long n) {
+    return n * 2;
+}
+
+long through(long n) {
+    long a[3] = {0};
+    a[0] = n;
+    a[1] = *at(&n);
+    a[2] = run(twice, n);
+    return sum3(a);
+}
+"#;
+
+#[test]
+fn c_by_hand_with_a_newtype_floats_pointers_arrays_and_function_pointers_runs() {
+    let w = work("plain-types");
+    let src = w.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("case.c"), PLAIN_TYPES_C).unwrap();
+    let calls = w.join("calls.json");
+    write_calls(
+        &calls,
+        &[
+            ("Warm", &["20"]),
+            ("HalfOver", &["false"]),
+            ("HalfOver", &["true"]),
+            ("Through", &["5"]),
+        ],
+    );
+    let o = run_calls(&w.join("build"), &src, &calls);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "ok 21\nok false\nok true\nok 20\n"
+    );
+
+    for (func, arg, ty) in [
+        ("Half", "1", "double"),
+        ("At", "1", "long *"),
+        ("Run", "1", "long (*)(long)"),
+    ] {
+        let calls = w.join(format!("{func}.json"));
+        let args: &[&str] = if func == "Run" { &[arg, arg] } else { &[arg] };
+        write_calls(&calls, &[(func, args)]);
+        let o = run_calls(&w.join("build"), &src, &calls);
+        let err = String::from_utf8_lossy(&o.stderr);
+        assert_eq!(o.status.code(), Some(2), "{func}: {err}");
+        assert!(
+            err.contains(&format!("a parameter of type `{ty}` cannot be passed")),
+            "{func}: {err}"
+        );
+    }
+}
+
+/// C written by hand in runtime form: it includes the kit's `codespec_rt.h`, and its functions
+/// are typed by their `codespec: func` lines, as the C reader types them.
+const RUNTIME_C: &str = r#"/* C in runtime form. */
+
+#include "codespec_rt.h"
+
+static struct cs_error_s ErrNeg_s = {{"negative", 8}, NULL, NULL};
+cs_error const ErrNeg = &ErrNeg_s;
+
+/* codespec: func Pair(string, string) []string */
+cs_slice Pair(cs_string a, cs_string b) {
+    cs_slice xs = cs_slice_make();
+    xs = cs_append(xs, &a, sizeof(cs_string));
+    xs = cs_append(xs, &b, sizeof(cs_string));
+    return xs;
+}
+
+typedef struct {
+    int64_t r0;
+    cs_error r1;
+} Checked_result;
+
+/* codespec: func Checked(int) (int, error) */
+Checked_result Checked(int64_t n) {
+    if (n < 0) {
+        return (Checked_result){0, ErrNeg};
+    }
+    return (Checked_result){n, NULL};
+}
+
+int64_t untyped(int64_t n) {
+    return n;
+}
+"#;
+
+#[test]
+fn c_by_hand_in_runtime_form_runs_typed_by_its_codespec_lines_and_a_function_without_one_is_refused()
+ {
+    let w = work("plain-runtime");
+    let src = w.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("case.c"), RUNTIME_C).unwrap();
+    std::fs::copy(
+        root().join("conformance/c/codespec_rt.h"),
+        src.join("codespec_rt.h"),
+    )
+    .unwrap();
+    let calls = w.join("calls.json");
+    write_calls(
+        &calls,
+        &[
+            ("Pair", &["\"x\"", "\"y\""]),
+            ("Checked", &["3"]),
+            ("Checked", &["-1"]),
+        ],
+    );
+    let o = run_calls(&w.join("build"), &src, &calls);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "ok [\"x\" \"y\"]\nok 3\nerr negative\n"
+    );
+    let calls = w.join("untyped.json");
+    write_calls(&calls, &[("Untyped", &["1"])]);
+    let o = run_calls(&w.join("build"), &src, &calls);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains("no exported function \"Untyped\" in the `codespec: func` lines"),
+        "{err}"
+    );
 }
 
 /// A call naming no function of the written module is refused, exit 2.

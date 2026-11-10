@@ -15,9 +15,11 @@ the site.
 | `crates/passes` (`b10x-codespec-passes`) | the passes: `lookup-guard` and the facts writers read; rules in its crate doc |
 | `crates/effects` (`b10x-codespec-effects`) | the effect summary format `codespec-effects/1`, the closed effect vocabulary and the effects report `codespec-effects-report/1` that `codespec effects` prints; defined in its crate doc, design in `docs/static-analysis.md` |
 | `crates/check` (`b10x-codespec-check`) | the built-in defect checks `codespec check` runs over a set of `cir/1` documents and the report `codespec-check-report/1`; what each check matches is its crate doc, its run on google/capslock `docs/checks-capslock.md` |
+| `crates/query` (`b10x-codespec-query`) | cq, the typed Datalog `codespec query` runs: the fact base (`--schema`), its cache `.cq/<digest>.facts`, the interpreter with path patterns and properties; language and rules in its crate doc, design in `docs/query-language.md`; the checks re-expressed in cq in `checks/`, those that wait for a design section in `checks/waiting.json` |
+| `crates/eval` (`b10x-codespec-eval`) | the evaluator: a tree-walking interpreter over `cir/1` that `codespec eval --calls` runs, printing the kit runners' encoding, stopping with a node id at a `foreign` statement, a `raise` or an extern without a built-in handler unless a `--stub` answers; `--env` the run's environment; `codespec eval --session` runs a `codespec-session/1` file into a `codespec-eval-trace/1` trace (`session`, `host`), under a `codespec-faults/1` fault plan (`--fault`, `--faults`) or once per site and call count (`--each`) (`fault`); semantics, stops and node ids in its crate doc, design in `docs/evaluator.md`; also the evaluator as a conformance adapter, `codespec-write-cir` and `codespec-run-cir` (`runner`, its claim and the reason for each unclaimed feature), and the per-function differential runs `codespec-eval-diff` (`diff`: probes, seeded calls, comparison) |
 | `summaries/` | checked-in `codespec-effects/1` summaries of standard libraries: `go-std.effects.json` |
 | `crates/harness` (`b10x-codespec-harness`) | the comparison harness: trace format, generator and byte-for-byte comparison, defined in its crate doc |
-| `crates/cli` (`b10x-codespec-cli`, library `codespec_cli`, binary `codespec`) | `validate`, `schema`, `features`, `read`, `pass`, `write`, `conform`, `harness`; runs adapters and validates what crosses to and from them. The clap `Cli` is in `src/lib.rs` so `codespec-docs` can walk it |
+| `crates/cli` (`b10x-codespec-cli`, library `codespec_cli`, binary `codespec`) | `validate`, `schema`, `features`, `read`, `pass`, `write`, `conform`, `harness`, `eval`; runs adapters and validates what crosses to and from them. The clap `Cli` is in `src/lib.rs` so `codespec-docs` can walk it |
 | `crates/docs` (`codespec-docs`) | generates the site's derived files and checks them for drift: `generate`, `generate --check`, `provenance --site <dir> --commit <sha>` |
 | `website/` | the Docusaurus documentation site, <https://beyond10x.github.io/codespec/>; Node, like `ux/` |
 | `ux/` | the site's UX loop (ui-iteration-loop): adapter `adapter.ts`, generic core `core/` (imports nothing from the adapter or the site), Playwright and axe-core specs `tests/` in TypeScript with their own `package.json`, scenarios, findings `UXF-nnn.md`, the ratchet `baseline.json`, rounds `rounds/R-nn/` |
@@ -94,9 +96,11 @@ alone as `task <name>` (`Taskfile.yml`):
 | `examples-fees` | the Grails `fees` application read twice with `codespec-read-groovy` (byte-equal, equal to `fees.read.cir.json`, no refusal, `codespec measure` equal to `fees.measure.txt`), passed, written as Go and as Rust equal to the checked-in copies, both built, drivers formatted and linted, then `codespec harness examples/fees --seeds 200 --commands 300` byte-equal over the original Groovy (groovyc 2.4.10 on the JDK), Go and Rust |
 | `examples-effects` | the Go `envcheck` package read twice (byte-equal, equal to `envcheck.read.cir.json`), then `codespec effects` with `summaries/go-std.effects.json` twice byte-equal and equal to `envcheck.effects.json` |
 | `conformance-cases` | `conformance/kit.json` equal to `codespec-conformance kit`; each case under `conformance/cases/` read with `codespec-read-go`, passed and equal to its `case.cir.json`, its Go reference run on `calls.json` and equal to `expected.txt` |
+| `eval-kit` | each case under `conformance/cases/` run twice by the evaluator on its `calls.json` (`crates/eval/tests/kit.rs`): both runs byte-equal, exit 0 and equal to `expected.txt`, except a case listed in `crates/eval/tests/kit-stops.txt`, which must stop with its listed line after printing a prefix of `expected.txt`; an unlisted stop or a listed case that prints fails |
+| `eval-diff` | every exported function of `examples/series` and `examples/inventory` gets 200 seeded calls (`codespec_eval::diff`; a method through a generated probe), written and run by `codespec-write-cir`/`codespec-run-cir`, Go's and Rust's writer and runner, the Go and Rust outputs byte-equal to the evaluator's; a setup call that would return an error is skipped, so every call reaches its function, and fewer than half of a function's seeds reaching it fails; `Inventory.Find` listed with `--refused` as not run as Rust, an unlisted refusal, a stale listing or one for an example not run fails; nothing timed |
 | `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
-| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy,c}` equal to what the kit's case sources build, the eight conformance reports equal to `codespec conform` run again on the Go, Rust, Java, Groovy and C readers and the Go, Rust and C writers (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
+| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy,c}` equal to what the kit's case sources build, the nine conformance reports equal to `codespec conform` run again on the Go, Rust, Java, Groovy and C readers, the Go, Rust and C writers and the evaluator's `cir` writer (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
 
 Not in the gate: `task examples-netcheck`, which reads `examples/netcheck/source` with every package
 it imports (needs Go 1.27.1, no network), runs `codespec effects`, `reach` and `trace` over the set
@@ -130,11 +134,13 @@ Never edit these by hand; change the generator and regenerate.
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
 | `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs`, `c/case.c` or `java/Case.java` (Groovy: `groovy/Case.groovy`, else `java/Case.java`, as `Case.groovy`) and `calls.json` | `task docs-generate` |
-| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy, c; writers go, rust, c | `task docs-generate` |
+| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy, c; writers go, rust, c, cir | `task docs-generate` |
 | `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
 | `website/docs/examples/netcheck.md`, `website/docs/examples/call-trace.md` | `codespec-docs` (`netcheck.rs`, `calltrace.rs`) from `examples/netcheck` and `examples/envcheck` | `task docs-generate` |
 | `examples/netcheck/*.json`, `examples/netcheck/read.txt` | `codespec effects`, `reach`, `trace` over the set, reduced by `codespec-docs netcheck` | `task examples-netcheck` |
+| `examples/orders/orders.eval-trace.jsonl` | `codespec eval --session examples/orders/orders.session.json`; `crates/eval/tests/sessions.rs` checks it is current | `task eval-traces` |
+| `examples/orders/faults/pay-closed.eval-trace.jsonl`, `examples/orders/faults/each/*.eval-trace.jsonl` | `codespec eval --session` with `--fault` on `faults/pay.session.json`, and with `--each --sites faults/sends.txt` on `orders.session.json`; `crates/eval/tests/faults.rs` checks they are current | `task eval-traces` |
 
 A change to the CLI, a crate's `description`, the model, an example or the capability list is
 followed by `task docs-generate` in the same commit; `docs-check` fails otherwise. A crate
@@ -146,6 +152,30 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 
 - The schema is what the model generates:
   `crates/model/tests/model.rs::the_checked_in_schema_is_the_one_the_model_generates`.
+- Reading refuses a name that is empty or holds a character no Java or Rust identifier part is, a control or
+  format character, or a default-ignorable one (after an optional `r#`):
+  `crates/model/tests/model.rs::a_name_holding_other_than_letters_digits_and_underscores_is_refused_naming_it`,
+  `crates/model/tests/model.rs::currency_signs_connectors_and_marks_are_names_control_and_format_characters_are_not`,
+  `crates/model/tests/secreview2.rs::secreview2_invisible_default_ignorable_characters_are_not_names`;
+  any text of the document holding a control or format character (only `doc`, `src`, `value` and `message` keep
+  line breaks and tabs), and no message carries one:
+  `crates/model/tests/model.rs::a_position_or_extern_name_holding_a_control_character_is_refused`,
+  `crates/model/tests/model.rs::a_control_or_format_character_in_any_text_of_the_document_is_refused`,
+  `crates/model/tests/model.rs::a_format_character_in_a_message_is_escaped`;
+  each writer refuses a name that is not an identifier of its language and writes nothing:
+  `adapters/rust/tests/writer.rs::a_module_name_that_is_not_a_package_name_is_refused_and_no_cargo_toml_is_written`,
+  `adapters/c/tests/writer.rs::a_name_that_is_not_a_c_identifier_is_refused_naming_it`,
+  `adapters/go/cmd/codespec-write-go/names_test.go::TestANameThatIsNotAGoIdentifierIsRefusedAndNothingIsWritten`.
+- A doc comment stays a comment: the C writer's cannot end its block comment or forge a header line
+  (`adapters/c/tests/secreview1.rs`, `adapters/c/tests/writer.rs::a_doc_comment_never_reads_as_a_codespec_header_line`),
+  the Go writer's is never a build constraint and its module file is one the go command always builds
+  (`adapters/go/cmd/codespec-write-go/secreview1_test.go`).
+- A module name is never a file or package name a toolchain treats specially: no C or POSIX header name
+  (`adapters/c/tests/writer.rs::a_module_named_like_a_standard_header_or_a_windows_device_is_refused`), no
+  `documentation` package and no Windows device name (`adapters/go/cmd/codespec-write-go/secreview2_test.go`,
+  `crates/model/tests/model.rs::windows_device_names_are_known_in_any_case_and_with_any_extension`); the C runner
+  finds the written headers by `#include "…"` only
+  (`adapters/c-run/tests/acceptance.rs::a_header_in_the_written_directory_never_shadows_a_system_header`).
 - Reading refuses unknown fields and kinds, untyped expressions and other formats:
   `crates/model/tests/model.rs::an_unknown_field_inside_a_statement_is_refused`,
   `crates/model/tests/model.rs::an_unknown_statement_kind_is_refused`,
@@ -180,6 +210,17 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `adapters/c-run/tests/acceptance.rs::sem_int_wrap_passes_and_a_copy_with_a_plain_signed_add_fails_under_ubsan`;
   `orders` written as C builds with `-Wall -Werror`, its goroutine a refusal:
   `adapters/c/tests/writer.rs::orders_builds_with_wall_werror_and_its_goroutine_stays_a_refusal`.
+- The kit's C runtime header `conformance/c/codespec_rt.h` is the C writer's:
+  `adapters/c-read/tests/reader.rs::the_kit_s_runtime_header_is_the_one_the_c_writer_writes`; the C
+  reader refuses a near miss of each runtime form it reads: `adapters/c-read/tests/runtime.rs`,
+  `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`; what the C writer
+  writes for the kit reads back with at least 100 modules free of refusals: `task c-round-trip`.
+- A reader refuses a source past its stated limits of size and nesting with exit 1 and a message,
+  never a crash (limits in each reader's crate doc or README and `docs/conformance.md`):
+  `adapters/rust-read/tests/bounds.rs`, `adapters/c-read/tests/bounds.rs`, the tree's budget
+  `adapters/c-read/src/json.rs::tests::a_header_at_a_long_path_costs_the_tree_no_more_than_clang_s_json`,
+  `adapters/go/cmd/codespec-read-go/bounds_test.go::TestASourceNestedPastTheLibrariesBoundsIsRefusedNotACrash`,
+  `adapters/jvm/test/codespec/jvm/BoundsTest.java` (`task adapters-check`).
 - Strict reading refuses an undeclared extern call:
   `crates/model/tests/model.rs::an_extern_call_naming_an_undeclared_extern_is_refused`; the Go
   writer's `expr-extern` output reads back to the same `cir/1`:
@@ -189,6 +230,13 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 - Each built-in check finds the true positive of its fixture once and nothing in its near miss,
   both read with `codespec-read-go`: `crates/check/tests/checks.rs`; `codespec check` exits 0, 1
   and 2 as documented and its JSON holds the text output's findings: `crates/cli/tests/check.rs`.
+- The evaluator conforms as the `cir` writer and claims exactly what passes, each unclaimed feature
+  with its reason:
+  `crates/eval/tests/runner.rs::the_evaluator_conforms_as_the_cir_writer_claiming_exactly_what_passes`;
+  every exported function of `series` and `inventory` gets 200 seeded calls the evaluator runs to
+  the end: `crates/eval/tests/diff.rs`; the differential names a one-token difference by function
+  and seed:
+  `crates/eval/tests/diff.rs::a_planted_one_token_difference_is_named_by_runner_function_and_seed`.
 - The harness catches a one-token change:
   `crates/cli/tests/harness.rs::a_planted_one_token_change_in_the_rust_output_fails_with_seed_rust_and_first_line`;
   traces are platform-independent: `crates/harness/tests/harness.rs::a_trace_is_pinned_across_platforms`.
@@ -219,6 +267,15 @@ every other GitHub write (pull request, release, re-run, dispatch) goes through 
 Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
 
+The repository is public (again since 2026-11-10, after one day private; visibility is set through
+`b10x-gates api --policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`, and Pages
+through `POST /repos/beyond10x/codespec/pages` with `build_type: workflow`). `b10x-gates api` and
+`b10x-gates gh` need `--policy`; `b10x-gates bot` does not. Before every push, search the branch
+for pattern, review-target and finding content: the pattern library, the reviews and the findings
+live in the private `beyond10x/codesec` and nothing of them is copied here. The public page about
+it is `website/docs/codesec.md`: classes of defect and the method only, no reviewed project, no
+count, no date, no pattern text.
+
 The site: `.github/workflows/pages.yml` ("Documentation validation") builds it on every push and
 pull request, runs `cargo test -p codespec-docs`, binds the build to its commit with
 `codespec-docs provenance --site website/build --commit "$GITHUB_SHA"`, and on a push to `main`
@@ -230,13 +287,13 @@ to `main` only.
 
 1. Bump `version` in `[workspace.package]` of `Cargo.toml` and `const version` in
    `adapters/go/cmd/codespec-read-go/main.go` and `adapters/go/cmd/codespec-write-go/main.go` (it is written into every document as
-   `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` and `adapters/groovy/src/codespec/read/groovy/Main.java` likewise, with the `reader.version` in `adapters/groovy/testdata/lending.read.cir.json`, a test checks it), then `task examples`, `task conformance` and `task docs-generate` (it rewrites the conform sample in `website/docs/guides/add-an-adapter.md` from the Go writer report; `VERSION` in
+   `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` and `adapters/groovy/src/codespec/read/groovy/Main.java` likewise, with the `reader.version` in `adapters/groovy/testdata/lending.read.cir.json`, a test checks it; the same literal is `VERSION` in `adapters/groovy/src/codespec/read/groovy/Main.java`, `const version` in `adapters/go/cmd/codespec-write-go/main.go`, `VERSION` and one test literal in `crates/docs/src/status.rs`, line 7 of `adapters/java/testdata/quarkus.read.cir.json`, and the `codespec <version>` lines of `website/docs/getting-started.md` and `website/docs/guides/add-an-adapter.md`), then `task examples`, `task conformance` and `task docs-generate` (it rewrites the conform sample in `website/docs/guides/add-an-adapter.md` from the Go writer report; `VERSION` in
    `crates/docs/src/status.rs` follows the workspace version, a test checks it, and the test `every_shipped_capability_rests_on_a_test_that_exists` names the version literally: bump both by hand; the `codespec --version` output pasted in `website/docs/getting-started.md` is checked against it too). Move the
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.
 3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec`,
-   `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust), `codespec-write-c` and the runner `codespec-run-c` (C, built in Rust) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
+   `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust), `codespec-write-c` and the runner `codespec-run-c` (C, built in Rust), the evaluator's `codespec-write-cir` and `codespec-run-cir` (which a reader's conformance run calls for a case the Go writer refuses) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
    `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, smoke-tests
    each (the runners on the kit case `op-add`, written as Go, as Rust and as C); its job `kit` runs `task conformance-kit`, which packs `conformance/` and
    `schemas/cir-1.features.json` into `codespec-conformance-<tag>.tar.gz` and runs `codespec conform`
@@ -252,6 +309,9 @@ to `main` only.
    `target/release-assets/` and run `b10x-gates gh -- release create <tag> --verify-tag --notes-file …` from
    the checkout with paths relative to it; Gates refuses an argument holding a home-directory path.
 6. Report released only after the release, its assets and their checksums are verified.
+7. Announce it through the Claude session named `brain` (`SendMessage`), asking it to forward the
+   announcement to AI autodev (operator, 2026-11-10). Send the path of a ready file, not the text:
+   Slack mrkdwn (`<url|label>` links), every line at most 200 characters; `brain` posts it as is.
 
 ## Never
 
@@ -262,6 +322,8 @@ to `main` only.
   writer.
 - Never commit Python or any other running code outside Rust, the adapters' own languages, the
   site build and the TypeScript UX harness in `ux/`.
+- Never run a benchmark, a load test or a timing comparison on the shared workstation: remotely
+  or not at all (operator, 2026-11-10). A change records its cost as "not measured".
 - Never push, tag or write to GitHub as a person: the bot only.
 - Never put private names, home paths or planning ids in a crate `description`, a page or
   `product.json`: they are public.

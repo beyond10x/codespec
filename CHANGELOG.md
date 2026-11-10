@@ -2,6 +2,344 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+## 0.7.0
+
+### Added
+
+- `cir/1` has `raise`, a statement that leaves a function and every caller up to the framework
+  with a value of an extern type, and `raises` on a function, the extern types it can raise, its
+  own and its callees', outside its results. The entry kind `exception-mapper` names the
+  function the framework hands them to, `on` the extern type it takes. Additive: a document
+  without them reads and writes byte for byte as before. Strict reading admits `raise` only in a
+  function an entry names or one only callers listing what it raises reach (never from a
+  variable's initializer or `init`, which run when the module loads), and refuses a `raises`
+  that differs from what the bodies raise. `codespec effects` lists a function's `raises` with
+  its callees', `codespec check` (`lock-without-unlock`) finds a lock held at a `raise` or at a
+  call of a function that raises, `codespec query` has the relation `raises` and counts a
+  `raise` and a call of a function that raises as exits, and `codespec eval` stops at a `raise`
+  by name with its node id. `codespec-write-go` and `codespec-write-c` refuse a function holding
+  `raise` by name with exit 1, `codespec-write-rust` lists it in `refusals.json`, and
+  `codespec-write-cir` refuses it as it does a `foreign` statement; no reader or writer claims
+  `stmt.raise`. The reader check counts an evaluator stop at a `raise` as `refused`, and
+  `codespec-eval-diff` skips a function that raises, naming why. The kit case `stmt-raise` is
+  written by hand.
+- `codespec-read-java` reads, in a project, a `throw new X(…)` of a jar's unchecked exception in a
+  method an entry names as `raise`, a `@Provider` `ExceptionMapper` as an `exception-mapper` entry,
+  and prints a path parameter only the framework passes. The Quarkus quickstart reads with 8
+  refusals, down from 13 (`adapters/java/README.md`).
+- Fault plans for `codespec eval --session`: `--fault 'SITE:NTH=DO'` and `--faults FILE`
+  (`codespec-faults/1`) make the effect at a node id, an extern call or a send, fail at a call
+  count (`*` for every call) before a stub or handler answers: `error` (the call's last result an
+  error, the others zero), `value`, `closed` (a send panics as on a closed channel), `block` (the
+  run stops `blocked`) or `panic`. The trace gains `fault`; `update`, written when the faulted
+  call ends, for each place of memory older than the call that the call left changed, as it is
+  then (the partial update; a write undone is none); `tested`, `propagated`, `wrapped` and
+  `dropped` for the fault's error, followed through errors, structs, slices, maps and pointers
+  that hold it and into later calls; and one `summary` per fault: `panic, not handled in module`,
+  `blocked`, `answered`, `propagated to <entry>`, `kept at <node>`, `handled at <node>`, `dropped
+  at <node>`, `live at stop`, or `not reached`. `--each --sites FILE --max-nth N --out DIR` runs
+  the session once per site and call count, a send `closed`, a call returning an error given
+  one, another call `panic`, and writes one trace per run. A fault naming no effect site, a
+  second for one site, a kind its site cannot take, a stub that a fault of every call leaves
+  without a call, two `--each` sites whose trace files differ only in letter case, or a plan on a
+  `--calls` run is refused (exit 2). A session or plan file whose object gives one key twice is
+  refused. `docs/evaluator.md`
+  § 8.1 is reproduced as `examples/orders/faults/pay-closed.eval-trace.jsonl`, and every send of
+  `orders` faulted at its first call as `examples/orders/faults/each/` (`task eval-traces`). In
+  the library, `Options` has `faults`, and `fault` has the plan, `read_sites` and `run_each`.
+
+- `codespec eval --session` runs a `codespec-session/1` file, whose calls bind results that later
+  calls take as receivers and arguments (`$name`), and prints the run's trace,
+  `codespec-eval-trace/1`: one JSON object per call, return, effect (an extern call with the
+  handler that answered, a send on a channel the session passed, a `println`), panic and stop. A
+  panic ends its call, not the session. A bound value is a variable: a pointer-receiver method
+  changes it. Writing the trace runs none of the module's code: an error is written by what it
+  holds (`error(ErrWrongState{Status: "paid"})`), not through its `Error` method. `examples/orders/orders.session.json` gives the checked-in
+  `orders.eval-trace.jsonl` (`task eval-traces` writes it, a test checks it). `--env KEY=VALUE`
+  gives the run its environment, which `os.Getenv` and `os.LookupEnv` now read (empty unless
+  given, never the host's); `strings.ToUpper`, `ToLower` and `TrimSpace` have built-in handlers
+  on ASCII, so `envcheck.Banner("svc", 80)` with `--env APP_MODE=prod` prints `"PROD svc:80"`.
+  `--stub SITE=VALUES` answers for an extern at every call (`SITE` its key) or at one call
+  (`SITE` the call's node id), the values JSON, one per result (a site given twice, or a stub that
+  would answer no call, is refused); an extern without a handler still
+  stops the run unless a stub answers, and standard error names every site a stub answered at
+  and how often. In the library, `Options` has `env` and `stubs`, and `Run` has `stubbed`.
+
+- `codespec query` runs path patterns and properties (`docs/query-language.md` § 5.2 and § 5.3).
+  `path(A -> B, over: cfg|calls, avoid: N where body, max: K, witness: W)` holds when a path
+  passing no avoided node joins `A` to `B` over control flow or the linked calls, `W` its
+  witness, the least of the shortest paths by node id; `!path(…)` and `every_path(A -> B,
+  through: P)` are its negation. `property name(scope: body|calls) { … }` declares a small
+  automaton over the calls of a body along its control flow, with `exit` at each return, or
+  over the calls of a call path from each entry of the call graph (a function no call from
+  outside its own strongly connected component reaches, so recursion hides no entry);
+  transitions match record patterns of `call`, at most three registers carry a value from one
+  to the next, and the property is the relation `name(Start, At, Message)` of the runs that
+  reach `error`. The relation `reaches_path(from, to, path)` gives `reaches` its witness. Code
+  nothing read makes a path, a negated path, a rule over a path or a property possible, naming
+  the site; so does a register compared with the receiver of a listed call, which nothing read.
+  `defer call{…}` is refused until `cir/1` has the `defer` statement (§ 8);
+  `lock-without-unlock` waits for that alone now.
+- The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
+  module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
+  `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which
+  Go has no form. Output equal to `expected.txt` passes, different output fails; a stop is never a
+  pass: a `foreign`, `no handler`, `no body` or `unsupported` stop is `refused` with the stop as
+  the detail, a `panic`, `blocked` or `step budget` stop is `run_failed`. Such a feature entry
+  carries the new optional field `runner`, the evaluator's program that judged it
+  (`codespec-run-cir`, or `codespec-write-cir` when it refused the module). In the library,
+  `conform_reader` and `conform_reader_within` take the programs as one `ReaderPrograms`.
+- The evaluator is a conformance adapter: `codespec-write-cir` copies a module and refuses one
+  holding a `foreign` statement, `codespec-run-cir` runs the calls with the evaluator, so
+  `codespec conform --lang cir --role writer` judges it like any writer. It claims every kit
+  feature but `stmt.foreign`, which it refuses, and `intrinsic.append`, whose case passes but
+  whose sharing of a backing array may differ from Go's where Go's compiler puts a slice on the
+  stack; its report is `website/data/conformance/writer-cir.json` and the support matrix has an
+  Evaluator column, whose notes give the reason for each unclaimed feature. Both programs ship in
+  the release archives.
+- `task eval-diff` (in `task check`), per-function differential runs: every exported function of
+  `examples/series` and `examples/inventory` gets 200 seeded calls, a method through a generated
+  probe function that builds its receiver from the constructor and up to four drawn calls of the
+  type's mutators (one that would return an error is skipped), and the evaluator,
+  `codespec-run-go` and `codespec-run-rust` must print the same bytes. A method returning nothing
+  prints its receiver's state after the call. Each example's line counts the calls that reached
+  their function and those printing a result; a function reached by fewer than half its seeds
+  fails. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
+  function. Nothing is timed.
+- `codespec-read-rust` claims 111 of the 120 features a reader can claim, up from 89. It reads
+  generics: a function or struct with type parameters, each unbounded (`any`) or bound by one
+  trait of the crate (its interface), a `where T: Trait` clause, an impl of a generic struct, and
+  an instantiation written with a turbofish or inferred from the arguments, written out. A bound
+  `cir/1` has no constraint for (`Clone`, `PartialEq`, two bounds), another `where` clause, a
+  lifetime or const parameter, an associated type, `impl Trait` as a parameter type and a method
+  with its own type parameters are refused at their line. It also reads
+  `f64` and `f32` with their literals, `[T; N]` with `[0; N]` and indexing, `static` and
+  `static mut` items as module-level variables (a `static mut` inside `unsafe` around it only),
+  `fn(A) -> R` with a function's name as a value and a call through a local, parameter or field,
+  a closure whose parameter and result types are written out as a function literal with its
+  captures (a `move` closure is refused), a trait of the crate whose methods take `&self` as an
+  interface with `&dyn Trait` and `Box<dyn Trait>` its type, an `impl Trait for T` as `T`'s
+  methods and the coercion to the trait object as `to_iface`, `Rc<dyn Any>` as `any`, the Rust
+  writer's channel with both ends (`Rc<(SyncSender<T>, Receiver<T>)>`, `try_send`, `try_recv`)
+  as `chan T`, `T::default()` of a `#[derive(Default)]` whose every field defaults to its zero as
+  `zero`, and map keys collected and sorted (`sort()` for integers, by `encode_utf16` for
+  strings) as `sorted_keys`. Kit cases gain the Rust sources that hold the 22 new claims. A raw
+  identifier (`r#type`, `struct r#match`, a raw trait or path segment) is named without its `r#`
+  in every position.
+- `codespec-read-c` reads C in runtime form: a directory holding the kit's runtime header,
+  `conformance/c/codespec_rt.h` (the one the C writer writes), whose functions carry
+  `/* codespec: func … */` lines. It reads `cs_string`, `cs_slice`, `cs_map`, `cs_chan`, `cs_any`
+  and `cs_error` in the forms its crate doc lists (literals, wrapping arithmetic through
+  `uint64_t`, append, index, map put and get, send and receive, boxing, sentinel errors, string
+  builders as `sprintf`, `errorf` and `println`, result structs as tuples, multiple assignment,
+  lookup with a miss, switch as an if chain, loops over a slice or map as `range`), and refuses a
+  near miss of each by name. It claims 103 kit features, up from 76: `decl.var`, `expr.errvar`,
+  `expr.index`, `expr.intrinsic`, `expr.make`, `intrinsic.*`, `op.eq`, `sem.error.propagate`,
+  `sem.int.wrap`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break`,
+  `stmt.for_range`, `stmt.lookup_else`, `stmt.send`, `type.any`, `type.chan`, `type.error`,
+  `type.map`, `type.slice`, `type.tuple`, `unop.recv`. A directory name that is no identifier
+  (`zlib-1.3.1`) reads to one (`zlib_1_3_1`), and a parameter without a name reads as `_`.
+- `codespec-read-c` reads what the C writer writes: its `<m>_` prefix, its static helpers, its
+  range blocks, scoped `for`, `(void)` calls, shifts, zero literals and `int64_t` newtypes
+  (`task c-round-trip` re-reads the writer's output for every kit case). It refuses an operator
+  or call with two operands that make calls (C leaves their order unspecified), a multiple
+  assignment whose later target reads an earlier one, an assignment through `cs_map_get` or
+  `cs_chan_recv`, an argument or result of another type than the `codespec: func` line's, a
+  receive or send against a channel's direction, and a loop over a map whose result depends on
+  the order of its entries. `int64_t` and `uint64_t` take their width from the line.
+- `codespec-read-c` refuses more orders C leaves open: two operands of which one is an `append`
+  or an operation that can panic (an integer `/` or `%`, an index, a shift by a signed count)
+  beside a call; an assignment to a place reading a global, memory or a local whose address is
+  taken, from a call; a multiple assignment or a loop over a map that reads or writes through a
+  pointer where a name may be aliased. A call of a function without a `codespec: func` line
+  checks each argument against its C parameter type. A name of the C writer's that would lose
+  its prefix onto the name of another declaration, a parameter or a local keeps it, with a
+  refusal. A `codespec: func` line spells a receive-only channel `<-chan T`.
+- `codespec-run-c` compiles each `.c` file as its own translation unit, as the reader reads it.
+- `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
+  a call of a function without one is refused. The C row of the reader corpus holds
+  `codespec_rt.h` beside each `case.c`.
+- `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
+  `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
+  `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a
+  `typedef` of an integer, `_Bool` or floating-point type as a newtype with `(T)x` its
+  conversion, and a struct literal of zeros, `(struct T){0}`, as `zero`. It claims the 17 kit
+  features whose cases now have a C source: `decl.newtype`, `expr.call_value`, `expr.conv`,
+  `expr.float`, `expr.func_ref`, `expr.nil`, `expr.zero`, `stmt.continue`, `stmt.expr`,
+  `type.array`, `type.float`, `type.func`, `type.named`, `type.ptr`, `type.unit`, `unop.deref`,
+  `unop.ref`. `decl.variadic` and `expr.index` stay unclaimed; the crate doc says why. It refuses
+  by name what the Go written from it would run otherwise: `-` of a floating-point literal and an
+  operator on floating-point constants only, `&` of a variable a `for` declares, a second
+  `typedef` of a name to another type and a `typedef` named as a struct or enum of the module.
+- Three kit cases are variants of a feature whose first case needs a slice, an error or a string:
+  `expr-nil-ptr`, `expr-zero-struct` (its `case.cir.json` written by hand, as the Go reader never
+  writes `zero`) and `type-array-int`; `type-float-compare` has a C source.
+- `codespec-run-c` runs C written by hand that declares `typedef long Name;` and passes or returns
+  `Name` as an integer, and reads a function pointer or array parameter as one parameter; a call
+  of a function taking a float, a pointer, an array or a function pointer is refused naming its
+  type.
+- `codespec-read-java` claims 102 of the 120 features a reader can claim, up from 77. A package
+  read now maps shifts with the count masked as Java masks it, labeled `break` and `continue` of
+  the innermost loop, `double` and `float`, mutable static fields as module-level variables,
+  `Object` as `any`, interfaces with several implementations, unbounded static generic methods,
+  the primitive functional interfaces with lambdas and method references, variable arity methods
+  and arrays as slices, formatted exception messages as `errorf` and `System.out.println`. Each
+  has a refused edge (`>>>`, an outer loop's label, `%` on a float, arithmetic on float
+  constants, a shifted literal whose count is not constant, among others) at its line. A project
+  read is unchanged. The kit holds the Java
+  sources of these cases and six new variant cases: `decl-var-int`, `type-float-compare`,
+  `type-tuple-error`, `intrinsic-println-int`, `decl-variadic-local` and `expr-spread-local`. The
+  case `decl-union` has a Java source, a sealed interface of records, which the reader refuses at
+  its line and does not claim, since the Go writer that checks a read refuses a union. `adapters/java/README.md` gives the reason for each feature the reader
+  leaves unclaimed.
+- `codespec-read-java` reads an integer constant expression that wraps (`2147483647 + 1`) as the
+  literal of the value Java gives it, where the Go written from it computed the exact value. It
+  refuses a compound assignment to a field whose right operand calls a method of the package, since
+  Java reads the field before the call and the written Go after it.
+- `codespec-run-java` and `codespec-run-groovy` print a result of type `Object` as the value it
+  holds.
+- `codespec query` answers a question over a set of `cir/1` documents written in cq, a typed
+  Datalog with named-field record patterns (`call{func: F, callee: C}`), recursion, stratified
+  negation and aggregates (crate `b10x-codespec-query`). `--schema` prints the fact base's
+  relations: functions, statements, expressions and calls, each node with the id
+  `<module path>.<function key>#<index path>`, types, facts, control flow, dominance, def-use, the
+  call graph with its strongly connected components, the types each function makes, the CHA
+  `implements` test, and `codespec effects`' effects and syscalls (from `--summaries` and
+  `--barrier`); `reaches_path` is named as not built yet. The fact base is cached as
+  `.cq/<digest>.facts` next to the first document, keyed by the documents and by the summaries
+  in their order. A row whose negation crosses an opaque function, a foreign statement without a
+  call list or an unlinked call (in the bodies, the call graph, effects, syscalls and the types
+  made), or negates a fact that only possibly holds, is marked `possible`, with those sites; an
+  aggregate over facts that only possibly hold takes each value they allow. `--explain` prints
+  the rules by stratum. Path patterns and properties are refused by name; nesting, body length,
+  the bodies a program compiles into and regular expressions have stated limits, past which a
+  query is refused. `--names` reads the file `codespec check --names` reads, each list as
+  `codespec check` reads it, and refuses a list neither knows. Seven of the eight checks of the
+  first plan item are written in cq in `crates/query/checks` and give the findings `codespec
+  check` gives on 21 of the 22 fixtures of those checks in `crates/check/tests/fixtures`; the
+  22nd, `unreached/library`, needs `--exported`, which the cq check does not take.
+  `lock-without-unlock` waits for properties and the `defer` statement.
+- `codespec eval MODULE --calls CALLS` runs a `cir/1` module on a `codespec-calls/1` file with a
+  new evaluator, the crate `b10x-codespec-eval`, and prints what the conformance kit's native
+  runners print. A run that executes a `foreign` statement, calls an extern with no built-in
+  handler or would panic stops with exit 1, naming the node by its id
+  (`<module path>.<function key>#<index path>`), its position and the reason. A module that calls
+  an undeclared function, passes a wrong number of arguments, names an undeclared type or a type
+  holding itself, or needs a zero value over 4,194,304 cells, and an argument outside its
+  parameter's width, are refused with exit 2. The gate step `eval-kit` runs every kit case twice
+  and requires both runs equal to its `expected.txt`, or, for a case listed in
+  `crates/eval/tests/kit-stops.txt`, the stop listed there after a prefix of its `expected.txt`.
+- `codespec-read-go` claims `type.tuple`, which its case already passed, and its
+  `adapters/go/cmd/codespec-read-go/README.md` names the five features it leaves unclaimed, each
+  with its reason: `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.unit` and
+  `stmt.lookup_else`.
+- `codespec-read-go` reads `slices.Sorted(maps.Keys(m))` over integer keys as `sorted_keys`. Over
+  string keys it stays as before: Go orders strings by byte, `sorted_keys` by UTF-16 code unit.
+- A project read of `codespec-read-java` reads a second constructor (`New<Class>2`), a static
+  nested class, a `static final` field set by a literal or by a jar's static method with constant
+  arguments (`Logger.getLogger(C.class.getName())`) as a module-level variable, the `id` an entity
+  inherits from `PanacheEntity`, and a static Panache method called on an entity
+  (`Fruit.deleteAll()`) as an extern call with the entity as its type argument. It refuses at its
+  line a constructor calling `this(…)`, an inner class, a `static final` field set otherwise, a
+  field of a class of another package (an opaque extern there), a call of another package's
+  method or constructor that package does not read or that returns an error or an Optional there,
+  a Panache static method javac calls on the base itself, an access of a public field of an
+  `@Entity`, `@MappedSuperclass`, `@Embeddable` or Panache class, outside its constructors,
+  whose getter or setter (Quarkus's name and descriptor: `getxCoord()` for `xCoord`, `isLit()`
+  for a `boolean`) the class declares, and a class implementing `ExceptionMapper`. A call of
+  another package's function is an extern with the signature that package's module declares. It
+  records `@Entity`, `@Cacheable`, `@Id`, `@GeneratedValue` and `@Column` on a struct or its
+  instance field in `persistence`, each argument on one line without comments; on a class read as
+  no struct they are refused. A refusal of a construct
+  read more than once, such as a field initializer each constructor starts from, is listed once.
+  A package read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 13 refusals, down
+  from 25: 9 throws of a jar exception and 2 exception mappers, neither of which `cir/1` has a
+  form for, and 2 reads of a field of an entity of the other package.
+- `cir/1` modules have an optional field `persistence`: the persistence annotations of the module,
+  each with the type or field (`Type.field`) it marks, the annotation's simple name and its
+  arguments as written. Strict reading refuses a mark on a type or field the module lacks, a mark
+  that is no identifier and an empty argument. A module without it reads and writes as before.
+
+### Changed
+
+- The Rust, C and Go writers refuse a document holding a name that is not an identifier of their
+  language: exit 1, a message naming it, nothing written. Before, a module name holding a quote
+  and a newline added keys to the `Cargo.toml` the Rust writer wrote (a `build` script cargo
+  runs), a name could add C or Go code, and the Go writer took a module name like `../x` as a path.
+  The Rust writer no longer panics on such a name. The Go writer also refuses a literal that is
+  not exactly one Go literal, and a document missing a part, where it crashed.
+- Strict reading of `cir/1` refuses a module, declaration, field, parameter or local name that is
+  empty or holds a character no Java or Rust identifier holds after its first, a control or
+  format character, or an invisible default-ignorable character (a Hangul filler, a variation
+  selector), after an optional `r#` (a Rust raw identifier, which the Rust writer writes back as
+  one). Letters and digits of any script, `_`, currency signs such as `$` and `€`, combining
+  marks and connector punctuation are names. A module `path` is segments of letters, digits, `_`,
+  `-`, `.` and `~` joined by `/`, none empty, `.` or `..`. Any text of the document holding a
+  control or format character is refused: names, positions, extern paths, names and types,
+  reasons, a refusal's `what`, the reader's name and version, facts; a `doc`, foreign `src`, a
+  literal's `value` and an error's `message` may hold line breaks and tabs. An assignment with no
+  target or no value is refused. A message quoting the document writes its control and format
+  characters as escapes, in strict reading and in all three writers, and so do the Rust and C
+  writers' `refusals.json`.
+- The C writer writes every `\` of a doc comment as `/` and breaks every `*/`, `/*` and `??`, so a
+  doc ending a line in `*\` or `*??/` no longer ends its comment and turns the next line into C
+  code, and no doc line reads as a `/* codespec: … */` header line. It refuses a module named, in
+  any case, like a C11, C23 or POSIX header (`stdint`, `string`, `unistd` …) or glibc's
+  `features`, whose `<name>.h` would stand in for the system's. `codespec-run-c` adds the written
+  directory with `-iquote` instead of `-I`, so a header there is found by `#include "…"` only.
+- The Go writer writes a doc line the go command would read as a build constraint (`+build …`) in
+  parentheses, and refuses a module name whose file the go command skips or builds only on some
+  platforms (`x_test`, `x_windows`, `x_arm64`, `_x`) and the module name `documentation`, a
+  package the go command ignores. A module named `main` is still written as `package main`. A
+  position from the document is named in the message of a construct it cannot write.
+- The Rust, C and Go writers refuse a module named like a Windows device (`con`, `prn`, `aux`,
+  `nul`, `com0` to `com9`, `lpt0` to `lpt9`, in any case), which they would write as a file name.
+- The documentation site: the cir/1 reference lists its definitions before the first table, so
+  every entry is one click from the first screen. The sidebar's group names are 14 px in sentence
+  case. The home page, the overview and Readers, passes and writers name every reader and writer
+  (Go, Rust, Java, Groovy and C readers; Go, Rust and C writers), and Status lists the conformance
+  of the C reader and the C writer. Use cases links Getting started for the orders run instead of
+  repeating it, and the overview links pages by their sidebar names.
+- The documentation site: field names, types and commands in tables, and table headers, are 14 px,
+  headers in sentence case. The pipeline diagram is on Readers, passes and writers only, the orders
+  harness run on Getting started only, and pages whose header names the run no longer say it again
+  in their first paragraph.
+- The documentation site: Status says it describes this tree and points to Unreleased here for
+  what the tree adds to the last release, the C reader and writer among them. The home page's lede
+  names the C writer. Code in tables breaks inside long identifiers, so no Markdown table scrolls
+  sideways at 1280 px and wider. Feature ids and descriptions on Language support, and the headers
+  and status chips on Status, are 14 px. Add a reader or writer adapter links Getting started for
+  what a release archive holds.
+- The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
+  other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
+  does not compile.
+- The Groovy reader refuses a method whose quoted name is no identifier (`long "add two"()`),
+  `unsupported`, where it read it as a function strict reading then refused.
+
+### Fixed
+
+- `codespec-read-go` keeps a range with `=` that assigns a variable declared before the loop
+  (`for i = range xs`), labelled or not, foreign with a refusal at its line that says so. It was
+  read as a `for_range` that declares its own `i`, so the outer `i` was never assigned; a key
+  that is not a name (`for s.f = range xs`) stopped the reader with a panic.
+- `codespec-read-go` keeps `f(g())` with a multi-valued `g` foreign with a refusal at its line. It
+  was read as a call with one argument of tuple type, which `cir/1` does not define and the
+  writers refused.
+- Readers bound what an untrusted source can cost: past a limit is a refusal, exit 1 and a
+  message, not a crash. `codespec-read-rust` refuses a `Cargo.toml` or `src/lib.rs` over 4 MiB and
+  a source nested past 256 levels, counted on its tokens before parsing, and parses and lifts on a
+  256 MiB stack; nesting crashed it with a stack overflow. `codespec-read-c` reads clang's JSON AST
+  as a stream and refuses it past 64 MiB per file, 256 MiB for the directory's files together or
+  4096 levels, and refuses `.c` and `.h` files over 16 MiB together; clang indents a level two
+  spaces, so the JSON of a deep expression grows with the square of the source, and the reader
+  held all of it, every file's tree until the module was assembled. A file name clang printed once is
+  held once, not once per location. `codespec-read-java` and `codespec-read-groovy` run on a 64 MiB
+  stack and refuse a source nested deeper than it holds; they crashed with a stack overflow.
+  `codespec-read-go`'s libraries bound depth already. The limits are in each reader's crate doc or
+  README and in `docs/conformance.md`.
+
 ## 0.6.1
 
 ### Changed

@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T13:13:30Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-check-evaluator-step",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:reader-check-evaluator-step-adversary-1",
+    "reference": "8bb5106",
+    "review": "review-result:reader-check-evaluator-step-adversary-1",
+    "outcome": "fixed"
+  }
+}

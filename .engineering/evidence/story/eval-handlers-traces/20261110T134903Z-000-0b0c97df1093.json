@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T13:49:03Z",
+  "actor": "human:timo",
+  "artifact": "story:eval-handlers-traces",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:eval-handlers-traces-adversary-1",
+    "reference": "93d2a10",
+    "review": "review-result:eval-handlers-traces-adversary-1",
+    "outcome": "fixed"
+  }
+}

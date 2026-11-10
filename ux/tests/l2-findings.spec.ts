@@ -72,6 +72,53 @@ for (const path of ['/codespec/docs/reference/cli', '/codespec/docs/reference/su
   }
 }
 
+// UXF-015: the cir/1 reference links Interface and TypeParam from its first screen.
+for (const vp of gating) {
+  test(`UXF-015 the cir/1 reference links Interface and TypeParam in its first screen at ${vp.width}x${vp.height}`, async ({ browser }) => {
+    const page = await open(browser, '/codespec/docs/reference/cir-1', vp.width, vp.height);
+    const where = await page.evaluate(() =>
+      ['interface', 'typeparam'].map((id) => {
+        const inView = [...document.querySelectorAll(`main a[href$="#${id}"]`)].some((a) => {
+          const r = a.getBoundingClientRect();
+          return r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+        });
+        return `${id}: ${inView ? 'in view' : 'not in view'}`;
+      }),
+    );
+    expect(where).toEqual(['interface: in view', 'typeparam: in view']);
+    await page.context().close();
+  });
+}
+
+// UXF-020: the sidebar's group names, the reader's main choice since only one group is open, are 14 px or more.
+test('UXF-020 sidebar group names are at least 14 px', async ({ browser }) => {
+  const page = await open(browser, '/codespec/docs/guides/add-an-adapter', 1366, 768);
+  const sizes = await page.evaluate(() =>
+    [...document.querySelectorAll('.theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link')].map(
+      (e) => `${(e.textContent ?? '').trim()} ${parseFloat(getComputedStyle(e).fontSize)}`,
+    ),
+  );
+  expect(sizes.length, 'sidebar groups').toBeGreaterThan(0);
+  expect(sizes.filter((s) => Number(s.split(' ').pop()) < 14), 'groups under 14 px').toEqual([]);
+  await page.context().close();
+});
+
+// UXF-024: in reference tables the field names, types and commands (inline code) and the column
+// headers are 14 px or more.
+test('UXF-024 table code and table headers are at least 14 px', async ({ browser }) => {
+  const page = await open(browser, '/codespec/docs/reference/cir-1', 1366, 768);
+  const sizes = await page.evaluate(() => {
+    const px = (sel: string) => {
+      const e = document.querySelector(sel);
+      return e ? parseFloat(getComputedStyle(e).fontSize) : -1;
+    };
+    return { 'td code': px('.markdown td code'), th: px('.markdown th') };
+  });
+  expect(sizes['td code'], 'inline code in a table cell').toBeGreaterThanOrEqual(14);
+  expect(sizes.th, 'table header').toBeGreaterThanOrEqual(14);
+  await page.context().close();
+});
+
 // UXF-014: commands and the page outline are set at 14 px or more.
 test('UXF-014 code blocks and the table of contents are at least 14 px', async ({ browser }) => {
   const page = await open(browser, '/codespec/docs/getting-started', 1366, 768);
@@ -85,4 +132,40 @@ test('UXF-014 code blocks and the table of contents are at least 14 px', async (
   expect(sizes.code, 'code block font size').toBeGreaterThanOrEqual(14);
   expect(sizes.toc, 'table of contents font size').toBeGreaterThanOrEqual(14);
   await page.context().close();
+});
+
+// UXF-029: at 14 px, code in table cells breaks where it must, so no Markdown table scrolls
+// sideways at a gating viewport on the pages whose tables hold long identifiers.
+for (const vp of gating) {
+  test(`UXF-029 no Markdown table scrolls sideways at ${vp.width}x${vp.height}`, async ({ browser }) => {
+    const wide: string[] = [];
+    for (const p of ['concepts/pipeline', 'reference/cli', 'reference/crates', 'concepts/static-analysis', 'examples/netcheck']) {
+      const page = await open(browser, `/codespec/docs/${p}`, vp.width, vp.height);
+      const w = await page.evaluate(() =>
+        [...document.querySelectorAll('.markdown .b10x-table-wrap')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => `${e.scrollWidth} in ${e.clientWidth}`),
+      );
+      wide.push(...w.map((x) => `${p}: ${x}`));
+      await page.context().close();
+    }
+    expect(wide).toEqual([]);
+  });
+}
+
+// UXF-030: on the support matrix and Status, the data a reader looks up (the feature id, its
+// description and code, the Status group headers and chips) is 14 px or more.
+test('UXF-030 support matrix features and Status headers and chips are at least 14 px', async ({ browser }) => {
+  const small: string[] = [];
+  for (const [p, sels] of [
+    ['reference/support', ['a[class*="featureId"]', '[data-description]', '[data-description] code']],
+    ['status', ['.b10x-status-table th', '.b10x-status-table .b10x-status']],
+  ] as const) {
+    const page = await open(browser, `/codespec/docs/${p}`, 1366, 768);
+    const sizes = await page.evaluate(
+      (ss) => ss.map((s) => [s, Math.min(...[...document.querySelectorAll(s)].map((e) => parseFloat(getComputedStyle(e).fontSize)))] as const),
+      [...sels],
+    );
+    for (const [s, px] of sizes) if (!(px >= 14) || px === Infinity) small.push(`${p} ${s}: ${px}`);
+    await page.context().close();
+  }
+  expect(small).toEqual([]);
 });

@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "go",
-    "version": "0.6.1",
-    "manifest_sha256": "9b3ea714d431ce810604fd1f93713d62e0f40b2535a978d92556de2000e753ab"
+    "version": "0.7.0",
+    "manifest_sha256": "ef088f274f35f7fa0d8646be57d19433a635b11083a0b08ea68c7547503f89f4"
   },
   "kit": {
-    "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "version": "0.7.0",
+    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
   },
   "corpus": {
-    "sha256": "b5630117d4ead5bc03cb828754c290a1f56077b9c890d70747185799d28e3061"
+    "sha256": "595ff47ff0b1e252bf798f65ffc4148ade6df03a6cd00425505a7d296792337c"
   },
-  "codespec": "0.6.1",
+  "codespec": "0.7.0",
   "features": [
     {
       "id": "assign.add",
@@ -169,7 +169,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-var"
+        "decl-var",
+        "decl-var-int"
       ]
     },
     {
@@ -177,7 +178,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-variadic"
+        "decl-variadic",
+        "decl-variadic-local"
       ]
     },
     {
@@ -347,7 +349,8 @@
       "verdict": "pass",
       "cases": [
         "expr-nil",
-        "expr-nil-error"
+        "expr-nil-error",
+        "expr-nil-ptr"
       ]
     },
     {
@@ -355,7 +358,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "expr-spread"
+        "expr-spread",
+        "expr-spread-local"
       ]
     },
     {
@@ -404,7 +408,8 @@
       "verdict": "refused",
       "cases": [
         "expr-zero",
-        "expr-zero-error"
+        "expr-zero-error",
+        "expr-zero-struct"
       ],
       "case": "expr-zero",
       "step": 3,
@@ -524,7 +529,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "intrinsic-println"
+        "intrinsic-println",
+        "intrinsic-println-int"
       ]
     },
     {
@@ -858,6 +864,18 @@
       "detail": "the module does not use stmt.lookup_else outside a foreign statement"
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use stmt.raise outside a foreign statement"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -903,7 +921,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-array-float"
+        "type-array-float",
+        "type-array-int"
       ]
     },
     {
@@ -943,7 +962,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-float"
+        "type-float",
+        "type-float-compare"
       ]
     },
     {
@@ -1012,10 +1032,11 @@
     },
     {
       "id": "type.tuple",
-      "claimed": false,
+      "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-tuple"
+        "type-tuple",
+        "type-tuple-error"
       ]
     },
     {
@@ -1090,11 +1111,11 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 114,
-    "pass": 114,
+    "claimed": 115,
+    "pass": 115,
     "fail": 0,
-    "refused_unclaimed": 12,
-    "pass_unclaimed": 1,
+    "refused_unclaimed": 13,
+    "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0
   },

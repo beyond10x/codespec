@@ -39,7 +39,7 @@
     },
     {
       "area": "Readers",
-      "detail": "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for three named exceptions.",
+      "detail": "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for four named exceptions, one its loop over a BTreeMap of string keys, which it refuses.",
       "href": "/docs/concepts/pipeline",
       "label": "Rust reader on syn",
       "status": "shipped"
@@ -179,6 +179,13 @@
     },
     {
       "area": "Conformance",
+      "detail": "codespec conform runs codespec-read-c over its corpus, one C source per claimed feature, through the same four steps as the Go reader; codespec-run-c runs each source to the case's expected output first.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "C reader conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
       "detail": "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
       "href": "/docs/guides/add-an-adapter",
       "label": "Go writer conforms to the kit",
@@ -189,6 +196,27 @@
       "detail": "codespec conform writes every case of the kit with codespec-write-rust and runs it with codespec-run-rust, as for the Go writer; a module without facts is refused naming codespec pass.",
       "href": "/docs/guides/add-an-adapter",
       "label": "Rust writer conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform --lang cir --role writer copies every case of the kit with codespec-write-cir and runs it with the evaluator through codespec-run-cir; it claims every feature but the two it gives a reason for, stmt.foreign, which it refuses, and intrinsic.append, whose case passes.",
+      "href": "/docs/reference/support",
+      "label": "Evaluator writer conforms to the kit",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "Every exported function of the series and inventory examples gets 200 seeded calls, a method through a generated probe that builds its receiver, and the evaluator, codespec-run-go and codespec-run-rust print the same bytes; Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function.",
+      "href": "/docs/concepts/harness",
+      "label": "Differential runs against the evaluator",
+      "status": "shipped"
+    },
+    {
+      "area": "Conformance",
+      "detail": "codespec conform writes every case of the kit with codespec-write-c and runs it with codespec-run-c, which compiles the C11 with cc, as for the Go writer.",
+      "href": "/docs/guides/add-an-adapter",
+      "label": "C writer conforms to the kit",
       "status": "shipped"
     },
     {
@@ -204,8 +232,15 @@
       "href": "/docs/concepts/static-analysis",
       "label": "Effects report",
       "status": "shipped"
+    },
+    {
+      "area": "Analysis",
+      "detail": "codespec eval runs a cir/1 module on a calls file with a tree-walking interpreter and prints what the kit's native runners print; every kit case gives its expected output twice byte-equal, and a run that executes a foreign statement or calls an extern without a built-in handler stops naming the node.",
+      "href": "/docs/reference/cli",
+      "label": "Evaluator",
+      "status": "shipped"
     }
   ],
   "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",
-  "version": "0.6.1"
+  "version": "0.7.0"
 }

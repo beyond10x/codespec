@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use codespec_model::{Module, Stmt};
+use codespec_model::{Expr, IntWidth, Module, Stmt, Type, TypeDecl, TypeParam};
 use serde_json::Value;
 
 fn root() -> PathBuf {
@@ -115,13 +115,70 @@ fn without_audit(v: &mut Value) {
     v.as_object_mut().unwrap().remove("refusals");
 }
 
+/// Exception `ordered-string-loop-refused`: the writer writes Go's unordered `range` over the
+/// orders map (`PendingOrders`) as a loop over a `BTreeMap` keyed by `OrderID`, a `String`
+/// newtype, which visits its keys in byte order; `sorted_keys` orders strings by UTF-16 code unit
+/// and a `cir/1` map range in no order, so neither reads it and the loop is refused, kept as one
+/// `foreign` statement where the `range` was. That range was one of the `unordered_iteration`
+/// facts, and `codespec pass` no longer finds `PendingOrders` `read_only`, since a `foreign`
+/// statement may do anything.
+fn ordered_string_loop_refused(got: &mut Value, want: &mut Value) {
+    want["facts"]["read_only"]
+        .as_array_mut()
+        .expect("read_only")
+        .retain(|f| f != "Service.PendingOrders");
+    let refusals = got
+        .as_object_mut()
+        .unwrap()
+        .remove("refusals")
+        .expect("the refusal");
+    assert_eq!(refusals.as_array().map(Vec::len), Some(1), "{refusals}");
+    let body = |v: &Value| -> Vec<Value> {
+        v["funcs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == "PendingOrders")
+            .expect("PendingOrders")["body"]
+            .as_array()
+            .unwrap()
+            .clone()
+    };
+    let (g, w) = (body(got), body(want));
+    let i = w
+        .iter()
+        .position(|s| s["k"] == "for_range")
+        .expect("the range");
+    assert_eq!(g[i]["k"], "foreign", "{}", g[i]);
+    assert!(
+        g[i]["src"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("for (_, o) in self.orders.clone()"))
+            && g[i]["reason"]
+                .as_str()
+                .is_some_and(|r| r.contains("BTreeMap")),
+        "{}",
+        g[i]
+    );
+    let funcs = want["funcs"].as_array_mut().unwrap();
+    let f = funcs
+        .iter_mut()
+        .find(|f| f["name"] == "PendingOrders")
+        .unwrap();
+    f["body"][i] = g[i].clone();
+}
+
 #[test]
 fn orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions() {
     let read = codespec_read_rust::read_crate(&root().join("examples/orders/out/rust"))
         .expect("the reader accepts the orders output");
     assert_eq!(read.reader.language, "rust");
     assert_eq!(read.reader.name, "codespec-read-rust");
-    assert!(read.refusals.is_empty(), "refusals: {:?}", read.refusals);
+    assert!(
+        matches!(read.refusals.as_slice(), [r] if r.pos == "lib.rs:196"),
+        "refusals: {:?}",
+        read.refusals
+    );
     let passed = codespec_passes::run(&read);
     let mut got: Value = serde_json::from_str(&passed.to_json()).unwrap();
     let mut want: Value = serde_json::from_slice(
@@ -136,14 +193,24 @@ fn orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions
     platform_int_reads_as_64(&mut want);
     new_returns_the_value(&mut want, "Service");
     errors_at_the_error_enum(&mut want);
-    // `unordered_iteration` lists positions, which differ by file; its length must not.
-    let n = |v: &Value| v["facts"]["unordered_iteration"].as_array().map(Vec::len);
-    assert_eq!(n(&got), n(&want));
+    ordered_string_loop_refused(&mut got, &mut want);
+    // `unordered_iteration` lists positions, which differ by file; its length must not, but for
+    // the refused range.
+    let n = |v: &Value| {
+        v.get("facts")
+            .and_then(|f| f.get("unordered_iteration"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len)
+    };
+    assert_eq!(n(&got) + 1, n(&want));
     for v in [&mut got, &mut want] {
-        v["facts"]
-            .as_object_mut()
-            .unwrap()
-            .remove("unordered_iteration");
+        let o = v.as_object_mut().unwrap();
+        if let Some(Value::Object(facts)) = o.get_mut("facts") {
+            facts.remove("unordered_iteration");
+            if facts.is_empty() {
+                o.remove("facts");
+            }
+        }
     }
     if let Some(d) = first_difference(&want, &got, "$") {
         panic!("round trip differs at {d}");
@@ -445,15 +512,6 @@ fn a_generic_function_is_kept_as_foreign_with_a_refusal_at_its_line() {
          }\n",
     );
     assert_foreign(&m, "Twice", "lib.rs:2", "generic");
-}
-
-#[test]
-fn a_generic_function_at_module_level_is_refused_at_its_line() {
-    let m = read("pub fn pick<T>(a: T) -> T {\n    a\n}\n");
-    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
-    assert_eq!(m.refusals.len(), 1, "{:?}", m.refusals);
-    assert_eq!(m.refusals[0].pos, "lib.rs:1");
-    assert!(m.refusals[0].reason.contains("generic"));
 }
 
 #[test]
@@ -1080,4 +1138,1346 @@ fn a_guard_whose_body_reads_the_bound_value_is_kept_as_foreign() {
          }\n",
     );
     assert_foreign(&m, "F", "lib.rs:2", "guard");
+}
+
+/// Whether `s` is a Go identifier of ASCII letters, digits and `_`, not starting with a digit.
+fn is_identifier(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| !c.is_ascii_digit())
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+#[test]
+fn a_raw_identifier_is_named_without_its_prefix_for_a_function_a_field_a_parameter_and_a_local() {
+    let m = read(
+        "pub struct Token {\n\
+         \x20   pub r#type: i64,\n\
+         \x20   r#for: i64,\n\
+         }\n\
+         pub fn r#type(r#struct: i64) -> i64 {\n\
+         \x20   let r#loop = r#struct;\n\
+         \x20   r#loop\n\
+         }\n\
+         fn r#match(t: Token) -> i64 {\n\
+         \x20   t.r#type + t.r#for\n\
+         }\n",
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let codespec_model::TypeDecl::Struct { fields, .. } = &m.types[0] else {
+        panic!("{:?}", m.types)
+    };
+    let fields: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+    assert_eq!(fields, ["Type", "for_"]);
+    let f = &m.funcs[0];
+    assert_eq!(f.name, "Type");
+    assert_eq!(f.params[0].name, "struct_");
+    let Stmt::Let { names: local, .. } = &f.body[0] else {
+        panic!("{:?}", f.body)
+    };
+    assert_eq!(local, &["loop".to_string()]);
+    assert_eq!(m.funcs[1].name, "match");
+    let json = m.to_json();
+    assert!(!json.contains("r#"), "a name keeps `r#`: {json}");
+    let names = [&f.name, &f.params[0].name, &local[0], &m.funcs[1].name]
+        .into_iter()
+        .chain(&fields);
+    for n in names {
+        assert!(is_identifier(n), "{n} is not an identifier");
+    }
+}
+
+// ----- constructs read for the kit features the reader claims ---------------------------------
+
+/// The source of `lines`, one per line: line `i + 1` is `lines[i]`.
+fn lines(lines: &[&str]) -> String {
+    lines.join("\n") + "\n"
+}
+
+fn i64t() -> Type {
+    Type::Int {
+        width: IntWidth::W64,
+        signed: true,
+    }
+}
+
+fn var(name: &str, t: Type) -> Expr {
+    Expr::Var {
+        name: name.into(),
+        t,
+    }
+}
+
+/// The one result of the `return` that is the last statement of `body`.
+fn returned(body: &[Stmt]) -> &Expr {
+    match body.last() {
+        Some(Stmt::Return { results, .. }) if results.len() == 1 => &results[0],
+        other => panic!("not a return of one value: {other:?}"),
+    }
+}
+
+#[test]
+fn a_derived_default_whose_fields_default_to_zero_reads_as_the_zero_value() {
+    let m = read(&lines(&[
+        "#[derive(Debug, Default)]",
+        "pub struct P {",
+        "    pub x: i64,",
+        "    pub s: String,",
+        "    pub v: Vec<i64>,",
+        "}",
+        "pub fn z() -> P {",
+        "    P::default()",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let p = Type::Named {
+        name: "P".into(),
+        targs: vec![],
+    };
+    assert_eq!(returned(&m.funcs[0].body), &Expr::Zero { t: p });
+}
+
+#[test]
+fn a_derived_default_of_a_pointer_field_is_not_the_zero_value_and_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "use std::cell::RefCell;",
+        "use std::rc::Rc;",
+        "#[derive(Default)]",
+        "pub struct Q {",
+        "    pub n: i64,",
+        "}",
+        "#[derive(Default)]",
+        "pub struct P {",
+        "    pub q: Rc<RefCell<Q>>,",
+        "}",
+        "pub fn z() -> P {",
+        "    P::default()",
+        "}",
+    ]));
+    assert_foreign(&m, "Z", "lib.rs:12", "P::default");
+}
+
+#[test]
+fn an_rc_of_dyn_any_reads_as_any_and_rc_new_as_the_value_it_holds() {
+    let m = read(&lines(&[
+        "use std::any::Any;",
+        "use std::rc::Rc;",
+        "pub fn boxed(n: i64) -> Rc<dyn Any> {",
+        "    let a: Rc<dyn Any> = Rc::new(n) as Rc<dyn Any>;",
+        "    let b = a.clone();",
+        "    b",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let f = &m.funcs[0];
+    assert_eq!(f.results, [Type::Any]);
+    assert!(
+        matches!(&f.body[0], Stmt::Var { name, t: Type::Any, .. } if name == "a"),
+        "{:?}",
+        f.body
+    );
+    let Stmt::Assign { rhs, .. } = &f.body[1] else {
+        panic!("{:?}", f.body)
+    };
+    assert_eq!(rhs[0], var("n", i64t()));
+    assert_eq!(returned(&f.body), &var("b", Type::Any));
+}
+
+#[test]
+fn a_channel_of_both_ends_reads_as_chan_with_try_send_and_try_recv_as_send_and_receive() {
+    let m = read(&lines(&[
+        "use std::rc::Rc;",
+        "use std::sync::mpsc::{Receiver, SyncSender};",
+        "pub fn echo(ch: Rc<(SyncSender<i64>, Receiver<i64>)>, n: i64) -> i64 {",
+        "    ch.0.try_send(n).expect(\"full\");",
+        "    ch.1.try_recv().unwrap()",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ch = var(
+        "ch",
+        Type::Chan {
+            elem: Box::new(i64t()),
+            dir: codespec_model::ChanDir::Both,
+        },
+    );
+    let f = &m.funcs[0];
+    assert!(
+        matches!(&f.body[0], Stmt::Send { chan, x, .. } if *chan == ch && *x == var("n", i64t())),
+        "{:?}",
+        f.body
+    );
+    assert_eq!(
+        returned(&f.body),
+        &Expr::Unop {
+            op: "<-".into(),
+            x: Box::new(ch),
+            t: i64t(),
+        }
+    );
+}
+
+#[test]
+fn a_blocking_receive_is_kept_as_foreign_where_go_would_deadlock() {
+    let m = read(&lines(&[
+        "use std::rc::Rc;",
+        "use std::sync::mpsc::{Receiver, SyncSender};",
+        "pub fn take(ch: Rc<(SyncSender<i64>, Receiver<i64>)>) -> i64 {",
+        "    let v = ch.1.recv().unwrap();",
+        "    v",
+        "}",
+    ]));
+    assert_foreign(&m, "Take", "lib.rs:4", "");
+}
+
+#[test]
+fn collected_and_sorted_map_keys_read_as_sorted_keys() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "pub fn ints(m: HashMap<i64, bool>) -> Vec<i64> {",
+        "    let mut keys: Vec<i64> = m.keys().copied().collect();",
+        "    keys.sort();",
+        "    keys",
+        "}",
+        "pub fn strs(m: HashMap<String, bool>) -> Vec<String> {",
+        "    let mut keys: Vec<String> = m.keys().cloned().collect();",
+        "    keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));",
+        "    keys",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    for (f, k) in m.funcs.iter().zip([i64t(), Type::String]) {
+        let Stmt::Let { rhs, .. } = &f.body[0] else {
+            panic!("{:?}", f.body)
+        };
+        assert!(
+            matches!(&rhs[0], Expr::Intrinsic { name, t, .. }
+                if name == "sorted_keys" && *t == Type::Slice { elem: Box::new(k.clone()) }),
+            "{:?}",
+            rhs
+        );
+        assert_eq!(
+            f.body.len(),
+            2,
+            "the sort is part of sorted_keys: {:?}",
+            f.body
+        );
+    }
+}
+
+#[test]
+fn string_keys_sorted_by_byte_are_kept_as_foreign_not_read_as_sorted_keys() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "pub fn strs(m: HashMap<String, bool>) -> Vec<String> {",
+        "    let mut keys: Vec<String> = m.keys().cloned().collect();",
+        "    keys.sort();",
+        "    keys",
+        "}",
+    ]));
+    assert_foreign(&m, "Strs", "lib.rs:3", "UTF-16");
+}
+
+#[test]
+fn a_float_literal_is_spelled_at_its_width_and_typed_from_its_context() {
+    let m = read(&lines(&[
+        "pub fn f(big: bool) -> bool {",
+        "    let mut x: f32 = 0.1;",
+        "    if big {",
+        "        x = 1e21;",
+        "    }",
+        "    x / 3.0 > 0.5f32",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let f32t = Type::Float {
+        bits: codespec_model::FloatBits::W32,
+    };
+    let Stmt::Let { rhs, .. } = &m.funcs[0].body[0] else {
+        panic!("{:?}", m.funcs[0].body)
+    };
+    assert_eq!(
+        rhs[0],
+        Expr::Float {
+            value: "0.1".into(),
+            t: f32t.clone(),
+        }
+    );
+    let json = m.to_json();
+    assert!(json.contains("\"value\": \"1e21\""), "{json}");
+    assert!(json.contains("\"value\": \"3\""), "{json}");
+}
+
+#[test]
+fn a_float_literal_without_context_and_a_float_remainder_are_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f(x: f64) -> f64 {",
+        "    let y = 2.5;",
+        "    x % 2.0",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "float literal");
+    assert_foreign(&m, "F", "lib.rs:3", "floats");
+}
+
+#[test]
+fn a_zero_array_reads_as_var_and_indexes_as_a_slice_does() {
+    let m = read(&lines(&[
+        "pub fn pick(i: i64) -> i64 {",
+        "    let mut a: [i64; 3] = [0; 3];",
+        "    a[1] = 7;",
+        "    a[i as usize]",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let arr = Type::Array {
+        len: 3,
+        elem: Box::new(i64t()),
+    };
+    let body = &m.funcs[0].body;
+    assert!(
+        matches!(&body[0], Stmt::Var { name, t, .. } if name == "a" && *t == arr),
+        "{body:?}"
+    );
+    assert!(
+        matches!(returned(body), Expr::Index { x, .. } if **x == var("a", arr.clone())),
+        "{body:?}"
+    );
+}
+
+#[test]
+fn an_array_repeat_of_a_value_other_than_zero_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f() -> i64 {",
+        "    let a: [i64; 2] = [5; 2];",
+        "    a[0]",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "zero value");
+}
+
+#[test]
+fn a_static_mut_reads_as_a_module_variable_read_and_written_inside_unsafe() {
+    let m = read(&lines(&[
+        "static START: i64 = 10;",
+        "static mut HITS: i64 = 0;",
+        "pub fn hit(n: i64) -> i64 {",
+        "    unsafe {",
+        "        HITS += n;",
+        "    }",
+        "    unsafe { START + HITS }",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let names: Vec<(&str, bool)> = m
+        .vars
+        .iter()
+        .map(|v| (v.name.as_str(), v.init.is_some()))
+        .collect();
+    assert_eq!(names, [("start", true), ("hits", false)]);
+    let body = &m.funcs[0].body;
+    let hits = Expr::Global {
+        name: "hits".into(),
+        t: i64t(),
+    };
+    assert!(
+        matches!(&body[0], Stmt::Assign { op, lhs, .. } if op == "+=" && lhs[0] == hits),
+        "{body:?}"
+    );
+    assert!(
+        matches!(returned(body), Expr::Binop { y, .. } if **y == hits),
+        "{body:?}"
+    );
+}
+
+#[test]
+fn an_unsafe_block_that_binds_a_name_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "static mut HITS: i64 = 0;",
+        "pub fn hit() -> i64 {",
+        "    unsafe {",
+        "        let h = HITS;",
+        "        HITS = h + 1;",
+        "    }",
+        "    0",
+        "}",
+    ]));
+    assert_foreign(&m, "Hit", "lib.rs:3", "binds a name");
+}
+
+#[test]
+fn a_function_pointer_reads_as_a_function_value_called_through_a_parameter_and_a_field() {
+    let m = read(&lines(&[
+        "pub struct Rule {",
+        "    pub check: fn(i64) -> bool,",
+        "}",
+        "fn positive(n: i64) -> bool {",
+        "    n > 0",
+        "}",
+        "fn run(f: fn(i64) -> bool, n: i64) -> bool {",
+        "    f(n)",
+        "}",
+        "pub fn allowed(n: i64) -> bool {",
+        "    let r = Rule { check: positive };",
+        "    run(positive, n) && (r.check)(n)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ft = Type::Func {
+        params: vec![i64t()],
+        results: vec![Type::Bool],
+    };
+    let run = &m.funcs[1].body;
+    assert!(
+        matches!(returned(run), Expr::CallValue { f, .. } if **f == var("f", ft.clone())),
+        "{run:?}"
+    );
+    let allowed = &m.funcs[2].body;
+    let Expr::Binop { x, y, .. } = returned(allowed) else {
+        panic!("{allowed:?}")
+    };
+    assert!(
+        matches!(&**x, Expr::Call { args, .. } if args[0] == Expr::FuncRef { name: "positive".into(), recv: None, t: ft.clone() }),
+        "{x:?}"
+    );
+    assert!(
+        matches!(&**y, Expr::CallValue { f, .. } if matches!(&**f, Expr::Field { name, .. } if name == "Check")),
+        "{y:?}"
+    );
+}
+
+#[test]
+fn a_typed_closure_reads_as_a_function_literal_with_its_captures() {
+    let m = read(&lines(&[
+        "pub fn scale(n: i64, k: i64) -> i64 {",
+        "    let mut calls: i64 = 0;",
+        "    let mut mul = |x: i64| -> i64 {",
+        "        calls += 1;",
+        "        x * k",
+        "    };",
+        "    let once = mul(n);",
+        "    once + calls",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let body = &m.funcs[0].body;
+    let Stmt::Let { rhs, .. } = &body[1] else {
+        panic!("{body:?}")
+    };
+    let Expr::Lambda {
+        params,
+        results,
+        captures,
+        ..
+    } = &rhs[0]
+    else {
+        panic!("{rhs:?}")
+    };
+    assert_eq!(params[0].name, "x");
+    assert_eq!(results, &[i64t()]);
+    assert_eq!(captures, &["calls".to_string(), "k".to_string()]);
+}
+
+#[test]
+fn a_move_closure_and_a_closure_with_an_untyped_parameter_are_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f(k: i64) -> i64 {",
+        "    let add = move |x: i64| -> i64 { x + k };",
+        "    let sub = |x| -> i64 { x - k };",
+        "    k",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "move");
+    assert_foreign(&m, "F", "lib.rs:3", "type");
+}
+
+#[test]
+fn a_crate_trait_reads_as_an_interface_its_dyn_as_the_interface_type_and_its_calls_through_it() {
+    let m = read(&lines(&[
+        "pub trait Shape {",
+        "    fn area(&self) -> i64;",
+        "}",
+        "struct Square {",
+        "    side: i64,",
+        "}",
+        "impl Shape for Square {",
+        "    fn area(&self) -> i64 {",
+        "        self.side * self.side",
+        "    }",
+        "}",
+        "fn area(s: &dyn Shape) -> i64 {",
+        "    s.area()",
+        "}",
+        "pub fn areas(n: i64) -> i64 {",
+        "    let b: Box<dyn Shape> = Box::new(Square { side: n });",
+        "    area(&Square { side: n }) + area(&*b)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(m.interfaces.len(), 1);
+    assert_eq!(m.interfaces[0].name, "Shape");
+    assert_eq!(m.interfaces[0].methods[0].name, "Area");
+    let shape = Type::Named {
+        name: "Shape".into(),
+        targs: vec![],
+    };
+    let keys: Vec<String> = m.funcs.iter().map(|f| f.key()).collect();
+    assert_eq!(keys, ["Square.Area", "area", "Areas"]);
+    assert!(
+        matches!(returned(&m.funcs[1].body), Expr::IfaceCall { iface, name, .. } if iface == "Shape" && name == "Area"),
+        "{:?}",
+        m.funcs[1].body
+    );
+    let Stmt::Let { rhs, .. } = &m.funcs[2].body[0] else {
+        panic!("{:?}", m.funcs[2].body)
+    };
+    assert!(
+        matches!(&rhs[0], Expr::ToIface { t, .. } if *t == shape),
+        "{rhs:?}"
+    );
+}
+
+#[test]
+fn a_trait_method_with_a_default_body_is_refused_and_so_is_its_dyn() {
+    let m = read(&lines(&[
+        "pub trait Shape {",
+        "    fn area(&self) -> i64 {",
+        "        0",
+        "    }",
+        "}",
+        "fn area(s: &dyn Shape) -> i64 {",
+        "    s.area()",
+        "}",
+    ]));
+    assert!(m.interfaces.is_empty(), "{:?}", m.interfaces);
+    assert!(
+        m.refusals
+            .iter()
+            .any(|r| r.pos == "lib.rs:1" && r.reason.contains("default body")),
+        "{:?}",
+        m.refusals
+    );
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}
+
+// ----- generics -------------------------------------------------------------------------------
+
+fn param(name: &str) -> Type {
+    Type::Param { name: name.into() }
+}
+
+fn named(name: &str, targs: Vec<Type>) -> Type {
+    Type::Named {
+        name: name.into(),
+        targs,
+    }
+}
+
+fn tparam(name: &str, constraint: Type) -> TypeParam {
+    TypeParam {
+        name: name.into(),
+        constraint,
+    }
+}
+
+/// The refusal at `pos`, which must name `what` in its reason.
+fn assert_refused(m: &Module, pos: &str, reason_has: &str) {
+    assert!(
+        m.refusals
+            .iter()
+            .any(|r| r.pos == pos && r.reason.contains(reason_has)),
+        "no refusal at {pos} naming {reason_has:?}: {:?}",
+        m.refusals
+    );
+}
+
+#[test]
+fn a_generic_function_reads_with_its_type_parameter_and_a_turbofish_call_as_an_instantiation() {
+    let m = read(&lines(&[
+        "fn second_of<T>(_x: T, y: T) -> T {",
+        "    y",
+        "}",
+        "pub fn second(a: i64, b: i64) -> i64 {",
+        "    second_of::<i64>(a, b)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let g = &m.funcs[0];
+    assert_eq!(g.name, "secondOf");
+    assert_eq!(g.tparams, [tparam("T", Type::Any)]);
+    let params: Vec<&Type> = g.params.iter().map(|p| &p.t).collect();
+    assert_eq!(params, [&param("T"), &param("T")]);
+    assert_eq!(g.results, [param("T")]);
+    assert_eq!(returned(&g.body), &var("y", param("T")));
+    assert!(
+        matches!(returned(&m.funcs[1].body), Expr::Call { name, targs, t, .. }
+            if name == "secondOf" && *targs == [i64t()] && *t == i64t()),
+        "{:?}",
+        m.funcs[1].body
+    );
+}
+
+#[test]
+fn a_generic_struct_its_method_a_trait_bound_and_inferred_instantiations_read_as_go_generics() {
+    let m = read(&lines(&[
+        "pub trait Sizer {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "struct Item {",
+        "    n: i64,",
+        "}",
+        "impl Sizer for Item {",
+        "    fn size(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+        "struct Pair<T> {",
+        "    a: T,",
+        "    b: T,",
+        "}",
+        "impl<T> Pair<T> {",
+        "    fn first(&self) -> &T {",
+        "        &self.a",
+        "    }",
+        "}",
+        "fn sum<T: Sizer>(x: &T, y: &T) -> i64 {",
+        "    x.size() + y.size()",
+        "}",
+        "pub fn sizes(n: i64) -> i64 {",
+        "    let p = Pair { a: Item { n }, b: Item { n: n + 1 } };",
+        "    sum(p.first(), &p.b)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let TypeDecl::Struct {
+        name,
+        tparams,
+        fields,
+        ..
+    } = &m.types[1]
+    else {
+        panic!("{:?}", m.types)
+    };
+    assert_eq!(name, "Pair");
+    assert_eq!(tparams, &[tparam("T", Type::Any)]);
+    assert!(fields.iter().all(|f| f.t == param("T")), "{fields:?}");
+    let keys: Vec<String> = m.funcs.iter().map(|f| f.key()).collect();
+    assert_eq!(keys, ["Item.Size", "Pair.first", "sum", "Sizes"]);
+    let first = &m.funcs[1];
+    assert_eq!(
+        first.recv.as_ref().map(|r| &r.t),
+        Some(&named("Pair", vec![param("T")]))
+    );
+    assert_eq!(first.results, [param("T")]);
+    let sum = &m.funcs[2];
+    assert_eq!(sum.tparams, [tparam("T", named("Sizer", vec![]))]);
+    let Expr::Binop { x, .. } = returned(&sum.body) else {
+        panic!("{:?}", sum.body)
+    };
+    assert!(
+        matches!(&**x, Expr::IfaceCall { iface, name, recv, .. }
+            if iface == "Sizer" && name == "Size" && *recv.t() == param("T")),
+        "{x:?}"
+    );
+    let sizes = &m.funcs[3];
+    let Stmt::Let { rhs, .. } = &sizes.body[0] else {
+        panic!("{:?}", sizes.body)
+    };
+    let item = named("Item", vec![]);
+    assert_eq!(rhs[0].t(), &named("Pair", vec![item.clone()]));
+    assert!(
+        matches!(returned(&sizes.body), Expr::Call { name, targs, .. }
+            if name == "sum" && *targs == [item.clone()]),
+        "{:?}",
+        sizes.body
+    );
+}
+
+#[test]
+fn a_struct_literal_with_a_turbofish_and_a_where_clause_bound_read_as_instantiation_and_constraint()
+{
+    let m = read(&lines(&[
+        "pub trait Sizer {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "struct Boxed<T> {",
+        "    v: T,",
+        "}",
+        "fn get<T>(b: Boxed<T>) -> T {",
+        "    b.v",
+        "}",
+        "fn size_of<T>(x: &T) -> i64",
+        "where",
+        "    T: Sizer,",
+        "{",
+        "    x.size()",
+        "}",
+        "pub fn wrap(n: i64) -> i64 {",
+        "    let b = Boxed::<i64> { v: n };",
+        "    get(b)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(m.funcs[1].tparams, [tparam("T", named("Sizer", vec![]))]);
+    let wrap = &m.funcs[2];
+    let Stmt::Let { rhs, .. } = &wrap.body[0] else {
+        panic!("{:?}", wrap.body)
+    };
+    assert_eq!(rhs[0].t(), &named("Boxed", vec![i64t()]));
+    assert!(
+        matches!(returned(&wrap.body), Expr::Call { name, targs, t, .. }
+            if name == "get" && *targs == [i64t()] && *t == i64t()),
+        "{:?}",
+        wrap.body
+    );
+}
+
+#[test]
+fn a_bound_cir1_has_no_constraint_for_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "fn bigger<T: PartialOrd>(a: T, b: T) -> bool {",
+        "    a > b",
+        "}",
+        "fn copied<T: Copy>(a: T) -> T {",
+        "    a",
+        "}",
+        "pub trait Sizer {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "fn both<T: Sizer + Clone>(a: T) -> i64 {",
+        "    a.size()",
+        "}",
+        "fn kept<T: 'static>(a: T) -> T {",
+        "    a",
+        "}",
+    ]));
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:1", "bound");
+    assert_refused(&m, "lib.rs:4", "bound");
+    assert_refused(&m, "lib.rs:10", "bound");
+    assert_refused(&m, "lib.rs:13", "bound");
+}
+
+#[test]
+fn a_where_clause_other_than_t_colon_trait_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Sizer {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "fn one<T>(a: T) -> T",
+        "where",
+        "    Vec<T>: Clone,",
+        "{",
+        "    a",
+        "}",
+        "fn two<T: Sizer>(a: T) -> i64",
+        "where",
+        "    T: Sizer,",
+        "{",
+        "    a.size()",
+        "}",
+    ]));
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:4", "where");
+    assert_refused(&m, "lib.rs:10", "where");
+}
+
+#[test]
+fn a_lifetime_and_a_const_parameter_are_refused_at_their_lines() {
+    let m = read(&lines(&[
+        "fn first<'a>(s: &'a str) -> &'a str {",
+        "    s",
+        "}",
+        "fn width<const N: usize>() -> usize {",
+        "    N",
+        "}",
+    ]));
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:1", "lifetime parameter");
+    assert_refused(&m, "lib.rs:4", "const parameter");
+}
+
+#[test]
+fn an_associated_type_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Holder {",
+        "    type Item;",
+        "}",
+        "fn get<T: Holder>(x: T::Item) -> T::Item {",
+        "    x",
+        "}",
+        "fn next<T: Iterator<Item = i64>>(mut it: T) -> i64 {",
+        "    it.next().unwrap_or(0)",
+        "}",
+    ]));
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:4", "associated type");
+    assert_refused(&m, "lib.rs:7", "associated type");
+}
+
+#[test]
+fn impl_trait_in_argument_position_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Sizer {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "fn total(s: impl Sizer) -> i64 {",
+        "    s.size()",
+        "}",
+    ]));
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:4", "impl Trait");
+}
+
+#[test]
+fn a_generic_method_on_a_trait_or_a_type_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Mapper {",
+        "    fn map<T>(&self, x: T) -> T;",
+        "}",
+        "struct Item {",
+        "    n: i64,",
+        "}",
+        "impl Item {",
+        "    fn pick<T>(&self, x: T) -> T {",
+        "        x",
+        "    }",
+        "}",
+    ]));
+    assert!(m.interfaces.is_empty(), "{:?}", m.interfaces);
+    assert_refused(&m, "lib.rs:1", "generic");
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+    assert_refused(&m, "lib.rs:8", "own type parameters");
+}
+
+#[test]
+fn a_generic_enum_and_a_generic_function_used_as_a_value_are_refused() {
+    let m = read(&lines(&[
+        "enum Maybe<T> {",
+        "    Just(T),",
+        "    Nothing,",
+        "}",
+        "fn id<T>(x: T) -> T {",
+        "    x",
+        "}",
+        "pub fn apply(n: i64) -> i64 {",
+        "    let f: fn(i64) -> i64 = id::<i64>;",
+        "    f(n)",
+        "}",
+    ]));
+    assert!(m.types.is_empty(), "{:?}", m.types);
+    assert_refused(&m, "lib.rs:1", "generic enum");
+    assert_foreign(&m, "Apply", "lib.rs:9", "generic function");
+}
+
+// ----- raw type names -------------------------------------------------------------------------
+
+#[test]
+fn a_raw_struct_enum_and_trait_name_is_named_without_its_prefix_in_every_position() {
+    let m = read(&lines(&[
+        "pub struct r#match {",
+        "    pub n: i64,",
+        "}",
+        "enum r#type {",
+        "    A,",
+        "    B,",
+        "}",
+        "pub trait r#dyn {",
+        "    fn get(&self) -> i64;",
+        "}",
+        "impl r#dyn for r#match {",
+        "    fn get(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+        "fn kind(m: &r#match) -> r#type {",
+        "    if m.n > 0 {",
+        "        return r#type::A;",
+        "    }",
+        "    r#type::B",
+        "}",
+        "fn through(d: &dyn r#dyn) -> i64 {",
+        "    d.get()",
+        "}",
+        "pub fn make(n: i64) -> i64 {",
+        "    let m = r#match { n };",
+        "    through(&m)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let types: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(types, ["Match", "type_"]);
+    assert_eq!(m.interfaces[0].name, "Dyn");
+    let json = m.to_json();
+    assert!(!json.contains("r#"), "a name keeps `r#`: {json}");
+    let kind = m.funcs.iter().find(|f| f.name == "kind").expect("kind");
+    assert_eq!(kind.params[0].t, named("Match", vec![]));
+    assert_eq!(kind.results, [named("type_", vec![])]);
+    let through = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "through")
+        .expect("through");
+    assert_eq!(through.params[0].t, named("Dyn", vec![]));
+}
+
+#[test]
+fn a_raw_module_path_segment_is_named_without_its_prefix() {
+    let m = read(&lines(&[
+        "pub fn count(m: r#std::r#collections::r#HashMap<i64, i64>) -> usize {",
+        "    m.len()",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert!(
+        matches!(&m.funcs[0].params[0].t, Type::Map { .. }),
+        "{:?}",
+        m.funcs[0].params
+    );
+}
+
+#[test]
+fn a_raw_type_name_that_would_read_as_another_types_name_gets_an_underscore() {
+    let m = read(&lines(&[
+        "pub struct Match {",
+        "    pub n: i64,",
+        "}",
+        "pub struct r#match {",
+        "    pub m: i64,",
+        "}",
+        "pub fn both(a: Match, b: r#match) -> i64 {",
+        "    a.n + b.m",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let types: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(types, ["Match", "Match_"]);
+    let params: Vec<&Type> = m.funcs[0].params.iter().map(|p| &p.t).collect();
+    assert_eq!(params, [&named("Match", vec![]), &named("Match_", vec![])]);
+}
+
+// ----- adversary pass 1, fix round 1 ---------------------------------------------------------
+
+#[test]
+fn a_static_whose_initialiser_is_refused_is_not_declared_and_each_use_is_refused_naming_it() {
+    let m = read(&lines(&[
+        "static mut SLOTS: [i64; 3] = [0; 3];",
+        "pub fn set(i: usize, v: i64) -> i64 {",
+        "    unsafe {",
+        "        SLOTS[i] = v;",
+        "    }",
+        "    unsafe { SLOTS[i] }",
+        "}",
+    ]));
+    assert!(m.vars.is_empty(), "{:?}", m.vars);
+    let at1 = m
+        .refusals
+        .iter()
+        .find(|r| r.pos == "lib.rs:1")
+        .unwrap_or_else(|| panic!("{:?}", m.refusals));
+    assert!(
+        at1.reason.contains("static") && !at1.reason.contains("constant"),
+        "{at1:?}"
+    );
+    assert_foreign(&m, "Set", "lib.rs:3", "the static SLOTS");
+    assert_foreign(&m, "Set", "lib.rs:6", "the static SLOTS");
+    assert!(Module::from_json(m.to_json().as_bytes()).is_ok());
+}
+
+#[test]
+fn a_raw_type_name_beside_its_spelling_and_that_spelling_with_an_underscore_gets_two() {
+    let m = read(&lines(&[
+        "pub struct Match {",
+        "    pub n: i64,",
+        "}",
+        "pub struct Match_ {",
+        "    pub n: i64,",
+        "}",
+        "pub struct r#match {",
+        "    pub n: i64,",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let types: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(types, ["Match", "Match_", "Match__"]);
+}
+
+#[test]
+fn an_impl_of_a_generic_struct_with_bounds_other_than_the_structs_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Tr {",
+        "    fn n(&self) -> i64;",
+        "}",
+        "pub struct S<T> {",
+        "    pub v: T,",
+        "}",
+        "impl<T: Tr> S<T> {",
+        "    pub fn get(&self) -> i64 {",
+        "        self.v.n()",
+        "    }",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:7", "bounds other than");
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}
+
+/// Not Rust (`T` is unused), but no input may panic the reader: the literal is refused.
+#[test]
+fn a_struct_literal_whose_fields_fix_no_type_argument_is_refused_not_a_panic() {
+    let m = read(&lines(&[
+        "pub struct E<T> {",
+        "    pub n: i64,",
+        "}",
+        "pub fn make() -> i64 {",
+        "    let e = E { n: 1 };",
+        "    e.n",
+        "}",
+    ]));
+    assert_foreign(
+        &m,
+        "Make",
+        "lib.rs:5",
+        "type arguments its fields do not fix",
+    );
+}
+
+#[test]
+fn a_comparison_of_function_values_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn same(a: fn(i64) -> i64, b: fn(i64) -> i64) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "Same", "lib.rs:2", "comparison of function values");
+}
+
+#[test]
+fn a_crate_trait_for_an_undeclared_type_or_a_reference_is_refused_at_the_impl() {
+    let m = read(&lines(&[
+        "pub trait Measured {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "impl Measured for i64 {",
+        "    fn size(&self) -> i64 {",
+        "        *self",
+        "    }",
+        "}",
+        "pub struct Crate {",
+        "    pub n: i64,",
+        "}",
+        "impl Measured for &Crate {",
+        "    fn size(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:4", "declared");
+    assert_refused(&m, "lib.rs:12", "declared");
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}
+
+#[test]
+fn a_raw_type_name_that_is_no_keyword_is_that_name_raw_or_plain() {
+    let m = read(&lines(&[
+        "/// A box.",
+        "pub struct r#Crate {",
+        "    pub n: i64,",
+        "}",
+        "/// Both spellings of one type.",
+        "pub fn get(a: r#Crate, b: Crate) -> i64 {",
+        "    a.n + b.n",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert!(
+        matches!(m.types.as_slice(), [TypeDecl::Struct { name, .. }] if name == "Crate"),
+        "{:?}",
+        m.types
+    );
+}
+
+#[test]
+fn a_constant_whose_type_is_refused_is_refused_at_each_use_naming_it() {
+    let m = read(&lines(&[
+        "const C: Option<i64> = None;",
+        "/// A use.",
+        "pub fn get() -> bool {",
+        "    C.is_none()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:1", "Option");
+    assert_refused(&m, "lib.rs:4", "the constant C");
+    assert!(m.consts.is_empty(), "{:?}", m.consts);
+}
+
+#[test]
+fn to_string_of_a_type_whose_display_is_refused_is_refused() {
+    let m = read(&lines(&[
+        "use std::fmt;",
+        "/// A label.",
+        "pub struct Label {",
+        "    pub n: i64,",
+        "}",
+        "impl fmt::Display for Label {",
+        "    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {",
+        "        write!(f, \"L{}\", self.n)",
+        "    }",
+        "}",
+        "impl Label {",
+        "    pub fn string(&self) -> String {",
+        "        String::from(\"plain\")",
+        "    }",
+        "}",
+        "/// A rendering.",
+        "pub fn get(x: i64) -> String {",
+        "    let l = Label { n: x };",
+        "    l.to_string()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:6", "a method String of its own");
+    assert!(
+        m.refusals.iter().any(|r| r.pos == "lib.rs:19"),
+        "{:?}",
+        m.refusals
+    );
+}
+
+#[test]
+fn two_methods_constants_statics_or_associated_functions_of_one_go_name_are_refused() {
+    let m = read(&lines(&[
+        "/// A box.",
+        "pub struct Bx {",
+        "    pub n: i64,",
+        "}",
+        "impl Bx {",
+        "    fn value_2(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "    fn value2(&self) -> i64 {",
+        "        self.n + 1",
+        "    }",
+        "    fn new() -> Bx {",
+        "        Bx { n: 1 }",
+        "    }",
+        "}",
+        "fn new_bx() -> Bx {",
+        "    Bx { n: 2 }",
+        "}",
+        "const MAX_2: i64 = 1;",
+        "const MAX2: i64 = 2;",
+        "static mut HITS_2: i64 = 0;",
+        "static mut HITS2: i64 = 0;",
+        "/// Uses each.",
+        "pub fn get() -> i64 {",
+        "    let b = Bx::new();",
+        "    let c = new_bx();",
+        "    b.value_2() + c.value2() + MAX_2 + MAX2",
+        "}",
+    ]));
+    for at in [
+        "lib.rs:6",
+        "lib.rs:9",
+        "lib.rs:12",
+        "lib.rs:16",
+        "lib.rs:19",
+        "lib.rs:20",
+        "lib.rs:21",
+        "lib.rs:22",
+    ] {
+        assert_refused(&m, at, "in cir/1 and Go");
+    }
+    for at in ["lib.rs:25", "lib.rs:26", "lib.rs:27"] {
+        assert!(
+            m.refusals.iter().any(|r| r.pos == at),
+            "no refusal at {at}: {:?}",
+            m.refusals
+        );
+    }
+    assert!(m.consts.is_empty() && m.vars.is_empty(), "{:?}", m.consts);
+}
+
+#[test]
+fn two_parameters_fields_or_trait_methods_of_one_go_name_are_refused() {
+    let m = read(&lines(&[
+        "fn add(value_2: i64, value2: i64) -> i64 {",
+        "    value_2 + value2",
+        "}",
+        "/// Two fields.",
+        "pub struct Two {",
+        "    pub n_2: i64,",
+        "    pub n2: i64,",
+        "}",
+        "/// Two methods.",
+        "pub trait Both {",
+        "    fn size_2(&self) -> i64;",
+        "    fn size2(&self) -> i64;",
+        "}",
+    ]));
+    assert_refused(
+        &m,
+        "lib.rs:1",
+        "the parameters value_2 and value2 are both value2",
+    );
+    assert_refused(&m, "lib.rs:4", "the fields n_2 and n2 are both N2");
+    assert_refused(
+        &m,
+        "lib.rs:9",
+        "the trait methods size_2 and size2 are both Size2",
+    );
+    assert!(
+        m.types.is_empty() && m.interfaces.is_empty(),
+        "{:?}",
+        m.types
+    );
+}
+
+#[test]
+fn a_direct_call_of_a_trait_method_the_crate_also_implements_for_a_reference_is_refused() {
+    let m = read(&lines(&[
+        "/// A score.",
+        "pub trait Score {",
+        "    fn score(&self) -> i64;",
+        "}",
+        "/// A count.",
+        "pub struct Count {",
+        "    pub n: i64,",
+        "}",
+        "impl Score for Count {",
+        "    fn score(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+        "impl Score for &mut Count {",
+        "    fn score(&self) -> i64 {",
+        "        self.n * 100",
+        "    }",
+        "}",
+        "/// A call on a value.",
+        "pub fn get(x: i64) -> i64 {",
+        "    let c = Count { n: x };",
+        "    c.score()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:14", "declared");
+    assert_refused(&m, "lib.rs:22", "for a reference to Count too");
+}
+
+#[test]
+fn a_loop_over_a_hashmap_stays_a_range_over_the_map_beside_a_btreemap() {
+    let m = read(&lines(&[
+        "use std::collections::{BTreeMap, HashMap};",
+        "/// A HashMap loop in a crate that names BTreeMap.",
+        "pub fn get(m: HashMap<String, i64>, n: BTreeMap<i64, i64>) -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    s + n.len() as i64",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ranged = all_stmts(&m.funcs[0].body)
+        .into_iter()
+        .find_map(|s| match s {
+            Stmt::ForRange { over, .. } => Some(over.clone()),
+            _ => None,
+        })
+        .expect("a range");
+    assert!(matches!(ranged, Expr::Var { .. }), "{ranged:?}");
+}
+
+#[test]
+fn a_loop_over_a_btreemap_with_string_keys_or_an_untold_map_beside_one_is_refused() {
+    let m = read(&lines(&[
+        "use std::collections::{BTreeMap, HashMap};",
+        "fn make() -> HashMap<String, i64> {",
+        "    HashMap::new()",
+        "}",
+        "/// Loops.",
+        "pub fn get(m: BTreeMap<String, i64>) -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    for v in make().values() {",
+        "        s += v;",
+        "    }",
+        "    s",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:8", "BTreeMap");
+    assert_refused(&m, "lib.rs:11", "BTreeMap");
+}
+
+#[test]
+fn a_loop_over_an_untold_map_in_a_crate_without_btreemap_is_a_range() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "fn make() -> HashMap<String, i64> {",
+        "    HashMap::new()",
+        "}",
+        "/// A loop over a map a call gives.",
+        "pub fn get() -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    let m = make();",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    s",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+}
+
+#[test]
+fn a_compound_assignment_through_an_operator_impl_or_a_borrowed_string_is_refused() {
+    let m = read(&lines(&[
+        "use std::cell::RefCell;",
+        "use std::rc::Rc;",
+        "/// A note.",
+        "pub struct Note {",
+        "    pub s: String,",
+        "}",
+        "fn tail(n: &Rc<RefCell<Note>>) -> String {",
+        "    n.borrow().s.clone()",
+        "}",
+        "/// A string grown by a call while its place is borrowed.",
+        "pub fn grow(n: Rc<RefCell<Note>>) {",
+        "    n.borrow_mut().s += &tail(&n);",
+        "}",
+        "/// A pushed vector whose place calls.",
+        "pub fn push(t: &Rc<RefCell<Note>>) -> i64 {",
+        "    let mut v: Vec<Vec<i64>> = Vec::new();",
+        "    v.push(Vec::new());",
+        "    v[tail(t).len()].push(1);",
+        "    v.len() as i64",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:12", "borrowed");
+    assert_refused(&m, "lib.rs:18", "twice");
+}
+
+#[test]
+fn a_compound_assignment_of_integers_whose_value_calls_holds_the_value_first() {
+    let m = read(&lines(&[
+        "fn one() -> i64 {",
+        "    1",
+        "}",
+        "/// A compound assignment whose value calls.",
+        "pub fn get(x: i64) -> i64 {",
+        "    let mut n: i64 = x;",
+        "    n += one();",
+        "    n",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let body = &m.funcs.iter().find(|f| f.name == "Get").expect("Get").body;
+    assert!(
+        matches!(
+            &body[1..3],
+            [Stmt::Let { rhs, .. }, Stmt::Assign { op, rhs: r2, .. }]
+                if matches!(rhs.as_slice(), [Expr::Call { .. }])
+                    && op == "+="
+                    && matches!(r2.as_slice(), [Expr::Var { .. }])
+        ),
+        "{body:?}"
+    );
 }

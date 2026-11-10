@@ -124,6 +124,7 @@ fn func(name: &str, params: Vec<Param>, results: Vec<Type>, body: Vec<Stmt>) -> 
         recv: None,
         params,
         results,
+        raises: vec![],
         body,
         doc: String::new(),
         pos: p(1),
@@ -196,6 +197,7 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         beans: vec![],
         injects: vec![],
         transactional: vec![],
+        persistence: vec![],
     }
 }
 

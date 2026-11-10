@@ -4,7 +4,7 @@
   "reader": {
     "language": "rust",
     "name": "codespec-read-rust",
-    "version": "0.6.1"
+    "version": "0.7.0"
   },
   "doc": "Inventory keeps a catalogue of items, their stock, and the stock reserved for orders.",
   "types": [

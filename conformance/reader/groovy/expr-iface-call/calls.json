@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Twice",
+      "args": [
+        "\"ab\""
+      ]
+    },
+    {
+      "func": "Twice",
+      "args": [
+        "\"\""
+      ]
+    }
+  ]
+}

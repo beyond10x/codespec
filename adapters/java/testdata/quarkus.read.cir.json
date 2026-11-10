@@ -4,9 +4,44 @@
   "reader": {
     "language": "java",
     "name": "codespec-read-java",
-    "version": "0.6.1"
+    "version": "0.7.0"
   },
   "types": [
+    {
+      "k": "struct",
+      "name": "Audit",
+      "exported": true,
+      "fields": [],
+      "pos": "Audit.java:5"
+    },
+    {
+      "k": "struct",
+      "name": "Basket",
+      "exported": true,
+      "fields": [
+        {
+          "name": "id",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        },
+        {
+          "name": "label",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "string"
+            }
+          }
+        }
+      ],
+      "pos": "Basket.java:11"
+    },
     {
       "k": "struct",
       "name": "Cleanup",
@@ -16,9 +51,42 @@
     },
     {
       "k": "struct",
+      "name": "Crate",
+      "exported": true,
+      "fields": [
+        {
+          "name": "label",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "size",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "Crate.java:3"
+    },
+    {
+      "k": "struct",
       "name": "Fruit",
       "exported": true,
       "fields": [
+        {
+          "name": "id",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "int",
+              "width": "64",
+              "signed": true
+            }
+          }
+        },
         {
           "name": "name",
           "t": {
@@ -63,9 +131,243 @@
       "exported": true,
       "fields": [],
       "pos": "FruitService.java:6"
+    },
+    {
+      "k": "struct",
+      "name": "Prices",
+      "exported": true,
+      "fields": [],
+      "pos": "Prices.java:3"
+    },
+    {
+      "k": "struct",
+      "name": "Quote",
+      "exported": true,
+      "fields": [
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "Prices.java:4"
+    },
+    {
+      "k": "struct",
+      "name": "Stock",
+      "exported": true,
+      "fields": [],
+      "pos": "Stock.java:3"
+    }
+  ],
+  "vars": [
+    {
+      "name": "LOGGER",
+      "t": {
+        "k": "extern",
+        "path": "org.jboss.logging.Logger",
+        "name": "Logger"
+      },
+      "init": {
+        "k": "extern",
+        "path": "org.jboss.logging.Logger",
+        "name": "getLogger",
+        "args": [
+          {
+            "k": "lit",
+            "value": "\"org.acme.Audit\"",
+            "t": {
+              "k": "string"
+            }
+          }
+        ],
+        "t": {
+          "k": "extern",
+          "path": "org.jboss.logging.Logger",
+          "name": "Logger"
+        }
+      },
+      "pos": "Audit.java:6"
     }
   ],
   "funcs": [
+    {
+      "name": "NewAudit",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Audit"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Audit",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Audit"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Audit"
+                }
+              }
+            }
+          ],
+          "pos": "Audit.java:5"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Audit"
+                }
+              }
+            }
+          ],
+          "pos": "Audit.java:5"
+        }
+      ],
+      "pos": "Audit.java:5"
+    },
+    {
+      "name": "verbose",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Audit"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern_method",
+              "path": "org.jboss.logging.Logger",
+              "type": "Logger",
+              "name": "isDebugEnabled",
+              "recv": {
+                "k": "global",
+                "name": "LOGGER",
+                "t": {
+                  "k": "extern",
+                  "path": "org.jboss.logging.Logger",
+                  "name": "Logger"
+                }
+              },
+              "args": [],
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "Audit.java:9"
+        }
+      ],
+      "pos": "Audit.java:8"
+    },
+    {
+      "name": "NewBasket",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Basket"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Basket",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Basket"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Basket"
+                }
+              }
+            }
+          ],
+          "pos": "Basket.java:11"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Basket"
+                }
+              }
+            }
+          ],
+          "pos": "Basket.java:11"
+        }
+      ],
+      "pos": "Basket.java:11"
+    },
     {
       "name": "NewCleanup",
       "exported": true,
@@ -151,6 +453,12 @@
             "k": "extern",
             "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
             "name": "deleteAll",
+            "targs": [
+              {
+                "k": "named",
+                "name": "Fruit"
+              }
+            ],
             "args": [],
             "t": {
               "k": "int",
@@ -162,6 +470,281 @@
         }
       ],
       "pos": "Cleanup.java:9"
+    },
+    {
+      "name": "NewCrate",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Crate"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Crate",
+                "fields": [
+                  {
+                    "name": "label",
+                    "value": {
+                      "k": "lit",
+                      "value": "\"crate\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              }
+            }
+          ],
+          "pos": "Crate.java:7"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              }
+            }
+          ],
+          "pos": "Crate.java:7"
+        }
+      ],
+      "pos": "Crate.java:7"
+    },
+    {
+      "name": "NewCrate2",
+      "exported": true,
+      "params": [
+        {
+          "name": "label",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Crate"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Crate",
+                "fields": [
+                  {
+                    "name": "label",
+                    "value": {
+                      "k": "lit",
+                      "value": "\"crate\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              }
+            }
+          ],
+          "pos": "Crate.java:10"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Crate"
+                  }
+                }
+              },
+              "name": "label",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "label",
+              "t": {
+                "k": "string"
+              }
+            }
+          ],
+          "pos": "Crate.java:11"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Crate"
+                  }
+                }
+              },
+              "name": "size",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Crate.java:12"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              }
+            }
+          ],
+          "pos": "Crate.java:10"
+        }
+      ],
+      "pos": "Crate.java:10"
+    },
+    {
+      "name": "of",
+      "exported": true,
+      "params": [
+        {
+          "name": "label",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Crate"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "NewCrate2",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "label",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Crate"
+                }
+              }
+            }
+          ],
+          "pos": "Crate.java:16"
+        }
+      ],
+      "pos": "Crate.java:15"
     },
     {
       "name": "NewFruit",
@@ -628,12 +1211,477 @@
         }
       ],
       "pos": "FruitService.java:7"
+    },
+    {
+      "name": "NewPrices",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Prices"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Prices",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Prices"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Prices"
+                }
+              }
+            }
+          ],
+          "pos": "Prices.java:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Prices"
+                }
+              }
+            }
+          ],
+          "pos": "Prices.java:3"
+        }
+      ],
+      "pos": "Prices.java:3"
+    },
+    {
+      "name": "quote",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Prices"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Quote"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "NewQuote",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "cents",
+                  "t": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Quote"
+                }
+              }
+            }
+          ],
+          "pos": "Prices.java:13"
+        }
+      ],
+      "pos": "Prices.java:12"
+    },
+    {
+      "name": "NewQuote",
+      "exported": true,
+      "params": [
+        {
+          "name": "cents",
+          "t": {
+            "k": "int",
+            "width": "64",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Quote"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Quote",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Quote"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Quote"
+                }
+              }
+            }
+          ],
+          "pos": "Prices.java:7"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Quote"
+                  }
+                }
+              },
+              "name": "cents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "cents",
+              "t": {
+                "k": "int",
+                "width": "64",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Prices.java:8"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Quote"
+                }
+              }
+            }
+          ],
+          "pos": "Prices.java:7"
+        }
+      ],
+      "pos": "Prices.java:7"
+    },
+    {
+      "name": "NewStock",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Stock"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Stock",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "Stock"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Stock"
+                }
+              }
+            }
+          ],
+          "pos": "Stock.java:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Stock"
+                }
+              }
+            }
+          ],
+          "pos": "Stock.java:3"
+        }
+      ],
+      "pos": "Stock.java:3"
+    },
+    {
+      "name": "stored",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Stock"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "f",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Fruit"
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "!=",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "f",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Fruit"
+                    }
+                  }
+                },
+                "name": "id",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "y": {
+                "k": "nil",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "int",
+                    "width": "64",
+                    "signed": true
+                  }
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "Stock.java:5"
+        }
+      ],
+      "pos": "Stock.java:4"
+    },
+    {
+      "name": "named",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Stock"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "f",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Fruit"
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "!=",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "f",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Fruit"
+                    }
+                  }
+                },
+                "name": "name",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "string"
+                  }
+                }
+              },
+              "y": {
+                "k": "nil",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "string"
+                  }
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "Stock.java:9"
+        }
+      ],
+      "pos": "Stock.java:8"
     }
   ],
   "externs": [
     {
       "path": "io.quarkus.hibernate.orm.panache.PanacheEntityBase",
       "name": "deleteAll",
+      "tparams": [
+        {
+          "name": "E",
+          "constraint": {
+            "k": "any"
+          }
+        }
+      ],
       "params": [],
       "results": [
         {
@@ -672,12 +1720,53 @@
           "k": "string"
         }
       ]
+    },
+    {
+      "path": "org.jboss.logging.Logger",
+      "name": "getLogger",
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "extern",
+          "path": "org.jboss.logging.Logger",
+          "name": "Logger"
+        }
+      ]
+    },
+    {
+      "path": "org.jboss.logging.Logger",
+      "name": "isDebugEnabled",
+      "recv": {
+        "k": "extern",
+        "path": "org.jboss.logging.Logger",
+        "name": "Logger"
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ]
     }
   ],
   "layout": [
+    "type:Audit",
+    "func:NewAudit",
+    "var:LOGGER",
+    "func:Audit.verbose",
+    "type:Basket",
+    "func:NewBasket",
     "type:Cleanup",
     "func:NewCleanup",
     "func:Cleanup.sweep",
+    "type:Crate",
+    "func:NewCrate",
+    "func:NewCrate2",
+    "func:of",
     "type:Fruit",
     "func:NewFruit",
     "type:FruitResource",
@@ -686,14 +1775,16 @@
     "func:FruitResource.create",
     "type:FruitService",
     "func:NewFruitService",
-    "func:FruitService.defaultName"
-  ],
-  "refusals": [
-    {
-      "pos": "Fruit.java:6",
-      "what": "@Entity",
-      "reason": "annotation jakarta.persistence.Entity: annotations with behaviour are outside cir/1"
-    }
+    "func:FruitService.defaultName",
+    "type:Prices",
+    "func:NewPrices",
+    "func:Prices.quote",
+    "type:Quote",
+    "func:NewQuote",
+    "type:Stock",
+    "func:NewStock",
+    "func:Stock.stored",
+    "func:Stock.named"
   ],
   "path": "org.acme",
   "entries": [
@@ -760,5 +1851,35 @@
   ],
   "transactional": [
     "FruitResource.create"
+  ],
+  "persistence": [
+    {
+      "at": "Basket",
+      "mark": "Entity"
+    },
+    {
+      "at": "Basket",
+      "mark": "Cacheable"
+    },
+    {
+      "at": "Basket.id",
+      "mark": "Id"
+    },
+    {
+      "at": "Basket.id",
+      "mark": "GeneratedValue"
+    },
+    {
+      "at": "Basket.label",
+      "mark": "Column",
+      "args": [
+        "length = 40",
+        "unique = true"
+      ]
+    },
+    {
+      "at": "Fruit",
+      "mark": "Entity"
+    }
   ]
 }

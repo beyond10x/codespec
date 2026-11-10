@@ -1,0 +1,25 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Calls",
+      "args": []
+    },
+    {
+      "func": "Hit",
+      "args": [
+        "2"
+      ]
+    },
+    {
+      "func": "Hit",
+      "args": [
+        "-5"
+      ]
+    },
+    {
+      "func": "Calls",
+      "args": []
+    }
+  ]
+}

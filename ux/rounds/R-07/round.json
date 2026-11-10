@@ -1,0 +1,818 @@
+{
+  "id": "R-07",
+  "commit": "90e3ec1",
+  "date": "2026-11-10",
+  "adapter": "codespec docs site",
+  "cards": {
+    "anchors": [
+      "task-install",
+      "task-map-repository-to-syscalls"
+    ],
+    "rotating": "task-reach-reports",
+    "all_tasks_run": [
+      "task-add-an-adapter",
+      "task-cir1-interfaces-generics",
+      "task-install",
+      "task-map-repository-to-syscalls",
+      "task-reach-reports",
+      "task-trace-options"
+    ]
+  },
+  "gates": {
+    "gate1": {
+      "checked": 92,
+      "pass": 92,
+      "fail": 0,
+      "waived": 0
+    },
+    "gate2": {
+      "checked": 92,
+      "pass": 92,
+      "fail": 0,
+      "waived": 0
+    },
+    "gate5": {
+      "checked": 92,
+      "pass": 88,
+      "fail": 0,
+      "waived": 4
+    },
+    "gate4": {
+      "checked": 6,
+      "pass": 6,
+      "fail": 0,
+      "waived": 0
+    },
+    "gate3": "n/a: a docs site has no completion control",
+    "gate6": "n/a: no guidance cue, no L0"
+  },
+  "totals": {
+    "layout.page_scroll": 0,
+    "layout.overflow": 0,
+    "always_visible.misses": 0,
+    "keyboard.misses": 8,
+    "axe.critical": 0,
+    "axe.serious": 0,
+    "axe.moderate": 0,
+    "axe.minor": 0,
+    "layout_shift.after_ready_max": 0,
+    "layout_shift.load_max": 0
+  },
+  "measured": {
+    "page-docs-concepts-cir-1": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-concepts-harness": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-concepts-pipeline": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-concepts-static-analysis": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-examples-call-trace": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-examples-greeter": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-examples-netcheck": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-examples-series": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-getting-started": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-guides-add-an-adapter": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-guides-map-a-repository-to-syscalls": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-guides-read-a-quarkus-project": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-guides-translate-go-to-rust": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-reference-cir-1": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-reference-cli": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-reference-crates": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-reference-support": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-status": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-use-cases": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs-vision": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-docs": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-home": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 0,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "page-search": {
+      "layout.page_scroll": 0,
+      "layout.overflow": 0,
+      "always_visible.misses": 0,
+      "keyboard.misses": 8,
+      "layout_shift.after_ready": 0,
+      "axe.critical": 0,
+      "axe.serious": 0,
+      "axe.moderate": 0,
+      "axe.minor": 0
+    },
+    "task-add-an-adapter": {
+      "screen_only.actions": 3,
+      "screen_only.looks": 4,
+      "screen_only.steps": 4,
+      "screen_only.unreached": 0
+    },
+    "task-cir1-interfaces-generics": {
+      "screen_only.actions": 2,
+      "screen_only.looks": 3,
+      "screen_only.steps": 3,
+      "screen_only.unreached": 0
+    },
+    "task-install": {
+      "screen_only.actions": 1,
+      "screen_only.looks": 1,
+      "screen_only.steps": 2,
+      "screen_only.unreached": 0
+    },
+    "task-map-repository-to-syscalls": {
+      "screen_only.actions": 3,
+      "screen_only.looks": 4,
+      "screen_only.steps": 4,
+      "screen_only.unreached": 0
+    },
+    "task-reach-reports": {
+      "screen_only.actions": 3,
+      "screen_only.looks": 4,
+      "screen_only.steps": 4,
+      "screen_only.unreached": 0
+    },
+    "task-trace-options": {
+      "screen_only.actions": 3,
+      "screen_only.looks": 4,
+      "screen_only.steps": 4,
+      "screen_only.unreached": 0
+    }
+  },
+  "measured_only": [
+    {
+      "viewport": "1440x900",
+      "checked": 46,
+      "page_scroll": 0,
+      "overflow": 0,
+      "always_visible_misses": 0,
+      "axe_serious_critical": 0,
+      "scroll_containers": 8
+    },
+    {
+      "viewport": "1024x768",
+      "checked": 46,
+      "page_scroll": 0,
+      "overflow": 0,
+      "always_visible_misses": 0,
+      "axe_serious_critical": 0,
+      "scroll_containers": 48
+    },
+    {
+      "viewport": "768x1024",
+      "checked": 46,
+      "page_scroll": 0,
+      "overflow": 0,
+      "always_visible_misses": 92,
+      "axe_serious_critical": 0,
+      "scroll_containers": 12
+    },
+    {
+      "viewport": "390x844",
+      "checked": 46,
+      "page_scroll": 0,
+      "overflow": 0,
+      "always_visible_misses": 92,
+      "axe_serious_critical": 0,
+      "scroll_containers": 130
+    }
+  ],
+  "scroll_containers_gating": 24,
+  "failure_kinds": [
+    {
+      "kind": "gate5 keyboard:skip-link-first",
+      "count": 4,
+      "waived_by": [
+        "UXF-005"
+      ],
+      "pages": 1
+    }
+  ],
+  "worst": [
+    {
+      "scenario": "page-search",
+      "path": "/codespec/search",
+      "viewport": "1280x720",
+      "theme": "dark",
+      "failures": [
+        "gate5|/codespec/search|1280x720|dark|keyboard:skip-link-first"
+      ],
+      "shot": "shots/fail-page-search-1280x720-dark.jpg"
+    },
+    {
+      "scenario": "page-search",
+      "path": "/codespec/search",
+      "viewport": "1280x720",
+      "theme": "light",
+      "failures": [
+        "gate5|/codespec/search|1280x720|light|keyboard:skip-link-first"
+      ],
+      "shot": "shots/fail-page-search-1280x720-light.jpg"
+    },
+    {
+      "scenario": "page-search",
+      "path": "/codespec/search",
+      "viewport": "1366x768",
+      "theme": "dark",
+      "failures": [
+        "gate5|/codespec/search|1366x768|dark|keyboard:skip-link-first"
+      ],
+      "shot": "shots/fail-page-search-1366x768-dark.jpg"
+    },
+    {
+      "scenario": "page-search",
+      "path": "/codespec/search",
+      "viewport": "1366x768",
+      "theme": "light",
+      "failures": [
+        "gate5|/codespec/search|1366x768|light|keyboard:skip-link-first"
+      ],
+      "shot": "shots/fail-page-search-1366x768-light.jpg"
+    }
+  ],
+  "screen_only": [
+    {
+      "scenario": "task-add-an-adapter",
+      "reached": true,
+      "actions": 3,
+      "looks": 4,
+      "steps": 4,
+      "trace": [
+        {
+          "url": "/codespec/",
+          "action": "click searchbox \"Search\"",
+          "glance": 2
+        },
+        {
+          "url": "/codespec/",
+          "action": "type \"adapter\"",
+          "glance": 0
+        },
+        {
+          "url": "/codespec/docs/guides/add-an-adapter",
+          "action": "click option \"Add a reader or writer adapter Documentation › Guides\" (search)",
+          "glance": 2
+        }
+      ]
+    },
+    {
+      "scenario": "task-cir1-interfaces-generics",
+      "reached": true,
+      "actions": 2,
+      "looks": 3,
+      "steps": 3,
+      "trace": [
+        {
+          "url": "/codespec/docs/reference/cir-1",
+          "action": "click link \"Reference\"",
+          "glance": 2
+        },
+        {
+          "url": "/codespec/docs/reference/cir-1#interface",
+          "action": "click link \"Interface\"",
+          "glance": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task-install",
+      "reached": true,
+      "actions": 1,
+      "looks": 1,
+      "steps": 2,
+      "trace": [
+        {
+          "url": "/codespec/docs/getting-started",
+          "action": "click link \"Get started\"",
+          "glance": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task-map-repository-to-syscalls",
+      "reached": true,
+      "actions": 3,
+      "looks": 4,
+      "steps": 4,
+      "trace": [
+        {
+          "url": "/codespec/",
+          "action": "click searchbox \"Search\"",
+          "glance": 2
+        },
+        {
+          "url": "/codespec/",
+          "action": "type \"syscall\"",
+          "glance": 0
+        },
+        {
+          "url": "/codespec/docs/guides/map-a-repository-to-syscalls",
+          "action": "click option \"Map a repository to syscall s Documentation › Guides\" (search)",
+          "glance": 2
+        }
+      ]
+    },
+    {
+      "scenario": "task-reach-reports",
+      "reached": true,
+      "actions": 3,
+      "looks": 4,
+      "steps": 4,
+      "trace": [
+        {
+          "url": "/codespec/",
+          "action": "click searchbox \"Search\"",
+          "glance": 2
+        },
+        {
+          "url": "/codespec/",
+          "action": "type \"codespec reach\"",
+          "glance": 0
+        },
+        {
+          "url": "/codespec/docs/reference/cli#codespec-reach",
+          "action": "click option \"codespec reach Reference › Reference › codespec CLI\" (search)",
+          "glance": 2
+        }
+      ]
+    },
+    {
+      "scenario": "task-trace-options",
+      "reached": true,
+      "actions": 3,
+      "looks": 4,
+      "steps": 4,
+      "trace": [
+        {
+          "url": "/codespec/",
+          "action": "click searchbox \"Search\"",
+          "glance": 2
+        },
+        {
+          "url": "/codespec/",
+          "action": "type \"codespec trace\"",
+          "glance": 0
+        },
+        {
+          "url": "/codespec/docs/reference/cli#codespec-trace",
+          "action": "click option \"codespec trace Reference › Reference › codespec CLI\" (search)",
+          "glance": 2
+        }
+      ]
+    }
+  ],
+  "regression_assets": {
+    "passed": 38,
+    "failed": 0,
+    "failing": [],
+    "findings_tests": [
+      {
+        "title": "UXF-012 the navbar toggle is uncovered at 390x844",
+        "ok": true
+      },
+      {
+        "title": "UXF-012 the navbar toggle is uncovered at 768x1024",
+        "ok": true
+      },
+      {
+        "title": "UXF-007 the home primary action is in view at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-007 the home primary action is in view at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-007 the home page links Status instead of repeating its rows",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/reference/cli at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/reference/cli at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/reference/support at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/reference/support at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/examples/netcheck at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/examples/netcheck at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/getting-started at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-010 the active sidebar item is in view on /codespec/docs/getting-started at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-015 the cir/1 reference links Interface and TypeParam in its first screen at 1366x768",
+        "ok": true
+      },
+      {
+        "title": "UXF-015 the cir/1 reference links Interface and TypeParam in its first screen at 1280x720",
+        "ok": true
+      },
+      {
+        "title": "UXF-020 sidebar group names are at least 14 px",
+        "ok": true
+      },
+      {
+        "title": "UXF-024 table code and table headers are at least 14 px",
+        "ok": true
+      },
+      {
+        "title": "UXF-014 code blocks and the table of contents are at least 14 px",
+        "ok": true
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "UXF-001",
+      "severity": "S2",
+      "status": "closed",
+      "title": "No search control on any page"
+    },
+    {
+      "id": "UXF-002",
+      "severity": "S2",
+      "status": "closed",
+      "title": "Links in running text are told apart by colour only"
+    },
+    {
+      "id": "UXF-003",
+      "severity": "S3",
+      "status": "closed",
+      "title": "The docs sidebar scrolls out of view when the footer is reached"
+    },
+    {
+      "id": "UXF-004",
+      "severity": "S2",
+      "status": "closed",
+      "title": "The support matrix legend scrolls but cannot be reached by keyboard"
+    },
+    {
+      "id": "UXF-005",
+      "severity": "S3",
+      "status": "open",
+      "title": "The search page focuses its search box on load, so the skip link is not the first Tab stop"
+    },
+    {
+      "id": "UXF-006",
+      "severity": "S2",
+      "status": "closed",
+      "title": "The site gives three release numbers and two different language lists"
+    },
+    {
+      "id": "UXF-007",
+      "severity": "S2",
+      "status": "closed",
+      "title": "The home page shows no action at either gating viewport, and half the page repeats Status"
+    },
+    {
+      "id": "UXF-008",
+      "severity": "S2",
+      "status": "closed",
+      "title": "Effects, reach and trace are taught on four pages in three sidebar groups"
+    },
+    {
+      "id": "UXF-009",
+      "severity": "S3",
+      "status": "closed",
+      "title": "The home page and the four Start-here pages repeat the same overview"
+    },
+    {
+      "id": "UXF-010",
+      "severity": "S3",
+      "status": "closed",
+      "title": "The sidebar opens all 24 items, so Reference and its active page fall below its fold"
+    },
+    {
+      "id": "UXF-011",
+      "severity": "S3",
+      "status": "closed",
+      "title": "One page has up to five names, and pages come in two header styles"
+    },
+    {
+      "id": "UXF-012",
+      "severity": "S2",
+      "status": "closed",
+      "title": "On a phone the search box covers the menu button, so the sidebar cannot be opened"
+    },
+    {
+      "id": "UXF-013",
+      "severity": "S3",
+      "status": "closed",
+      "title": "Generated pages show whole documents open: greeter is 20 screens, the cir/1 reference 30"
+    },
+    {
+      "id": "UXF-014",
+      "severity": "S3",
+      "status": "closed",
+      "title": "Commands and code are set at 13 px, below the 14 px floor for key data"
+    },
+    {
+      "id": "UXF-015",
+      "severity": "S2",
+      "status": "closed",
+      "title": "Finding the cir/1 entries for interfaces and generics went from 2 actions to 6"
+    },
+    {
+      "id": "UXF-016",
+      "severity": "S2",
+      "status": "closed",
+      "title": "The pages give five different lists of the languages codespec reads and writes"
+    },
+    {
+      "id": "UXF-017",
+      "severity": "S3",
+      "status": "closed",
+      "title": "The new Use cases page reruns Getting started and the syscalls guide, and four claims are on several pages again"
+    },
+    {
+      "id": "UXF-018",
+      "severity": "S3",
+      "status": "closed",
+      "title": "Navbar items name sections but open single pages, and search paths read \"Reference › Reference\""
+    },
+    {
+      "id": "UXF-019",
+      "severity": "S3",
+      "status": "open",
+      "title": "The Go-to-Rust guide prints the whole generated crate open: one 81-line block, 2.9 screens"
+    },
+    {
+      "id": "UXF-020",
+      "severity": "S3",
+      "status": "closed",
+      "title": "Sidebar group names are set at 10.9 px, and five of six groups show nothing else"
+    },
+    {
+      "id": "UXF-021",
+      "severity": "S3",
+      "status": "open",
+      "title": "The support matrix scrolls sideways at every desktop width, and its 111 feature descriptions are cut off"
+    },
+    {
+      "id": "UXF-022",
+      "severity": "S3",
+      "status": "closed",
+      "title": "The checklist line \"one claim, one page\" still fails: the pipeline diagram is on 2 pages, the harness run on 3"
+    },
+    {
+      "id": "UXF-023",
+      "severity": "S3",
+      "status": "closed",
+      "title": "On four pages the header card's source line and the first paragraph both say how the commands were run"
+    },
+    {
+      "id": "UXF-024",
+      "severity": "S3",
+      "status": "closed",
+      "title": "In reference tables the field names, types and commands are the smallest text: 12.7 px code, 10.9 px headers"
+    },
+    {
+      "id": "UXF-025",
+      "severity": "S2",
+      "status": "open",
+      "title": "The home page's first screen says codespec writes Go or Rust, above a line naming the C writer"
+    },
+    {
+      "id": "UXF-026",
+      "severity": "S3",
+      "status": "closed",
+      "title": "A round runs none of the regression assets, so its report cannot say whether the last change set held"
+    }
+  ],
+  "missing_inputs": [
+    "L6 trial sessions and their rrweb recordings: none recorded in this round",
+    "questionnaire scores: no sessions, none",
+    "L4 keyed replay and L5 discoverability probe: operator-only, not run",
+    "review-heuristics.md and review-report.md: the two review agents run after this command (§ 8)",
+    "search: the screen-only user uses the visible search box when no strong link is in view"
+  ]
+}

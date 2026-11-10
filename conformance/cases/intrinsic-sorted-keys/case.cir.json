@@ -6,7 +6,7 @@
     "name": "hand-written",
     "version": "1"
   },
-  "doc": "Written by hand: Go has no expression for a map's keys in order. The Java reader writes sorted_keys for a loop over a TreeMap's keySet.",
+  "doc": "Written by hand: the Go reader reads no loop and sort call as sorted_keys, and slices.Sorted(maps.Keys(m)) only over integer keys (Go orders strings by byte, sorted_keys by UTF-16 code unit). The Java reader writes sorted_keys for a loop over a TreeMap's keySet.",
   "types": [],
   "funcs": [
     {

@@ -35,6 +35,8 @@ tasks:
       - task: examples-fees
       - task: harness
       - task: conformance-cases
+      - task: eval-kit
+      - task: eval-diff
       - task: conformance-kit
       - task: groovy-fixture-check
       - task: docs-check
@@ -46,7 +48,7 @@ tasks:
       - cargo run --locked -q -p codespec-docs -- generate
 
   docs-check:
-    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers and the evaluator's cir writer, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
@@ -127,8 +129,8 @@ tasks:
     cmds:
       - mkdir -p {{.ADAPTERS}}
       - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
-      - cargo build --locked -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p codespec-read-c
-      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust target/debug/codespec-run-rust target/debug/codespec-write-c target/debug/codespec-run-c target/debug/codespec-read-c {{.ADAPTERS}}/
+      - cargo build --locked -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p codespec-read-c -p b10x-codespec-eval
+      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust target/debug/codespec-run-rust target/debug/codespec-write-c target/debug/codespec-run-c target/debug/codespec-read-c target/debug/codespec-write-cir target/debug/codespec-run-cir {{.ADAPTERS}}/
       - rm -rf target/java/classes
       - mkdir -p target/java/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src adapters/jvm/src -name "*.java" | sort)'
@@ -145,7 +147,7 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-run-groovy
 
   adapters-check:
-    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; read the Quarkus fixture adapters/java/testdata/quarkus as a project against its Maven class path (task java-quarkus-check); run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
+    desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; read the Quarkus fixture adapters/java/testdata/quarkus as a project against its Maven class path (task java-quarkus-check); run the Java and Groovy readers on a source a million parentheses deep, each ending in exit 0 or a one-line refusal (BoundsTest); run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read each package of adapters/java/testdata/adversary1 to its expected refusals or, read without one, run it as Java and as the Go written from it, equal (AdversaryTest); read an http entry that throws only a checked exception of the project, and a call of it, with no refusal (AdversaryRaiseTest); read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
     deps: [build]
     cmds:
       - test -z "$(cd adapters/go && gofmt -l .)"
@@ -154,8 +156,13 @@ tasks:
       - mkdir -p target/java/test-classes target/java-check
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/test-classes $(find adapters/java/src adapters/java/test adapters/jvm/src adapters/jvm/test -name "*.java" | sort)'
       - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.jvm.JvmTypesTest'
+      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.jvm.BoundsTest {{.ADAPTERS}} target/jvm-bounds'
       - task: java-quarkus-prepare
       - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.ReaderTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work {{.ADAPTERS}}'
+      - '{{.JDK}}/bin/java -cp target/java/test-classes codespec.read.AdversaryTest {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work/adversary1 {{.ADAPTERS}}'
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.Adversary2Test {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work/adversary2 {{.ADAPTERS}}'
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.Adversary3Test {{.ROOT_DIR}} {{.CODESPEC}} target/java/test-work/adversary3 {{.ADAPTERS}}'
+      - 'CODESPEC_JAVA_CLASSPATH="$(cat target/java-classpath.txt)" {{.JDK}}/bin/java -cp target/java/test-classes codespec.read.AdversaryRaiseTest target/java/test-work/adversary-raise'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.1.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} read --lang java adapters/java/testdata/ledger --out target/java-check/ledger.2.json --adapters {{.ADAPTERS}}'
       - cmp target/java-check/ledger.1.json target/java-check/ledger.2.json
@@ -219,6 +226,39 @@ tasks:
       - 'JAVA_HOME={{.JDK}} mvn {{.MVN_FLAGS}} -f adapters/java/testdata/quarkus/pom.xml package'
       - task: java-classpath
         vars: {PROJECT: adapters/java/testdata/quarkus}
+
+  c-round-trip:
+    desc: Write every kit case's case.cir.json, passed, as C with codespec-write-c into target/c-round-trip, read each output with codespec-read-c, and print how many read with no refusal and no foreign statement, how many with one, and how many the writer or reader left without a module; of those read with no refusal, how many the writer wrote whole, and how many of those, passed, written as Go and run on calls.json, print expected.txt.
+    deps: [build]
+    env:
+      GOFLAGS: -buildvcs=false
+    cmds:
+      - rm -rf target/c-round-trip
+      - mkdir -p target/c-round-trip
+      - |
+        clean=0; refused=0; none=0; whole=0; same=0
+        for d in conformance/cases/*/; do
+          c=$(basename "$d"); w=target/c-round-trip/$c
+          mkdir -p "$w/c"
+          if ! {{.CODESPEC}} pass --out "$w/passed.json" "$d/case.cir.json" > "$w/log" 2>&1 \
+            || ! {{.CODESPEC}} write --lang c --adapters {{.ADAPTERS}} --out "$w/c" "$w/passed.json" >> "$w/log" 2>&1 \
+            || ! {{.ADAPTERS}}/codespec-read-c "$w/c" > "$w/read.json" 2>> "$w/log"; then
+            none=$((none+1)); continue
+          fi
+          n=$(jq '(.refusals | length) + ([.. | objects | select(.k? == "foreign")] | length)' "$w/read.json")
+          if [ "$n" != 0 ]; then refused=$((refused+1)); continue; fi
+          clean=$((clean+1))
+          [ "$(jq length "$w/c/refusals.json" 2>/dev/null || echo 0)" = 0 ] || continue
+          whole=$((whole+1))
+          if {{.CODESPEC}} pass --out "$w/read.passed.json" "$w/read.json" >> "$w/log" 2>&1 \
+            && {{.CODESPEC}} write --lang go --adapters {{.ADAPTERS}} --out "$w/go" "$w/read.passed.json" >> "$w/log" 2>&1 \
+            && {{.ADAPTERS}}/codespec-run-go -build "$w/run-go" "$w/go" "$d/calls.json" > "$w/go.txt" 2>> "$w/log" \
+            && cmp -s "$w/go.txt" "$d/expected.txt"; then
+            same=$((same+1))
+          fi
+        done
+        echo "c round trip: $clean read with no refusal, $refused with a refusal, $none without a module"
+        echo "c round trip: $whole of the $clean written whole by the C writer, $same of those run as Go print expected.txt"
 
   java-quarkus-check:
     desc: Read the Quarkus fixture as a project against its class path twice through codespec read, byte-equal, canonical and equal to adapters/java/testdata/quarkus.read.cir.json, then run codespec effects over it with the summary codespec-read-java --effects prints. Needs task java-quarkus-prepare first.
@@ -416,6 +456,27 @@ tasks:
     cmds:
       - cargo run --locked -q -p b10x-codespec-conformance -- kit > conformance/kit.json
       - cargo run --locked -q -p b10x-codespec-conformance -- check --write --codespec {{.CODESPEC}} --adapters {{.ADAPTERS}} --build-dir target/conformance
+
+  eval-kit:
+    desc: Run every conformance kit case twice with the evaluator on its calls.json (crates/eval/tests/kit.rs, rules in codespec_eval::kit) and fail when the two runs differ, a case does not print its expected.txt, a case listed in crates/eval/tests/kit-stops.txt does not stop with its listed line or prints its expected.txt after all, or an unlisted case stops. Needs Rust only.
+    cmds:
+      - cargo test --locked -q -p b10x-codespec-eval --test kit -- --nocapture
+
+  eval-traces:
+    desc: Write examples/orders/orders.eval-trace.jsonl, the codespec-eval-trace/1 trace codespec eval gives for the session examples/orders/orders.session.json; examples/orders/faults/pay-closed.eval-trace.jsonl, the session faults/pay.session.json with the first send of Pay closed (docs/evaluator.md section 8.1); and examples/orders/faults/each/, one trace per send site of faults/sends.txt at its first call (--each). crates/eval/tests/sessions.rs and faults.rs fail when one is not current.
+    cmds:
+      - cargo build --locked -q -p b10x-codespec-cli
+      - target/debug/codespec eval examples/orders/orders.cir.json --session examples/orders/orders.session.json > examples/orders/orders.eval-trace.jsonl
+      - target/debug/codespec eval examples/orders/orders.cir.json --session examples/orders/faults/pay.session.json --fault 'orders.Service.Pay#3:1=closed' > examples/orders/faults/pay-closed.eval-trace.jsonl
+      - rm -rf examples/orders/faults/each
+      - target/debug/codespec eval examples/orders/orders.cir.json --session examples/orders/orders.session.json --each --sites examples/orders/faults/sends.txt --max-nth 1 --out examples/orders/faults/each
+
+  eval-diff:
+    desc: Per-function differential runs (codespec_eval::diff). Every exported function of examples/series and examples/inventory gets 200 seeded calls, a method through a generated probe that builds its receiver with drawn setup calls (one that would return an error skipped), and the probe module is written and run by each writer and runner pair, the evaluator's (codespec-write-cir, codespec-run-cir), Go's and Rust's; the Go and Rust outputs must equal the evaluator's byte for byte. Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function; a refusal not listed with --refused, a listed one the writer no longer makes, or a listing for an example not run, fails, as does a function fewer than half of whose seeds reach it. A correctness comparison, not a measurement; nothing is timed.
+    deps: [build]
+    cmds:
+      - cargo build --locked -q -p b10x-codespec-eval --bin codespec-eval-diff
+      - target/debug/codespec-eval-diff --adapters {{.ADAPTERS}} --build-dir target/eval-diff --refused inventory:rust:Inventory.Find examples/series examples/inventory
 
   conformance-kit:
     desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.

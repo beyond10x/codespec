@@ -51,15 +51,38 @@ and so is a signature with a generic type, which is erased to the bound.
 | `@Scheduled` method | an `entries` item of kind `scheduled` |
 | `@Incoming` method | an `entries` item of kind `incoming` |
 | `@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent` class | a `beans` item with its scope |
-| `@Inject` field | an `injects` item, with the bean when exactly one class of the project is that type |
+| `@Inject` field | an `injects` item, with the bean when exactly one class of the project is that type and its package reads it |
 | `@RegisterRestClient` interface | externs of effect `net` at each call, the interface is not read |
 | Panache, `EntityManager`, `Query` and JDBC calls | externs of effect `db` |
 
 An `@Inject` type with no bean, or with several, is an extern. Anything else the reader cannot map
-stays `foreign` with one refusal. `@Entity` and the other persistence annotations are refusals: the class
-or method is still read. `@Transactional` is recorded in `transactional`, the keys of the functions that
-run in a transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the
-`http` entry.
+stays `foreign` with one refusal.
+
+A project read also maps what a package read refuses:
+
+| In the source | In the module |
+|---|---|
+| a second constructor | `New<Class>2` (the n-th: `New<Class><n>`); `new C(…)` calls the one Java chose |
+| a `static` nested class | a struct named as the class |
+| a `static final` field set by a literal or by a jar's static method with constant arguments, such as `Logger.getLogger(C.class.getName())` | a module-level variable with that initializer |
+| the `id` a class extending `PanacheEntity` inherits | the struct's first field, nil until `persist()` sets it |
+| a static Panache method called on an entity, such as `Fruit.deleteAll()` | an extern call with the entity as its type argument |
+
+It refuses, each at its line: a constructor calling `this(…)`, an inner class, a `static final`
+field set by anything else, a read or write of a field of a class of another package (the object is
+an opaque extern there), a call of another package's method or constructor which that package does
+not read, or which returns an error or an Optional there, a Panache static method javac calls on
+the base itself, a read or write of a public field of an `@Entity`, `@MappedSuperclass`,
+`@Embeddable` or Panache class, anywhere but in its constructors and in that getter or setter
+itself, when the class declares the field's getter or setter by Quarkus's name and descriptor
+(Quarkus calls it instead), and a class implementing `ExceptionMapper`. A call of another
+package's function is an extern with the signature that package's module declares.
+
+`@Transactional` is recorded in `transactional`, the keys of the functions that run in a
+transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the
+`http` entry. `@Entity`, `@Cacheable`, `@Id`, `@GeneratedValue` and `@Column` on a class read as a struct
+or on its instance field are recorded in `persistence`, each with the type or field it marks and its
+arguments on one line; elsewhere they are refusals.
 
 A `throw` of an exception outside the package's checked-exception hierarchy, such as a
 `WebApplicationException` from a jar, is refused and kept as `foreign`. `cir/1` has no statement

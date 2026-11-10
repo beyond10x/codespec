@@ -1,0 +1,17 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.raise",
+    "expr.binop",
+    "expr.extern",
+    "expr.lit",
+    "expr.var",
+    "op.lt",
+    "stmt.if",
+    "stmt.return",
+    "type.bool",
+    "type.extern",
+    "type.int",
+    "type.string"
+  ]
+}

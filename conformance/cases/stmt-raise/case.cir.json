@@ -1,0 +1,146 @@
+{
+  "format": "cir/1",
+  "name": "stmt_raise",
+  "reader": {
+    "language": "java",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: Go has no statement that leaves a function, and every caller up to the framework that started it, with a value of another package's type. The Java reader reads a throw of a jar's unchecked exception in a method an entry names as one. The calls never reach it: the kit's driver is no framework to hand the value to.",
+  "types": [],
+  "funcs": [
+    {
+      "name": "Check",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "raises": [
+        {
+          "k": "extern",
+          "path": "java.lang.IllegalArgumentException",
+          "name": "IllegalArgumentException"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "raise",
+              "x": {
+                "k": "extern",
+                "path": "java.lang.IllegalArgumentException",
+                "name": "<init>",
+                "args": [
+                  {
+                    "k": "lit",
+                    "value": "\"negative\"",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "extern",
+                  "path": "java.lang.IllegalArgumentException",
+                  "name": "IllegalArgumentException"
+                }
+              },
+              "pos": "case.go:12"
+            }
+          ],
+          "pos": "case.go:11"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        }
+      ],
+      "doc": "Check returns n; for a negative n it panics, where the module raises.",
+      "pos": "case.go:10"
+    }
+  ],
+  "externs": [
+    {
+      "path": "java.lang.IllegalArgumentException",
+      "name": "<init>",
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "extern",
+          "path": "java.lang.IllegalArgumentException",
+          "name": "IllegalArgumentException"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "func:Check"
+  ],
+  "facts": {
+    "shared": []
+  },
+  "entries": [
+    {
+      "kind": "http",
+      "func": "Check",
+      "method": "GET",
+      "on": "/check"
+    }
+  ]
+}

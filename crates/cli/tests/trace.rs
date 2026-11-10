@@ -25,9 +25,12 @@ fn method_set(t: &str) -> Value {
 }
 
 /// `Main` calls `Speaker.Speak` through an interface (`Loud` and `Env` implement it and are
-/// made), `Twice` twice, and `A`, which calls `B`, which calls `C`.
-fn fixture() -> PathBuf {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("trace");
+/// made), `Twice` twice, and `A`, which calls `B`, which calls `C`. Each test writes it into a
+/// directory of its own, so tests running at once never read a half-written file.
+fn fixture(test: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join("trace")
+        .join(test);
     std::fs::create_dir_all(&dir).unwrap();
     let speak = json!({"k": "foreign", "lang": "go", "src": "var s Speaker = pick(); s.Speak()",
     "reason": "interface outside cir/1", "pos": "t.go:2", "calls": [
@@ -85,7 +88,7 @@ fn nodes(v: &Value, out: &mut Vec<Value>) {
 
 #[test]
 fn trace_lists_both_candidates_of_a_dispatch_references_a_repeat_and_cuts_past_the_depth() {
-    let doc = fixture();
+    let doc = fixture("dispatch");
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_codespec"))
             .arg("trace")
@@ -142,7 +145,7 @@ fn trace_lists_both_candidates_of_a_dispatch_references_a_repeat_and_cuts_past_t
 
 #[test]
 fn trace_refuses_a_from_that_names_no_function() {
-    let doc = fixture();
+    let doc = fixture("no-from");
     let out = Command::new(env!("CARGO_BIN_EXE_codespec"))
         .arg("trace")
         .arg(&doc)

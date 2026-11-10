@@ -226,6 +226,15 @@ for-each, a call of a function that may change a collection (Groovy throws
 class Overdue extends Loan { }    // unsupported: class extends ...Loan: inheritance is outside cir/1
 ```
 
+## Limits
+
+Groovy's parser (ANTLR 2 in Groovy 2.4) does not bound nesting depth: it recurses several levels
+per parenthesis. The reader runs on a thread with a 64 MiB stack (`codespec.jvm.Bounded`, shared
+with the Java reader); a source nested deeper than that holds is refused with exit 1 and
+`codespec-read-groovy: the source nests deeper than the reader's stack of 64 MiB holds`, not a
+crash. The reader sets no size limit of its own. `codespec.jvm.BoundsTest` reads a source a
+million parentheses deep.
+
 ## Assumptions
 
 The document describes the Groovy program only under these assumptions; the reader does not check

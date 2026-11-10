@@ -1,0 +1,4 @@
+// main reaches no call of exit.
+exits(F) :- call{func: F, callee: "example.com/plugin.exit"}.
+exits(F) :- reaches(F, G), exits(G).
+?- func{id: F, name: "main"}, !exits(F).

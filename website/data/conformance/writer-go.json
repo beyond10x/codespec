@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "go",
-    "version": "0.6.1",
-    "manifest_sha256": "6bbc827de76a27bcb396ab9cea6db989da8ce66545678593a3bc683c5fbbb249"
+    "version": "0.7.0",
+    "manifest_sha256": "eb77c1e804a3d3c20c34139830c5201d2b9a20acd5ad9c3b1ce00e63f835cc27"
   },
   "kit": {
-    "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "version": "0.7.0",
+    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
   },
-  "codespec": "0.6.1",
+  "codespec": "0.7.0",
   "features": [
     {
       "id": "assign.add",
@@ -165,7 +165,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-var"
+        "decl-var",
+        "decl-var-int"
       ]
     },
     {
@@ -173,7 +174,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-variadic"
+        "decl-variadic",
+        "decl-variadic-local"
       ]
     },
     {
@@ -343,7 +345,8 @@
       "verdict": "pass",
       "cases": [
         "expr-nil",
-        "expr-nil-error"
+        "expr-nil-error",
+        "expr-nil-ptr"
       ]
     },
     {
@@ -351,7 +354,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "expr-spread"
+        "expr-spread",
+        "expr-spread-local"
       ]
     },
     {
@@ -400,7 +404,8 @@
       "verdict": "pass",
       "cases": [
         "expr-zero",
-        "expr-zero-error"
+        "expr-zero-error",
+        "expr-zero-struct"
       ]
     },
     {
@@ -488,7 +493,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "intrinsic-println"
+        "intrinsic-println",
+        "intrinsic-println-int"
       ]
     },
     {
@@ -814,6 +820,17 @@
       ]
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "reason": "refused",
+      "detail": "codespec-write-go: case.go:12: function Check: raise has no Go mapping: the writer does not write leaving a function, and every caller up to the framework, by a raised value"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -859,7 +876,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-array-float"
+        "type-array-float",
+        "type-array-int"
       ]
     },
     {
@@ -899,7 +917,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-float"
+        "type-float",
+        "type-float-compare"
       ]
     },
     {
@@ -971,7 +990,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-tuple"
+        "type-tuple",
+        "type-tuple-error"
       ]
     },
     {
@@ -1062,7 +1082,7 @@
     "claimed": 126,
     "pass": 126,
     "fail": 0,
-    "refused_unclaimed": 1,
+    "refused_unclaimed": 2,
     "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0

@@ -218,7 +218,10 @@ fn stmt_exprs<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
         Stmt::Var { .. } | Stmt::Foreign { .. } | Stmt::Break { .. } | Stmt::Continue { .. } => {}
         Stmt::For { cond, .. } => cond.iter().for_each(f),
         Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).for_each(f),
-        Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => f(x),
+        Stmt::Incr { x, .. }
+        | Stmt::Decr { x, .. }
+        | Stmt::Expr { x, .. }
+        | Stmt::Raise { x, .. } => f(x),
         Stmt::If { cond, .. } => f(cond),
         Stmt::ForRange { over, .. } => f(over),
         Stmt::Switch { tag, cases, .. } => {

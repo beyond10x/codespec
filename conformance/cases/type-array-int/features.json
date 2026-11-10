@@ -1,0 +1,17 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.array",
+    "expr.binop",
+    "expr.index",
+    "expr.lit",
+    "expr.var",
+    "op.add",
+    "op.mul",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.return",
+    "stmt.var",
+    "type.int"
+  ]
+}

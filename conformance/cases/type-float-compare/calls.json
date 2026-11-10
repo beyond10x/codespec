@@ -1,0 +1,29 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Exact",
+      "args": [
+        "true"
+      ]
+    },
+    {
+      "func": "Exact",
+      "args": [
+        "false"
+      ]
+    },
+    {
+      "func": "Third",
+      "args": [
+        "false"
+      ]
+    },
+    {
+      "func": "Third",
+      "args": [
+        "true"
+      ]
+    }
+  ]
+}
