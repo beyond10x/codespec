@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T05:23:51Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-java-kit",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-reader-java-kit-pass-1",
+    "reference": "e86bb69",
+    "review": "review-result:adversary-reader-java-kit-pass-1",
+    "outcome": "fixed"
+  }
+}
