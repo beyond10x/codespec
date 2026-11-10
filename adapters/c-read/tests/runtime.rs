@@ -1039,6 +1039,26 @@ fn a_helper_whose_text_is_not_the_c_writer_s_is_not_read_as_one() {
     );
 }
 
+/// A macro of the file hollows the helper while its text stays the writer's: the C appends
+/// nothing, so it is no helper of `cs_append`.
+#[test]
+fn a_helper_whose_text_a_macro_of_the_file_changes_is_not_read_as_one() {
+    let m = read_writer(
+        "writer_helper_macro",
+        &WRITER_C.replacen(
+            "#include \"w.h\"\n",
+            "#include \"w.h\"\n\n#define cs_append(s, p, n) (s)\n",
+            1,
+        ),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.contains("parameter s is a cs_slice, whose element type")),
+        "{r:#?}"
+    );
+}
+
 #[test]
 fn an_exported_function_without_the_module_s_prefix_or_a_line_is_refused() {
     let m = read_writer(
