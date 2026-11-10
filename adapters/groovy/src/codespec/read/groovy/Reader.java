@@ -151,7 +151,8 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * </ul>
  *
  * <p>Everything else is kept as a {@code foreign} statement holding its Groovy source, or, for a
- * declaration cir/1 has no foreign form for, refused at its line. Every reason begins with one
+ * declaration cir/1 has no foreign form for, refused at its line; a method whose quoted name is no
+ * identifier ({@code long "add two"()}) is refused, {@code unsupported}. Every reason begins with one
  * category of the closed list in {@code README.md}: {@code dynamic}, {@code closure}, {@code
  * groovy-semantics}, {@code type}, {@code unresolved} and {@code unsupported}, and in a Grails
  * application {@code gorm} and {@code spring}.
@@ -1223,6 +1224,9 @@ public final class Reader {
                 } else if (transformed.contains(m)) {
                     why = UNSUPPORTED + ": grails transform: @Transactional replaced the body of " + name + " with a call"
                         + " through a transaction template, and the reader does not read a rewritten method";
+                } else if (!ctor && !isIdentifier(name)) {
+                    why = UNSUPPORTED + ": the method name \"" + printable(name) + "\" is no identifier: cir/1 names are"
+                        + " identifiers";
                 } else if (!ctor && DYNAMIC_HOOKS.contains(name)) {
                     why = DYNAMIC + ": " + name + " declared: Groovy calls it at run time for names the class does not declare";
                 } else if (ctor && explicitCtor) {
@@ -1281,6 +1285,29 @@ public final class Reader {
                 ctors.put(cn, fn);
             }
         }
+    }
+
+    /**
+     * Whether a method name, which Groovy lets be any quoted string, is a name {@code cir/1}
+     * admits: one or more Java identifier parts, none of them an ignorable control or format
+     * character.
+     */
+    static boolean isIdentifier(String name) {
+        return !name.isEmpty() && name.codePoints()
+            .allMatch(c -> Character.isJavaIdentifierPart(c) && !Character.isIdentifierIgnorable(c));
+    }
+
+    /** {@code s} with every control and format character written as a Java escape: backslash, u, four hex digits. */
+    static String printable(String s) {
+        StringBuilder b = new StringBuilder();
+        s.codePoints().forEach(c -> {
+            if (Character.isISOControl(c) || Character.getType(c) == Character.FORMAT) {
+                b.append(String.format("\\u%04x", c));
+            } else {
+                b.appendCodePoint(c);
+            }
+        });
+        return b.toString();
     }
 
     private Fn signature(ClassNode cn, MethodNode m, String name, boolean ctor) {

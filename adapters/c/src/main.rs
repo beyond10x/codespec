@@ -30,7 +30,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module};
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, printable};
 
 /// The claim: the features whose kit cases the acceptance test of `adapters/c-run` runs to their
 /// expected output.
@@ -92,7 +92,7 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
-            eprintln!("codespec-write-c: {e}");
+            eprintln!("codespec-write-c: {}", printable(&e));
             ExitCode::FAILURE
         }
     }
@@ -109,7 +109,13 @@ fn run(out: &Path) -> Result<bool, String> {
     let listed: Vec<serde_json::Value> = written
         .refusals
         .iter()
-        .map(|r| serde_json::json!({"name": r.name, "pos": r.pos, "reason": r.reason}))
+        .map(|r| {
+            serde_json::json!({
+                "name": printable(&r.name),
+                "pos": printable(&r.pos),
+                "reason": printable(&r.reason),
+            })
+        })
         .collect();
     let mut refusals = serde_json::to_string_pretty(&listed).map_err(|e| e.to_string())?;
     refusals.push('\n');
@@ -126,7 +132,9 @@ fn run(out: &Path) -> Result<bool, String> {
     for r in &written.refusals {
         eprintln!(
             "codespec-write-c: refused {} ({}): {}",
-            r.name, r.pos, r.reason
+            printable(&r.name),
+            printable(&r.pos),
+            printable(&r.reason)
         );
     }
     Ok(written.refusals.is_empty())

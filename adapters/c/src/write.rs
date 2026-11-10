@@ -1,5 +1,5 @@
 //! The mapping from `cir/1` to C11. [`write`] gives the three files of a module `m` (the module
-//! name with every character outside `[A-Za-z0-9_]` read as `_`):
+//! name, a C identifier like every name below):
 //!
 //! | file | holds |
 //! |---|---|
@@ -41,6 +41,21 @@
 //! Go evaluates calls left to right; C leaves the order of a call's arguments and of an
 //! operator's operands unspecified. A function holding an expression with two operands that both
 //! make a call is refused rather than written with an order C does not promise.
+//!
+//! # What the document puts into the C
+//!
+//! The document is untrusted input. Every name it gives (`Module::each_name`: the module, its
+//! declarations, fields, variants, parameters and locals, where declared and where used) must be
+//! an ASCII C identifier, `[A-Za-z_][A-Za-z0-9_]*`, or the module is refused whole, naming it:
+//! exit 1, nothing written. The module name is also the file name `<name>.h`, so it is refused
+//! when it is, in any case, a C11, C23 or top-level POSIX header name or glibc's `features`
+//! ([`SYSTEM_HEADERS`]), or a Windows device name (`codespec_model::is_windows_device_name`).
+//! String literals and error messages are written as escaped C string literals ([`c_str`]),
+//! integer literals as parsed numbers, doc comments with every `\` written as `/` and every `*/`,
+//! `/*` and `??` broken, so no line join, trigraph or nested comment can end the comment
+//! ([`comment`]). A `foreign` statement is refused, never written. A refusal printed to stderr or
+//! listed in `refusals.json` writes the document's text with its control and format characters
+//! escaped.
 //!
 //! # Refusals
 //!
@@ -318,9 +333,102 @@ fn c_str(bytes: &[u8]) -> String {
     s
 }
 
-/// A comment's text with `*/` broken.
+/// The headers a module of the same name would shadow as `<name>.h` under `-I`: those of C11
+/// and C23, the top-level ones of POSIX.1-2024 (no `sys/…`, which a module name cannot reach),
+/// and glibc's `features.h`, which every glibc header includes. Compared without case.
+const SYSTEM_HEADERS: &[&str] = &[
+    "assert",
+    "complex",
+    "ctype",
+    "errno",
+    "fenv",
+    "float",
+    "inttypes",
+    "iso646",
+    "limits",
+    "locale",
+    "math",
+    "setjmp",
+    "signal",
+    "stdalign",
+    "stdarg",
+    "stdatomic",
+    "stdbit",
+    "stdbool",
+    "stdckdint",
+    "stddef",
+    "stdint",
+    "stdio",
+    "stdlib",
+    "stdnoreturn",
+    "string",
+    "tgmath",
+    "threads",
+    "time",
+    "uchar",
+    "wchar",
+    "wctype",
+    "aio",
+    "cpio",
+    "devctl",
+    "dirent",
+    "dlfcn",
+    "endian",
+    "fcntl",
+    "fmtmsg",
+    "fnmatch",
+    "ftw",
+    "glob",
+    "grp",
+    "iconv",
+    "langinfo",
+    "libgen",
+    "libintl",
+    "monetary",
+    "mqueue",
+    "ndbm",
+    "netdb",
+    "nl_types",
+    "poll",
+    "pthread",
+    "pwd",
+    "regex",
+    "sched",
+    "search",
+    "semaphore",
+    "spawn",
+    "strings",
+    "stropts",
+    "syslog",
+    "tar",
+    "termios",
+    "trace",
+    "ulimit",
+    "unistd",
+    "utime",
+    "utmpx",
+    "wordexp",
+    "features",
+];
+
+/// A doc's text as the inside of a C block comment that nothing in it can end or forge. C reads
+/// trigraphs (`??/` is `\`) and joins a line ending in `\` with the next before it looks for
+/// comments, so every `\` is written as `/`, and a space breaks every `*/`, `/*` and `??` the
+/// text then holds. `codespec:` is written `codespec :`, so no doc line reads as one of the
+/// header's `/* codespec: … */` lines.
 fn comment(text: &str) -> String {
-    text.replace("*/", "* /")
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        let c = if c == '\\' { '/' } else { c };
+        if matches!(
+            (out.chars().next_back(), c),
+            (Some('*'), '/') | (Some('/'), '*') | (Some('?'), '?')
+        ) {
+            out.push(' ');
+        }
+        out.push(c);
+    }
+    out.replace("codespec:", "codespec :")
 }
 
 /// A pointer to `ct`: `T *`, or `T **` when `ct` is a pointer already.
@@ -392,15 +500,31 @@ struct FnOut {
 
 impl<'m> Writer<'m> {
     fn new(m: &'m Module) -> R<Writer<'m>> {
-        let mut base: String = m
-            .name
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect();
-        if base.is_empty() || base.starts_with(|c: char| c.is_ascii_digit()) {
-            base.insert(0, 'm');
+        // Every name lands in C source, and the module's in file names: each must be a C
+        // identifier, or nothing is written.
+        let mut bad = None;
+        m.each_name(&mut |what, name| {
+            if bad.is_none() && !is_ident(name) {
+                bad = Some(format!("the {what} name {name:?} is not a C identifier"));
+            }
+        });
+        if let Some(e) = bad {
+            return Err(e);
         }
-        let px = format!("{base}_");
+        let lower = m.name.to_lowercase();
+        if SYSTEM_HEADERS.contains(&lower.as_str()) {
+            return Err(format!(
+                "the module name {:?} is written as {}.h, the name of a C or POSIX header",
+                m.name, m.name
+            ));
+        }
+        if codespec_model::is_windows_device_name(&m.name) {
+            return Err(format!(
+                "the module name {:?} is written as {}.h, a Windows device name",
+                m.name, m.name
+            ));
+        }
+        let px = format!("{}_", m.name);
         let mut w = Writer {
             m,
             px,
@@ -411,19 +535,6 @@ impl<'m> Writer<'m> {
             globals: BTreeMap::new(),
             refused_globals: Vec::new(),
         };
-        for name in m
-            .types
-            .iter()
-            .map(|d| d.name())
-            .chain(m.funcs.iter().map(|f| f.name.as_str()))
-            .chain(m.consts.iter().map(|c| c.name.as_str()))
-            .chain(m.errors.iter().map(|e| e.name.as_str()))
-            .chain(m.vars.iter().map(|v| v.name.as_str()))
-        {
-            if !is_ident(&name.replace('.', "_")) {
-                return Err(format!("the name {name:?} is not a C identifier"));
-            }
-        }
         for d in &m.types {
             w.check_decl(d)?;
         }

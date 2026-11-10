@@ -69,9 +69,11 @@
 //!
 //! The build directory (`--build`, emptied first; else a directory under the system's temporary
 //! directory, removed afterwards) holds `driver.c` and the program `codespec-run`, compiled with
-//! `$CC` (default `cc`) as `cc -std=c11 -Wall -Werror $CFLAGS -I <written dir> -o … driver.c
-//! <m>.c`. `CFLAGS` is split on whitespace; a sanitizer named there (`-fsanitize=undefined
-//! -fno-sanitize-recover`) makes undefined behaviour a failed program.
+//! `$CC` (default `cc`) as `cc -std=c11 -Wall -Werror $CFLAGS -iquote <written dir> -o …
+//! driver.c <m>.c`. `-iquote` makes the written directory a place for `#include "…"` only, so a
+//! header there named like a system header never stands in for `<…>`. `CFLAGS` is split on
+//! whitespace; a sanitizer named there (`-fsanitize=undefined -fno-sanitize-recover`) makes
+//! undefined behaviour a failed program.
 //!
 //! # Exit status
 //!
@@ -675,7 +677,7 @@ fn compile(
     let out = Command::new(&cc)
         .args(["-std=c11", "-Wall", "-Werror"])
         .args(cflags.split_whitespace())
-        .arg("-I")
+        .arg("-iquote")
         .arg(dir)
         .arg("-o")
         .arg(&bin)

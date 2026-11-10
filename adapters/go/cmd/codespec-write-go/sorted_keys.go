@@ -164,7 +164,14 @@ func (w *writer) underKind(t Type) string {
 // typeSrc is t as Go source.
 func (w *writer) typeSrc(t Type) string {
 	var b bytes.Buffer
-	if err := printer.Fprint(&b, token.NewFileSet(), w.typ(t)); err != nil {
+	x := w.typ(t)
+	// The text is parsed again as part of the helper: a name that is not an identifier would be
+	// code by then, so it is refused here.
+	if err := checkNode(x); err != nil {
+		w.refuse("sorted_keys: %v", err)
+		return "int"
+	}
+	if err := printer.Fprint(&b, token.NewFileSet(), x); err != nil {
 		w.refuse("type: %v", err)
 	}
 	return b.String()

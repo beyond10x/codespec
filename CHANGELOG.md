@@ -83,6 +83,46 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec-read-go` reads `slices.Sorted(maps.Keys(m))` over integer keys as `sorted_keys`. Over
   string keys it stays as before: Go orders strings by byte, `sorted_keys` by UTF-16 code unit.
 
+### Changed
+
+- The Rust, C and Go writers refuse a document holding a name that is not an identifier of their
+  language: exit 1, a message naming it, nothing written. Before, a module name holding a quote
+  and a newline added keys to the `Cargo.toml` the Rust writer wrote (a `build` script cargo
+  runs), a name could add C or Go code, and the Go writer took a module name like `../x` as a path.
+  The Rust writer no longer panics on such a name. The Go writer also refuses a literal that is
+  not exactly one Go literal, and a document missing a part, where it crashed.
+- Strict reading of `cir/1` refuses a module, declaration, field, parameter or local name that is
+  empty or holds a character no Java or Rust identifier holds after its first, a control or
+  format character, or an invisible default-ignorable character (a Hangul filler, a variation
+  selector), after an optional `r#` (a Rust raw identifier, which the Rust writer writes back as
+  one). Letters and digits of any script, `_`, currency signs such as `$` and `€`, combining
+  marks and connector punctuation are names. A module `path` is segments of letters, digits, `_`,
+  `-`, `.` and `~` joined by `/`, none empty, `.` or `..`. Any text of the document holding a
+  control or format character is refused: names, positions, extern paths, names and types,
+  reasons, a refusal's `what`, the reader's name and version, facts; a `doc`, foreign `src`, a
+  literal's `value` and an error's `message` may hold line breaks and tabs. An assignment with no
+  target or no value is refused. A message quoting the document writes its control and format
+  characters as escapes, in strict reading and in all three writers, and so do the Rust and C
+  writers' `refusals.json`.
+- The C writer writes every `\` of a doc comment as `/` and breaks every `*/`, `/*` and `??`, so a
+  doc ending a line in `*\` or `*??/` no longer ends its comment and turns the next line into C
+  code, and no doc line reads as a `/* codespec: … */` header line. It refuses a module named, in
+  any case, like a C11, C23 or POSIX header (`stdint`, `string`, `unistd` …) or glibc's
+  `features`, whose `<name>.h` would stand in for the system's. `codespec-run-c` adds the written
+  directory with `-iquote` instead of `-I`, so a header there is found by `#include "…"` only.
+- The Go writer writes a doc line the go command would read as a build constraint (`+build …`) in
+  parentheses, and refuses a module name whose file the go command skips or builds only on some
+  platforms (`x_test`, `x_windows`, `x_arm64`, `_x`) and the module name `documentation`, a
+  package the go command ignores. A module named `main` is still written as `package main`. A
+  position from the document is named in the message of a construct it cannot write.
+- The Rust, C and Go writers refuse a module named like a Windows device (`con`, `prn`, `aux`,
+  `nul`, `com0` to `com9`, `lpt0` to `lpt9`, in any case), which they would write as a file name.
+- The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
+  other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
+  does not compile.
+- The Groovy reader refuses a method whose quoted name is no identifier (`long "add two"()`),
+  `unsupported`, where it read it as a function strict reading then refused.
+
 ### Fixed
 
 - `codespec-read-go` keeps a range with `=` that assigns a variable declared before the loop

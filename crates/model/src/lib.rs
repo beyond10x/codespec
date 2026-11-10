@@ -252,6 +252,360 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// Whether `name` is a name strict reading admits for a module, a declaration, a field, a
+/// parameter or a local: one or more characters a Java or Rust identifier may hold after its
+/// first, after an optional `r#` (a Rust raw identifier, as `codespec-read-rust` keeps it). Those
+/// are letters and digits of any script, `_`, combining marks, connector punctuation and letter
+/// numbers (Unicode `XID_Continue`), and currency signs such as `$` and `€` (Java), but never a
+/// control or format character and never an invisible default-ignorable code point (a Hangul
+/// filler, a variation selector), which would make two names look alike. A writer puts names
+/// into source text and file names, where any other character could end the name and begin code
+/// or a path; each writer applies its own language's stricter rule on top.
+pub fn is_name(name: &str) -> bool {
+    let name = name.strip_prefix("r#").unwrap_or(name);
+    !name.is_empty()
+        && name.chars().all(|c| {
+            (c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || is_currency_sign(c))
+                && !c.is_control()
+                && !is_format_char(c)
+                && !is_default_ignorable(c)
+        })
+}
+
+/// Whether `c` has the Unicode 16.0 property `Default_Ignorable_Code_Point`
+/// (`DerivedCoreProperties.txt`): characters that show as nothing, among them the Hangul fillers
+/// U+115F, U+1160, U+3164 and U+FFA0, the combining grapheme joiner U+034F, the Mongolian
+/// variation selectors U+180B to U+180F, U+17B4 and U+17B5, the variation selectors U+FE00 to
+/// U+FE0F and U+E0100 to U+E01EF, and the format characters of [`is_format_char`] that are.
+fn is_default_ignorable(c: char) -> bool {
+    matches!(c,
+        '\u{ad}' | '\u{34f}' | '\u{61c}' | '\u{115f}'..='\u{1160}' | '\u{17b4}'..='\u{17b5}'
+        | '\u{180b}'..='\u{180f}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{206f}' | '\u{3164}' | '\u{fe00}'..='\u{fe0f}' | '\u{feff}'
+        | '\u{ffa0}' | '\u{fff0}'..='\u{fff8}' | '\u{1bca0}'..='\u{1bca3}'
+        | '\u{1d173}'..='\u{1d17a}' | '\u{e0000}'..='\u{e0fff}')
+}
+
+/// Whether `c` is a currency sign (Unicode general category `Sc`), a Java identifier part.
+fn is_currency_sign(c: char) -> bool {
+    matches!(c,
+        '$' | '\u{a2}'..='\u{a5}' | '\u{58f}' | '\u{60b}' | '\u{7fe}'..='\u{7ff}'
+        | '\u{9f2}'..='\u{9f3}' | '\u{9fb}' | '\u{af1}' | '\u{bf9}' | '\u{e3f}' | '\u{17db}'
+        | '\u{20a0}'..='\u{20c0}' | '\u{a838}' | '\u{fdfc}' | '\u{fe69}' | '\u{ff04}'
+        | '\u{ffe0}'..='\u{ffe1}' | '\u{ffe5}'..='\u{ffe6}' | '\u{11fdd}'..='\u{11fe0}'
+        | '\u{1e2ff}' | '\u{1ecb0}')
+}
+
+/// Whether `c` is a format character that changes how text shows without showing itself:
+/// zero-width characters, joiners, bidirectional controls, the byte order mark, soft hyphen,
+/// invisible operators, interlinear annotation marks and tags (Unicode general category `Cf`).
+fn is_format_char(c: char) -> bool {
+    matches!(c,
+        '\u{ad}' | '\u{600}'..='\u{605}' | '\u{61c}' | '\u{6dd}' | '\u{70f}' | '\u{890}'..='\u{891}'
+        | '\u{8e2}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}'
+        | '\u{110bd}' | '\u{110cd}' | '\u{13430}'..='\u{1343f}' | '\u{1bca0}'..='\u{1bca3}'
+        | '\u{1d173}'..='\u{1d17a}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}')
+}
+
+/// `text` with every control and format character written as its Rust escape (`\u{1b}`), so a
+/// message that quotes a document's text carries none of them to a terminal.
+pub fn printable(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(|c| c.is_control() || is_format_char(c)) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        if c.is_control() || is_format_char(c) {
+            out.extend(c.escape_unicode());
+        } else {
+            out.push(c);
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// Whether `name`, before its first `.` and in any case, is a name Windows opens as a device
+/// whatever the extension: `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM0` to `COM9` and
+/// `LPT0` to `LPT9`, also with a superscript `¹`, `²` or `³` for the digit. The writers refuse a
+/// module of such a name, which they would write as a file name (the Go writer holds the same
+/// list).
+pub fn is_windows_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").to_lowercase();
+    if matches!(
+        stem.as_str(),
+        "con" | "prn" | "aux" | "nul" | "conin$" | "conout$"
+    ) {
+        return true;
+    }
+    let (Some(head), Some(tail)) = (stem.get(..3), stem.get(3..)) else {
+        return false;
+    };
+    matches!(head, "com" | "lpt")
+        && matches!(
+            tail,
+            "0" | "1"
+                | "2"
+                | "3"
+                | "4"
+                | "5"
+                | "6"
+                | "7"
+                | "8"
+                | "9"
+                | "\u{b9}"
+                | "\u{b2}"
+                | "\u{b3}"
+        )
+}
+
+/// Whether `path` is a module path strict reading admits: empty, or `/`-separated segments, none
+/// empty, `.` or `..`, each of letters, digits, `_`, `-`, `.` and `~` (`github.com/x/go-y`).
+pub fn is_module_path(path: &str) -> bool {
+    path.is_empty()
+        || path.split('/').all(|s| {
+            !s.is_empty()
+                && s != "."
+                && s != ".."
+                && s.chars()
+                    .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '~'))
+        })
+}
+
+type NameFn<'f, 'a> = &'f mut dyn FnMut(&'static str, &'a str);
+
+fn tparam_names<'a>(tparams: &'a [TypeParam], f: NameFn<'_, 'a>) {
+    for p in tparams {
+        f("type parameter", &p.name);
+        type_names(&p.constraint, f);
+    }
+}
+
+fn field_names<'a>(fields: &'a [Field], f: NameFn<'_, 'a>) {
+    for fl in fields {
+        f("field", &fl.name);
+        type_names(&fl.t, f);
+    }
+}
+
+fn param_names<'a>(params: &'a [Param], f: NameFn<'_, 'a>) {
+    for p in params {
+        f("parameter", &p.name);
+        type_names(&p.t, f);
+    }
+}
+
+fn type_names<'a>(t: &'a Type, f: NameFn<'_, 'a>) {
+    match t {
+        Type::Int { .. }
+        | Type::Float { .. }
+        | Type::Bool
+        | Type::String
+        | Type::Error
+        | Type::Any
+        | Type::Unit => {}
+        Type::Named { name, targs } => {
+            f("type", name);
+            targs.iter().for_each(|t| type_names(t, f));
+        }
+        Type::Ptr { elem }
+        | Type::Slice { elem }
+        | Type::Array { elem, .. }
+        | Type::Chan { elem, .. } => type_names(elem, f),
+        Type::Map { key, elem } => {
+            type_names(key, f);
+            type_names(elem, f);
+        }
+        Type::Tuple { elems } => elems.iter().for_each(|t| type_names(t, f)),
+        Type::Extern { targs, .. } => targs.iter().for_each(|t| type_names(t, f)),
+        Type::Func { params, results } => {
+            params.iter().chain(results).for_each(|t| type_names(t, f))
+        }
+        Type::Param { name } => f("type parameter", name),
+    }
+}
+
+fn stmt_names<'a>(body: &'a [Stmt], f: NameFn<'_, 'a>) {
+    for s in body {
+        match s {
+            Stmt::Let { names, rhs, .. } => {
+                names.iter().for_each(|n| f("local", n));
+                rhs.iter().for_each(|e| expr_names(e, f));
+            }
+            Stmt::Var { name, t, .. } => {
+                f("local", name);
+                type_names(t, f);
+            }
+            Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).for_each(|e| expr_names(e, f)),
+            Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => expr_names(x, f),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                expr_names(cond, f);
+                stmt_names(then, f);
+                stmt_names(otherwise, f);
+            }
+            Stmt::ForRange {
+                key,
+                val,
+                over,
+                body,
+                ..
+            } => {
+                f("local", key);
+                f("local", val);
+                expr_names(over, f);
+                stmt_names(body, f);
+            }
+            Stmt::For {
+                init,
+                cond,
+                post,
+                body,
+                ..
+            } => {
+                init.iter()
+                    .for_each(|s| stmt_names(std::slice::from_ref(&**s), f));
+                cond.iter().for_each(|e| expr_names(e, f));
+                post.iter()
+                    .for_each(|s| stmt_names(std::slice::from_ref(&**s), f));
+                stmt_names(body, f);
+            }
+            Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Foreign { .. } => {}
+            Stmt::Switch { tag, cases, .. } => {
+                tag.iter().for_each(|e| expr_names(e, f));
+                for c in cases {
+                    c.values.iter().for_each(|e| expr_names(e, f));
+                    stmt_names(&c.body, f);
+                }
+            }
+            Stmt::Return { results, .. } => results.iter().for_each(|e| expr_names(e, f)),
+            Stmt::Send { chan, x, .. } => {
+                expr_names(chan, f);
+                expr_names(x, f);
+            }
+            Stmt::LookupElse {
+                name,
+                map,
+                index,
+                then,
+                ..
+            } => {
+                f("local", name);
+                expr_names(map, f);
+                expr_names(index, f);
+                stmt_names(then, f);
+            }
+        }
+    }
+}
+
+fn expr_names<'a>(e: &'a Expr, f: NameFn<'_, 'a>) {
+    type_names(e.t(), f);
+    match e {
+        Expr::Lit { .. }
+        | Expr::Float { .. }
+        | Expr::Nil { .. }
+        | Expr::Make { .. }
+        | Expr::Zero { .. } => {}
+        Expr::Var { name, .. } => f("local", name),
+        Expr::Const { name, .. } => f("constant", name),
+        Expr::Errvar { name, .. } => f("error", name),
+        Expr::Global { name, .. } => f("variable", name),
+        Expr::Field { x, name, .. } => {
+            expr_names(x, f);
+            f("field", name);
+        }
+        Expr::Index { x, index, .. } => {
+            expr_names(x, f);
+            expr_names(index, f);
+        }
+        Expr::Call {
+            name, targs, args, ..
+        } => {
+            f("function", name);
+            targs.iter().for_each(|t| type_names(t, f));
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Method { x, name, args, .. } => {
+            expr_names(x, f);
+            f("method", name);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Extern { targs, args, .. } => {
+            targs.iter().for_each(|t| type_names(t, f));
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::ExternMethod {
+            targs, recv, args, ..
+        } => {
+            targs.iter().for_each(|t| type_names(t, f));
+            expr_names(recv, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Binop { x, y, .. } => {
+            expr_names(x, f);
+            expr_names(y, f);
+        }
+        Expr::Unop { x, .. }
+        | Expr::ToError { x, .. }
+        | Expr::Spread { x, .. }
+        | Expr::ToIface { x, .. } => expr_names(x, f),
+        Expr::Struct { name, fields, .. } => {
+            f("type", name);
+            for fi in fields {
+                f("field", &fi.name);
+                expr_names(&fi.value, f);
+            }
+        }
+        Expr::Conv { name, x, .. } => {
+            f("type", name);
+            expr_names(x, f);
+        }
+        Expr::Intrinsic { args, .. } => args.iter().for_each(|a| expr_names(a, f)),
+        Expr::FuncRef { name, recv, .. } => {
+            f("function", name);
+            recv.iter().for_each(|r| expr_names(r, f));
+        }
+        Expr::Lambda {
+            params,
+            results,
+            captures,
+            body,
+            ..
+        } => {
+            param_names(params, f);
+            results.iter().for_each(|t| type_names(t, f));
+            captures.iter().for_each(|c| f("local", c));
+            stmt_names(body, f);
+        }
+        Expr::CallValue {
+            f: callee, args, ..
+        } => {
+            expr_names(callee, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::IfaceCall {
+            path,
+            iface,
+            name,
+            recv,
+            args,
+            ..
+        } => {
+            if path.is_empty() {
+                f("interface", iface);
+                f("method", name);
+            }
+            expr_names(recv, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+    }
+}
+
 impl Opaque {
     /// `name`, or `<receiver type>.<name>` for a method, as [`Func::key`] gives it.
     pub fn key(&self) -> String {
@@ -1152,15 +1506,48 @@ pub enum ReadError {
     Invalid(String),
 }
 
+/// A message quotes the document's text; [`printable`] keeps its control and format characters
+/// out of the terminal it is printed to.
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReadError::Json(e) => write!(f, "not a cir/1 module: {e}"),
+            ReadError::Json(e) => write!(f, "not a cir/1 module: {}", printable(&e.to_string())),
             ReadError::Format(found) => {
                 write!(f, "format is {found:?}, this reader reads {FORMAT:?}")
             }
-            ReadError::Invalid(why) => write!(f, "not a cir/1 module: {why}"),
+            ReadError::Invalid(why) => write!(f, "not a cir/1 module: {}", printable(why)),
         }
+    }
+}
+
+/// The fields whose text may run over several lines: a doc, foreign source, a literal's spelling
+/// (a raw string), an error message and a refusal's `what`, which quotes source text, keep line
+/// breaks (`\n`, `\r`) and tabs.
+const MULTILINE_TEXT: [&str; 5] = ["doc", "src", "value", "message", "what"];
+
+/// Refuse a control or format character in any text of the document: names, positions
+/// (`pos`, `unordered_iteration`), extern paths, names and types, reasons,
+/// the reader's name and version, signatures, operators and facts. Only the text of
+/// [`MULTILINE_TEXT`] may hold a line feed, a carriage return or a tab, and nothing else of the two
+/// categories. Writers print this text in messages, `refusals.json` and source text.
+fn check_text(v: &serde_json::Value, key: &str) -> Result<(), String> {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => {
+            let multiline = MULTILINE_TEXT.contains(&key);
+            if s.chars().any(|c| {
+                (c.is_control() && !(multiline && matches!(c, '\n' | '\r' | '\t')))
+                    || is_format_char(c)
+            }) {
+                return Err(format!(
+                    "the {key} {s:?} holds a control or format character"
+                ));
+            }
+            Ok(())
+        }
+        Value::Array(a) => a.iter().try_for_each(|x| check_text(x, key)),
+        Value::Object(o) => o.iter().try_for_each(|(k, x)| check_text(x, k)),
+        _ => Ok(()),
     }
 }
 
@@ -1200,10 +1587,13 @@ impl Module {
         if format != FORMAT {
             return Err(ReadError::Format(format.to_string()));
         }
+        check_text(&probe, "document").map_err(ReadError::Invalid)?;
         let m: Module = serde_json::from_value(probe).map_err(ReadError::Json)?;
+        m.check_names().map_err(ReadError::Invalid)?;
         m.check_variadic().map_err(ReadError::Invalid)?;
         m.check_externs().map_err(ReadError::Invalid)?;
         m.check_vars().map_err(ReadError::Invalid)?;
+        m.check_assigns().map_err(ReadError::Invalid)?;
         m.check_captures().map_err(ReadError::Invalid)?;
         m.check_opaque().map_err(ReadError::Invalid)?;
         m.check_embedded().map_err(ReadError::Invalid)?;
@@ -1211,6 +1601,93 @@ impl Module {
         m.check_generics().map_err(ReadError::Invalid)?;
         m.check_framework().map_err(ReadError::Invalid)?;
         Ok(m)
+    }
+
+    /// Every name the module gives one of its own declarations, where it declares it and where
+    /// it uses it, with what it names: `module`, `type`, `type parameter`, `field`, `variant`,
+    /// `interface`, `method`, `constant`, `error`, `variable`, `function`, `receiver`,
+    /// `parameter` or `local`. Writers put these into source text. Names another module gives
+    /// (externs, another module's interfaces, the calls listed for `foreign` and `opaque` code),
+    /// the declarations `opaque` lists and the module `path` are not visited.
+    pub fn each_name<'a>(&'a self, f: &mut dyn FnMut(&'static str, &'a str)) {
+        f("module", &self.name);
+        for d in &self.types {
+            f("type", d.name());
+            tparam_names(d.tparams(), f);
+            match d {
+                TypeDecl::Struct { fields, .. } => field_names(fields, f),
+                TypeDecl::Newtype { under, .. } => type_names(under, f),
+                TypeDecl::Enum {
+                    under, variants, ..
+                } => {
+                    type_names(under, f);
+                    for v in variants {
+                        f("variant", &v.name);
+                        expr_names(&v.value, f);
+                    }
+                }
+                TypeDecl::Union { variants, .. } => {
+                    for v in variants {
+                        f("variant", &v.name);
+                        field_names(&v.fields, f);
+                    }
+                }
+            }
+        }
+        for i in self.interfaces.iter().filter(|i| i.path.is_empty()) {
+            f("interface", &i.name);
+            for m in &i.methods {
+                f("method", &m.name);
+                m.params
+                    .iter()
+                    .chain(&m.results)
+                    .for_each(|t| type_names(t, f));
+            }
+        }
+        for c in &self.consts {
+            f("constant", &c.name);
+            type_names(&c.t, f);
+            expr_names(&c.value, f);
+        }
+        for e in &self.errors {
+            f("error", &e.name);
+        }
+        for v in &self.vars {
+            f("variable", &v.name);
+            type_names(&v.t, f);
+            v.init.iter().for_each(|e| expr_names(e, f));
+        }
+        for func in &self.funcs {
+            f("function", &func.name);
+            tparam_names(&func.tparams, f);
+            if let Some(r) = &func.recv {
+                f("receiver", &r.name);
+                type_names(&r.t, f);
+            }
+            param_names(&func.params, f);
+            func.results.iter().for_each(|t| type_names(t, f));
+            stmt_names(&func.body, f);
+        }
+    }
+
+    /// Every name of [`Module::each_name`] is a [`is_name`], and the module `path` an
+    /// [`is_module_path`].
+    fn check_names(&self) -> Result<(), String> {
+        if !is_module_path(&self.path) {
+            return Err(format!(
+                "the module path {:?} is not segments of letters, digits, `_`, `-`, `.` and `~` joined by `/`, none empty, `.` or `..`",
+                self.path
+            ));
+        }
+        let mut bad = None;
+        self.each_name(&mut |what, name| {
+            if bad.is_none() && !is_name(name) {
+                bad = Some(format!(
+                    "the {what} name {name:?} is empty or holds a character no Java or Rust identifier holds after its first, a control or format character, or an invisible default-ignorable one (after an optional `r#`)"
+                ));
+            }
+        });
+        bad.map_or(Ok(()), Err)
     }
 
     /// Every expression of the module at any depth, lambda bodies included: enum variant
@@ -1821,6 +2298,33 @@ impl Module {
         for func in &self.funcs {
             walk::body_exprs(&func.body, &mut check);
         }
+        bad.map_or(Ok(()), Err)
+    }
+
+    /// Every assignment, in a function or a lambda, assigns at least one value to at least one
+    /// target.
+    fn check_assigns(&self) -> Result<(), String> {
+        let mut bad = None;
+        let mut check = |s: &Stmt| {
+            if let Stmt::Assign { lhs, rhs, pos, .. } = s
+                && bad.is_none()
+                && (lhs.is_empty() || rhs.is_empty())
+            {
+                bad = Some(format!(
+                    "{pos}: an assignment of {} values to {} targets",
+                    rhs.len(),
+                    lhs.len()
+                ));
+            }
+        };
+        for func in &self.funcs {
+            walk::walk_stmts(&func.body, &mut check);
+        }
+        self.each_expr(&mut |e| {
+            if let Expr::Lambda { body, .. } = e {
+                walk::walk_stmts(body, &mut check);
+            }
+        });
         bad.map_or(Ok(()), Err)
     }
 

@@ -74,10 +74,11 @@ the foreign source returns or writes is unknown. The exact rules are in the crat
 ### Go
 
 `codespec-write-go` builds a `go/ast` tree from the module and prints it with `go/printer`, then
-`go/format`. A `foreign` Go statement is spliced back verbatim. `foreign` source in any other
-language is refused. A construct Go cannot hold is refused whole: exit 1, a message with its
-position, nothing written. Its output is gofmt-clean and vetted, and the Go reader reads it back
-to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
+`go/format`. A `foreign` Go statement or variable initializer is spliced back verbatim. A `cir/1`
+document that holds foreign Go is code: writing and building a document from an untrusted source
+runs it. `foreign` source in any other language is refused. A construct Go cannot hold is refused
+whole: exit 1, a message with its position, nothing written. Its output is gofmt-clean and
+vetted, and the Go reader reads it back to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
 
 ### Rust
 
