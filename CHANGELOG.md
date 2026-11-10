@@ -2,6 +2,27 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
+  `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
+  `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a
+  `typedef` of an integer, `_Bool` or floating-point type as a newtype with `(T)x` its
+  conversion, and a struct literal of zeros, `(struct T){0}`, as `zero`. It claims the 17 kit
+  features whose cases now have a C source: `decl.newtype`, `expr.call_value`, `expr.conv`,
+  `expr.float`, `expr.func_ref`, `expr.nil`, `expr.zero`, `stmt.continue`, `stmt.expr`,
+  `type.array`, `type.float`, `type.func`, `type.named`, `type.ptr`, `type.unit`, `unop.deref`,
+  `unop.ref`. `decl.variadic` and `expr.index` stay unclaimed; the crate doc says why.
+- Four kit cases are variants of a feature whose first case needs a slice, an error or a string:
+  `expr-nil-ptr`, `expr-zero-struct` (its `case.cir.json` written by hand, as the Go reader never
+  writes `zero`), `type-array-int` and `type-float-compare`.
+- `codespec-run-c` runs C written by hand that declares `typedef long Name;` and passes or returns
+  `Name` as an integer, and reads a function pointer or array parameter as one parameter; a call
+  of a function taking a float, a pointer, an array or a function pointer is refused naming its
+  type.
+
 ## 0.6.1
 
 ### Changed

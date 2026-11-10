@@ -1,0 +1,18 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.float",
+    "expr.binop",
+    "expr.float",
+    "expr.var",
+    "op.div",
+    "op.gt",
+    "op.land",
+    "op.lt",
+    "stmt.assign",
+    "stmt.if",
+    "stmt.return",
+    "stmt.var",
+    "type.bool"
+  ]
+}

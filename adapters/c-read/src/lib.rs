@@ -21,7 +21,8 @@
 //! | `enum E { … }`, `typedef enum { … } E` | `enum` over `int` (32-bit, signed), values as clang computes them |
 //! | `enum { A = 1, … }` without a name | a `const` of type `int` per enumerator |
 //! | a file-scope variable | `var`; an initializer outside the subset is kept as foreign source |
-//! | `typedef` of another type | nothing: the type it names stands for it |
+//! | `typedef T Name;` in the source directory, `T` an integer, `_Bool` or floating-point type | `newtype` `Name` over `T`: a value clang types `Name` is of that newtype, distinct from `T` |
+//! | any other `typedef` | nothing: the type it names stands for it |
 //! | `union`, a bit field, an unnamed struct | refused |
 //! | a function the module calls and does not define | `extern` with its declared signature: path `libc` when a header outside the directory declares it, else the declaring file |
 //!
@@ -32,18 +33,22 @@
 //! | `_Bool` (`bool`) | `bool` |
 //! | `signed char`, `short`, `int`, `long`, `long long` and their `unsigned` forms, `int8_t`…`uint64_t` | `int` of width 8, 16, 32, 64, 64 (LP64), signed or not |
 //! | `const char *` | `string`: read where a string literal or a parameter of that type flows; nothing indexes, compares or walks it |
-//! | `struct T`, `enum E` the directory declares | `named` |
+//! | `struct T`, `enum E` the directory declares, a newtype `typedef` | `named` |
+//! | `float`, `double` | `float` of 32, 64 bits |
+//! | `T *`, `const T *` (but `const char *`) | `ptr` to `T` |
+//! | `T[N]` | `array` of `N` `T` |
+//! | `R (*)(P, …)` | `func` from `P, …` to `R`, no result for `void` |
 //! | `void` (a result) | no result; a call of it is typed `unit` |
 //! | variadic extern parameters (`...`) | a last parameter `[]any`, the extern `variadic` |
-//! | plain `char`, floating point, pointers, arrays, function pointers, `volatile`, `_Atomic` | refused |
+//! | plain `char`, `long double`, `void *`, a pointer to or an array of `const char *`, an array without a constant length, a function pointer without a prototype or to a variadic function, `volatile`, `_Atomic` | refused |
 //!
 //! # Statements
 //!
 //! | C | cir/1 |
 //! |---|---|
-//! | `T x;` or `T x = 0;` (a zero initializer: `0`, `{0}`, `{}`) | `var` |
+//! | `T x;` or `T x = 0;` (a zero initializer: `0`, a null pointer constant, `{0}`, `{}`) | `var` |
 //! | `T x = e;` | `let`, `e` of type `T` |
-//! | `x = e;`, `x op= e;` | `assign`; `x &= ~e` is `&^=` |
+//! | `x = e;`, `x op= e;` (`x` a variable, a field, `a[i]` or `*p`) | `assign`; `x &= ~e` is `&^=` |
 //! | `x++;`, `++x;`, `x--;`, `--x;` | `incr`, `decr` |
 //! | `f(…);` | `expr` |
 //! | `if`, `else` | `if` |
@@ -63,37 +68,58 @@
 //! | C | cir/1 |
 //! |---|---|
 //! | an integer literal; an integer constant converted to the type its context needs | `lit` of that type, under `-` when negative |
+//! | a floating-point literal (`0.25`, `1e21f`) | `float` of its type: the shortest decimal that reads back to clang's value of it |
 //! | `"…"` (printable ASCII, the escapes `\n \t \r \\ \"`) | `lit` of type `string`, spelled as Go spells it |
+//! | a null pointer constant (`0`, `NULL`) where a pointer or function pointer is expected | `nil` of that type |
 //! | a parameter or local, a file-scope variable | `var`, `global` |
 //! | an enumerator where its enum is expected, an anonymous enum's enumerator | `const` |
-//! | `+ - * / % & | ^ << >>` on one integer type (`<<` and `>>` with any count type) | `binop`; `x & ~y` is `&^` |
-//! | unary `- + ~` | `unop` `- + ^` |
-//! | `< > <= >= == !=` on one integer or enum type, `&& || !` | `binop`, `unop` of type `bool`, read where C converts them to `_Bool` or tests them; an integer tested is `x != 0` |
+//! | the name of a function the module defines, as a value | `func_ref` |
+//! | `+ - * / % & | ^ << >>` on one integer type or newtype over one (`<<` and `>>` with any count type), `+ - * /` on one floating-point type | `binop`; `x & ~y` is `&^` |
+//! | unary `- +` on a number, `~` on an integer | `unop` `- + ^` |
+//! | `&x` of a variable, a field, an element or a struct literal `(struct T){…}`; `*p` | `unop` `&`, `*` |
+//! | `(T)x` for a newtype `T`, `x` of the type it is defined over | `conv` |
+//! | `< > <= >= == !=` on one number, enum or newtype type, `== !=` on pointers or a function pointer and `NULL`, `&& || !` | `binop`, `unop` of type `bool`, read where C converts them to `_Bool` or tests them; an integer tested is `x != 0` |
 //! | `f(…)` | `call` of a function the module defines, else `extern` |
-//! | `s.f` | `field` |
+//! | `f(…)` through a function pointer (a local, a parameter, a field) | `call_value` |
+//! | `s.f`, `p->f` | `field`; through a pointer, of the pointer, as `cir/1` reads a field through one |
+//! | `a[i]` of an array | `index` |
 //! | `(struct T){…}`, `{…}` initializing a struct | `struct`, the fields it writes |
+//! | `(struct T){0}`, `(struct T){}`: a struct literal of zeros only, but under `&` | `zero` of `T` |
 //!
-//! An implicit or explicit conversion between two integer types, a `_Bool` used as an integer and a
+//! An implicit or explicit conversion between two integer or floating-point types, between an
+//! integer and a floating-point type, a cast from a newtype, a `_Bool` used as an integer and a
 //! comparison used as an `int` are refused: `cir/1` has no such conversion. So are pointer
-//! arithmetic, `&`, `*`, `->`, `?:`, `sizeof`, the comma operator, an assignment or `++` inside an
-//! expression, indexing, character and floating-point literals and a call through a function
-//! pointer.
+//! arithmetic (indexing a pointer among it), ordering pointers, comparing two function pointers,
+//! `&` of a function or of a non-struct literal, `?:`, `sizeof`, the comma operator, an assignment
+//! or `++` inside an expression, an array initialized with values other than zero, character
+//! literals and a function the module does not define used as a value.
 //!
 //! # What the reader claims, and what it does not
 //!
 //! `codespec-read-c --describe` claims each feature whose conformance case has a hand-written C
 //! source, `conformance/cases/<case>/c/case.c`. `tests/cases.rs` holds every claim: the source reads
 //! without a refusal and with its subject, and passed and written as Go runs as the reference does.
-//! Running the source as written is step 1 of `codespec conform`, with the C runner. The vocabulary
-//! not claimed:
+//! Running the source as written is step 1 of `codespec conform`, with the C runner.
+//!
+//! Where a feature's first case needs a slice, an error or a string, its C source is in a variant
+//! case that holds the same subject without them, and the first case has none: `stmt.expr` and
+//! `type.unit` in `stmt-expr-method` and `type-unit-method` (a `void` function called on a
+//! pointer to a struct), `type.float` in `type-float-compare`, `type.array` in `type-array-int`,
+//! `expr.nil` in `expr-nil-ptr`, `expr.zero` in `expr-zero-struct`. The C source of
+//! `expr-func-value` adds the step after the call, as C has no method value.
+//!
+//! The vocabulary not claimed:
 //!
 //! | feature | why |
 //! |---|---|
 //! | `sem.int.wrap` | signed overflow is undefined in C, and `cir/1` integers wrap: a C source never relies on the wrap a reader would claim |
-//! | `fact.*`, `stmt.foreign` | computed by `codespec pass`; what a reader writes for what it cannot read |
+//! | `fact.*` | computed by `codespec pass`, never by a reader |
+//! | `stmt.foreign` | what a reader writes for what it cannot read; a corpus case of it would hold the construct the reader refuses, which `codespec conform` counts only for that subject |
 //! | `sem.switch.break` | a C `break` in a `switch` leaves the switch, never the loop around it |
 //! | `op.eq` | its case compares strings, which `==` on `const char *` does not |
-//! | `stmt.continue`, `stmt.expr`, `expr.extern`, `decl.var`, `type.named`, `intrinsic.*` and the rest | each case's subject needs a slice, a map, `println`, a string operation or a newtype, which C has not |
+//! | `decl.variadic` | a variadic C definition reads its arguments through `va_list`, `va_start` and `va_arg` of `<stdarg.h>`, one at a time and with no count; `cir/1` has only a slice parameter for them, so reading one is a convention of its own, and the first case's subject is a slice |
+//! | `expr.index` | the reader reads `a[i]` of an array, but its first case indexes a slice, and a variant indexing an array would fail the Rust and C writers, which claim `expr.index` and have no form for an array (`type.array`, which they do not claim) |
+//! | `expr.extern`, `decl.var`, `intrinsic.*` and the rest | each case's subject needs a slice, a map, `println` or a string operation, which C has not |
 
 mod body;
 mod json;
@@ -105,7 +131,7 @@ use std::process::Command;
 
 use codespec_model::{
     ConstDecl, Expr, Extern, Field, ForeignInit, Func, IntWidth, Module, Opaque, Param, Reader,
-    Refusal, TypeDecl, VarDecl, Variant,
+    Refusal, Type, TypeDecl, VarDecl, Variant,
 };
 
 use body::Body;
@@ -380,6 +406,7 @@ impl<'s> Assembly<'s> {
                         .iter()
                         .find(|(_, name)| *name == n.s("name"))
                         .map(|(_, name)| name.clone());
+                    let newtype = ours && named.is_none();
                     unit.typedefs.insert(
                         n.s("name").into(),
                         Typedef {
@@ -387,6 +414,9 @@ impl<'s> Assembly<'s> {
                             named,
                         },
                     );
+                    if newtype {
+                        self.newtype(&unit, n, target);
+                    }
                 }
                 "EnumDecl" if ours => self.enum_decl(&mut unit, n),
                 "RecordDecl" if ours && n.is_true("completeDefinition") => self.record(&unit, n),
@@ -483,6 +513,30 @@ impl<'s> Assembly<'s> {
                 }
             }
         }
+    }
+
+    /// A typedef of the source directory: a newtype when it names an integer, `_Bool` or
+    /// floating-point type; any other typedef stands for the type it names.
+    fn newtype(&mut self, unit: &Unit, n: &J, target: &str) {
+        let name = n.s("name").to_string();
+        let Ok(under) = self.tables.spelled(unit, target) else {
+            return;
+        };
+        if !matches!(under, Type::Int { .. } | Type::Bool | Type::Float { .. })
+            || self.tables.newtypes.contains_key(&name)
+        {
+            return;
+        }
+        self.tables.newtypes.insert(name.clone(), under.clone());
+        self.layout.push(format!("type:{name}"));
+        self.types.push(TypeDecl::Newtype {
+            name,
+            exported: true,
+            tparams: Vec::new(),
+            under,
+            doc: String::new(),
+            pos: pos_of(self.src, n),
+        });
     }
 
     fn record(&mut self, unit: &Unit, n: &J) {

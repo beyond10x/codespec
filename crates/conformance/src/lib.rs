@@ -35,7 +35,7 @@
 //! | id | the Go reader writes instead | reached by |
 //! |---|---|---|
 //! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
-//! | `expr.zero` | a literal, `0` or `""` | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal |
+//! | `expr.zero` | a literal, `0` or `""`; a struct literal that sets no field | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal; the C reader for a struct literal of zeros, `(struct T){0}` (`expr-zero-struct`) |
 //! | `intrinsic.sorted_keys` | nothing: Go has no expression for a map's keys in order | the Java reader, for a loop over a TreeMap's keySet |
 //! | `type.unit` | an empty tuple for a call of a function without results | the Rust and Java readers |
 //!
