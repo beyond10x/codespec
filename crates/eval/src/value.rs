@@ -67,8 +67,9 @@ pub enum Closure<'m> {
 pub enum ErrorVal<'m> {
     /// A sentinel error of the module (`errvar`).
     Sentinel { name: &'m str, message: &'m str },
-    /// A message (`errorf`).
-    Message(String),
+    /// A message (`errorf`, or a fault's `error`), with the fault it came from or wraps: an index
+    /// into the run's fired faults (`fault`).
+    Message { text: String, origin: Option<usize> },
     /// A value of a type with an `Error` method (`to_error`): its type and the value.
     Value(Type, Value<'m>),
 }

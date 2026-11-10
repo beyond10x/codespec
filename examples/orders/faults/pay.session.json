@@ -1,0 +1,36 @@
+{
+  "format": "codespec-session/1",
+  "calls": [
+    {
+      "bind": "s",
+      "func": "New",
+      "args": [
+        "chan"
+      ]
+    },
+    {
+      "bind": "id",
+      "func": "Service.Place",
+      "recv": "s",
+      "args": [
+        "\"ann\"",
+        "30",
+        "false"
+      ]
+    },
+    {
+      "func": "Service.Pay",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    },
+    {
+      "func": "Service.Get",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    }
+  ]
+}

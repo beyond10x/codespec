@@ -1,5 +1,6 @@
 //! What the run is given from outside the module (`docs/evaluator.md` § 6.1): its environment,
-//! the stubs the user names (E3, E4), the channels the host owns in a session, and the trace.
+//! the stubs the user names (E3, E4), the fault plan (§ 6.2, `fault`), the channels the host owns
+//! in a session, and the trace.
 
 use std::collections::HashMap;
 
@@ -31,6 +32,8 @@ pub(crate) struct Host<'m> {
     pub(crate) chans: Vec<HeapId>,
     /// The trace's lines, when the run writes one.
     pub(crate) trace: Option<Vec<String>>,
+    /// The fault plan's sites and what its faults did (`fault`).
+    pub(crate) faults: crate::fault::Faults<'m>,
 }
 
 impl<'m> Host<'m> {
@@ -85,7 +88,7 @@ fn extern_key(e: &Expr) -> Option<String> {
 }
 
 /// Every extern call site of `m`: its node, key, id and position.
-fn extern_sites(m: &Module) -> Vec<(&Expr, String, String, String)> {
+pub(crate) fn extern_sites(m: &Module) -> Vec<(&Expr, String, String, String)> {
     let mut out = Vec::new();
     for f in &m.funcs {
         walk::body_exprs(&f.body, &mut |e| {
@@ -175,12 +178,16 @@ impl<'m> Interp<'m> {
                 ));
             }
         }
-        Ok(())
+        self.install_faults(&opts.faults)
     }
 
     /// The results `values` give a call of the type `t`: one per result, none for a call
     /// without one.
-    fn stub_value(&self, values: &[serde_json::Value], t: &Type) -> Result<Value<'m>, String> {
+    pub(crate) fn stub_value(
+        &self,
+        values: &[serde_json::Value],
+        t: &Type,
+    ) -> Result<Value<'m>, String> {
         let types: Vec<Type> = match self.resolve(t) {
             Type::Unit => Vec::new(),
             Type::Tuple { elems } => elems,

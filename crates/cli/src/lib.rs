@@ -311,6 +311,14 @@ pub enum Cmd {
     /// ends its call, not the session. Externs go to their handlers: os.Getenv reads only the
     /// --env given; an extern without one stops the run unless a --stub answers for it, and
     /// standard error names every site a stub answered at.
+    ///
+    /// A fault plan, --fault or --faults (codespec-faults/1), makes the effect at a node id (an
+    /// extern call or a send) fail at a call count, before a stub or handler answers: error,
+    /// value, closed, block or panic. The trace says where it fired, what its call had written
+    /// before it, and whether its error was propagated, handled or dropped. --each runs the
+    /// session once per site of the --sites file and call count up to --max-nth, a send closed,
+    /// a call returning an error given one, another call panicking, and writes each trace into
+    /// --out, printing its path; exit 1 when a run stopped.
     Eval {
         /// The cir/1 module to run.
         module: PathBuf,
@@ -329,6 +337,31 @@ pub enum Cmd {
         /// spaces (null for a nil error); repeat for several.
         #[arg(long, value_name = "SITE=VALUES")]
         stub: Vec<String>,
+        /// A fault: SITE:NTH=DO, SITE an effect's node id, NTH a call count from 1 or *, DO
+        /// error, value, closed, block or panic, a JSON message or values after it; repeat for
+        /// several sites.
+        #[arg(long, value_name = "SITE:NTH=DO", requires = "session")]
+        fault: Vec<String>,
+        /// A fault plan, a codespec-faults/1 document.
+        #[arg(long, requires = "session")]
+        faults: Option<PathBuf>,
+        /// Run the session once per site of --sites and call count up to --max-nth, each trace
+        /// written into --out.
+        #[arg(
+            long,
+            requires_all = ["session", "sites", "out"],
+            conflicts_with_all = ["fault", "faults"]
+        )]
+        each: bool,
+        /// The sites --each faults: one node id per line.
+        #[arg(long, requires = "each")]
+        sites: Option<PathBuf>,
+        /// The last call count --each faults at each site.
+        #[arg(long, default_value_t = 1, requires = "each")]
+        max_nth: u64,
+        /// The directory --each writes its traces into.
+        #[arg(long, requires = "each")]
+        out: Option<PathBuf>,
         /// The statements, calls and loop iterations the run may execute before it stops.
         #[arg(long, default_value_t = 10_000_000)]
         max_steps: u64,

@@ -119,8 +119,10 @@ pub(crate) struct Interp<'m> {
     /// The address of the evaluator thread's first frame, for the stack margin.
     pub(crate) stack_base: usize,
     max_steps: u64,
-    /// The environment, stubs, host channels and trace (`host`).
+    /// The environment, stubs, faults, host channels and trace (`host`).
     pub(crate) host: Host<'m>,
+    /// The statement running now, for a fault's partial updates.
+    pub(crate) cur: Option<&'m Stmt>,
 }
 
 pub(crate) fn int_bits(w: IntWidth) -> u32 {
@@ -178,7 +180,13 @@ impl<'m> Interp<'m> {
             stack_base: 0,
             max_steps,
             host: Host::default(),
+            cur: None,
         }
+    }
+
+    /// How many cells the run's memory holds: a cell below it is older than what runs next.
+    pub(crate) fn heap_len(&self) -> usize {
+        self.heap.len()
     }
 
     pub(crate) fn take_out(&mut self) -> Vec<u8> {
@@ -196,7 +204,7 @@ impl<'m> Interp<'m> {
     }
 
     /// The id and position of `node` in the running code.
-    fn site(&self, node: Node<'m>) -> (String, String) {
+    pub(crate) fn site(&self, node: Node<'m>) -> (String, String) {
         let s = self.halt(StopKind::Panic, node, "").stop(self.m);
         (s.node, s.pos)
     }
@@ -306,7 +314,7 @@ impl<'m> Interp<'m> {
                 ErrorVal::Sentinel { message, .. } => {
                     format!("error({})", quote(message.as_bytes()))
                 }
-                ErrorVal::Message(s) => format!("error({})", quote(s.as_bytes())),
+                ErrorVal::Message { text, .. } => format!("error({})", quote(text.as_bytes())),
                 ErrorVal::Value(t, x) => {
                     let shown = self.render_into(x, through, depth + 1);
                     match x {
@@ -321,7 +329,12 @@ impl<'m> Interp<'m> {
         }
     }
 
-    fn halt(&self, kind: StopKind, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
+    pub(crate) fn halt(
+        &self,
+        kind: StopKind,
+        node: Node<'m>,
+        reason: impl Into<String>,
+    ) -> Halt<'m> {
         let at = match self.frames.last().and_then(|f| f.home) {
             Some(home) => At::Node(home, node),
             None => At::Nowhere,
@@ -337,7 +350,7 @@ impl<'m> Interp<'m> {
         self.halt(StopKind::Unsupported, node, reason)
     }
 
-    fn panic(&self, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
+    pub(crate) fn panic(&self, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
         self.halt(StopKind::Panic, node, reason)
     }
 
@@ -361,6 +374,9 @@ impl<'m> Interp<'m> {
     }
 
     pub(crate) fn write(&mut self, p: &Place, new: Value<'m>) -> Option<()> {
+        if self.host.faults.older(p.cell) {
+            self.record_write(&new);
+        }
         let mut v = &mut self.heap[p.cell];
         for s in &p.path {
             v = match (s, v) {
@@ -416,6 +432,9 @@ impl<'m> Interp<'m> {
     }
 
     fn map_set(&mut self, id: HeapId, k: Value<'m>, v: Value<'m>) {
+        if self.host.faults.older(id) {
+            self.record_write(&v);
+        }
         if let Value::MapData(es) = &mut self.heap[id] {
             match es.iter_mut().find(|(ek, _)| equal(ek, &k)) {
                 Some(e) => e.1 = v,
@@ -656,7 +675,7 @@ impl<'m> Interp<'m> {
     /// The zero value of `t`; an unsupported stop for one over [`MAX_VALUE_CELLS`] cells or of
     /// a type that holds itself (the module check refuses both where the types are written out;
     /// this holds for those type arguments make).
-    fn zero(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
+    pub(crate) fn zero(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
         if matches!(
             t,
             Type::Array { .. } | Type::Named { .. } | Type::Param { .. }
@@ -1117,7 +1136,13 @@ impl<'m> Interp<'m> {
         } else {
             Vec::new()
         };
-        // A stub the user named for this site, or for every call of this extern, answers first.
+        // A fault plan's entry for this site and call count answers first, then a stub the user
+        // named for this site, or for every call of this extern.
+        if let Node::Expr(e) = node
+            && let Some(r) = self.fault_at(e as *const Expr as usize, e.t(), node)
+        {
+            return r;
+        }
         if let Node::Expr(e) = node
             && let Some(v) = self.host.stub_at(e)
         {
@@ -1229,7 +1254,9 @@ impl<'m> Interp<'m> {
 
     fn exec(&mut self, s: &'m Stmt) -> R<'m, Flow<'m>> {
         self.nested(Node::Stmt(s))?;
+        let outer = self.cur.replace(s);
         let r = self.exec_inner(s);
+        self.cur = outer;
         self.nest -= 1;
         r
     }
@@ -1264,6 +1291,9 @@ impl<'m> Interp<'m> {
             Stmt::Let { names, rhs, .. } => {
                 let vs = self.values(rhs, names.len(), node)?;
                 for (n, v) in names.iter().zip(vs) {
+                    if n == "_" {
+                        self.traced("dropped", &v, node);
+                    }
                     self.bind(n, v);
                 }
             }
@@ -1348,9 +1378,11 @@ impl<'m> Interp<'m> {
                     None => Value::Bool(true),
                 };
                 let tag_t = tag.as_ref().map_or(&Type::Bool, |t| t.t());
+                self.traced("tested", &tagv, node);
                 for c in cases {
                     for v in &c.values {
                         let cv = self.eval(v)?;
+                        self.traced("tested", &cv, node);
                         let cv = self.enter_slot(cv, v.t(), tag_t);
                         let tv = self.enter_slot(tagv.clone(), tag_t, v.t());
                         if equal(&tv, &cv) {
@@ -1370,10 +1402,23 @@ impl<'m> Interp<'m> {
                     let slots: Vec<Type> = want.iter().map(|t| self.subst(t)).collect();
                     self.eval_into(results, &slots, false, node)?
                 };
+                for v in &vs {
+                    self.traced("propagated", v, node);
+                }
                 return Ok(Flow::Return(vs));
             }
             Stmt::Expr { x, .. } => {
-                self.eval(x)?;
+                // A call's results a statement discards are dropped, as if bound to `_`.
+                match self.eval(x)? {
+                    Value::Tuple(vs) => {
+                        for v in &vs {
+                            self.traced("dropped", v, node);
+                        }
+                    }
+                    v => {
+                        self.traced("dropped", &v, node);
+                    }
+                }
             }
             Stmt::Send { chan, x, .. } => {
                 let c = self.eval(chan)?;
@@ -1385,6 +1430,11 @@ impl<'m> Interp<'m> {
                     .eval_into(std::slice::from_ref(x), &[elem], false, node)?
                     .pop()
                     .expect("one value");
+                // A fault plan's entry for this send answers in its place.
+                if let Some(r) = self.fault_at(s as *const Stmt as usize, &Type::Unit, node) {
+                    r?;
+                    return Ok(Flow::Next);
+                }
                 self.send(c, v, node)?;
             }
             Stmt::LookupElse {
@@ -1838,7 +1888,10 @@ impl<'m> Interp<'m> {
 
     fn store(&mut self, t: Target<'m>, v: Value<'m>, node: Node<'m>) -> R<'m, ()> {
         match t {
-            Target::Discard => Ok(()),
+            Target::Discard => {
+                self.traced("dropped", &v, node);
+                Ok(())
+            }
             Target::Place(p) => self
                 .write(&p, v)
                 .ok_or_else(|| self.unsupported(node, "a pointer outside its cell")),
@@ -2085,6 +2138,8 @@ impl<'m> Interp<'m> {
                     let a = self.enter_slot(a, x.t(), y.t());
                     let b = self.eval(y)?;
                     let b = self.enter_slot(b, y.t(), x.t());
+                    self.traced("tested", &a, node);
+                    self.traced("tested", &b, node);
                     self.compare(op, &a, &b, node).map(Value::Bool)
                 }
                 _ => {
@@ -2506,13 +2561,15 @@ impl<'m> Interp<'m> {
                 self.append(base, extra, &elem, node)
             }
             "sprintf" | "errorf" => {
-                let s = self.sprintf(args, name == "errorf", node)?;
+                let (s, origin) = self.sprintf(args, name == "errorf", node)?;
                 Ok(if name == "sprintf" {
                     Value::bytes(s)
                 } else {
-                    Value::Error(Rc::new(ErrorVal::Message(String::from_utf8(s).map_err(
-                        |_| self.unsupported(node, "an error message that is not UTF-8"),
-                    )?)))
+                    let text = String::from_utf8(s).map_err(|_| {
+                        self.unsupported(node, "an error message that is not UTF-8")
+                    })?;
+                    // An error wrapping a fault's error comes from that fault too.
+                    Value::Error(Rc::new(ErrorVal::Message { text, origin }))
                 })
             }
             "println" => {
@@ -2634,8 +2691,14 @@ impl<'m> Interp<'m> {
         })
     }
 
-    /// `sprintf`'s output for its format and arguments: the verbs `%d`, `%s`, `%v` and `%%`.
-    fn sprintf(&mut self, args: &'m [Expr], errorf: bool, node: Node<'m>) -> R<'m, Vec<u8>> {
+    /// `sprintf`'s output for its format and arguments: the verbs `%d`, `%s`, `%v` and `%%`; and
+    /// the fault the first argument from one came from (`wrapped`).
+    fn sprintf(
+        &mut self,
+        args: &'m [Expr],
+        errorf: bool,
+        node: Node<'m>,
+    ) -> R<'m, (Vec<u8>, Option<usize>)> {
         let Some((f, rest)) = args.split_first() else {
             return Err(self.unsupported(node, "sprintf without a format"));
         };
@@ -2647,8 +2710,13 @@ impl<'m> Interp<'m> {
             return Err(self.unsupported(node, "sprintf with a format that is not a string"));
         };
         let mut vals = Vec::with_capacity(rest.len());
+        let mut origin = None;
         for a in rest {
-            vals.push((self.eval(a)?, a.t()));
+            let v = self.eval(a)?;
+            if let Some(k) = self.traced("wrapped", &v, node) {
+                origin.get_or_insert(k);
+            }
+            vals.push((v, a.t()));
         }
         let mut out = Vec::new();
         let mut next = 0;
@@ -2721,7 +2789,7 @@ impl<'m> Interp<'m> {
         if next != vals.len() {
             return Err(self.unsupported(node, "sprintf with more arguments than verbs"));
         }
-        Ok(out)
+        Ok((out, origin))
     }
 
     fn unwrap_iface<'v>(&self, v: &'v Value<'m>) -> &'v Value<'m> {
@@ -2878,7 +2946,7 @@ impl<'m> Interp<'m> {
         };
         match ev.as_ref() {
             ErrorVal::Sentinel { message, .. } => Ok(message.to_string()),
-            ErrorVal::Message(s) => Ok(s.clone()),
+            ErrorVal::Message { text, .. } => Ok(text.clone()),
             ErrorVal::Value(t, inner) => {
                 let (t, inner) = (t.clone(), inner.clone());
                 match self.method_text(&inner, &t, node)? {
