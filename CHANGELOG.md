@@ -6,6 +6,22 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec-read-c` reads C in runtime form: a directory holding the kit's runtime header,
+  `conformance/c/codespec_rt.h` (the one the C writer writes), whose functions carry
+  `/* codespec: func … */` lines. It reads `cs_string`, `cs_slice`, `cs_map`, `cs_chan`, `cs_any`
+  and `cs_error` in the forms its crate doc lists (literals, wrapping arithmetic through
+  `uint64_t`, append, index, map put and get, send and receive, boxing, sentinel errors, string
+  builders as `sprintf`, `errorf` and `println`, result structs as tuples, multiple assignment,
+  lookup with a miss, switch as an if chain, loops over a slice or map as `range`), and refuses a
+  near miss of each by name. It claims 103 kit features, up from 76: `decl.var`, `expr.errvar`,
+  `expr.index`, `expr.intrinsic`, `expr.make`, `intrinsic.*`, `op.eq`, `sem.error.propagate`,
+  `sem.int.wrap`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break`,
+  `stmt.for_range`, `stmt.lookup_else`, `stmt.send`, `type.any`, `type.chan`, `type.error`,
+  `type.map`, `type.slice`, `type.tuple`, `unop.recv`. A directory name that is no identifier
+  (`zlib-1.3.1`) reads to one (`zlib_1_3_1`), and a parameter without a name reads as `_`.
+- `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
+  a call of a function without one is refused. The C row of the reader corpus holds
+  `codespec_rt.h` beside each `case.c`.
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
   `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a

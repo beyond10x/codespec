@@ -11,11 +11,11 @@ use crate::json::J;
 use crate::types::{Tables, Unit};
 use crate::{Source, pos_of, src_of};
 
-type R<T> = Result<T, String>;
+pub(crate) type R<T> = Result<T, String>;
 
 /// What a `break` or `continue` inside leaves.
 #[derive(Clone, Copy, PartialEq)]
-enum Brk {
+pub(crate) enum Brk {
     Loop,
     /// A `do … while`: a `continue` would run its condition, which the `for` it is read as
     /// checks at the end of its body.
@@ -33,11 +33,15 @@ pub struct Body<'a> {
     pub decls: &'a BTreeMap<String, &'a J>,
     pub refusals: Vec<Refusal>,
     pub externs: Vec<Extern>,
-    scopes: Vec<Vec<(String, String, Type)>>,
-    breakable: Vec<Brk>,
+    pub(crate) scopes: Vec<Vec<(String, String, Type)>>,
+    pub(crate) breakable: Vec<Brk>,
     /// The declaration ids of the variables a `for` declares: C has one such variable for all
     /// iterations, Go (1.22 on) one per iteration, so their address is refused.
     for_vars: BTreeSet<String>,
+    /// The type of each local of a runtime container type that the uses pin (runtime form).
+    pub(crate) local_types: BTreeMap<String, R<Type>>,
+    /// The results of the function being read.
+    pub(crate) results: Vec<Type>,
 }
 
 /// A floating-point constant: a literal, under unary `-`, `+`, a conversion or an operator on
@@ -69,14 +73,14 @@ fn base_var(n: &J) -> Option<&J> {
 const ARITH: &[&str] = &["+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"];
 const COMPARE: &[&str] = &["<", ">", "<=", ">=", "==", "!="];
 
-fn strip(mut n: &J) -> &J {
+pub(crate) fn strip(mut n: &J) -> &J {
     while n.kind() == "ParenExpr" {
         n = &n.inner()[0];
     }
     n
 }
 
-fn lit(value: impl Into<String>, t: Type) -> Expr {
+pub(crate) fn lit(value: impl Into<String>, t: Type) -> Expr {
     Expr::Lit {
         value: value.into(),
         t,
@@ -84,7 +88,7 @@ fn lit(value: impl Into<String>, t: Type) -> Expr {
 }
 
 /// The value of an integer constant made of a literal under unary `-`, `+` and `~`.
-fn constant(n: &J) -> Option<i128> {
+pub(crate) fn constant(n: &J) -> Option<i128> {
     let n = strip(n);
     match n.kind() {
         "IntegerLiteral" => n.s("value").parse().ok(),
@@ -105,7 +109,7 @@ fn constant(n: &J) -> Option<i128> {
 
 /// A zero initializer: `0`, a null pointer constant, or a list of nothing but zeros (`{0}`, `{}`).
 /// clang prints the elements of an array's list under `array_filler`, a struct's under `inner`.
-fn zero_init(init: &J) -> bool {
+pub(crate) fn zero_init(init: &J) -> bool {
     let mut n = strip(init);
     while matches!(n.kind(), "ImplicitCastExpr" | "CStyleCastExpr")
         && n.s("castKind") == "NullToPointer"
@@ -138,7 +142,7 @@ fn arith(op: &str, t: &Type) -> bool {
     }
 }
 
-fn fits(v: i128, t: &Type) -> bool {
+pub(crate) fn fits(v: i128, t: &Type) -> bool {
     let Type::Int { width, signed } = t else {
         return false;
     };
@@ -156,7 +160,7 @@ fn fits(v: i128, t: &Type) -> bool {
 }
 
 /// A C string literal in Go's spelling: printable ASCII and the escapes both languages share.
-fn string_literal(value: &str) -> R<String> {
+pub(crate) fn string_literal(value: &str) -> R<String> {
     let inner = value
         .strip_prefix('"')
         .and_then(|v| v.strip_suffix('"'))
@@ -201,6 +205,8 @@ impl<'a> Body<'a> {
             scopes: vec![params],
             breakable: Vec::new(),
             for_vars: BTreeSet::new(),
+            local_types: BTreeMap::new(),
+            results: Vec::new(),
         }
     }
 
@@ -217,7 +223,7 @@ impl<'a> Body<'a> {
             .map(|(_, n, t)| (n.clone(), t.clone()))
     }
 
-    fn bind(&mut self, id: &str, name: &str, t: Type) {
+    pub(crate) fn bind(&mut self, id: &str, name: &str, t: Type) {
         self.scopes
             .last_mut()
             .expect("a scope")
@@ -229,9 +235,7 @@ impl<'a> Body<'a> {
         let mut out = Vec::new();
         self.scopes.push(Vec::new());
         if n.kind() == "CompoundStmt" {
-            for s in n.inner() {
-                self.stmt(s, &mut out);
-            }
+            self.stmts(n.inner(), &mut out);
         } else {
             self.stmt(n, &mut out);
         }
@@ -239,25 +243,52 @@ impl<'a> Body<'a> {
         out
     }
 
+    /// The statements `kids` into `out`; a form of the runtime that spans several of them is
+    /// read as one.
+    pub(crate) fn stmts(&mut self, kids: &[J], out: &mut Vec<Stmt>) {
+        let mut i = 0;
+        while i < kids.len() {
+            match self.rt_run(&kids[i..]) {
+                Some((n, Ok(s))) => {
+                    out.push(s);
+                    i += n;
+                }
+                Some((_, Err(reason))) => {
+                    self.foreign(&kids[i], reason, out);
+                    i += 1;
+                }
+                None => {
+                    self.stmt(&kids[i], out);
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    /// `n` kept as a `foreign` statement, with a refusal.
+    fn foreign(&mut self, n: &J, reason: String, out: &mut Vec<Stmt>) {
+        let (pos, text) = (pos_of(self.src, n), src_of(self.src, n));
+        let what = text.lines().next().unwrap_or("").trim().to_string();
+        self.refusals.push(Refusal {
+            pos: pos.clone(),
+            what,
+            reason: reason.clone(),
+        });
+        out.push(Stmt::Foreign {
+            lang: "c".into(),
+            src: text,
+            reason,
+            pos,
+            calls: Some(self.calls(n)),
+        });
+    }
+
     /// Read one statement into `out`; one it cannot read is kept as `foreign` with a refusal.
     fn stmt(&mut self, n: &J, out: &mut Vec<Stmt>) {
         let mark = out.len();
         if let Err(reason) = self.try_stmt(n, out) {
             out.truncate(mark);
-            let (pos, text) = (pos_of(self.src, n), src_of(self.src, n));
-            let what = text.lines().next().unwrap_or("").trim().to_string();
-            self.refusals.push(Refusal {
-                pos: pos.clone(),
-                what,
-                reason: reason.clone(),
-            });
-            out.push(Stmt::Foreign {
-                lang: "c".into(),
-                src: text,
-                reason,
-                pos,
-                calls: Some(self.calls(n)),
-            });
+            self.foreign(n, reason, out);
         }
     }
 
@@ -291,7 +322,7 @@ impl<'a> Body<'a> {
     }
 
     /// The id and name of the function a call's callee names directly.
-    fn callee<'j>(&self, callee: &'j J) -> Option<(&'j str, &'j str)> {
+    pub(crate) fn callee<'j>(&self, callee: &'j J) -> Option<(&'j str, &'j str)> {
         let mut c = strip(callee);
         while c.kind() == "ImplicitCastExpr" && c.s("castKind") == "FunctionToPointerDecay" {
             c = strip(&c.inner()[0]);
@@ -319,6 +350,10 @@ impl<'a> Body<'a> {
         match n.kind() {
             "NullStmt" => {}
             "CompoundStmt" => {
+                if let Some(r) = self.rt_switch(n, &pos) {
+                    out.push(r?);
+                    return Ok(());
+                }
                 if kids.iter().any(|k| k.kind() == "DeclStmt") {
                     return Err("a block with declarations of its own".into());
                 }
@@ -336,7 +371,11 @@ impl<'a> Body<'a> {
             }
             "ReturnStmt" => {
                 let results = match kids.first() {
-                    Some(e) => vec![self.value(e)?],
+                    Some(e) if self.results.len() > 1 => self.tuple_return(e)?,
+                    Some(e) => match self.results.first().cloned() {
+                        Some(t) => vec![self.value_want(e, &t)?],
+                        None => vec![self.value(e)?],
+                    },
                     None => Vec::new(),
                 };
                 out.push(Stmt::Return { results, pos });
@@ -394,6 +433,10 @@ impl<'a> Body<'a> {
                 };
                 if !condvar.kind().is_empty() {
                     return Err("a declaration in a for condition".into());
+                }
+                if let Some(r) = self.rt_range(init, cond, inc, body, &pos) {
+                    out.push(r?);
+                    return Ok(());
                 }
                 self.scopes.push(Vec::new());
                 let r = self.for_stmt(init, cond, inc, body, pos);
@@ -478,7 +521,7 @@ impl<'a> Body<'a> {
         if d.kind() != "VarDecl" {
             return Err(format!("a local {}", d.kind()));
         }
-        let t = self.ty(d)?;
+        let t = self.local_ty(d)?;
         let zero = d.inner().first().is_none_or(zero_init);
         if zero && !matches!(t, Type::String) {
             if !d.s("storageClass").is_empty() {
@@ -494,6 +537,14 @@ impl<'a> Body<'a> {
         self.decl_let(d, pos)
     }
 
+    /// A local's type: clang's, or for a runtime container the one the crate doc gives it.
+    fn local_ty(&mut self, d: &J) -> R<Type> {
+        match self.container_local(d) {
+            Some(r) => r,
+            None => self.ty(d),
+        }
+    }
+
     /// A local declaration with an initializer, as `let`.
     fn decl_let(&mut self, d: &J, pos: &str) -> R<Stmt> {
         if d.kind() != "VarDecl" {
@@ -502,11 +553,11 @@ impl<'a> Body<'a> {
         if !d.s("storageClass").is_empty() {
             return Err(format!("a {} local", d.s("storageClass")));
         }
-        let t = self.ty(d)?;
+        let t = self.local_ty(d)?;
         let Some(init) = d.inner().first() else {
             return Err("a declaration without an initializer".into());
         };
-        let value = self.value(init)?;
+        let value = self.value_want(init, &t)?;
         if *value.t() != t {
             return Err("an initializer whose type is not the declared one".into());
         }
@@ -603,8 +654,8 @@ impl<'a> Body<'a> {
         let kids = n.inner();
         match (n.kind(), n.s("opcode")) {
             ("BinaryOperator", "=") => {
-                let rhs = self.value(&kids[1])?;
                 let lhs = self.place(&kids[0])?;
+                let rhs = self.value_want(&kids[1], lhs.t())?;
                 if lhs.t() != rhs.t() {
                     return Err("an assignment of a value of another type".into());
                 }
@@ -649,10 +700,15 @@ impl<'a> Body<'a> {
                     Stmt::Decr { x, pos }
                 })
             }
-            ("CallExpr", _) => Ok(Stmt::Expr {
-                x: self.value(n)?,
-                pos,
-            }),
+            ("CallExpr", _) => {
+                if let Some(r) = self.rt_stmt(n, &pos) {
+                    return r;
+                }
+                Ok(Stmt::Expr {
+                    x: self.value(n)?,
+                    pos,
+                })
+            }
             ("", _) => Err("an empty statement".into()),
             (k, _) => Err(format!(
                 "a {k} as a statement: only an assignment, ++, -- or a call is read"
@@ -679,8 +735,11 @@ impl<'a> Body<'a> {
 
     /// An expression assigned to: a local, a global, a field, an array element or what a
     /// pointer points to.
-    fn place(&mut self, n: &J) -> R<Expr> {
+    pub(crate) fn place(&mut self, n: &J) -> R<Expr> {
         let n = strip(n);
+        if let Some(r) = self.rt_place(n) {
+            return r;
+        }
         match (n.kind(), n.s("opcode")) {
             ("DeclRefExpr" | "MemberExpr" | "ArraySubscriptExpr", _) | ("UnaryOperator", "*") => {
                 self.value(n)
@@ -731,6 +790,12 @@ impl<'a> Body<'a> {
                     Type::Int { .. } | Type::Named { .. } | Type::Float { .. } => true,
                     Type::Ptr { .. } => equality,
                     Type::Func { .. } => equality && nil,
+                    // An error compares by identity in C: only with nil or a sentinel, which Go
+                    // compares the same way.
+                    Type::Error => {
+                        let ident = |e: &Expr| matches!(e, Expr::Nil { .. } | Expr::Errvar { .. });
+                        equality && (ident(&x) || ident(&y))
+                    }
                     _ => false,
                 };
                 if x.t() != y.t() || !comparable {
@@ -785,6 +850,9 @@ impl<'a> Body<'a> {
     /// An expression's value.
     pub fn value(&mut self, n: &J) -> R<Expr> {
         let n = strip(n);
+        if let Some(r) = self.rt_value(n) {
+            return r;
+        }
         let kids = n.inner();
         match n.kind() {
             "ConstantExpr" => self.value(&kids[0]),
@@ -906,7 +974,7 @@ impl<'a> Body<'a> {
             }
             "NullToPointer" => {
                 let t = self.ty(n)?;
-                if !matches!(t, Type::Ptr { .. } | Type::Func { .. }) {
+                if !matches!(t, Type::Ptr { .. } | Type::Func { .. } | Type::Error) {
                     return Err("a null pointer of a type cir/1 has no nil for".into());
                 }
                 Ok(Expr::Nil { t })
@@ -918,7 +986,7 @@ impl<'a> Body<'a> {
                 if s.kind() == "CStyleCastExpr"
                     && s.s("castKind") == "NullToPointer"
                     && constant(&s.inner()[0]) == Some(0)
-                    && matches!(t, Type::Ptr { .. } | Type::Func { .. })
+                    && matches!(t, Type::Ptr { .. } | Type::Func { .. } | Type::Error)
                 {
                     return Ok(Expr::Nil { t });
                 }
@@ -1136,7 +1204,16 @@ impl<'a> Body<'a> {
             return self.call_value(n);
         };
         let (id, name) = (id.to_string(), name.to_string());
-        let t = self.ty(n)?;
+        let t = match self.tables.sigs.get(&name) {
+            Some((_, rs)) if self.tables.funcs.contains(&name) => match rs.as_slice() {
+                [] => Type::Unit,
+                [t] => t.clone(),
+                many => Type::Tuple {
+                    elems: many.to_vec(),
+                },
+            },
+            _ => self.ty(n)?,
+        };
         let mut args = Vec::new();
         for a in &kids[1..] {
             args.push(self.value(a)?);

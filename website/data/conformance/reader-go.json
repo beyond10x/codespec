@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "c79c66b7e7c6dbd33031ffcd75c6e5ea5d9caf81e5e5ebcdb288dc42de882705"
+    "sha256": "4c8139ba7ce9158afe6a0ce44a12998f00e76ee9953523bbfbbce46ef3766eda"
   },
   "corpus": {
-    "sha256": "6193fa4a31208b68afe4e5f3c8f0bdfbdb75de0e46d6ade3a5b7c6a1bf2f3a25"
+    "sha256": "3b27a0bbcc9c2d73e5b38522567a015dc26c14bba3a709eddb74dba4257167c4"
   },
   "codespec": "0.6.1",
   "features": [

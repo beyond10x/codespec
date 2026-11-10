@@ -353,6 +353,79 @@ fn c_by_hand_with_a_newtype_floats_pointers_arrays_and_function_pointers_runs() 
     }
 }
 
+/// C written by hand in runtime form: it includes the kit's `codespec_rt.h`, and its functions
+/// are typed by their `codespec: func` lines, as the C reader types them.
+const RUNTIME_C: &str = r#"/* C in runtime form. */
+
+#include "codespec_rt.h"
+
+static struct cs_error_s ErrNeg_s = {{"negative", 8}, NULL, NULL};
+cs_error const ErrNeg = &ErrNeg_s;
+
+/* codespec: func Pair(string, string) []string */
+cs_slice Pair(cs_string a, cs_string b) {
+    cs_slice xs = cs_slice_make();
+    xs = cs_append(xs, &a, sizeof(cs_string));
+    xs = cs_append(xs, &b, sizeof(cs_string));
+    return xs;
+}
+
+typedef struct {
+    int64_t r0;
+    cs_error r1;
+} Checked_result;
+
+/* codespec: func Checked(int) (int, error) */
+Checked_result Checked(int64_t n) {
+    if (n < 0) {
+        return (Checked_result){0, ErrNeg};
+    }
+    return (Checked_result){n, NULL};
+}
+
+int64_t untyped(int64_t n) {
+    return n;
+}
+"#;
+
+#[test]
+fn c_by_hand_in_runtime_form_runs_typed_by_its_codespec_lines_and_a_function_without_one_is_refused()
+ {
+    let w = work("plain-runtime");
+    let src = w.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("case.c"), RUNTIME_C).unwrap();
+    std::fs::copy(
+        root().join("conformance/c/codespec_rt.h"),
+        src.join("codespec_rt.h"),
+    )
+    .unwrap();
+    let calls = w.join("calls.json");
+    write_calls(
+        &calls,
+        &[
+            ("Pair", &["\"x\"", "\"y\""]),
+            ("Checked", &["3"]),
+            ("Checked", &["-1"]),
+        ],
+    );
+    let o = run_calls(&w.join("build"), &src, &calls);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "ok [\"x\" \"y\"]\nok 3\nerr negative\n"
+    );
+    let calls = w.join("untyped.json");
+    write_calls(&calls, &[("Untyped", &["1"])]);
+    let o = run_calls(&w.join("build"), &src, &calls);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains("no exported function \"Untyped\" in the `codespec: func` lines"),
+        "{err}"
+    );
+}
+
 /// A call naming no function of the written module is refused, exit 2.
 #[test]
 fn a_call_of_no_written_function_is_refused() {

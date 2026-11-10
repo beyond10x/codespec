@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Flip",
+      "args": [
+        "1",
+        "2"
+      ]
+    },
+    {
+      "func": "Flip",
+      "args": [
+        "-5",
+        "7"
+      ]
+    }
+  ]
+}

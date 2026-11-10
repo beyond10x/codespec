@@ -1,12 +1,18 @@
 //! The C reader: the C11 sources of one directory to one `cir/1` module, from the typed AST clang
 //! prints as JSON (`clang -Xclang -ast-dump=json -fsyntax-only -std=c11`, one run per `.c` file,
-//! `clang` from `PATH`). Every expression's type is clang's (`qualType`, through typedefs); the
-//! reader resolves no name and infers no type of its own. Nothing is guessed: a statement outside
+//! `clang` from `PATH`). Every expression's type is clang's (`qualType`, through typedefs), with
+//! one exception, stated in "C in runtime form": in a directory holding the kit's runtime header
+//! `codespec_rt.h`, the reader recognises the names that header declares in the forms that section
+//! lists, and takes the element and key types of `cs_slice`, `cs_map` and `cs_chan`, which C does
+//! not record, from the `codespec: func` lines and the forms that section names. A runtime name
+//! used outside those forms is refused, never guessed. Nothing else is guessed: a statement outside
 //! the subset is kept as a `foreign` statement in `c` (its source, the reason and the calls it
 //! makes), a declaration outside it is left out or kept as an opaque function, each with a refusal
 //! at its position. Positions are `<file>:<line>`, the file relative to the source directory.
 //!
-//! The module is named after the directory (`-` read as `_`). Every `.c` file of the directory is
+//! The module is named after the directory, every character other than a letter, a digit or `_`
+//! read as `_`, and `_` put before a leading digit (`zlib-1.3.1` is `zlib_1_3_1`). A parameter
+//! without a name is `_`. Every `.c` file of the directory is
 //! read, in name order; a header is read where a `.c` file includes it, and only a header in the
 //! directory declares the module's types, variables and functions.
 //!
@@ -60,7 +66,7 @@
 //! | `break`, `continue` in a loop | `break`, `continue` |
 //! | `return`, `return e` | `return` |
 //! | a label | its statement: only the `goto` that jumps to it is refused |
-//! | `goto`, inline assembly, a block with declarations of its own | refused |
+//! | `goto`, inline assembly, a block with declarations of its own (but a switch in runtime form) | refused |
 //!
 //! # Expressions
 //!
@@ -92,9 +98,72 @@
 //! integer and a floating-point type, a cast from a newtype, a `_Bool` used as an integer and a
 //! comparison used as an `int` are refused: `cir/1` has no such conversion. So are pointer
 //! arithmetic (indexing a pointer among it), ordering pointers, comparing two function pointers,
-//! `&` of a function or of a non-struct literal, `?:`, `sizeof`, the comma operator, an assignment
+//! `&` of a function or of a non-struct literal, `?:`, `sizeof` (but in the runtime forms), the comma operator, an assignment
 //! or `++` inside an expression, an array initialized with values other than zero, character
 //! literals and a function the module does not define used as a value.
+//!
+//! # C in runtime form
+//!
+//! C has no slice, map, channel, `any`, error or length-carrying string. The kit's C sources write
+//! them with the runtime the C writer writes beside its output, `conformance/c/codespec_rt.h`
+//! (byte-equal to the writer's, `tests/reader.rs`). A directory is in runtime form when it holds
+//! a `codespec_rt.h` and one of its `.c` files has the line `#include "codespec_rt.h"`. A
+//! `codespec_rt.h` other than the kit's is refused at its first line, and none of the forms below
+//! is read: they mean what they mean only with that header.
+//!
+//! **Types.** `int64_t` is `int` (of the platform's width, 64 bits, as the writer writes `int`),
+//! `cs_string` `string`, `cs_error` `error`, `cs_any` `any`. A `cs_slice`, `cs_map *` or `cs_chan *`
+//! records no element or key type, so it has the type
+//!
+//! - of its parameter or result in the function's `codespec: func` line;
+//! - of its initializer, for a local initialized with a value of a known type (`cs_map_new`, a
+//!   call, another variable);
+//! - for a local `cs_slice` declared empty (`cs_slice_make()`, `{0}`), of every use that pins it:
+//!   `cs_append` and `cs_slice_at` with `sizeof(T)`, an argument or a returned value whose
+//!   `codespec: func` line types it. A slice no use pins, or whose uses pin different types, is
+//!   refused.
+//!
+//! Any other runtime type (`cs_sb`, `cs_type` outside the globals below) is refused.
+//!
+//! **Signatures.** Every function definition has a `/* codespec: func <Name>(<types>) <results> */`
+//! line, in Go's spelling of the `cir/1` types, as the C writer writes it into its header; the line
+//! types the function and each C type is checked to hold its type. A function of several results
+//! returns `typedef struct { T0 r0; T1 r1; … } <Name>_result;`. A function without the line, a
+//! second line of one name, or a C type that does not hold the line's type is refused.
+//!
+//! | C in runtime form | cir/1 |
+//! |---|---|
+//! | `(cs_string){"…", n}`, `n` the literal's length in bytes | `lit` of type `string` |
+//! | `s.n` of a `cs_string`, `xs.len` of a `cs_slice` | `len` |
+//! | `cs_string_eq(a, b)`, `cs_string_cat(a, b)` | `==`, `+` on strings |
+//! | `(T)((uint64_t)a op (uint64_t)b)`, `op` one of `+ - *`, `T` signed; `(T)((uint64_t)0 - (uint64_t)a)` | `binop` `op`, `unop` `-`: they wrap, as `cir/1` integers do |
+//! | `cs_div_T(a, b)`, `cs_rem_T(a, b)` | `/`, `%` |
+//! | `cs_slice_make()` where a declaration or assignment gives a slice type | `make` of it |
+//! | `cs_append(xs, &v, sizeof(T))`, `&(T){e}` for `&v` | `append(xs, v)` |
+//! | `*(T *)cs_slice_at(xs, i, sizeof(T))` | `index` |
+//! | `cs_map_new(sizeof(K), sizeof(V), CS_KEY_…)`, the key kind `K`'s | `make` of `map[K]V` |
+//! | `*(V *)cs_map_put(m, &k) = e;` (only assigned to) | `assign` to `m[k]` |
+//! | `*(V *)cs_map_get(m, &k, sizeof(V))` | `index` |
+//! | `cs_map_len(m)`, `cs_map_sorted_keys(m)` | `len`, `sorted_keys` |
+//! | `cs_chan_send(ch, &v);` | `send` |
+//! | `*(T *)cs_chan_recv(ch)` | `unop` `<-` |
+//! | `cs_box(&desc, &v, sizeof(T))`, `desc` a `static const cs_type desc = {CS_K_…, "name", NULL};` of `T`'s kind | the value as `any` |
+//! | `static struct cs_error_s X_s = {{"…", n}, NULL, NULL};` and `cs_error const X = &X_s;` | `error_var` `X` |
+//! | a chain from `cs_sb_new()` of `cs_sb_bytes(b, "…", n)`, `cs_fmt_str`, `cs_fmt_int`, `cs_fmt_bool`, `cs_fmt_error`, ended by `cs_sb_string`, `cs_sb_error` or `cs_sb_println` | `sprintf`, `errorf` (`%s %d %t %v`), `println` (values separated by one space) |
+//! | `<Name>_result t = <Name>(…); T0 x0 = t.r0; …` (`t` used no further) | `let x0, … := <Name>(…)` |
+//! | `return (<Name>_result){e0, e1, …};` | `return e0, e1, …` |
+//! | `T cs_t1 = e1; … x1 = cs_t1; …` (in order, the temporaries used no further) | `assign` `x1, … = e1, …` |
+//! | `V *p = cs_map_find(m, &k); if (p == NULL) { … return …; } V v = *p;` (`p` used no further) | `lookup_else` |
+//! | `{ T cs_s1 = tag; if (cs_s1 == a \|\| …) { … } else if … else { … } }` | `switch tag`; a `break` in a case leaves the loop around, as in `cir/1` |
+//! | `for (int64_t i = 0; i < xs.len; i++) { T v = *(T *)cs_slice_at(xs, i, sizeof(T)); … }` | `for _, v := range xs` |
+//! | `for (int64_t i = 0; i < cs_map_len(m); i++) { K k = *(K *)cs_map_key(m, i); V v = *(V *)cs_map_val(m, i); … }` | `for k, v := range m` |
+//!
+//! An error compares only with `NULL` or a sentinel: C compares the pointers, which Go's `==`
+//! on those does too. A loop over a slice or map is read as `range` only when its body neither uses
+//! the counter nor assigns the container, which Go evaluates once. A near miss of each form (a wrong
+//! length or size, a cast another type than the container holds, `cs_map_put` read as a value, a
+//! printed line ending in a separator, a temporary used later) is refused with its reason,
+//! `tests/runtime.rs`.
 //!
 //! # What the reader claims, and what it does not
 //!
@@ -108,23 +177,31 @@
 //! `type.unit` in `stmt-expr-method` and `type-unit-method` (a `void` function called on a
 //! pointer to a struct), `type.float` in `type-float-compare`, `type.array` in `type-array-int`,
 //! `expr.nil` in `expr-nil-ptr`, `expr.zero` in `expr-zero-struct`. The C source of
-//! `expr-func-value` adds the step after the call, as C has no method value.
+//! `expr-func-value` adds the step after the call, as C has no method value. The C sources of a
+//! slice, a map, a channel, an `any`, an error, a tuple, a string operation or an intrinsic are in
+//! runtime form ("C in runtime form"), as is `sem-int-wrap`'s: signed overflow is undefined in C,
+//! and the runtime form's conversion through `uint64_t` is the wrap `cir/1` integers have.
 //!
 //! The vocabulary not claimed:
 //!
 //! | feature | why |
 //! |---|---|
-//! | `sem.int.wrap` | signed overflow is undefined in C, and `cir/1` integers wrap: a C source never relies on the wrap a reader would claim |
 //! | `fact.*` | computed by `codespec pass`, never by a reader |
 //! | `stmt.foreign` | what a reader writes for what it cannot read; a corpus case of it would hold the construct the reader refuses, which `codespec conform` counts only for that subject |
-//! | `sem.switch.break` | a C `break` in a `switch` leaves the switch, never the loop around it |
-//! | `op.eq` | its case compares strings, which `==` on `const char *` does not |
 //! | `decl.variadic` | a variadic C definition reads its arguments through `va_list`, `va_start` and `va_arg` of `<stdarg.h>`, one at a time and with no count; `cir/1` has only a slice parameter for them, so reading one is a convention of its own, and the first case's subject is a slice |
-//! | `expr.index` | the reader reads `a[i]` of an array, but its first case indexes a slice, and a variant indexing an array would fail the Rust and C writers, which claim `expr.index` and have no form for an array (`type.array`, which they do not claim) |
-//! | `expr.extern`, `decl.var`, `intrinsic.*` and the rest | each case's subject needs a slice, a map, `println` or a string operation, which C has not |
+//! | `expr.spread` | it passes a slice to a variadic parameter, which no C definition the reader reads has |
+//! | `decl.interface`, `expr.iface_call`, `expr.to_iface` | C has no interface, and the runtime and the C writer no form of one |
+//! | `decl.type_params`, `expr.instantiate`, `type.param` | C has no type parameter, and the runtime and the C writer no form of one |
+//! | `expr.lambda` | C has no closure, and the runtime and the C writer no form of one |
+//! | `expr.method`, `decl.embedded` | C has no method and no promoted field; reading a function `T_m(T *self, …)` as a method would be a naming convention this crate doc does not state |
+//! | `expr.to_error` | a value of a type of the module as an error is `cs_error_of(fn, &v)`, a function giving the message and a copy of the value, a form the reader does not read |
+//! | `decl.union` | a C `union` has no tag, a `cir/1` union does: refused |
+//! | `expr.extern`, `expr.extern_method`, `type.extern` | their cases call Go's standard library (`strings`, `strconv`), which C has not; a C function the module does not define is read as an `extern` of `libc`, which no case of them holds |
 
 mod body;
 mod json;
+mod rtbody;
+mod runtime;
 mod types;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -132,8 +209,8 @@ use std::path::Path;
 use std::process::Command;
 
 use codespec_model::{
-    ConstDecl, Expr, Extern, Field, ForeignInit, Func, IntWidth, Module, Opaque, Param, Reader,
-    Refusal, Type, TypeDecl, VarDecl, Variant,
+    ConstDecl, ErrorVar, Expr, Extern, Field, ForeignInit, Func, IntWidth, Module, Opaque, Param,
+    Reader, Refusal, Type, TypeDecl, VarDecl, Variant,
 };
 
 use body::Body;
@@ -166,7 +243,23 @@ pub(crate) fn file_of(l: &J) -> Option<String> {
 /// A file of the source directory: clang runs there on relative names, so every other file is
 /// absolute or a `<built-in>` buffer.
 pub(crate) fn in_dir(f: &str) -> bool {
-    !f.is_empty() && !f.starts_with('/') && !f.starts_with('<') && !f.contains("..")
+    !f.is_empty()
+        && !f.starts_with('/')
+        && !f.starts_with('<')
+        && !f.contains("..")
+        && f != runtime::RT_FILE
+}
+
+/// A null pointer constant in an initializer: `NULL`, `0`, `(T *)0`, or a field left out.
+fn null_constant(n: &J) -> bool {
+    let mut n = n;
+    while matches!(
+        n.kind(),
+        "ImplicitCastExpr" | "ParenExpr" | "ConstantExpr" | "CStyleCastExpr"
+    ) {
+        n = &n.inner()[0];
+    }
+    n.kind() == "ImplicitValueInitExpr" || body::constant(n) == Some(0)
 }
 
 /// Where a node begins, `<file>:<line>`.
@@ -265,9 +358,37 @@ fn read(dir: &Path) -> Result<Module, String> {
     let module = dir
         .canonicalize()
         .ok()
-        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().replace('-', "_")))
+        .and_then(|d| d.file_name().map(|n| module_name(&n.to_string_lossy())))
         .unwrap_or_else(|| "c".into());
     Ok(Assembly::new(&src).run(&asts, module))
+}
+
+/// The module name of a source directory: every character but a letter, a digit and `_` read as
+/// `_`, and `_` before a leading digit, so the name is an identifier (`zlib-1.3.1` is
+/// `zlib_1_3_1`).
+fn module_name(dir: &str) -> String {
+    let mut s: String = dir
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if s.is_empty() || s.starts_with(|c: char| c.is_ascii_digit()) {
+        s.insert(0, '_');
+    }
+    s
+}
+
+/// A parameter's name: `_` for one without, as the Go reader writes an unnamed parameter.
+fn param_name(p: &J) -> String {
+    match p.s("name") {
+        "" => "_".into(),
+        n => n.into(),
+    }
 }
 
 /// The module being built, over every unit.
@@ -285,6 +406,11 @@ struct Assembly<'s> {
     /// Each typedef name of the source directory read for a newtype, with the position and the
     /// type of its first typedef.
     typedef_at: BTreeMap<String, (String, String)>,
+    errors: Vec<ErrorVar>,
+    /// The `codespec: func` lines, by function name.
+    sig_lines: BTreeMap<String, runtime::SigLine>,
+    /// The message of each `static struct cs_error_s` of the runtime form, by name.
+    error_structs: BTreeMap<String, String>,
 }
 
 /// The typedef names an anonymous record or enum declaration gets, by declaration id.
@@ -322,7 +448,71 @@ impl<'s> Assembly<'s> {
             layout: Vec::new(),
             refusals: Vec::new(),
             typedef_at: BTreeMap::new(),
+            errors: Vec::new(),
+            sig_lines: BTreeMap::new(),
+            error_structs: BTreeMap::new(),
         }
+    }
+
+    /// Whether the directory is in runtime form, and its `codespec: func` lines; a
+    /// `codespec_rt.h` other than the kit's is refused, and nothing of it read.
+    fn runtime_form(&mut self) {
+        let includes = self.src.files.iter().any(|(name, text)| {
+            name.as_str() != runtime::RT_FILE
+                && String::from_utf8_lossy(text)
+                    .lines()
+                    .any(|l| l.trim() == "#include \"codespec_rt.h\"")
+        });
+        let Some(rt) = self.src.files.get(runtime::RT_FILE) else {
+            return;
+        };
+        if !includes {
+            return;
+        }
+        if rt.as_slice() != runtime::RT.as_bytes() {
+            self.refusals.push(Refusal {
+                pos: format!("{}:1", runtime::RT_FILE),
+                what: runtime::RT_FILE.into(),
+                reason: "a codespec_rt.h other than the runtime of the kit: its forms are read only with that header".into(),
+            });
+            return;
+        }
+        self.tables.runtime = true;
+        for (name, text) in &self.src.files {
+            if name.as_str() == runtime::RT_FILE {
+                continue;
+            }
+            if let Err(e) = runtime::sig_lines(&String::from_utf8_lossy(text), &mut self.sig_lines)
+            {
+                self.refusals.push(Refusal {
+                    pos: format!("{name}:1"),
+                    what: "codespec: func".into(),
+                    reason: e,
+                });
+            }
+        }
+    }
+
+    /// The types of every `codespec: func` line, once the module's types are read.
+    fn resolve_sigs(&mut self) {
+        let lines = std::mem::take(&mut self.sig_lines);
+        for (name, l) in &lines {
+            let ps: Result<Vec<Type>, String> =
+                l.params.iter().map(|p| self.tables.go(p)).collect();
+            let rs: Result<Vec<Type>, String> =
+                l.results.iter().map(|p| self.tables.go(p)).collect();
+            match (ps, rs) {
+                (Ok(ps), Ok(rs)) => {
+                    self.tables.sigs.insert(name.clone(), (ps, rs));
+                }
+                (Err(e), _) | (_, Err(e)) => self.refusals.push(Refusal {
+                    pos: String::new(),
+                    what: format!("codespec: func {name}"),
+                    reason: e,
+                }),
+            }
+        }
+        self.sig_lines = lines;
     }
 
     fn refuse(&mut self, n: &J, what: String, reason: String) {
@@ -334,6 +524,7 @@ impl<'s> Assembly<'s> {
     }
 
     fn run(mut self, asts: &[J], name: String) -> Module {
+        self.runtime_form();
         for n in asts.iter().flat_map(|a| a.inner()) {
             if matches!(n.kind(), "RecordDecl" | "EnumDecl")
                 && !n.s("name").is_empty()
@@ -356,6 +547,7 @@ impl<'s> Assembly<'s> {
             units.push(unit);
             defs.push(funcs);
         }
+        self.resolve_sigs();
         for ((ast, unit), funcs) in asts.iter().zip(&units).zip(defs) {
             let decls: BTreeMap<String, &J> = ast
                 .inner()
@@ -385,7 +577,7 @@ impl<'s> Assembly<'s> {
             doc: String::new(),
             types: self.types,
             consts: self.consts,
-            errors: Vec::new(),
+            errors: self.errors,
             vars: self.vars,
             funcs: self.funcs,
             externs: self.externs,
@@ -597,6 +789,26 @@ impl<'s> Assembly<'s> {
         if self.tables.structs.contains_key(&name) || self.tables.refused.contains_key(&name) {
             return;
         }
+        // The struct of the results of a function its codespec: func line gives several.
+        if self.tables.runtime
+            && let Some(f) = name.strip_suffix("_result")
+            && self.sig_lines.get(f).is_some_and(|l| l.results.len() > 1)
+        {
+            let fields = n
+                .inner()
+                .iter()
+                .filter(|k| k.kind() == "FieldDecl")
+                .map(|k| {
+                    (
+                        k.s("name").to_string(),
+                        k.get("type").s("qualType").to_string(),
+                    )
+                })
+                .collect();
+            self.tables.result_types.insert(name.clone(), f.to_string());
+            self.tables.result_fields.insert(name, fields);
+            return;
+        }
         let mut why = None;
         let mut fields = Vec::new();
         // Declared before its fields are read: a field may point to the struct itself.
@@ -653,6 +865,14 @@ impl<'s> Assembly<'s> {
         {
             return;
         }
+        if self.tables.runtime
+            && let Some(r) = self.runtime_global(n, init)
+        {
+            if let Err(reason) = r {
+                self.refuse(n, format!("var {name}"), reason);
+            }
+            return;
+        }
         let t = match self.tables.ty(unit, n.get("type")) {
             Ok(t) => t,
             Err(e) => {
@@ -690,6 +910,106 @@ impl<'s> Assembly<'s> {
         });
     }
 
+    /// A file-scope variable of the runtime's own types: a sentinel error's `static struct
+    /// cs_error_s X_s = {{"…", n}, NULL, NULL};` and `cs_error const X = &X_s;`, a `static const
+    /// cs_type` describing a type an `any` holds. `None` for any other variable.
+    fn runtime_global(&mut self, n: &J, init: Option<&J>) -> Option<Result<(), String>> {
+        let ty = n.get("type").s("qualType").trim().to_string();
+        let name = n.s("name").to_string();
+        let bare = |j: &J| {
+            let mut j = j;
+            while matches!(j.kind(), "ImplicitCastExpr" | "ParenExpr" | "ConstantExpr") {
+                j = &j.inner()[0];
+            }
+            j.clone()
+        };
+        match ty.as_str() {
+            "struct cs_error_s" => Some((|| {
+                let init = init.map(bare).ok_or("a cs_error_s without its message")?;
+                let parts = init.inner();
+                let msg = parts
+                    .first()
+                    .map(bare)
+                    .ok_or("a cs_error_s without its message")?;
+                let null = |j: Option<&J>| j.is_some_and(null_constant);
+                if parts.len() != 3 || !null(parts.get(1)) || !null(parts.get(2)) {
+                    return Err(
+                        "a cs_error_s other than {{\"message\", length}, NULL, NULL}".into(),
+                    );
+                }
+                let s = msg.inner();
+                let lit = s
+                    .first()
+                    .map(bare)
+                    .ok_or("a cs_error_s without its message")?;
+                if lit.kind() != "StringLiteral" || s.len() != 2 {
+                    return Err("a cs_error_s whose message is not a string literal".into());
+                }
+                let text = body::string_literal(lit.s("value"))?;
+                let bytes = lit
+                    .get("type")
+                    .s("qualType")
+                    .strip_prefix("char[")
+                    .and_then(|r| r.strip_suffix(']'))
+                    .and_then(|r| r.parse::<i128>().ok())
+                    .map(|n| n - 1);
+                if bytes.is_none() || body::constant(&s[1]) != bytes {
+                    return Err("a cs_error_s whose length is not its message's".into());
+                }
+                let message = text[1..text.len() - 1].to_string();
+                if message.contains('\\') {
+                    return Err("a cs_error_s whose message holds an escape".into());
+                }
+                self.error_structs.insert(name.clone(), message);
+                Ok(())
+            })()),
+            "const cs_error" | "cs_error const" | "cs_error" => Some((|| {
+                if ty == "cs_error" {
+                    return Err(
+                        "a cs_error variable: a sentinel error is cs_error const, any other is not read".into(),
+                    );
+                }
+                let init = init.map(bare).ok_or("a sentinel error without its value")?;
+                let target = if init.kind() == "UnaryOperator" && init.s("opcode") == "&" {
+                    bare(&init.inner()[0])
+                        .get("referencedDecl")
+                        .s("name")
+                        .to_string()
+                } else {
+                    String::new()
+                };
+                let message = self
+                    .error_structs
+                    .get(&target)
+                    .cloned()
+                    .ok_or("a sentinel error other than the address of its cs_error_s")?;
+                self.tables.errors.insert(name.clone(), message.clone());
+                self.layout.push(format!("error:{name}"));
+                self.errors.push(ErrorVar {
+                    name: name.clone(),
+                    message,
+                    pos: pos_of(self.src, n),
+                });
+                Ok(())
+            })()),
+            "const cs_type" => Some((|| {
+                let init = init.map(bare).ok_or("a cs_type without its value")?;
+                let parts = init.inner();
+                let kind = parts
+                    .first()
+                    .map(|k| bare(k).get("referencedDecl").s("name").to_string())
+                    .unwrap_or_default();
+                let elem_null = parts.get(2).is_some_and(null_constant);
+                if !kind.starts_with("CS_K_") || parts.len() != 3 || !elem_null {
+                    return Err("a cs_type other than {CS_K_…, \"name\", NULL}".into());
+                }
+                self.tables.descs.insert(name.clone(), kind);
+                Ok(())
+            })()),
+            _ => None,
+        }
+    }
+
     fn function(&mut self, unit: &Unit, decls: &BTreeMap<String, &J>, n: &J) {
         let name = n.s("name").to_string();
         let body = n
@@ -702,26 +1022,59 @@ impl<'s> Assembly<'s> {
         if n.is_true("variadic") {
             why = Some("a variadic function definition".to_string());
         }
-        for p in n.inner().iter().filter(|p| p.kind() == "ParmVarDecl") {
-            if why.is_some() {
+        let pdecls: Vec<&J> = n
+            .inner()
+            .iter()
+            .filter(|p| p.kind() == "ParmVarDecl")
+            .collect();
+        let sig = Body::new(&self.tables, unit, self.src, decls, Vec::new())
+            .rt_signature(n, &name, &pdecls);
+        let mut sig_results = None;
+        match sig {
+            Some(Ok((ps, rs))) if why.is_none() => {
+                for (p, t) in pdecls.iter().zip(ps) {
+                    params.push((p.s("id").to_string(), param_name(p), t));
+                }
+                sig_results = Some(rs);
+            }
+            Some(Err(e)) if why.is_none() => why = Some(format!("its codespec: func line: {e}")),
+            None if why.is_none() && self.tables.runtime => {
+                why = Some(
+                    "a function in runtime form without a codespec: func line, which alone types it"
+                        .into(),
+                );
+            }
+            _ => {}
+        }
+        for p in &pdecls {
+            if why.is_some() || sig_results.is_some() {
                 break;
             }
             match self.tables.ty(unit, p.get("type")) {
-                Ok(t) => params.push((p.s("id").to_string(), p.s("name").to_string(), t)),
+                Ok(t) => params.push((p.s("id").to_string(), param_name(p), t)),
                 Err(e) => why = Some(format!("parameter {} is {e}", p.s("name"))),
             }
         }
-        let result = match why {
-            None => match self.tables.result(unit, n.get("type").s("qualType")) {
+        let result = match (&why, &sig_results) {
+            (None, Some(_)) => None,
+            (None, None) => match self.tables.result(unit, n.get("type").s("qualType")) {
                 Ok(t) => Some(t),
                 Err(e) => {
                     why = Some(format!("its result is {e}"));
                     None
                 }
             },
-            Some(_) => None,
+            (Some(_), _) => None,
         };
         let mut b = Body::new(&self.tables, unit, self.src, decls, params.clone());
+        b.results = match (&sig_results, &result) {
+            (Some(rs), _) => rs.clone(),
+            (None, Some(Type::Unit) | None) => Vec::new(),
+            (None, Some(t)) => vec![t.clone()],
+        };
+        if self.tables.runtime && why.is_none() {
+            b.pin_locals(body);
+        }
         if let Some(why) = why {
             let calls = b.calls(body);
             self.refuse(n, format!("function {name}"), why.clone());
@@ -738,10 +1091,7 @@ impl<'s> Assembly<'s> {
         let stmts = b.block(body);
         self.refusals.append(&mut b.refusals);
         self.externs.append(&mut b.externs);
-        let results = match result {
-            Some(codespec_model::Type::Unit) | None => Vec::new(),
-            Some(t) => vec![t],
-        };
+        let results = std::mem::take(&mut b.results);
         self.funcs.push(Func {
             exported: n.s("storageClass") != "static",
             name,
