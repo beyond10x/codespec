@@ -11,7 +11,7 @@ use crate::interp::Home;
 pub type HeapId = usize;
 
 /// One step from a cell into the value it holds: a struct field or an array element.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
     Field(usize),
     Index(usize),
@@ -19,7 +19,7 @@ pub enum Step {
 
 /// A pointer: a cell of the arena and the path of field and index steps inside it, so `&o.Status`
 /// and `&xs[3]` are pointers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Place {
     pub cell: HeapId,
     pub path: Vec<Step>,
@@ -67,8 +67,9 @@ pub enum Closure<'m> {
 pub enum ErrorVal<'m> {
     /// A sentinel error of the module (`errvar`).
     Sentinel { name: &'m str, message: &'m str },
-    /// A message (`errorf`).
-    Message(String),
+    /// A message (`errorf`, or a fault's `error`), with the fault it came from or wraps: an index
+    /// into the run's fired faults (`fault`).
+    Message { text: String, origin: Option<usize> },
     /// A value of a type with an `Error` method (`to_error`): its type and the value.
     Value(Type, Value<'m>),
 }

@@ -25,6 +25,59 @@ Every change a user of `codespec` or of `cir/1` would notice.
   method an entry names as `raise`, a `@Provider` `ExceptionMapper` as an `exception-mapper` entry,
   and prints a path parameter only the framework passes. The Quarkus quickstart reads with 8
   refusals, down from 13 (`adapters/java/README.md`).
+- Fault plans for `codespec eval --session`: `--fault 'SITE:NTH=DO'` and `--faults FILE`
+  (`codespec-faults/1`) make the effect at a node id, an extern call or a send, fail at a call
+  count (`*` for every call) before a stub or handler answers: `error` (the call's last result an
+  error, the others zero), `value`, `closed` (a send panics as on a closed channel), `block` (the
+  run stops `blocked`) or `panic`. The trace gains `fault`; `update`, written when the faulted
+  call ends, for each place of memory older than the call that the call left changed, as it is
+  then (the partial update; a write undone is none); `tested`, `propagated`, `wrapped` and
+  `dropped` for the fault's error, followed through errors, structs, slices, maps and pointers
+  that hold it and into later calls; and one `summary` per fault: `panic, not handled in module`,
+  `blocked`, `answered`, `propagated to <entry>`, `kept at <node>`, `handled at <node>`, `dropped
+  at <node>`, `live at stop`, or `not reached`. `--each --sites FILE --max-nth N --out DIR` runs
+  the session once per site and call count, a send `closed`, a call returning an error given
+  one, another call `panic`, and writes one trace per run. A fault naming no effect site, a
+  second for one site, a kind its site cannot take, a stub that a fault of every call leaves
+  without a call, two `--each` sites whose trace files differ only in letter case, or a plan on a
+  `--calls` run is refused (exit 2). A session or plan file whose object gives one key twice is
+  refused. `docs/evaluator.md`
+  § 8.1 is reproduced as `examples/orders/faults/pay-closed.eval-trace.jsonl`, and every send of
+  `orders` faulted at its first call as `examples/orders/faults/each/` (`task eval-traces`). In
+  the library, `Options` has `faults`, and `fault` has the plan, `read_sites` and `run_each`.
+
+- `codespec eval --session` runs a `codespec-session/1` file, whose calls bind results that later
+  calls take as receivers and arguments (`$name`), and prints the run's trace,
+  `codespec-eval-trace/1`: one JSON object per call, return, effect (an extern call with the
+  handler that answered, a send on a channel the session passed, a `println`), panic and stop. A
+  panic ends its call, not the session. A bound value is a variable: a pointer-receiver method
+  changes it. Writing the trace runs none of the module's code: an error is written by what it
+  holds (`error(ErrWrongState{Status: "paid"})`), not through its `Error` method. `examples/orders/orders.session.json` gives the checked-in
+  `orders.eval-trace.jsonl` (`task eval-traces` writes it, a test checks it). `--env KEY=VALUE`
+  gives the run its environment, which `os.Getenv` and `os.LookupEnv` now read (empty unless
+  given, never the host's); `strings.ToUpper`, `ToLower` and `TrimSpace` have built-in handlers
+  on ASCII, so `envcheck.Banner("svc", 80)` with `--env APP_MODE=prod` prints `"PROD svc:80"`.
+  `--stub SITE=VALUES` answers for an extern at every call (`SITE` its key) or at one call
+  (`SITE` the call's node id), the values JSON, one per result (a site given twice, or a stub that
+  would answer no call, is refused); an extern without a handler still
+  stops the run unless a stub answers, and standard error names every site a stub answered at
+  and how often. In the library, `Options` has `env` and `stubs`, and `Run` has `stubbed`.
+
+- `codespec query` runs path patterns and properties (`docs/query-language.md` § 5.2 and § 5.3).
+  `path(A -> B, over: cfg|calls, avoid: N where body, max: K, witness: W)` holds when a path
+  passing no avoided node joins `A` to `B` over control flow or the linked calls, `W` its
+  witness, the least of the shortest paths by node id; `!path(…)` and `every_path(A -> B,
+  through: P)` are its negation. `property name(scope: body|calls) { … }` declares a small
+  automaton over the calls of a body along its control flow, with `exit` at each return, or
+  over the calls of a call path from each entry of the call graph (a function no call from
+  outside its own strongly connected component reaches, so recursion hides no entry);
+  transitions match record patterns of `call`, at most three registers carry a value from one
+  to the next, and the property is the relation `name(Start, At, Message)` of the runs that
+  reach `error`. The relation `reaches_path(from, to, path)` gives `reaches` its witness. Code
+  nothing read makes a path, a negated path, a rule over a path or a property possible, naming
+  the site; so does a register compared with the receiver of a listed call, which nothing read.
+  `defer call{…}` is refused until `cir/1` has the `defer` statement (§ 8);
+  `lock-without-unlock` waits for that alone now.
 - The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
   module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
   `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which

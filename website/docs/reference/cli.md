@@ -233,16 +233,25 @@ Usage: codespec query [OPTIONS] [ARGS]...
 
 ## `codespec eval`
 
-Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and print one line per call, as the conformance kit's runners print them. Exit 0 when every call is made, 1 when the run stops (a foreign statement executed, a raise reached, an extern without a built-in handler, a panic, the step budget), naming the node by its id on standard error, 2 when the module or the calls are refused. Limits: calls nest at most 1000 deep, and statements and expressions at most 10,000 levels counted through calls; a type nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a module calling an undeclared function, with a wrong argument count, naming an undeclared type or a type holding itself, or an argument outside its parameter's width, is refused
+Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and print one line per call, as the conformance kit's runners print them. Exit 0 when every call is made, 1 when the run stops (a foreign statement executed, a raise reached, an extern without a built-in handler, a panic, the step budget), naming the node by its id on standard error, 2 when the module or the calls are refused. Limits: calls nest at most 1000 deep, and statements and expressions at most 10,000 levels counted through calls; a type nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a module calling an undeclared function, with a wrong argument count, naming an undeclared type or a type holding itself, or an argument outside its parameter's width, is refused. With --session instead of --calls, the calls of a codespec-session/1 file run in order, reusing results earlier calls bound, and standard output is the run's trace, codespec-eval-trace/1: one JSON object per call, return, effect, panic and stop. A panic ends its call, not the session. Externs go to their handlers: os.Getenv reads only the --env given; an extern without one stops the run unless a --stub answers for it, and standard error names every site a stub answered at. A fault plan, --fault or --faults (codespec-faults/1), makes the effect at a node id (an extern call or a send) fail at a call count, before a stub or handler answers: error, value, closed, block or panic. The trace says where it fired, what its call left changed in older memory, and whether its error was propagated, kept, handled or dropped, or live when the run stopped. --each runs the session once per site of the --sites file and call count up to --max-nth, a send closed, a call returning an error given one, another call panicking, and writes each trace into --out, printing its path; exit 1 when a run stopped.
 
 ```text
-Usage: codespec eval [OPTIONS] --calls <CALLS> <MODULE>
+Usage: codespec eval [OPTIONS] <MODULE>
 ```
 
 | Argument | Required | Default | Environment | Meaning |
 |---|---|---|---|---|
 | `<MODULE>` | yes | none | none | The cir/1 module to run. |
-| `--calls <CALLS>` | yes | none | none | The calls to make, a codespec-calls/1 document. |
+| `--calls <CALLS>` | no | none | none | The calls to make, a codespec-calls/1 document. |
+| `--session <SESSION>` | no | none | none | The session to run, a codespec-session/1 document; prints its trace. |
+| `--env <KEY=VALUE>` | no | none | none | A variable of the run's environment, KEY=VALUE; repeat for several. The run sees no other. |
+| `--stub <SITE=VALUES>` | no | none | none | A stub answering in place of a handler: SITE=VALUES, SITE an extern's key (every call of it) or a call's node id (that call), VALUES one JSON value per result, separated by spaces (null for a nil error); repeat for several. |
+| `--fault <SITE:NTH=DO>` | no | none | none | A fault: SITE:NTH=DO, SITE an effect's node id, NTH a call count from 1 or *, DO error, value, closed, block or panic, a JSON message or values after it; repeat for several sites. |
+| `--faults <FAULTS>` | no | none | none | A fault plan, a codespec-faults/1 document. |
+| `--each` | no | none | none | Run the session once per site of --sites and call count up to --max-nth, each trace written into --out. |
+| `--sites <SITES>` | no | none | none | The sites --each faults: one node id per line. |
+| `--max-nth <MAX_NTH>` | no | `1` | none | The last call count --each faults at each site. |
+| `--out <OUT>` | no | none | none | The directory --each writes its traces into. |
 | `--max-steps <MAX_STEPS>` | no | `10000000` | none | The statements, calls and loop iterations the run may execute before it stops. |
 
 ## `codespec harness`

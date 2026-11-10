@@ -1,0 +1,5 @@
+// From each open() to a return on a path that passes no check(), with that path.
+?- call{func: F, callee: "example.com/flow.open", site: S}, exit(F, E),
+   path(S -> E, over: cfg,
+        avoid: N where call{func: F, callee: "example.com/flow.check", site: N},
+        witness: W).

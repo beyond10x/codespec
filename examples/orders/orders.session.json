@@ -1,0 +1,103 @@
+{
+  "format": "codespec-session/1",
+  "calls": [
+    {
+      "bind": "s",
+      "func": "New",
+      "args": [
+        "chan"
+      ]
+    },
+    {
+      "bind": "id",
+      "func": "Service.Place",
+      "recv": "s",
+      "args": [
+        "\"ann\"",
+        "30",
+        "false"
+      ]
+    },
+    {
+      "func": "Service.Place",
+      "recv": "s",
+      "args": [
+        "\"bob\"",
+        "0",
+        "false"
+      ]
+    },
+    {
+      "func": "Service.Pay",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    },
+    {
+      "func": "Service.Pay",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    },
+    {
+      "func": "Service.Ship",
+      "recv": "s",
+      "args": [
+        "$id",
+        "\"TRK-1\""
+      ]
+    },
+    {
+      "func": "Service.Cancel",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    },
+    {
+      "bind": "gift",
+      "func": "Service.Place",
+      "recv": "s",
+      "args": [
+        "\"cy\"",
+        "12",
+        "true"
+      ]
+    },
+    {
+      "func": "Service.PendingOrders",
+      "recv": "s",
+      "args": []
+    },
+    {
+      "func": "Service.Cancel",
+      "recv": "s",
+      "args": [
+        "$gift"
+      ]
+    },
+    {
+      "func": "Service.Pay",
+      "recv": "s",
+      "args": [
+        "\"o-9\""
+      ]
+    },
+    {
+      "func": "Service.Get",
+      "recv": "s",
+      "args": [
+        "$id"
+      ]
+    },
+    {
+      "func": "Service.Get",
+      "recv": "s",
+      "args": [
+        "$gift"
+      ]
+    }
+  ]
+}

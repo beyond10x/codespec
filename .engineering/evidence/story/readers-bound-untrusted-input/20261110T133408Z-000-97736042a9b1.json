@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T13:34:08Z",
+  "actor": "human:timo",
+  "artifact": "story:readers-bound-untrusted-input",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:readers-bound-untrusted-input-adversary-1",
+    "reference": "c10e18c",
+    "review": "review-result:readers-bound-untrusted-input-adversary-1",
+    "outcome": "fixed"
+  }
+}

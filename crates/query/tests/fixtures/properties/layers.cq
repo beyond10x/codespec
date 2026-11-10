@@ -1,0 +1,8 @@
+// Along a call path, the database layer never calls back into the API layer.
+property layered(scope: calls) {
+  start -> db:    call{callee: ~"\.db[A-Z]"}
+  db    -> error: call{callee: ~"\.api[A-Z]"}
+  message "the call at {start} enters the database layer, which calls back into the API layer at {error}"
+}
+
+?- layered(Entry, At, Message).

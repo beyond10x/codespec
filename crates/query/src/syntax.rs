@@ -2,11 +2,12 @@
 //!
 //! ```text
 //! module  = item*
-//! item    = names | rule | fact | query
+//! item    = names | rule | fact | query | property
 //! names   = "names" lname "=" "[" string ("," string)* ","? "]" "."
 //! rule    = atom ":-" body "."         fact = atom "."         query = "?-" body "."
 //! body    = lit ("," lit)*
 //! lit     = atom | "!" atom | "!" "(" cond ")" | "(" body ("or" body)* ")" | cond
+//!         | path | "!" path | every
 //! atom    = ident "(" term ("," term)* ")" | ident "{" field ("," field)* "}"
 //! field   = ident ":" (term | "~" string | "in" list)
 //! cond    = term op term | term "~" string | term "in" list | Var "=" agg
@@ -14,12 +15,29 @@
 //! term    = Var | "_" | string | int | "true" | "false" | Var "." ident | term ("+" | "-" | "*") term
 //! list    = "@names." lname          lname = ident ("-" ident)*
 //! op     = "==" | "!=" | "<" | "<=" | ">" | ">=" | "="
+//! path    = "path" "(" term "->" term ("," popt)* ")"
+//! every   = "every_path" "(" term "->" term ("," eopt)* ")"
+//! popt    = "over" ":" ("cfg" | "calls") | "avoid" ":" avoid | "max" ":" int | "witness" ":" Var
+//! eopt    = "over" ":" ("cfg" | "calls") | "through" ":" avoid | "max" ":" int
+//! avoid   = Var "where" lit ("," lit)* | term
+//! property = "property" ident "(" "scope" ":" ("body" | "calls") ")" "{" (trans | message)* "}"
+//! trans   = ident "->" ident ":" event ("=>" ident ":=" Var ("," ident ":=" Var)*)?
+//! event   = "exit" | "call" "{" field ("," field)* "}"
+//! message = "message" string
 //! ```
 //!
 //! A variable starts with an upper-case letter, a relation with a lower-case one; `//` starts a
 //! comment. In a string `\"` is a quote and `\\` a backslash; any other backslash stays, so a
 //! regular expression is written as it reads (`"^strconv\.Atoi$"`). A names list's name may hold
 //! `-` between its words (`@names.never-fail`), as `codespec check` names its lists.
+//!
+//! `path(` is a path pattern when `->` follows its first term, else an atom of a relation named
+//! `path`. The body after `where` ends at the `)` of the pattern or at the next `name:` option.
+//! In a property's event a lower-case name in a field is a register; a property sets at most
+//! [`MAX_REGISTERS`] of them, each before it is read on some transition, and names `start` and
+//! `error`; its message names states and registers in braces (`{start}`, `{m}`). `defer
+//! call{…}` waits for the `defer` statement of `cir/1` (§ 8 of `docs/query-language.md`) and is
+//! refused, naming it, as is a `check` declaration (§ 5.4).
 //!
 //! Limits: parentheses, negated conditions, aggregates and the operators of a term nest at most
 //! [`MAX_NESTING`] deep (`1 + 2 + 3` is two deep), and a body holds at most [`MAX_BODY`]
@@ -31,6 +49,8 @@ use std::fmt;
 pub const MAX_NESTING: usize = 256;
 /// The most literals one body holds.
 pub const MAX_BODY: usize = 1000;
+/// The most registers a property sets (§ 5.3: Topl's cost grows exponentially with them).
+pub const MAX_REGISTERS: usize = 3;
 
 /// A parsed cq module.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +59,84 @@ pub struct Program {
     /// The names lists it declares, in order.
     pub names: Vec<(String, Vec<String>)>,
     pub query: Option<Vec<Lit>>,
+    /// Its properties, in order.
+    pub properties: Vec<Property>,
+}
+
+/// The edges a path pattern follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Over {
+    /// `cfg_next`, statement to statement.
+    Cfg,
+    /// The linked calls, function to function.
+    Calls,
+}
+
+/// What a path pattern's path may not pass (`avoid:`, `through:` of `every_path`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Avoid {
+    /// One node.
+    Node(Term),
+    /// `N where body`: every `N` the body gives.
+    Where(String, Vec<Lit>),
+}
+
+/// How a path pattern is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathForm {
+    Path,
+    /// `!path(…)`
+    NotPath,
+    /// `every_path(…, through: …)`, which is `!path(…, avoid: …)`.
+    Every,
+}
+
+/// A path pattern (§ 5.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathPat {
+    pub form: PathForm,
+    pub from: Term,
+    pub to: Term,
+    pub over: Over,
+    pub avoid: Option<Avoid>,
+    pub max: Option<i64>,
+    pub witness: Option<String>,
+}
+
+/// What a property follows (§ 5.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    /// The calls of one body along its control flow.
+    Body,
+    /// The calls along a call path from an entry of the call graph.
+    Calls,
+}
+
+/// What moves a property from one state to another.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Event {
+    /// The body ends: a `return` or a statement falling off its end.
+    Exit,
+    /// A call matching the record pattern of `call`; a lower-case variable is a register.
+    Call(Atom),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Transition {
+    pub from: String,
+    pub to: String,
+    pub event: Event,
+    /// `=> register := Var`, in order.
+    pub assign: Vec<(String, String)>,
+}
+
+/// A property: a small automaton over calls (§ 5.3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Property {
+    pub name: String,
+    pub scope: Scope,
+    pub transitions: Vec<Transition>,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +240,7 @@ pub enum Lit {
         body: Vec<Lit>,
     },
     Or(Vec<Vec<Lit>>),
+    Path(Box<PathPat>),
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -228,7 +327,65 @@ impl fmt::Display for Lit {
                 let alts: Vec<String> = alts.iter().map(|a| body_text(a)).collect();
                 write!(f, "({})", alts.join(" or "))
             }
+            Lit::Path(p) => write!(f, "{p}"),
         }
+    }
+}
+
+impl fmt::Display for PathPat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (lead, word) = match self.form {
+            PathForm::Path => ("path", "avoid"),
+            PathForm::NotPath => ("!path", "avoid"),
+            PathForm::Every => ("every_path", "through"),
+        };
+        let over = match self.over {
+            Over::Cfg => "cfg",
+            Over::Calls => "calls",
+        };
+        write!(f, "{lead}({} -> {}, over: {over}", self.from, self.to)?;
+        match &self.avoid {
+            Some(Avoid::Node(t)) => write!(f, ", {word}: {t}")?,
+            Some(Avoid::Where(n, body)) => write!(f, ", {word}: {n} where {}", body_text(body))?,
+            None => {}
+        }
+        if let Some(m) = self.max {
+            write!(f, ", max: {m}")?;
+        }
+        if let Some(w) = &self.witness {
+            write!(f, ", witness: {w}")?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for Property {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let scope = match self.scope {
+            Scope::Body => "body",
+            Scope::Calls => "calls",
+        };
+        writeln!(f, "property {}(scope: {scope}) {{", self.name)?;
+        for t in &self.transitions {
+            let event = match &t.event {
+                Event::Exit => "exit".to_string(),
+                Event::Call(a) => a.to_string(),
+            };
+            write!(f, "    {} -> {}: {event}", t.from, t.to)?;
+            if !t.assign.is_empty() {
+                let a: Vec<String> = t
+                    .assign
+                    .iter()
+                    .map(|(r, v)| format!("{r} := {v}"))
+                    .collect();
+                write!(f, " => {}", a.join(", "))?;
+            }
+            writeln!(f)?;
+        }
+        if let Some(m) = &self.message {
+            writeln!(f, "    message {}", quote(m))?;
+        }
+        write!(f, "  }}")
     }
 }
 
@@ -269,8 +426,8 @@ struct Token {
 }
 
 const PUNCT: &[&str] = &[
-    ":-", "?-", "->", "==", "!=", "<=", ">=", "(", ")", "{", "}", "[", "]", ",", ".", ":", "!",
-    "~", "@", "=", "<", ">", "+", "-", "*",
+    ":-", "?-", "->", "==", "!=", "<=", ">=", ":=", "=>", "(", ")", "{", "}", "[", "]", ",", ".",
+    ":", "!", "~", "@", "=", "<", ">", "+", "-", "*",
 ];
 
 fn lex(src: &str) -> Result<Vec<Token>, String> {
@@ -382,6 +539,8 @@ struct Parser {
     toks: Vec<Token>,
     k: usize,
     depth: usize,
+    /// Inside a property's event: a lower-case name in a term is a register.
+    registers: bool,
 }
 
 const DESIGN: &str = "docs/query-language.md";
@@ -486,45 +645,12 @@ impl Parser {
         }
     }
 
-    /// The source text from token `from` to the current one, for naming a refused construct.
-    fn snippet(&self, from: usize) -> String {
-        let mut out = String::new();
-        for t in &self.toks[from..self.k.min(self.toks.len())] {
-            if t.spaced && !out.is_empty() {
-                out.push(' ');
-            }
-            out += &match &t.tok {
-                Tok::Ident(s) | Tok::Var(s) => s.clone(),
-                Tok::Str(s) => quote(s),
-                Tok::Int(n) => n.to_string(),
-                Tok::Punct(p) => p.to_string(),
-            };
-        }
-        out
-    }
-
-    /// Skips to the bracket that closes the one just opened.
-    fn skip_group(&mut self, open: &str, close: &str) {
-        let mut depth = 1;
-        while let Some(t) = self.peek() {
-            if *t == Tok::Punct(open_static(open)) {
-                depth += 1;
-            } else if *t == Tok::Punct(open_static(close)) {
-                depth -= 1;
-                if depth == 0 {
-                    self.k += 1;
-                    return;
-                }
-            }
-            self.k += 1;
-        }
-    }
-
     fn program(&mut self) -> Result<Program, String> {
         let mut p = Program {
             rules: Vec::new(),
             names: Vec::new(),
             query: None,
+            properties: Vec::new(),
         };
         while self.peek().is_some() {
             if self.eat("?-") {
@@ -537,11 +663,17 @@ impl Parser {
                 continue;
             }
             match (self.peek(), self.peek_at(1)) {
-                (Some(Tok::Ident(w)), Some(Tok::Ident(name))) if w == "property" => {
-                    return Err(format!(
-                        "{}: the property {name} is a property (§ 5.3 of {DESIGN}), which cq does not run yet",
-                        self.here()
-                    ));
+                (Some(Tok::Ident(w)), Some(Tok::Ident(_))) if w == "property" => {
+                    let prop = self.property()?;
+                    if p.properties.iter().any(|q| q.name == prop.name) {
+                        return Err(format!(
+                            "{}: the property {} is declared twice",
+                            self.here(),
+                            prop.name
+                        ));
+                    }
+                    p.properties.push(prop);
+                    continue;
                 }
                 (Some(Tok::Ident(w)), Some(Tok::Ident(name))) if w == "check" => {
                     return Err(format!(
@@ -601,6 +733,19 @@ impl Parser {
     }
 
     fn lit(&mut self) -> Result<Lit, String> {
+        if self.is("!") && self.path_ahead(1).is_some() {
+            let at = self.here();
+            self.k += 1;
+            if self.path_ahead(0) == Some(true) {
+                return Err(format!(
+                    "{at}: !every_path(…, through: P) is path(…, avoid: P); write that"
+                ));
+            }
+            return Ok(Lit::Path(Box::new(self.path(true)?)));
+        }
+        if self.path_ahead(0).is_some() {
+            return Ok(Lit::Path(Box::new(self.path(false)?)));
+        }
         if self.eat("!") {
             if self.eat("(") {
                 self.enter()?;
@@ -757,23 +902,18 @@ impl Parser {
                 self.k += 1;
                 Term::Bool(w == "true")
             }
+            // A register: a variable no user variable can be, as it starts in lower case.
+            Some(Tok::Ident(w)) if self.registers => {
+                self.k += 1;
+                Term::Var(w)
+            }
             _ => return self.err("a variable or a value"),
         };
         Ok(t)
     }
 
     fn atom(&mut self) -> Result<Atom, String> {
-        let start = self.k;
         let rel = self.ident()?;
-        if (rel == "path" || rel == "every_path") && self.is("(") {
-            self.k += 1;
-            self.skip_group("(", ")");
-            return Err(format!(
-                "{}: the path pattern {} is a path pattern (§ 5.2 of {DESIGN}), which cq does not run yet",
-                self.toks[start].line.to_string() + ":" + &self.toks[start].col.to_string(),
-                self.snippet(start)
-            ));
-        }
         if self.eat("(") {
             let mut terms = Vec::new();
             if !self.is(")") {
@@ -822,10 +962,346 @@ impl Parser {
         }
         self.err("( or { after a relation name")
     }
+
+    /// Whether a path pattern starts `n` tokens ahead: `path(` or `every_path(` and a term
+    /// followed by `->`; `Some(true)` for `every_path`.
+    fn path_ahead(&mut self, n: usize) -> Option<bool> {
+        let every = match self.peek_at(n) {
+            Some(Tok::Ident(w)) if w == "path" => false,
+            Some(Tok::Ident(w)) if w == "every_path" => true,
+            _ => return None,
+        };
+        if self.peek_at(n + 1) != Some(&Tok::Punct("(")) {
+            return None;
+        }
+        let (k, depth) = (self.k, self.depth);
+        self.k += n + 2;
+        let arrow = self.term().is_ok() && self.is("->");
+        (self.k, self.depth) = (k, depth);
+        arrow.then_some(every)
+    }
+
+    /// A path pattern, `!` already read when `negated`.
+    fn path(&mut self, negated: bool) -> Result<PathPat, String> {
+        let at = self.here();
+        let every = self.ident()? == "every_path";
+        self.expect("(")?;
+        let from = self.term()?;
+        self.expect("->")?;
+        let to = self.term()?;
+        let mut p = PathPat {
+            form: match (every, negated) {
+                (true, _) => PathForm::Every,
+                (false, true) => PathForm::NotPath,
+                (false, false) => PathForm::Path,
+            },
+            from,
+            to,
+            over: Over::Cfg,
+            avoid: None,
+            max: None,
+            witness: None,
+        };
+        let mut seen: Vec<String> = Vec::new();
+        let word = if every { "through" } else { "avoid" };
+        while self.eat(",") {
+            let opt_at = self.here();
+            let opt = self.ident()?;
+            if seen.contains(&opt) {
+                return Err(format!("{opt_at}: {opt} is given twice"));
+            }
+            self.expect(":")?;
+            match opt.as_str() {
+                "over" => {
+                    let w = self.ident()?;
+                    p.over = match w.as_str() {
+                        "cfg" => Over::Cfg,
+                        "calls" => Over::Calls,
+                        _ => {
+                            return Err(format!(
+                                "{opt_at}: over: {w}: a path runs over cfg or calls"
+                            ));
+                        }
+                    };
+                }
+                o if o == word => p.avoid = Some(self.avoid()?),
+                "max" => match self.peek() {
+                    Some(Tok::Int(n)) if *n >= 0 => {
+                        p.max = Some(*n);
+                        self.k += 1;
+                    }
+                    _ => return self.err("a number of edges, 0 or more"),
+                },
+                "witness" if !every => match self.peek().cloned() {
+                    Some(Tok::Var(v)) if v != "_" => {
+                        if negated {
+                            return Err(format!(
+                                "{opt_at}: a negated path has no path to be the witness of"
+                            ));
+                        }
+                        self.k += 1;
+                        p.witness = Some(v);
+                    }
+                    _ => return self.err("a variable for the witness"),
+                },
+                _ => {
+                    return Err(format!(
+                        "{opt_at}: {opt}: {} takes {}",
+                        if every { "every_path" } else { "path" },
+                        if every {
+                            "over, through and max"
+                        } else {
+                            "over, avoid, max and witness"
+                        }
+                    ));
+                }
+            }
+            seen.push(opt);
+        }
+        self.expect(")")
+            .map_err(|e| format!("{e} (the path pattern at {at})"))?;
+        Ok(p)
+    }
+
+    /// `N where body` or a term; the body ends where the pattern's next `name:` option starts.
+    fn avoid(&mut self) -> Result<Avoid, String> {
+        if let (Some(Tok::Var(v)), Some(Tok::Ident(w))) = (self.peek().cloned(), self.peek_at(1))
+            && w == "where"
+        {
+            self.k += 2;
+            self.enter()?;
+            let mut lits = vec![self.lit()?];
+            while self.is(",")
+                && !(matches!(self.peek_at(1), Some(Tok::Ident(_)))
+                    && self.peek_at(2) == Some(&Tok::Punct(":")))
+            {
+                self.k += 1;
+                if lits.len() == MAX_BODY {
+                    return Err(format!(
+                        "{}: a body of more than {MAX_BODY} literals, the limit of cq",
+                        self.here()
+                    ));
+                }
+                lits.push(self.lit()?);
+            }
+            self.depth -= 1;
+            return Ok(Avoid::Where(v, lits));
+        }
+        Ok(Avoid::Node(self.term()?))
+    }
+
+    /// `property name(scope: …) { … }`, checked: `start` and `error` named, at most
+    /// [`MAX_REGISTERS`] registers, each set before it is read, a message naming states and
+    /// registers only.
+    fn property(&mut self) -> Result<Property, String> {
+        let at = self.here();
+        self.k += 1;
+        let name = self.ident()?;
+        self.expect("(")?;
+        if self.ident()? != "scope" {
+            return Err(format!(
+                "{at}: property {name} takes (scope: body) or (scope: calls)"
+            ));
+        }
+        self.expect(":")?;
+        let scope = match self.ident()?.as_str() {
+            "body" => Scope::Body,
+            "calls" => Scope::Calls,
+            other => {
+                return Err(format!(
+                    "{at}: property {name}: scope {other}; a property follows a body or calls"
+                ));
+            }
+        };
+        self.expect(")")?;
+        self.expect("{")?;
+        let mut transitions = Vec::new();
+        let mut message = None;
+        while !self.eat("}") {
+            let t_at = self.here();
+            let first = self.ident()?;
+            if first == "message" {
+                if message.is_some() {
+                    return Err(format!("{t_at}: property {name} has one message"));
+                }
+                message = Some(self.string()?);
+                continue;
+            }
+            self.expect("->")?;
+            let to = self.ident()?;
+            self.expect(":")?;
+            let event = match self.peek() {
+                Some(Tok::Ident(w)) if w == "exit" => {
+                    self.k += 1;
+                    if scope == Scope::Calls {
+                        return Err(format!(
+                            "{t_at}: exit is an event of scope: body; a call path has calls only"
+                        ));
+                    }
+                    Event::Exit
+                }
+                Some(Tok::Ident(w)) if w == "defer" => {
+                    return Err(format!(
+                        "{t_at}: defer call{{…}} waits for the defer statement of cir/1 (§ 8 of {DESIGN}), which cq cannot see yet"
+                    ));
+                }
+                _ => {
+                    self.registers = true;
+                    let a = self.atom();
+                    self.registers = false;
+                    let a = a?;
+                    if a.rel != "call" || !matches!(a.args, Args::Named(_)) {
+                        return Err(format!(
+                            "{t_at}: an event is exit or a record pattern of call, call{{…}}; not {a}"
+                        ));
+                    }
+                    Event::Call(a)
+                }
+            };
+            let mut assign = Vec::new();
+            if self.eat("=>") {
+                loop {
+                    let r = self.ident()?;
+                    self.expect(":=")?;
+                    let v = match self.peek().cloned() {
+                        Some(Tok::Var(v)) if v != "_" => v,
+                        _ => return self.err("the variable the register takes"),
+                    };
+                    self.k += 1;
+                    assign.push((r, v));
+                    if !self.eat(",") {
+                        break;
+                    }
+                }
+            }
+            if first == "error" {
+                return Err(format!("{t_at}: error ends a run; no transition leaves it"));
+            }
+            transitions.push(Transition {
+                from: first,
+                to,
+                event,
+                assign,
+            });
+        }
+        let p = Property {
+            name,
+            scope,
+            transitions,
+            message,
+        };
+        check_property(&p).map_err(|e| format!("{at}: property {}: {e}", p.name))?;
+        Ok(p)
+    }
 }
 
-fn open_static(p: &str) -> &'static str {
-    PUNCT.iter().find(|q| **q == p).copied().unwrap_or("")
+/// The registers `t`'s event reads: its lower-case variables.
+pub fn registers_read(t: &Transition) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Event::Call(Atom {
+        args: Args::Named(fs),
+        ..
+    }) = &t.event
+    {
+        for (_, f) in fs {
+            if let Field::Term(Term::Var(v)) = f
+                && v.starts_with(|c: char| c.is_ascii_lowercase())
+                && !out.contains(v)
+            {
+                out.push(v.clone());
+            }
+        }
+    }
+    out
+}
+
+/// The states and registers of a property, in order of first mention, or why it is not one.
+fn check_property(p: &Property) -> Result<(), String> {
+    if !p.transitions.iter().any(|t| t.from == "start") {
+        return Err("no transition leaves start".into());
+    }
+    if !p.transitions.iter().any(|t| t.to == "error") {
+        return Err("no transition reaches error, so it reports nothing".into());
+    }
+    let mut regs: Vec<&str> = Vec::new();
+    for t in &p.transitions {
+        for (r, v) in &t.assign {
+            if !r.starts_with(|c: char| c.is_ascii_lowercase()) {
+                return Err(format!("{r} := {v}: a register's name is lower case"));
+            }
+            let mut vs = Vec::new();
+            if let Event::Call(a) = &t.event {
+                atom_vars_of(a, &mut vs);
+            }
+            if !vs.contains(v) {
+                return Err(format!(
+                    "{r} := {v}: {v} is not a field of the transition's call"
+                ));
+            }
+            if !regs.contains(&r.as_str()) {
+                regs.push(r);
+            }
+        }
+    }
+    if regs.len() > MAX_REGISTERS {
+        return Err(format!(
+            "{} registers ({}); a property sets at most {MAX_REGISTERS} registers",
+            regs.len(),
+            regs.join(", ")
+        ));
+    }
+    for t in &p.transitions {
+        for r in registers_read(t) {
+            if !regs.contains(&r.as_str()) {
+                return Err(format!(
+                    "the register {r} is never set; set it with => {r} := X on an earlier transition"
+                ));
+            }
+        }
+    }
+    if let Some(m) = &p.message {
+        for name in placeholders(m) {
+            let state = p.transitions.iter().any(|t| t.from == name || t.to == name);
+            if !state && !regs.contains(&name.as_str()) {
+                return Err(format!(
+                    "message: {{{name}}} names neither a state nor a register"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The names a message holds in braces, `{start}`, in order.
+pub fn placeholders(m: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = m;
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else { break };
+        let name = &after[..close];
+        if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            out.push(name.to_string());
+        }
+        rest = &after[close + 1..];
+    }
+    out
+}
+
+fn atom_vars_of(a: &Atom, out: &mut Vec<String>) {
+    let mut push = |t: &Term| {
+        if let Term::Var(v) = t {
+            out.push(v.clone());
+        }
+    };
+    match &a.args {
+        Args::Positional(ts) => ts.iter().for_each(&mut push),
+        Args::Named(fs) => fs.iter().for_each(|(_, f)| {
+            if let Field::Term(t) = f {
+                push(t);
+            }
+        }),
+    }
 }
 
 fn agg_fn(w: &str) -> Option<AggFn> {
@@ -839,13 +1315,15 @@ fn agg_fn(w: &str) -> Option<AggFn> {
     })
 }
 
-/// Parse a cq module. A path pattern (§ 5.2) or a property (§ 5.3) is refused, naming it.
+/// Parse a cq module. A `check` declaration (§ 5.4) or a `defer` event (§ 8) is refused, naming
+/// it.
 pub fn parse(src: &str) -> Result<Program, String> {
     let toks = lex(src)?;
     Parser {
         toks,
         k: 0,
         depth: 0,
+        registers: false,
     }
     .program()
 }

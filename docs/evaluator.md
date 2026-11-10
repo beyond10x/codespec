@@ -194,7 +194,9 @@ per site and call count up to `--max-nth`. Every call of an extern that writes t
 ]}
 ```
 
-A panic ends its call, not the session, which models a caller that recovers per request.
+A panic ends its call, not the session, which models a caller that recovers per request. Any other
+stop (E4, a `raise` among them) ends the session: its later calls do not run, and the `stop` event
+is the trace's last line.
 
 ### 6.4 The trace
 
@@ -290,7 +292,17 @@ summary  fault orders.Service.Pay#3: panic, not handled in module. 1 partial upd
 ```
 
 The finding: a caller that recovers sees `o-1` paid with no `OrderPaid` event (status written at
-line 81, send at line 82). With `block`, the evaluator reports `blocked: no receiver`. Once `envcheck.Save` reads (§ 9), an `error` fault at
+line 81, send at line 82).
+
+The run's own trace is `examples/orders/faults/pay-closed.eval-trace.jsonl` (`task
+eval-traces`), one JSON event per line in the order the run makes them: `fault` where the fault
+answers, `panic` when the call ends, then one `update` per partial update and the `summary`. A
+partial update is what the faulted call left in memory older than the call, judged and written
+when the call ends (it returns, panics or the run stops), not when the write happens: a write the
+call undid before it ended is none, a pointer stored and filled in afterwards shows its final
+content, and writes reached through it are in it. An `error` fault's error the call stores in such
+memory is `kept at <node>` and followed into later calls; one still unread when the run stops is
+`live at stop`. With `block`, the evaluator reports `blocked: no receiver`. Once `envcheck.Save` reads (§ 9), an `error` fault at
 `envcheck.Save#0.results.0` reports `propagated to envcheck.Save`.
 
 ### 8.2 Inputs reaching a branch

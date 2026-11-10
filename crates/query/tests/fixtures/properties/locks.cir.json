@@ -1,0 +1,473 @@
+{
+  "format": "cir/1",
+  "name": "locks",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Balanced",
+      "exported": true,
+      "params": [
+        {
+          "name": "mu",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "extern",
+              "path": "sync",
+              "name": "Mutex"
+            }
+          }
+        },
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Lock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:6"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "work",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:7"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Unlock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:8"
+        }
+      ],
+      "pos": "locks.go:5"
+    },
+    {
+      "name": "Early",
+      "exported": true,
+      "params": [
+        {
+          "name": "mu",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "extern",
+              "path": "sync",
+              "name": "Mutex"
+            }
+          }
+        },
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Lock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:12"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [],
+              "pos": "locks.go:14"
+            }
+          ],
+          "pos": "locks.go:13"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Unlock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:16"
+        }
+      ],
+      "pos": "locks.go:11"
+    },
+    {
+      "name": "BothBranches",
+      "exported": true,
+      "params": [
+        {
+          "name": "mu",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "extern",
+              "path": "sync",
+              "name": "Mutex"
+            }
+          }
+        },
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Lock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:20"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "extern_method",
+                "path": "sync",
+                "type": "Mutex",
+                "name": "Unlock",
+                "recv": {
+                  "k": "var",
+                  "name": "mu",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "extern",
+                      "path": "sync",
+                      "name": "Mutex"
+                    }
+                  }
+                },
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "locks.go:22"
+            },
+            {
+              "k": "return",
+              "results": [],
+              "pos": "locks.go:23"
+            }
+          ],
+          "pos": "locks.go:21"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "sync",
+            "type": "Mutex",
+            "name": "Unlock",
+            "recv": {
+              "k": "var",
+              "name": "mu",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "sync",
+                  "name": "Mutex"
+                }
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "locks.go:25"
+        }
+      ],
+      "pos": "locks.go:19"
+    },
+    {
+      "name": "Loop",
+      "exported": true,
+      "params": [
+        {
+          "name": "mu",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "extern",
+              "path": "sync",
+              "name": "Mutex"
+            }
+          }
+        },
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "for",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "body": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "extern_method",
+                "path": "sync",
+                "type": "Mutex",
+                "name": "Lock",
+                "recv": {
+                  "k": "var",
+                  "name": "mu",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "extern",
+                      "path": "sync",
+                      "name": "Mutex"
+                    }
+                  }
+                },
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "locks.go:30"
+            },
+            {
+              "k": "expr",
+              "x": {
+                "k": "call",
+                "name": "work",
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "locks.go:31"
+            },
+            {
+              "k": "expr",
+              "x": {
+                "k": "extern_method",
+                "path": "sync",
+                "type": "Mutex",
+                "name": "Unlock",
+                "recv": {
+                  "k": "var",
+                  "name": "mu",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "extern",
+                      "path": "sync",
+                      "name": "Mutex"
+                    }
+                  }
+                },
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "locks.go:32"
+            }
+          ],
+          "pos": "locks.go:29"
+        }
+      ],
+      "pos": "locks.go:28"
+    },
+    {
+      "name": "work",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "locks.go:36"
+    }
+  ],
+  "externs": [
+    {
+      "path": "sync",
+      "name": "Lock",
+      "recv": {
+        "k": "ptr",
+        "elem": {
+          "k": "extern",
+          "path": "sync",
+          "name": "Mutex"
+        }
+      },
+      "params": [],
+      "results": []
+    },
+    {
+      "path": "sync",
+      "name": "Unlock",
+      "recv": {
+        "k": "ptr",
+        "elem": {
+          "k": "extern",
+          "path": "sync",
+          "name": "Mutex"
+        }
+      },
+      "params": [],
+      "results": []
+    }
+  ],
+  "layout": [
+    "func:Balanced",
+    "func:Early",
+    "func:BothBranches",
+    "func:Loop",
+    "func:work"
+  ],
+  "path": "example.com/locks"
+}

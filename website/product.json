@@ -8,8 +8,8 @@
       "Code as typed data.",
       "Every translation runs against the original."
     ],
-    "lede": "codespec reads a source language into cir/1, a typed JSON model of what code does, rewrites it with passes, and writes Go, Rust or C from it. A harness compares the original and every output byte for byte. codespec effects maps a Go repository down to the syscalls each function may reach.",
-    "description": "Read code into cir/1, rewrite it, write Go, Rust or C from it, and compare the original and the output byte for byte on seeded traces.",
+    "lede": "codespec reads a source language into cir/1, a typed JSON model of what code does, rewrites it with passes, and writes Go, Rust, C or a module for the Evaluator from it. A harness compares the original and every output byte for byte. codespec effects maps a Go repository down to the syscalls each function may reach.",
+    "description": "Read code into cir/1, rewrite it, write Go, Rust, C or a module for the Evaluator from it, and compare the original and the output byte for byte on seeded traces.",
     "actions": [
       {
         "label": "Get started",
@@ -29,7 +29,7 @@
         "href": "/docs/status"
       }
     ],
-    "meta": "Go, Rust, Java, Groovy and C readers · Go, Rust and C writers · cir/1 JSON Schema · Apache-2.0",
+    "meta": "Go, Rust, Java, Groovy and C readers · Go, Rust and C writers and the Evaluator · cir/1 JSON Schema · Apache-2.0",
     "art": {
       "kind": "code-pair",
       "data": "data/greeter-code-pair.json",
@@ -56,7 +56,7 @@
         {
           "label": "write",
           "title": "Emit a language",
-          "description": "The Go writer builds go/ast and the Rust writer syn trees; both read their choices off the facts. The C writer prints C11 on a header-only runtime."
+          "description": "The Go writer builds go/ast and the Rust writer syn trees; both read their choices off the facts. The C writer prints C11 on a header-only runtime. The Evaluator's writer copies the module for the cir/1 evaluator to run."
         },
         {
           "label": "harness",

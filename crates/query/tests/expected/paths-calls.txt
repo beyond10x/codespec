@@ -1,0 +1,2 @@
+example.com/calls.EntryB	example.com/calls.write	[example.com/calls.EntryB, example.com/calls.helper, example.com/calls.write]
+example.com/calls.EntryC	example.com/calls.write	[example.com/calls.EntryC, example.com/calls.write]

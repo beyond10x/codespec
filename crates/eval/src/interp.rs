@@ -12,7 +12,9 @@ use codespec_model::{
 use crate::builtins;
 use crate::gofmt;
 use crate::growth::{Layout, grow_cap};
+use crate::host::Host;
 use crate::id::{Node, func_id, module_path, node_id, var_node_id};
+use crate::trace::{J, line};
 use crate::value::{Closure, ErrorVal, HeapId, Place, Step, Value};
 use crate::{Stop, StopKind};
 
@@ -117,9 +119,13 @@ pub(crate) struct Interp<'m> {
     /// The address of the evaluator thread's first frame, for the stack margin.
     pub(crate) stack_base: usize,
     max_steps: u64,
+    /// The environment, stubs, faults, host channels and trace (`host`).
+    pub(crate) host: Host<'m>,
+    /// The statement running now, for a fault's partial updates.
+    pub(crate) cur: Option<&'m Stmt>,
 }
 
-fn int_bits(w: IntWidth) -> u32 {
+pub(crate) fn int_bits(w: IntWidth) -> u32 {
     match w {
         IntWidth::Platform | IntWidth::W64 => 64,
         IntWidth::W8 => 8,
@@ -173,14 +179,162 @@ impl<'m> Interp<'m> {
             nest: 0,
             stack_base: 0,
             max_steps,
+            host: Host::default(),
+            cur: None,
         }
+    }
+
+    /// How many cells the run's memory holds: a cell below it is older than what runs next.
+    pub(crate) fn heap_len(&self) -> usize {
+        self.heap.len()
     }
 
     pub(crate) fn take_out(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.out)
     }
 
-    fn halt(&self, kind: StopKind, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
+    /// How many calls are running, for [`Self::unwind`].
+    pub(crate) fn depth(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// Drops the frames a call that ended in a stop left above `depth`.
+    pub(crate) fn unwind(&mut self, depth: usize) {
+        self.frames.truncate(depth);
+    }
+
+    /// The id and position of `node` in the running code.
+    pub(crate) fn site(&self, node: Node<'m>) -> (String, String) {
+        let s = self.halt(StopKind::Panic, node, "").stop(self.m);
+        (s.node, s.pos)
+    }
+
+    /// The value `v` points to, for a session's receiver of the method `f`.
+    pub(crate) fn deref_at(&self, v: &Value<'m>, f: &'m Func) -> R<'m, Value<'m>> {
+        match v {
+            Value::Ptr(p) => self.read(p).cloned().ok_or_else(|| Halt {
+                kind: StopKind::Unsupported,
+                reason: "a pointer outside its cell".into(),
+                at: At::Func(f),
+            }),
+            _ => Err(Halt {
+                kind: StopKind::Panic,
+                reason: "invalid memory address or nil pointer dereference".into(),
+                at: At::Func(f),
+            }),
+        }
+    }
+
+    /// `v` as the trace writes it (`session` module doc § The trace). Reads the run's memory and
+    /// nothing else: it takes `&self`, so it cannot run the module's code, spend a step or answer
+    /// through a stub.
+    pub(crate) fn render(&self, v: &Value<'m>) -> String {
+        let mut through = Vec::new();
+        self.render_into(v, &mut through, 0)
+    }
+
+    fn render_into(&self, v: &Value<'m>, through: &mut Vec<HeapId>, depth: usize) -> String {
+        if depth > MAX_TYPE_DEPTH {
+            return "…".into();
+        }
+        let quote = |s: &[u8]| {
+            gofmt::quote(s).unwrap_or_else(|| {
+                serde_json::to_string(&String::from_utf8_lossy(s)).expect("a string serializes")
+            })
+        };
+        match v {
+            Value::Unit => "()".into(),
+            Value::Bool(b) => b.to_string(),
+            Value::Int(n) => n.to_string(),
+            Value::Float(f) => gofmt::float_v(*f, FloatBits::W64),
+            Value::Str(s) => quote(s),
+            Value::Nil => "nil".into(),
+            Value::Tuple(xs) => {
+                let parts: Vec<String> = xs
+                    .iter()
+                    .map(|x| self.render_into(x, through, depth + 1))
+                    .collect();
+                format!("({})", parts.join(", "))
+            }
+            Value::Struct(name, fs) => {
+                let decl: &'m [Field] = self.structs.get(name.as_ref()).map_or(&[], |&(_, d)| d);
+                let names: Vec<&'m str> = decl.iter().map(|f| f.name.as_str()).collect();
+                let parts: Vec<String> = fs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        let shown = self.render_into(x, through, depth + 1);
+                        match names.get(i) {
+                            Some(n) => format!("{n}: {shown}"),
+                            None => shown,
+                        }
+                    })
+                    .collect();
+                format!("{name}{{{}}}", parts.join(", "))
+            }
+            Value::Array(_) | Value::Slice { .. } => {
+                let xs = match v {
+                    Value::Array(xs) => xs.clone(),
+                    _ => self.elems(v).unwrap_or_default(),
+                };
+                let parts: Vec<String> = xs
+                    .iter()
+                    .map(|x| self.render_into(x, through, depth + 1))
+                    .collect();
+                format!("[{}]", parts.join(", "))
+            }
+            Value::Map(id) => {
+                let entries = self.map_entries(*id).to_vec();
+                let parts: Vec<String> = entries
+                    .iter()
+                    .map(|(k, x)| {
+                        let k = self.render_into(k, through, depth + 1);
+                        let x = self.render_into(x, through, depth + 1);
+                        format!("{k}: {x}")
+                    })
+                    .collect();
+                format!("map[{}]", parts.join(", "))
+            }
+            Value::Ptr(p) => {
+                if through.contains(&p.cell) {
+                    return "&…".into();
+                }
+                let Some(x) = self.read(p).cloned() else {
+                    return "&?".into();
+                };
+                through.push(p.cell);
+                let shown = self.render_into(&x, through, depth + 1);
+                through.pop();
+                format!("&{shown}")
+            }
+            Value::Chan(_) => "chan".into(),
+            Value::Func(_) => "func".into(),
+            // An error by what it holds, never through its `Error` method.
+            Value::Error(e) => match e.as_ref() {
+                ErrorVal::Sentinel { message, .. } => {
+                    format!("error({})", quote(message.as_bytes()))
+                }
+                ErrorVal::Message { text, .. } => format!("error({})", quote(text.as_bytes())),
+                ErrorVal::Value(t, x) => {
+                    let shown = self.render_into(x, through, depth + 1);
+                    match x {
+                        Value::Struct(..) | Value::Ptr(_) => format!("error({shown})"),
+                        _ => format!("error({}({shown}))", type_name(t)),
+                    }
+                }
+            },
+            Value::Iface(_, x) => self.render_into(x, through, depth + 1),
+            Value::Host(key, _) | Value::Opaque(key) => key.to_string(),
+            Value::MapData(_) | Value::ChanData(..) => "?".into(),
+        }
+    }
+
+    pub(crate) fn halt(
+        &self,
+        kind: StopKind,
+        node: Node<'m>,
+        reason: impl Into<String>,
+    ) -> Halt<'m> {
         let at = match self.frames.last().and_then(|f| f.home) {
             Some(home) => At::Node(home, node),
             None => At::Nowhere,
@@ -196,7 +350,7 @@ impl<'m> Interp<'m> {
         self.halt(StopKind::Unsupported, node, reason)
     }
 
-    fn panic(&self, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
+    pub(crate) fn panic(&self, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
         self.halt(StopKind::Panic, node, reason)
     }
 
@@ -220,6 +374,9 @@ impl<'m> Interp<'m> {
     }
 
     pub(crate) fn write(&mut self, p: &Place, new: Value<'m>) -> Option<()> {
+        if self.host.faults.older(p.cell) {
+            self.record_place(p);
+        }
         let mut v = &mut self.heap[p.cell];
         for s in &p.path {
             v = match (s, v) {
@@ -256,7 +413,7 @@ impl<'m> Interp<'m> {
         }
     }
 
-    fn map_entries(&self, id: HeapId) -> &[(Value<'m>, Value<'m>)] {
+    pub(crate) fn map_entries(&self, id: HeapId) -> &[(Value<'m>, Value<'m>)] {
         match &self.heap[id] {
             Value::MapData(es) => es,
             _ => &[],
@@ -275,6 +432,9 @@ impl<'m> Interp<'m> {
     }
 
     fn map_set(&mut self, id: HeapId, k: Value<'m>, v: Value<'m>) {
+        if self.host.faults.older(id) {
+            self.record_entry(id, &k);
+        }
         if let Value::MapData(es) = &mut self.heap[id] {
             match es.iter_mut().find(|(ek, _)| equal(ek, &k)) {
                 Some(e) => e.1 = v,
@@ -336,7 +496,7 @@ impl<'m> Interp<'m> {
     }
 
     /// `t`, its type parameters replaced, through every newtype and enum to the type under it.
-    fn resolve(&self, t: &Type) -> Type {
+    pub(crate) fn resolve(&self, t: &Type) -> Type {
         let mut t = self.subst(t);
         for _ in 0..64 {
             let Type::Named { name, targs } = &t else {
@@ -381,11 +541,11 @@ impl<'m> Interp<'m> {
         }
     }
 
-    fn is_ptr(&self, t: &Type) -> bool {
+    pub(crate) fn is_ptr(&self, t: &Type) -> bool {
         matches!(self.resolve(t), Type::Ptr { .. })
     }
 
-    fn is_iface(&self, t: &Type) -> bool {
+    pub(crate) fn is_iface(&self, t: &Type) -> bool {
         match self.subst(t) {
             Type::Any | Type::Error => true,
             Type::Named { name, .. } => self.m.interface_decl("", &name).is_some(),
@@ -398,7 +558,7 @@ impl<'m> Interp<'m> {
     /// an interface and `from` is not, as Go converts it implicitly. The one place a concrete
     /// value becomes an interface value; every crossing the crate doc lists (§ Interfaces) calls
     /// it, a list of expressions through [`Self::eval_into`].
-    fn enter_slot(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
+    pub(crate) fn enter_slot(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
         if !self.is_iface(to) || self.is_iface(from) {
             return v;
         }
@@ -515,7 +675,7 @@ impl<'m> Interp<'m> {
     /// The zero value of `t`; an unsupported stop for one over [`MAX_VALUE_CELLS`] cells or of
     /// a type that holds itself (the module check refuses both where the types are written out;
     /// this holds for those type arguments make).
-    fn zero(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
+    pub(crate) fn zero(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
         if matches!(
             t,
             Type::Array { .. } | Type::Named { .. } | Type::Param { .. }
@@ -970,16 +1130,81 @@ impl<'m> Interp<'m> {
         args: Vec<Value<'m>>,
         node: Node<'m>,
     ) -> R<'m, Value<'m>> {
+        let tracing = self.host.trace.is_some();
+        let shown: Vec<String> = if tracing {
+            args.iter().map(|a| self.render(a)).collect()
+        } else {
+            Vec::new()
+        };
+        // A fault plan's entry for this site and call count answers first, then a stub the user
+        // named for this site, or for every call of this extern.
+        if let Node::Expr(e) = node
+            && let Some(r) = self.fault_at(e as *const Expr as usize, e.t(), node)
+        {
+            return r;
+        }
+        if let Node::Expr(e) = node
+            && let Some(v) = self.host.stub_at(e)
+        {
+            if tracing {
+                self.trace_extern(key, "stub", &shown, &v, node);
+            }
+            return Ok(v);
+        }
         match builtins::call(self, key, recv, args) {
             None => Err(self.halt(
                 StopKind::NoHandler,
                 node,
                 format!("extern {key} has no handler"),
             )),
-            Some(Ok(v)) => Ok(v),
+            Some(Ok(v)) => {
+                if tracing {
+                    self.trace_extern(key, builtins::handler(key), &shown, &v, node);
+                }
+                Ok(v)
+            }
             Some(Err(builtins::Fail::Panic(msg))) => Err(self.panic(node, msg)),
             Some(Err(builtins::Fail::Unsupported(msg))) => Err(self.unsupported(node, msg)),
         }
+    }
+
+    /// The trace's `effect` of an extern call answered by `handler`.
+    fn trace_extern(
+        &mut self,
+        key: &str,
+        handler: &str,
+        args: &[String],
+        v: &Value<'m>,
+        node: Node<'m>,
+    ) {
+        let results: Vec<String> = match v {
+            Value::Unit => Vec::new(),
+            Value::Tuple(xs) => xs.iter().map(|x| self.render(x)).collect(),
+            v => vec![self.render(v)],
+        };
+        let (id, pos) = self.site(node);
+        self.host.emit(line(&[
+            ("event", J::Str("effect")),
+            ("node", J::Str(&id)),
+            ("pos", J::Str(&pos)),
+            ("effect", J::Str("extern")),
+            ("key", J::Str(key)),
+            ("handler", J::Str(handler)),
+            ("args", J::List(args)),
+            ("results", J::List(&results)),
+        ]));
+    }
+
+    /// The trace's `effect` of `node` with the field `what`, the value or text it put out.
+    fn trace_out(&mut self, effect: &str, what: (&str, &str), node: Node<'m>) {
+        let (id, pos) = self.site(node);
+        self.host.emit(line(&[
+            ("event", J::Str("effect")),
+            ("node", J::Str(&id)),
+            ("pos", J::Str(&pos)),
+            ("effect", J::Str(effect)),
+            (what.0, J::Str(what.1)),
+        ]));
     }
 
     // ---- statements ----
@@ -1029,7 +1254,9 @@ impl<'m> Interp<'m> {
 
     fn exec(&mut self, s: &'m Stmt) -> R<'m, Flow<'m>> {
         self.nested(Node::Stmt(s))?;
+        let outer = self.cur.replace(s);
         let r = self.exec_inner(s);
+        self.cur = outer;
         self.nest -= 1;
         r
     }
@@ -1064,6 +1291,9 @@ impl<'m> Interp<'m> {
             Stmt::Let { names, rhs, .. } => {
                 let vs = self.values(rhs, names.len(), node)?;
                 for (n, v) in names.iter().zip(vs) {
+                    if n == "_" {
+                        self.traced("dropped", &v, node);
+                    }
                     self.bind(n, v);
                 }
             }
@@ -1148,9 +1378,11 @@ impl<'m> Interp<'m> {
                     None => Value::Bool(true),
                 };
                 let tag_t = tag.as_ref().map_or(&Type::Bool, |t| t.t());
+                self.traced("tested", &tagv, node);
                 for c in cases {
                     for v in &c.values {
                         let cv = self.eval(v)?;
+                        self.traced("tested", &cv, node);
                         let cv = self.enter_slot(cv, v.t(), tag_t);
                         let tv = self.enter_slot(tagv.clone(), tag_t, v.t());
                         if equal(&tv, &cv) {
@@ -1170,10 +1402,23 @@ impl<'m> Interp<'m> {
                     let slots: Vec<Type> = want.iter().map(|t| self.subst(t)).collect();
                     self.eval_into(results, &slots, false, node)?
                 };
+                for v in &vs {
+                    self.traced("propagated", v, node);
+                }
                 return Ok(Flow::Return(vs));
             }
             Stmt::Expr { x, .. } => {
-                self.eval(x)?;
+                // A call's results a statement discards are dropped, as if bound to `_`.
+                match self.eval(x)? {
+                    Value::Tuple(vs) => {
+                        for v in &vs {
+                            self.traced("dropped", v, node);
+                        }
+                    }
+                    v => {
+                        self.traced("dropped", &v, node);
+                    }
+                }
             }
             Stmt::Send { chan, x, .. } => {
                 let c = self.eval(chan)?;
@@ -1185,6 +1430,11 @@ impl<'m> Interp<'m> {
                     .eval_into(std::slice::from_ref(x), &[elem], false, node)?
                     .pop()
                     .expect("one value");
+                // A fault plan's entry for this send answers in its place.
+                if let Some(r) = self.fault_at(s as *const Stmt as usize, &Type::Unit, node) {
+                    r?;
+                    return Ok(Flow::Next);
+                }
                 self.send(c, v, node)?;
             }
             Stmt::LookupElse {
@@ -1454,6 +1704,12 @@ impl<'m> Interp<'m> {
                 "a send on a nil channel blocks forever",
             ));
         };
+        if self.host.chans.contains(&id) {
+            // A channel a session passed: the host takes the value, an effect.
+            let shown = self.render(&v);
+            self.trace_out("send", ("value", &shown), node);
+            return Ok(());
+        }
         match &mut self.heap[id] {
             Value::ChanData(_, _, true) => Err(self.panic(node, "send on closed channel")),
             Value::ChanData(q, cap, false) if q.len() < *cap => {
@@ -1645,7 +1901,10 @@ impl<'m> Interp<'m> {
 
     fn store(&mut self, t: Target<'m>, v: Value<'m>, node: Node<'m>) -> R<'m, ()> {
         match t {
-            Target::Discard => Ok(()),
+            Target::Discard => {
+                self.traced("dropped", &v, node);
+                Ok(())
+            }
             Target::Place(p) => self
                 .write(&p, v)
                 .ok_or_else(|| self.unsupported(node, "a pointer outside its cell")),
@@ -1892,6 +2151,8 @@ impl<'m> Interp<'m> {
                     let a = self.enter_slot(a, x.t(), y.t());
                     let b = self.eval(y)?;
                     let b = self.enter_slot(b, y.t(), x.t());
+                    self.traced("tested", &a, node);
+                    self.traced("tested", &b, node);
                     self.compare(op, &a, &b, node).map(Value::Bool)
                 }
                 _ => {
@@ -2313,13 +2574,15 @@ impl<'m> Interp<'m> {
                 self.append(base, extra, &elem, node)
             }
             "sprintf" | "errorf" => {
-                let s = self.sprintf(args, name == "errorf", node)?;
+                let (s, origin) = self.sprintf(args, name == "errorf", node)?;
                 Ok(if name == "sprintf" {
                     Value::bytes(s)
                 } else {
-                    Value::Error(Rc::new(ErrorVal::Message(String::from_utf8(s).map_err(
-                        |_| self.unsupported(node, "an error message that is not UTF-8"),
-                    )?)))
+                    let text = String::from_utf8(s).map_err(|_| {
+                        self.unsupported(node, "an error message that is not UTF-8")
+                    })?;
+                    // An error wrapping a fault's error comes from that fault too.
+                    Value::Error(Rc::new(ErrorVal::Message { text, origin }))
                 })
             }
             "println" => {
@@ -2334,6 +2597,10 @@ impl<'m> Interp<'m> {
                 }
                 line.push(b'\n');
                 let n = line.len();
+                if self.host.trace.is_some() {
+                    let text = String::from_utf8_lossy(&line).into_owned();
+                    self.trace_out("stdout", ("text", &text), node);
+                }
                 self.out.extend_from_slice(&line);
                 Ok(match t {
                     Type::Tuple { elems } if elems.len() == 2 => {
@@ -2437,8 +2704,14 @@ impl<'m> Interp<'m> {
         })
     }
 
-    /// `sprintf`'s output for its format and arguments: the verbs `%d`, `%s`, `%v` and `%%`.
-    fn sprintf(&mut self, args: &'m [Expr], errorf: bool, node: Node<'m>) -> R<'m, Vec<u8>> {
+    /// `sprintf`'s output for its format and arguments: the verbs `%d`, `%s`, `%v` and `%%`; and
+    /// the fault the first argument from one came from (`wrapped`).
+    fn sprintf(
+        &mut self,
+        args: &'m [Expr],
+        errorf: bool,
+        node: Node<'m>,
+    ) -> R<'m, (Vec<u8>, Option<usize>)> {
         let Some((f, rest)) = args.split_first() else {
             return Err(self.unsupported(node, "sprintf without a format"));
         };
@@ -2450,8 +2723,13 @@ impl<'m> Interp<'m> {
             return Err(self.unsupported(node, "sprintf with a format that is not a string"));
         };
         let mut vals = Vec::with_capacity(rest.len());
+        let mut origin = None;
         for a in rest {
-            vals.push((self.eval(a)?, a.t()));
+            let v = self.eval(a)?;
+            if let Some(k) = self.traced("wrapped", &v, node) {
+                origin.get_or_insert(k);
+            }
+            vals.push((v, a.t()));
         }
         let mut out = Vec::new();
         let mut next = 0;
@@ -2524,7 +2802,7 @@ impl<'m> Interp<'m> {
         if next != vals.len() {
             return Err(self.unsupported(node, "sprintf with more arguments than verbs"));
         }
-        Ok(out)
+        Ok((out, origin))
     }
 
     fn unwrap_iface<'v>(&self, v: &'v Value<'m>) -> &'v Value<'m> {
@@ -2681,7 +2959,7 @@ impl<'m> Interp<'m> {
         };
         match ev.as_ref() {
             ErrorVal::Sentinel { message, .. } => Ok(message.to_string()),
-            ErrorVal::Message(s) => Ok(s.clone()),
+            ErrorVal::Message { text, .. } => Ok(text.clone()),
             ErrorVal::Value(t, inner) => {
                 let (t, inner) = (t.clone(), inner.clone());
                 match self.method_text(&inner, &t, node)? {
