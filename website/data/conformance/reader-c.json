@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "c",
     "version": "0.7.0",
-    "manifest_sha256": "ba57fe7d3d59ee8d4e81cad190397a294f9130e8a45743bd2946c8fff85e6e99"
+    "manifest_sha256": "f6c7bf319afd4752363d60a24013eb7ebbe6fd23256e0e83e8861c689dca9a15"
   },
   "kit": {
     "version": "0.7.0",
-    "sha256": "8374d4522528008198e201c2d303b9ea00b5ada3b47aa0a7022ad1374cc9b5b9"
+    "sha256": "f8ce5e905b2b91ccd7294a6d84d3c37a49931280d6f0475acc9c4587dc25a250"
   },
   "corpus": {
-    "sha256": "4c70736e86a5b821ccc25402d7648e04c9a9bcc4019f558ba0f3bfb7827999ea"
+    "sha256": "6eb0d539fda139dc08b39c794a6bf608ca5f7de78258a5dd32db190706fc8348"
   },
   "codespec": "0.7.0",
   "features": [
@@ -161,9 +161,11 @@
     },
     {
       "id": "decl.variadic",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-variadic-local"
+      ]
     },
     {
       "id": "expr.binop",
@@ -337,9 +339,11 @@
     },
     {
       "id": "expr.to_error",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-error"
+      ]
     },
     {
       "id": "expr.to_iface",
@@ -992,12 +996,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 103,
-    "pass": 103,
+    "claimed": 105,
+    "pass": 105,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 25,
+    "untested": 23,
     "boundary_fail": 0
   },
   "conforms": true

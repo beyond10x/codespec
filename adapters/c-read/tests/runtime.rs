@@ -1069,3 +1069,153 @@ fn a_range_of_the_c_writer_whose_body_uses_its_copies_is_refused() {
         "{r:#?}"
     );
 }
+
+/// The kit case `case`'s hand-written C source.
+fn kit_source(case: &str) -> String {
+    std::fs::read_to_string(root().join(format!("conformance/cases/{case}/c/case.c")))
+        .expect("the kit case's c/case.c")
+}
+
+/// `good` reads with no refusal; `good` with every `from` replaced by `to` reads with a refusal
+/// at the line of the first `at` in it whose reason holds `phrase`.
+fn near_miss_at(name: &str, good: &str, from: &str, to: &str, at: &str, phrase: &str) {
+    let m = read_rt(&format!("{name}_good"), good, &header());
+    assert_eq!(refused(&m), Vec::<String>::new(), "{name}: the form itself");
+    assert!(good.contains(from), "{name}: {from:?} is in the form");
+    let bad = good.replace(from, to);
+    let line = bad[..bad
+        .find(at)
+        .expect("the line of the refusal is in the source")]
+        .matches('\n')
+        .count()
+        + 1;
+    let m = read_rt(&format!("{name}_bad"), &bad, &header());
+    let pos = format!("{name}_bad.c:{line}");
+    assert!(
+        m.refusals
+            .iter()
+            .any(|r| r.pos == pos && r.reason.contains(phrase)),
+        "{name}: no refusal at {pos} holding {phrase:?} in {:#?}",
+        m.refusals
+    );
+}
+
+#[test]
+fn cs_error_of_of_a_value_other_than_its_message_function_s_type_is_refused_at_its_line() {
+    near_miss_at(
+        "to_error_value",
+        &kit_source("expr-to-error"),
+        "cs_dup(&v, sizeof v)",
+        "cs_dup(&v.Key, sizeof v.Key)",
+        "return cs_error_of",
+        "cs_error_of of a value other than a NotFound",
+    );
+}
+
+#[test]
+fn cs_error_of_of_a_copy_of_another_size_than_its_value_is_refused_at_its_line() {
+    near_miss_at(
+        "to_error_size",
+        &kit_source("expr-to-error"),
+        "cs_dup(&v, sizeof v)",
+        "cs_dup(&v, sizeof(cs_string))",
+        "return cs_error_of",
+        "a copy whose size is not its value's",
+    );
+}
+
+#[test]
+fn a_message_function_that_calls_other_than_the_type_s_error_function_is_refused_at_its_line() {
+    near_miss_at(
+        "to_error_method",
+        &kit_source("expr-to-error"),
+        "NotFound_Error",
+        "NotFound_Text",
+        "static cs_string cs_message_NNotFound",
+        "is not cs_string NotFound_Error(NotFound)",
+    );
+}
+
+#[test]
+fn a_call_of_the_error_function_a_message_function_calls_is_refused_at_its_line() {
+    near_miss_at(
+        "to_error_call",
+        &kit_source("expr-to-error"),
+        "/* codespec: func Get(string) error */\ncs_error Get(cs_string k) {\n    return cs_to_error_NNotFound(",
+        "/* codespec: func Get(string) string */\ncs_string Get(cs_string k) {\n    return NotFound_Error(",
+        "return NotFound_Error(((NotFound)",
+        "a method call, which this reader does not read",
+    );
+}
+
+#[test]
+fn a_va_list_read_as_another_type_than_the_element_type_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_va_arg",
+        &kit_source("decl-variadic-local"),
+        "va_arg(cs_ap, int64_t)",
+        "va_arg(cs_ap, uint64_t)",
+        "va_arg(",
+        "va_arg reads an argument of the variadic parameter xs as uint64_t",
+    );
+}
+
+#[test]
+fn a_variadic_argument_passed_as_another_c_type_than_the_element_s_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_argument",
+        &kit_source("decl-variadic-local"),
+        "(int64_t)3)",
+        "3)",
+        "int64_t three",
+        "variadic argument 2 is passed as int,",
+    );
+}
+
+#[test]
+fn a_variadic_call_whose_count_is_not_its_number_of_arguments_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_count",
+        &kit_source("decl-variadic-local"),
+        "sum(1, a)",
+        "sum(2, a)",
+        "int64_t one",
+        "count of variadic arguments is not the constant 1",
+    );
+}
+
+#[test]
+fn a_variadic_function_without_the_prologue_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_prologue",
+        &kit_source("decl-variadic-local"),
+        "cs_slice xs = {0};",
+        "cs_slice xs = cs_slice_make();",
+        "cs_slice xs",
+        "does not begin with the prologue",
+    );
+}
+
+#[test]
+fn the_count_of_a_variadic_parameter_used_after_its_prologue_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_count_used",
+        &kit_source("decl-variadic-local"),
+        "int64_t t = 0;",
+        "int64_t t = cs_n;",
+        "int64_t t = cs_n;",
+        "used after its prologue",
+    );
+}
+
+#[test]
+fn a_variadic_parameter_of_an_element_type_c_promotes_is_refused_at_its_line() {
+    near_miss_at(
+        "variadic_promoted",
+        &kit_source("decl-variadic-local"),
+        "func sum(...int) int",
+        "func sum(...int8) int",
+        "static int64_t sum(",
+        "C promotes when it is passed through",
+    );
+}

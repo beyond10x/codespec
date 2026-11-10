@@ -1149,6 +1149,11 @@ impl<'a> Body<'a> {
                     return self.value(inner);
                 }
                 let name = d.s("name");
+                if let Some(t) = self.tables.methods.get(name) {
+                    return Err(format!(
+                        "{name}, the method Error of {t}, used as a value: a method value, which this reader does not read"
+                    ));
+                }
                 if !self.tables.funcs.contains(name) {
                     return Err(format!(
                         "the function {name}, which the module does not define, used as a value"
@@ -1398,6 +1403,16 @@ impl<'a> Body<'a> {
             return self.call_value(n);
         };
         let (id, name) = (id.to_string(), name.to_string());
+        if let Some(t) = self.tables.methods.get(&name) {
+            return Err(format!(
+                "a call of {name}, the method Error of {t}: a method call, which this reader does not read"
+            ));
+        }
+        if self.tables.messages.contains_key(&name) {
+            return Err(format!(
+                "a call of {name}, a message function, which only cs_error_of takes"
+            ));
+        }
         let t = match self.tables.sigs.get(&name) {
             Some((_, rs)) if self.tables.funcs.contains(&name) => match rs.as_slice() {
                 [] => Type::Unit,
@@ -1415,6 +1430,11 @@ impl<'a> Body<'a> {
             .get(&name)
             .filter(|_| self.tables.funcs.contains(&name))
             .map(|(ps, _)| ps.clone());
+        if let Some(ps) = &typed
+            && self.tables.variadic.contains(&name)
+        {
+            return self.variadic_call(n, &name, ps, t);
+        }
         if let Some(ps) = &typed
             && ps.len() != kids.len() - 1
         {
