@@ -25,6 +25,26 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `Name` as an integer, and reads a function pointer or array parameter as one parameter; a call
   of a function taking a float, a pointer, an array or a function pointer is refused naming its
   type.
+- `codespec-read-java` claims 102 of the 120 features a reader can claim, up from 77. A package
+  read now maps shifts with the count masked as Java masks it, labeled `break` and `continue` of
+  the innermost loop, `double` and `float`, mutable static fields as module-level variables,
+  `Object` as `any`, interfaces with several implementations, unbounded static generic methods,
+  the primitive functional interfaces with lambdas and method references, variable arity methods
+  and arrays as slices, formatted exception messages as `errorf` and `System.out.println`. Each
+  has a refused edge (`>>>`, an outer loop's label, `%` on a float, arithmetic on float
+  constants, a shifted literal whose count is not constant, among others) at its line. A project
+  read is unchanged. The kit holds the Java
+  sources of these cases and six new variant cases: `decl-var-int`, `type-float-compare`,
+  `type-tuple-error`, `intrinsic-println-int`, `decl-variadic-local` and `expr-spread-local`. The
+  case `decl-union` has a Java source, a sealed interface of records, which the reader refuses at
+  its line and does not claim, since the Go writer that checks a read refuses a union. `adapters/java/README.md` gives the reason for each feature the reader
+  leaves unclaimed.
+- `codespec-read-java` reads an integer constant expression that wraps (`2147483647 + 1`) as the
+  literal of the value Java gives it, where the Go written from it computed the exact value. It
+  refuses a compound assignment to a field whose right operand calls a method of the package, since
+  Java reads the field before the call and the written Go after it.
+- `codespec-run-java` and `codespec-run-groovy` print a result of type `Object` as the value it
+  holds.
 
 ## 0.6.1
 

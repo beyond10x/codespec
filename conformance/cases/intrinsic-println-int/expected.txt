@@ -1,0 +1,4 @@
+count 1
+ok
+count -20
+ok

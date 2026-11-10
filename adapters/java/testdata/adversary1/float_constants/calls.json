@@ -1,0 +1,23 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Sum",
+      "args": [
+        "true"
+      ]
+    },
+    {
+      "func": "Chain",
+      "args": [
+        "true"
+      ]
+    },
+    {
+      "func": "Narrow",
+      "args": [
+        "true"
+      ]
+    }
+  ]
+}

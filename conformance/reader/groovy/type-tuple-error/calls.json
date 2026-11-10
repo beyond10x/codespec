@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Quadruple",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Quadruple",
+      "args": [
+        "-1"
+      ]
+    }
+  ]
+}

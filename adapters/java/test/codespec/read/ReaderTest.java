@@ -88,8 +88,12 @@ public final class ReaderTest {
         cases.add(() -> t.foreignAtMarker("refuse/synchronized"));
         names.add("a_generic_method_is_refused_at_its_line");
         cases.add(t::aGenericMethodIsRefusedAtItsLine);
-        names.add("a_second_implementation_of_an_interface_is_refused_at_its_line");
-        cases.add(t::aSecondImplementationIsRefusedAtItsLine);
+        names.add("an_interface_with_two_implementations_is_a_cir_1_interface");
+        cases.add(t::anInterfaceWithTwoImplementationsIsACir1Interface);
+        names.add("the_edges_of_the_kit_constructs_are_refused_at_their_lines");
+        cases.add(t::theEdgesOfTheKitConstructsAreRefusedAtTheirLines);
+        names.add("a_float_literal_is_spelled_as_cir_1_spells_it");
+        cases.add(t::aFloatLiteralIsSpelledAsCir1SpellsIt);
         names.add("a_class_extending_a_non_exception_class_is_refused_at_its_line");
         cases.add(t::aClassExtendingANonExceptionClassIsRefusedAtItsLine);
         names.add("adversary_a_reference_field_left_at_its_null_default_is_not_read_as_a_zero_value");
@@ -318,11 +322,10 @@ public final class ReaderTest {
         String int32 = "{\"k\":\"int\",\"width\":\"32\",\"signed\":true}";
         String int64 = "{\"k\":\"int\",\"width\":\"64\",\"signed\":true}";
         Object wrap = returned(funcByKey(doc, "wrap"));
-        check(same(wrap, "{\"k\":\"binop\",\"op\":\"+\",\"x\":{\"k\":\"lit\",\"value\":\"2147483647\",\"t\":" + int32
-            + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int32 + "},\"t\":" + int32 + "}"), "wrap returns " + Json.write(wrap));
+        // A constant expression that wraps is read as the literal of Java's value: Go would add exactly.
+        check(same(wrap, "{\"k\":\"lit\",\"value\":\"-2147483648\",\"t\":" + int32 + "}"), "wrap returns " + Json.write(wrap));
         Object wide = returned(funcByKey(doc, "wide"));
-        check(same(wide, "{\"k\":\"binop\",\"op\":\"+\",\"x\":{\"k\":\"lit\",\"value\":\"9223372036854775807\",\"t\":" + int64
-            + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int64 + "},\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
+        check(same(wide, "{\"k\":\"lit\",\"value\":\"-9223372036854775808\",\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
     }
 
     // ---- fields that hold null until assigned ----
@@ -426,12 +429,63 @@ public final class ReaderTest {
         check(funcByKeyOrNull(doc, "one") != null, "the method beside it was not read");
     }
 
-    private void aSecondImplementationIsRefusedAtItsLine() throws Exception {
-        Map<String, Object> doc = Reader.read(testdata.resolve("refuse/second-impl"));
-        String pos = marker(testdata.resolve("refuse/second-impl"));
-        check(refusalPositions(doc).contains(pos), "no refusal at " + pos + ": " + String.valueOf(doc.get("refusals")));
-        check(byNameOrNull(list(doc.get("types")), "Disc") == null, "the second implementation was read");
+    /**
+     * An interface of the package with two implementations is a cir/1 interface: both classes are
+     * read, the interface lists its method, and nothing is refused.
+     */
+    private void anInterfaceWithTwoImplementationsIsACir1Interface() throws Exception {
+        Map<String, Object> doc = Reader.read(testdata.resolve("interface/two-impls"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        check(byNameOrNull(list(doc.get("types")), "Disc") != null, "the second implementation was not read");
         check(byNameOrNull(list(doc.get("types")), "Box") != null, "the first implementation was not read");
+        Map<String, Object> shape = byName(list(doc.get("interfaces")), "Shape");
+        check(same(shape.get("methods"), "[{\"name\":\"Area\",\"params\":[],\"results\":[{\"k\":\"int\",\"width\":\"64\",\"signed\":true}]}]"),
+            "Shape's methods " + Json.write(shape.get("methods")));
+    }
+
+    /**
+     * Each line marked {@code // refused} in {@code refuse/kit-limits} is a refusal: the edges of
+     * what the conformance kit work maps (shifts, labels, floats, arrays, generics, lambdas, static
+     * fields, formatted exceptions) where Java and cir/1 would differ.
+     */
+    private void theEdgesOfTheKitConstructsAreRefusedAtTheirLines() throws Exception {
+        Path dir = testdata.resolve("refuse/kit-limits");
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> want = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.sorted().toList()) {
+                List<String> lines = Files.readAllLines(f);
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i).contains("// refused")) {
+                        want.add(f.getFileName() + ":" + (i + 1));
+                    }
+                }
+            }
+        }
+        check(want.size() >= 10, "markers in " + dir + ": " + want);
+        List<String> missing = new ArrayList<>(want);
+        missing.removeAll(refusalPositions(doc));
+        check(missing.isEmpty(), "no refusal at " + missing + ": " + String.valueOf(doc.get("refusals")));
+        List<String> extra = new ArrayList<>(refusalPositions(doc));
+        extra.removeAll(want);
+        check(extra.isEmpty(), "refusals at unmarked lines " + extra + ": " + String.valueOf(doc.get("refusals")));
+        check(funcByKeyOrNull(doc, "readable") != null, "the method beside them was not read");
+    }
+
+    /** cir/1's spelling of float literals, which strict reading requires ({@code float_spelling} of crates/model). */
+    private void aFloatLiteralIsSpelledAsCir1SpellsIt() throws Exception {
+        String[][] want = {
+            {"0.25", "0.25"}, {"1.5e300", "1.5e300"}, {"4", "4"}, {"1000", "1000"}, {"1e21", "1e21"},
+            {"1e20", "100000000000000000000"}, {"1.5e-7", "1.5e-7"}, {"0.000001", "0.000001"}, {"-0.0", "-0"},
+            {"0.1", "0.1"}, {"5e-324", "5e-324"}, {"1.7976931348623157e308", "1.7976931348623157e308"},
+        };
+        for (String[] w : want) {
+            String got = Reader.floatSpelling(Double.parseDouble(w[0]), false);
+            check(got.equals(w[1]), w[0] + " spelled " + got + ", want " + w[1]);
+        }
+        check(Reader.floatSpelling(0.1f, true).equals("0.1"), "0.1f spelled " + Reader.floatSpelling(0.1f, true));
+        check(Reader.floatSpelling(1e21f, true).equals("1e21"), "1e21f spelled " + Reader.floatSpelling(1e21f, true));
+        check(Reader.floatSpelling(16777217f, true).equals("16777216"), "16777217f spelled " + Reader.floatSpelling(16777217f, true));
     }
 
     private void aClassExtendingANonExceptionClassIsRefusedAtItsLine() throws Exception {
@@ -742,11 +796,15 @@ public final class ReaderTest {
      * the case's package, passed, written as Go and run by {@code codespec-run-go} on the case's
      * {@code calls.json}, printing its {@code expected.txt}. Its subject is claimed. The module and
      * the subject are left in {@code <work>/kit/<case>/} for {@code task adapters-check}, which
-     * checks the module uses the subject ({@code codespec-conformance features}).
+     * checks the module uses the subject ({@code codespec-conformance features}). A case whose
+     * subject is one of {@link #REFUSED} is read into {@code <work>/refused/<case>/} instead, and
+     * holds the one refusal its entry names, at the line its entry names, and no foreign statement.
      */
     private void kitCase(String kase) throws Exception {
         Path dir = kit().resolve(kase);
-        Path w = work.resolve("kit").resolve(kase);
+        String subject = subject(kase);
+        boolean refusedCase = REFUSED.containsKey(subject);
+        Path w = work.resolve(refusedCase ? "refused" : "kit").resolve(kase);
         Files.createDirectories(w);
         Path read = w.resolve("read.cir.json");
         Path passed = w.resolve("passed.cir.json");
@@ -755,15 +813,29 @@ public final class ReaderTest {
         run("codespec read", log, err, codespec.toString(), "read", "--lang", "java", dir.resolve("java").toString(),
             "--out", read.toString(), "--adapters", adapters.toString());
         Map<String, Object> doc = map(Json.parse(Files.readString(read)));
+        if (refusedCase) {
+            check(!Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is claimed and refused");
+            List<Object> rs = doc.containsKey("refusals") ? list(doc.get("refusals")) : List.of();
+            List<String> lines = Files.readAllLines(dir.resolve("java").resolve("Case.java"));
+            String at = null;
+            for (int i = 0; i < lines.size() && at == null; i++) {
+                if (lines.get(i).strip().startsWith(REFUSED.get(subject)[0])) {
+                    at = "Case.java:" + (i + 1);
+                }
+            }
+            check(rs.size() == 1 && String.valueOf(map(rs.get(0)).get("reason")).contains(REFUSED.get(subject)[1])
+                && refusalPositions(doc).contains(at), "want one refusal at " + at + ": " + Json.write(rs));
+            check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
+            return;
+        }
         if (doc.containsKey("refusals")) {
             throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
         }
         check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
         String pkg = kase.replace('-', '_');
         check(pkg.equals(doc.get("name")), "module " + doc.get("name") + ", the case's package is " + pkg);
-        String subject = subject(kase);
-        check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
         Files.writeString(w.resolve("subject"), subject + "\n", StandardCharsets.UTF_8);
+        check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
         run("codespec pass", log, err, codespec.toString(), "pass", read.toString(), "--out", passed.toString());
         run("codespec write --lang go", log, err, codespec.toString(), "write", "--lang", "go", passed.toString(),
             "--out", w.resolve("go").toString(), "--adapters", adapters.toString());
@@ -774,6 +846,14 @@ public final class ReaderTest {
         String have = Files.readString(got);
         check(want.equals(have), "printed\n" + have + "expected.txt\n" + want);
     }
+
+    /**
+     * Subjects whose kit case holds a Java source the reader refuses on purpose, with the start of
+     * the refused line and a part of the refusal's reason: {@code decl.union}, which the reader
+     * recognises but does not emit while the Go writer that checks a read refuses every union
+     * ({@code Reader.READ_UNIONS}).
+     */
+    private static final Map<String, String[]> REFUSED = Map.of("decl.union", new String[] {"sealed interface", "a cir/1 union"});
 
     private void everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter() throws Exception {
         List<String> kases = javaCases();

@@ -1,0 +1,76 @@
+{
+  "format": "cir/1",
+  "name": "intrinsic_println_int",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.6.1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Show",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "intrinsic",
+            "name": "println",
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"count\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                {
+                  "k": "error"
+                }
+              ]
+            }
+          },
+          "pos": "case.go:7"
+        }
+      ],
+      "doc": "Show prints a label and a count.",
+      "pos": "case.go:6"
+    }
+  ],
+  "layout": [
+    "func:Show"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

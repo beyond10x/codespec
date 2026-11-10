@@ -937,7 +937,7 @@
         "type.slice": "verified",
         "type.string": "verified",
         "type.tuple": {
-          "note": "Not claimed, though its case type-tuple passes.",
+          "note": "Not claimed, though its case type-tuple, type-tuple-error passes.",
           "state": "refused"
         },
         "type.unit": {
@@ -1422,44 +1422,47 @@
         "assign.mul": "verified",
         "assign.or": "verified",
         "assign.rem": "verified",
-        "assign.shl": "refused",
-        "assign.shr": "refused",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
         "assign.sub": "verified",
         "assign.xor": "verified",
         "decl.embedded": "refused",
         "decl.enum": "verified",
-        "decl.interface": "refused",
+        "decl.interface": "verified",
         "decl.newtype": "refused",
         "decl.struct": "verified",
-        "decl.type_params": "refused",
-        "decl.union": "refused",
-        "decl.var": "refused",
-        "decl.variadic": "refused",
+        "decl.type_params": "verified",
+        "decl.union": {
+          "note": "Case decl-union: its module does not use the feature.",
+          "state": "refused"
+        },
+        "decl.var": "verified",
+        "decl.variadic": "verified",
         "expr.binop": "verified",
         "expr.call": "verified",
-        "expr.call_value": "refused",
+        "expr.call_value": "verified",
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": "verified",
         "expr.extern": "refused",
         "expr.extern_method": "refused",
         "expr.field": "verified",
-        "expr.float": "refused",
-        "expr.func_ref": "refused",
-        "expr.global": "refused",
-        "expr.iface_call": "refused",
+        "expr.float": "verified",
+        "expr.func_ref": "verified",
+        "expr.global": "verified",
+        "expr.iface_call": "verified",
         "expr.index": "verified",
-        "expr.instantiate": "refused",
+        "expr.instantiate": "verified",
         "expr.intrinsic": "verified",
-        "expr.lambda": "refused",
+        "expr.lambda": "verified",
         "expr.lit": "verified",
         "expr.make": "verified",
         "expr.method": "verified",
         "expr.nil": "verified",
-        "expr.spread": "refused",
+        "expr.spread": "verified",
         "expr.struct": "verified",
         "expr.to_error": "refused",
-        "expr.to_iface": "refused",
+        "expr.to_iface": "verified",
         "expr.unop": "verified",
         "expr.var": "verified",
         "expr.zero": "verified",
@@ -1471,9 +1474,9 @@
         "fact.shared": "n/a",
         "fact.unordered_iteration": "n/a",
         "intrinsic.append": "verified",
-        "intrinsic.errorf": "refused",
+        "intrinsic.errorf": "verified",
         "intrinsic.len": "verified",
-        "intrinsic.println": "refused",
+        "intrinsic.println": "verified",
         "intrinsic.sorted_keys": "verified",
         "intrinsic.sprintf": "verified",
         "op.add": "verified",
@@ -1491,8 +1494,8 @@
         "op.ne": "verified",
         "op.or": "verified",
         "op.rem": "verified",
-        "op.shl": "refused",
-        "op.shr": "refused",
+        "op.shl": "verified",
+        "op.shr": "verified",
         "op.sub": "verified",
         "op.xor": "verified",
         "sem.continue.post": "verified",
@@ -1501,7 +1504,7 @@
         "sem.map.order": "verified",
         "sem.multi_assign.order": "refused",
         "sem.rem.sign": "verified",
-        "sem.switch.break": "refused",
+        "sem.switch.break": "verified",
         "stmt.assign": "verified",
         "stmt.break": "verified",
         "stmt.continue": "verified",
@@ -1518,22 +1521,22 @@
         "stmt.send": "refused",
         "stmt.switch": "verified",
         "stmt.var": "refused",
-        "type.any": "refused",
+        "type.any": "verified",
         "type.array": "refused",
         "type.bool": "verified",
         "type.chan": "refused",
         "type.error": "verified",
         "type.extern": "refused",
-        "type.float": "refused",
-        "type.func": "refused",
+        "type.float": "verified",
+        "type.func": "verified",
         "type.int": "verified",
         "type.map": "verified",
         "type.named": "verified",
-        "type.param": "refused",
+        "type.param": "verified",
         "type.ptr": "verified",
         "type.slice": "verified",
         "type.string": "verified",
-        "type.tuple": "refused",
+        "type.tuple": "verified",
         "type.unit": "verified",
         "unop.complement": "verified",
         "unop.deref": "refused",
@@ -1683,22 +1686,46 @@
         "assign.mul": "verified",
         "assign.or": "verified",
         "assign.rem": "verified",
-        "assign.shl": "refused",
-        "assign.shr": "refused",
+        "assign.shl": {
+          "note": "Case assign-shl: its module does not use the feature.",
+          "state": "refused"
+        },
+        "assign.shr": {
+          "note": "Case assign-shr: its module does not use the feature.",
+          "state": "refused"
+        },
         "assign.sub": "verified",
         "assign.xor": "verified",
         "decl.embedded": "refused",
         "decl.enum": "verified",
-        "decl.interface": "refused",
+        "decl.interface": {
+          "note": "Case decl-interface: its module does not use the feature.",
+          "state": "refused"
+        },
         "decl.newtype": "refused",
         "decl.struct": "verified",
-        "decl.type_params": "refused",
-        "decl.union": "refused",
-        "decl.var": "refused",
-        "decl.variadic": "refused",
+        "decl.type_params": {
+          "note": "Case decl-generic: its module does not use the feature.",
+          "state": "refused"
+        },
+        "decl.union": {
+          "note": "Case decl-union: its module does not use the feature.",
+          "state": "refused"
+        },
+        "decl.var": {
+          "note": "Case decl-var-int: its module does not use the feature.",
+          "state": "refused"
+        },
+        "decl.variadic": {
+          "note": "Case decl-variadic-local: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.binop": "verified",
         "expr.call": "verified",
-        "expr.call_value": "refused",
+        "expr.call_value": {
+          "note": "Case expr-call-value: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.const": "verified",
         "expr.conv": "verified",
         "expr.errvar": {
@@ -1708,14 +1735,32 @@
         "expr.extern": "refused",
         "expr.extern_method": "refused",
         "expr.field": "verified",
-        "expr.float": "refused",
-        "expr.func_ref": "refused",
-        "expr.global": "refused",
-        "expr.iface_call": "refused",
+        "expr.float": {
+          "note": "Case expr-float: its module does not use the feature.",
+          "state": "refused"
+        },
+        "expr.func_ref": {
+          "note": "Case expr-func-value: its module does not use the feature.",
+          "state": "refused"
+        },
+        "expr.global": {
+          "note": "Case expr-global: its module does not use the feature.",
+          "state": "refused"
+        },
+        "expr.iface_call": {
+          "note": "Case expr-iface-call: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.index": "verified",
-        "expr.instantiate": "refused",
+        "expr.instantiate": {
+          "note": "Case expr-instantiate: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.intrinsic": "verified",
-        "expr.lambda": "refused",
+        "expr.lambda": {
+          "note": "Case expr-lambda: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.lit": "verified",
         "expr.make": "verified",
         "expr.method": "verified",
@@ -1723,10 +1768,16 @@
           "note": "Case expr-nil-error: its module does not use the feature.",
           "state": "refused"
         },
-        "expr.spread": "refused",
+        "expr.spread": {
+          "note": "Case expr-spread-local: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.struct": "verified",
         "expr.to_error": "refused",
-        "expr.to_iface": "refused",
+        "expr.to_iface": {
+          "note": "Case expr-to-iface: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.unop": "verified",
         "expr.var": "verified",
         "expr.zero": {
@@ -1741,9 +1792,15 @@
         "fact.shared": "n/a",
         "fact.unordered_iteration": "n/a",
         "intrinsic.append": "verified",
-        "intrinsic.errorf": "refused",
+        "intrinsic.errorf": {
+          "note": "Case intrinsic-errorf: its module does not use the feature.",
+          "state": "refused"
+        },
         "intrinsic.len": "verified",
-        "intrinsic.println": "refused",
+        "intrinsic.println": {
+          "note": "Case intrinsic-println-int: its module does not use the feature.",
+          "state": "refused"
+        },
         "intrinsic.sorted_keys": "verified",
         "intrinsic.sprintf": "verified",
         "op.add": "verified",
@@ -1761,8 +1818,14 @@
         "op.ne": "verified",
         "op.or": "verified",
         "op.rem": "verified",
-        "op.shl": "refused",
-        "op.shr": "refused",
+        "op.shl": {
+          "note": "Case op-shl: its module does not use the feature.",
+          "state": "refused"
+        },
+        "op.shr": {
+          "note": "Case op-shr: its module does not use the feature.",
+          "state": "refused"
+        },
         "op.sub": "verified",
         "op.xor": "verified",
         "sem.continue.post": "verified",
@@ -1774,7 +1837,10 @@
         "sem.map.order": "verified",
         "sem.multi_assign.order": "refused",
         "sem.rem.sign": "verified",
-        "sem.switch.break": "refused",
+        "sem.switch.break": {
+          "note": "Case sem-switch-break: its module does not use the feature.",
+          "state": "refused"
+        },
         "stmt.assign": "verified",
         "stmt.break": "verified",
         "stmt.continue": "verified",
@@ -1791,7 +1857,10 @@
         "stmt.send": "refused",
         "stmt.switch": "verified",
         "stmt.var": "refused",
-        "type.any": "refused",
+        "type.any": {
+          "note": "Case type-any: its module does not use the feature.",
+          "state": "refused"
+        },
         "type.array": "refused",
         "type.bool": "verified",
         "type.chan": "refused",
@@ -1800,16 +1869,28 @@
           "state": "refused"
         },
         "type.extern": "refused",
-        "type.float": "refused",
-        "type.func": "refused",
+        "type.float": {
+          "note": "Case type-float-compare: its module does not use the feature.",
+          "state": "refused"
+        },
+        "type.func": {
+          "note": "Case type-func: its module does not use the feature.",
+          "state": "refused"
+        },
         "type.int": "verified",
         "type.map": "verified",
         "type.named": "verified",
-        "type.param": "refused",
+        "type.param": {
+          "note": "Case type-param: its module does not use the feature.",
+          "state": "refused"
+        },
         "type.ptr": "verified",
         "type.slice": "verified",
         "type.string": "verified",
-        "type.tuple": "refused",
+        "type.tuple": {
+          "note": "Case type-tuple-error: its module does not use the feature.",
+          "state": "refused"
+        },
         "type.unit": "verified",
         "unop.complement": "verified",
         "unop.deref": "refused",

@@ -1,6 +1,6 @@
 package shapes;
 
-public class Disc implements Shape { // refused
+public class Disc implements Shape {
     private long radius;
 
     public long area() {

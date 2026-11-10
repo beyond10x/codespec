@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Wide",
+      "args": [
+        "true"
+      ]
+    },
+    {
+      "func": "Narrow",
+      "args": [
+        "true"
+      ]
+    }
+  ]
+}

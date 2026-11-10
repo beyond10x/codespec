@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "java",
     "version": "0.6.1",
-    "manifest_sha256": "b997089720ce1c2d9eaad8e147739273822066428481e7498684b3bc98abeaee"
+    "manifest_sha256": "beced944ac43eecbd60fd9c0dedf70b6b343a25f3f236197872ed9e9097cc1f8"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "c79c66b7e7c6dbd33031ffcd75c6e5ea5d9caf81e5e5ebcdb288dc42de882705"
+    "sha256": "40224a96be7dd426c3b50a315eabbbecd736a939273d0e6729b1b5caccff33b4"
   },
   "corpus": {
-    "sha256": "80f1c0b0c6437872d5b298ce13cfaf98c66285029ccef0ddf0bc5ff6123f1a7b"
+    "sha256": "35dcdf26a50411670cc21d724913923cc5796c269c0d9cadb061c0de1703033c"
   },
   "codespec": "0.6.1",
   "features": [
@@ -71,15 +71,19 @@
     },
     {
       "id": "assign.shl",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shl"
+      ]
     },
     {
       "id": "assign.shr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shr"
+      ]
     },
     {
       "id": "assign.sub",
@@ -113,9 +117,11 @@
     },
     {
       "id": "decl.interface",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-interface"
+      ]
     },
     {
       "id": "decl.newtype",
@@ -133,27 +139,39 @@
     },
     {
       "id": "decl.type_params",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-generic"
+      ]
     },
     {
       "id": "decl.union",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-union"
+      ],
+      "case": "decl-union",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.union outside a foreign statement"
     },
     {
       "id": "decl.var",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-var-int"
+      ]
     },
     {
       "id": "decl.variadic",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-variadic-local"
+      ]
     },
     {
       "id": "expr.binop",
@@ -173,9 +191,11 @@
     },
     {
       "id": "expr.call_value",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-call-value"
+      ]
     },
     {
       "id": "expr.const",
@@ -223,27 +243,35 @@
     },
     {
       "id": "expr.float",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-float"
+      ]
     },
     {
       "id": "expr.func_ref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-func-value"
+      ]
     },
     {
       "id": "expr.global",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-global"
+      ]
     },
     {
       "id": "expr.iface_call",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-iface-call"
+      ]
     },
     {
       "id": "expr.index",
@@ -255,9 +283,11 @@
     },
     {
       "id": "expr.instantiate",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-instantiate"
+      ]
     },
     {
       "id": "expr.intrinsic",
@@ -269,9 +299,11 @@
     },
     {
       "id": "expr.lambda",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-lambda"
+      ]
     },
     {
       "id": "expr.lit",
@@ -307,9 +339,11 @@
     },
     {
       "id": "expr.spread",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-spread-local"
+      ]
     },
     {
       "id": "expr.struct",
@@ -327,9 +361,11 @@
     },
     {
       "id": "expr.to_iface",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-iface"
+      ]
     },
     {
       "id": "expr.unop",
@@ -407,9 +443,11 @@
     },
     {
       "id": "intrinsic.errorf",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-errorf"
+      ]
     },
     {
       "id": "intrinsic.len",
@@ -421,9 +459,11 @@
     },
     {
       "id": "intrinsic.println",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "intrinsic-println-int"
+      ]
     },
     {
       "id": "intrinsic.sorted_keys",
@@ -561,15 +601,19 @@
     },
     {
       "id": "op.shl",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shl"
+      ]
     },
     {
       "id": "op.shr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shr"
+      ]
     },
     {
       "id": "op.sub",
@@ -636,9 +680,11 @@
     },
     {
       "id": "sem.switch.break",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-switch-break"
+      ]
     },
     {
       "id": "stmt.assign",
@@ -762,9 +808,11 @@
     },
     {
       "id": "type.any",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-any"
+      ]
     },
     {
       "id": "type.array",
@@ -802,15 +850,19 @@
     },
     {
       "id": "type.float",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-float-compare"
+      ]
     },
     {
       "id": "type.func",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-func"
+      ]
     },
     {
       "id": "type.int",
@@ -838,9 +890,11 @@
     },
     {
       "id": "type.param",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-param"
+      ]
     },
     {
       "id": "type.ptr",
@@ -868,9 +922,11 @@
     },
     {
       "id": "type.tuple",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-tuple-error"
+      ]
     },
     {
       "id": "type.unit",
@@ -935,12 +991,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 77,
-    "pass": 77,
+    "claimed": 102,
+    "pass": 102,
     "fail": 0,
-    "refused_unclaimed": 0,
+    "refused_unclaimed": 1,
     "pass_unclaimed": 0,
-    "untested": 50,
+    "untested": 24,
     "boundary_fail": 0
   },
   "conforms": true

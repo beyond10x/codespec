@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Allowed",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Allowed",
+      "args": [
+        "-3"
+      ]
+    }
+  ]
+}
