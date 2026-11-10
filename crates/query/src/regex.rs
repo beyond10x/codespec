@@ -6,7 +6,12 @@
 //! An expression compiles to a program of at most [`MAX_PROGRAM`] instructions, groups nest at
 //! most [`MAX_GROUPS`] deep and a count is at most [`MAX_COUNT`]; it runs as a Pike VM, every
 //! thread advanced one character at a time, so matching takes time linear in the string and
-//! never recurses.
+//! never recurses. A class is stored once, sorted and merged, however often a count repeats it:
+//! an instruction takes [`INST_BYTES`] bytes, so a program holds at most
+//! `MAX_PROGRAM * INST_BYTES` bytes of instructions plus its classes as written, and a class is
+//! searched in time logarithmic in its ranges.
+
+use std::rc::Rc;
 
 /// How deep groups may nest.
 pub const MAX_GROUPS: usize = 64;
@@ -14,12 +19,21 @@ pub const MAX_GROUPS: usize = 64;
 pub const MAX_COUNT: usize = 1000;
 /// The most instructions an expression compiles to.
 pub const MAX_PROGRAM: usize = 100_000;
+/// The bytes one instruction takes; a class's ranges are shared, not copied into it.
+pub const INST_BYTES: usize = std::mem::size_of::<Inst>();
+const _: () = assert!(
+    INST_BYTES <= 24,
+    "an instruction holds a pointer to its class"
+);
+
+/// A class: its ranges sorted and merged.
+type Ranges = Rc<[(char, char)]>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Atom {
     Char(char),
     Any,
-    Class(Vec<(char, char)>, bool),
+    Class(Ranges, bool),
     Start,
     End,
     Group(Vec<Vec<Piece>>),
@@ -36,7 +50,7 @@ struct Piece {
 enum Inst {
     Char(char),
     Any,
-    Class(Vec<(char, char)>, bool),
+    Class(Ranges, bool),
     Start,
     End,
     Split(usize, usize),
@@ -57,9 +71,10 @@ struct Parser<'a> {
     depth: usize,
 }
 
+// Sorted and disjoint, as `in_class` needs a class's ranges.
 const DIGIT: &[(char, char)] = &[('0', '9')];
 const WORD: &[(char, char)] = &[('0', '9'), ('A', 'Z'), ('_', '_'), ('a', 'z')];
-const SPACE: &[(char, char)] = &[(' ', ' '), ('\t', '\r')];
+const SPACE: &[(char, char)] = &[('\t', '\r'), (' ', ' ')];
 
 impl Parser<'_> {
     fn err(&self, what: &str) -> String {
@@ -149,12 +164,12 @@ impl Parser<'_> {
         let c = self.peek().ok_or_else(|| self.err("a trailing \\"))?;
         self.i += 1;
         Ok(match c {
-            'd' => Atom::Class(DIGIT.to_vec(), false),
-            'D' => Atom::Class(DIGIT.to_vec(), true),
-            'w' => Atom::Class(WORD.to_vec(), false),
-            'W' => Atom::Class(WORD.to_vec(), true),
-            's' => Atom::Class(SPACE.to_vec(), false),
-            'S' => Atom::Class(SPACE.to_vec(), true),
+            'd' => Atom::Class(DIGIT.into(), false),
+            'D' => Atom::Class(DIGIT.into(), true),
+            'w' => Atom::Class(WORD.into(), false),
+            'W' => Atom::Class(WORD.into(), true),
+            's' => Atom::Class(SPACE.into(), false),
+            'S' => Atom::Class(SPACE.into(), true),
             'n' => Atom::Char('\n'),
             't' => Atom::Char('\t'),
             c if c.is_ascii_alphanumeric() => return Err(self.err("an unknown escape")),
@@ -212,7 +227,7 @@ impl Parser<'_> {
                 match self.escape()? {
                     Atom::Char(c) => c,
                     Atom::Class(r, false) => {
-                        ranges.extend(r);
+                        ranges.extend(r.iter().copied());
                         continue;
                     }
                     _ => return Err(self.err("a negated class inside a class")),
@@ -238,8 +253,24 @@ impl Parser<'_> {
                 ranges.push((lo, lo));
             }
         }
-        Ok(Atom::Class(ranges, negated))
+        ranges.sort_unstable();
+        let mut merged: Vec<(char, char)> = Vec::with_capacity(ranges.len());
+        for (lo, hi) in ranges {
+            match merged.last_mut() {
+                Some(last) if (lo as u32) <= (last.1 as u32).saturating_add(1) => {
+                    last.1 = last.1.max(hi);
+                }
+                _ => merged.push((lo, hi)),
+            }
+        }
+        Ok(Atom::Class(merged.into(), negated))
     }
+}
+
+/// Whether the sorted, merged `ranges` hold `c`.
+fn in_class(ranges: &[(char, char)], c: char) -> bool {
+    let k = ranges.partition_point(|&(_, hi)| hi < c);
+    ranges.get(k).is_some_and(|&(lo, _)| lo <= c)
 }
 
 /// Compiles parsed alternatives into instructions; recursion follows the nesting of groups,
@@ -312,7 +343,8 @@ impl Compiler {
         match a {
             Atom::Char(c) => self.emit(Inst::Char(*c)).map(|_| ()),
             Atom::Any => self.emit(Inst::Any).map(|_| ()),
-            Atom::Class(r, n) => self.emit(Inst::Class(r.clone(), *n)).map(|_| ()),
+            // The ranges are shared: repeating a class copies a pointer, not its ranges.
+            Atom::Class(r, n) => self.emit(Inst::Class(Rc::clone(r), *n)).map(|_| ()),
             Atom::Start => self.emit(Inst::Start).map(|_| ()),
             Atom::End => self.emit(Inst::End).map(|_| ()),
             Atom::Group(g) => self.alts(g),
@@ -356,9 +388,7 @@ impl Regex {
                 let hit = match &self.prog[pc] {
                     Inst::Char(x) => c == *x,
                     Inst::Any => true,
-                    Inst::Class(ranges, negated) => {
-                        ranges.iter().any(|&(lo, hi)| lo <= c && c <= hi) != *negated
-                    }
+                    Inst::Class(ranges, negated) => in_class(ranges, c) != *negated,
                     _ => false,
                 };
                 if hit && self.add(&mut next, &mut mark, &mut stack, pc + 1, step, n) {
@@ -419,7 +449,9 @@ impl Regex {
 
 #[cfg(test)]
 mod tests {
-    use super::Regex;
+    use std::rc::Rc;
+
+    use super::{Inst, Regex};
 
     fn m(re: &str, s: &str) -> bool {
         Regex::new(re).unwrap().is_match(s)
@@ -465,6 +497,34 @@ mod tests {
         }
         let deep = format!("{}a{}", "(".repeat(65), ")".repeat(65));
         assert!(Regex::new(&deep).unwrap_err().contains("limit of cq"));
+    }
+
+    #[test]
+    fn a_repeated_class_shares_its_ranges() {
+        let class: String = (0..10_000u32)
+            .map(|k| char::from_u32(0x4e00 + k).unwrap())
+            .collect();
+        let re = Regex::new(&format!("^([{class}x]{{10}}){{10}}$")).unwrap();
+        let classes: Vec<&Rc<[(char, char)]>> = re
+            .prog
+            .iter()
+            .filter_map(|i| match i {
+                Inst::Class(r, _) => Some(r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(classes.len(), 100);
+        assert!(classes.iter().all(|r| Rc::ptr_eq(r, classes[0])));
+        assert_eq!(
+            classes[0].len(),
+            2,
+            "sorted and merged: x, and one range of 10000"
+        );
+        assert!(re.is_match(&"\u{4e01}x".repeat(50)));
+        assert!(!re.is_match(&"\u{4e01}y".repeat(50)));
+        for c in [super::DIGIT, super::WORD, super::SPACE] {
+            assert!(c.windows(2).all(|w| w[0].1 < w[1].0), "{c:?}");
+        }
     }
 
     #[test]

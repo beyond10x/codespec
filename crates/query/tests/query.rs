@@ -409,3 +409,218 @@ fn json_output_is_a_query_report() {
         "example.com/plugin.hook"
     );
 }
+
+/// The node fields that hold a node inside a read body and never a function: an opaque function
+/// has no such node any document names (its statements and expressions are wild in `stmt` and
+/// `expr`, with any id).
+const BODY_NODES: &[(&str, &str)] = &[
+    ("stmt", "id"),
+    ("expr", "id"),
+    ("expr", "stmt"),
+    ("expr", "x"),
+    ("expr", "y"),
+    ("let_name", "stmt"),
+    ("field_init", "expr"),
+    ("field_init", "value"),
+    ("call", "recv"),
+    ("foreign", "stmt"),
+    ("contains", "inner"),
+    ("cfg_next", "from"),
+    ("cfg_next", "to"),
+    ("entry", "node"),
+    ("exit", "node"),
+    ("dominates", "a"),
+    ("dominates", "b"),
+    ("postdominates", "a"),
+    ("postdominates", "b"),
+    ("guards", "cond"),
+    ("guards", "node"),
+    ("def", "node"),
+    ("use", "node"),
+    ("flows", "from"),
+    ("flows", "to"),
+    ("value", "expr"),
+];
+
+/// Every node field of every relation, the opaque `hook` in it, negated: the answer is no row
+/// (a fact holds it) or a row resting on `hook`, never a definite absence (§ 4.3). The fields
+/// that hold only nodes inside bodies are left out, and the fact base where `hook` has a body
+/// shows that none of them holds a function.
+#[test]
+fn no_negation_across_an_opaque_function_is_a_definite_absence() {
+    let possible = module(&fixture("unknown/possible/plugin.cir.json"));
+    let definite = module(&fixture("unknown/definite/plugin.cir.json"));
+    let read = FactBase::build(std::slice::from_ref(&definite));
+    let funcs: BTreeSet<String> = read.rows("func").iter().map(|r| text(&r[0])).collect();
+    let mut checked = 0;
+    let mut definite_rows = Vec::new();
+    for r in codespec_query::RELATIONS {
+        for (k, (field, ty)) in r.fields.iter().enumerate() {
+            if ty.name() != "node" {
+                continue;
+            }
+            if BODY_NODES.contains(&(r.name, *field)) {
+                for row in read.rows(r.name) {
+                    assert!(
+                        !funcs.contains(&text(&row[k])),
+                        "{}.{field} holds the function {:?}",
+                        r.name,
+                        row[k]
+                    );
+                }
+                continue;
+            }
+            let q = format!(
+                "?- func{{id: F, name: \"hook\"}}, !{}{{{field}: F}}.",
+                r.name
+            );
+            let program = parse(&q).unwrap_or_else(|e| panic!("{q}: {e}"));
+            let facts = FactBase::build(std::slice::from_ref(&possible));
+            let a = run(&program, &facts, &Names::default()).unwrap_or_else(|e| panic!("{e}"));
+            for row in &a.rows {
+                if row.unknown.is_empty() {
+                    definite_rows.push(format!("{}.{field}", r.name));
+                } else {
+                    assert_eq!(row.unknown[0].site, "example.com/plugin.hook", "{q}");
+                }
+            }
+            checked += 1;
+        }
+    }
+    assert!(checked > 20, "{checked} fields");
+    assert_eq!(definite_rows, Vec::<String>::new());
+}
+
+/// x(1) holds, x(2) and x(3) only possibly: the count is 1, 2 or 3, the minimum 1, the maximum
+/// 1, 2 or 3; a sum or a list over them takes the value over the sure facts and that over all.
+#[test]
+fn an_aggregate_over_possible_facts_takes_every_value_they_allow() {
+    let rules = r#"
+s1(1) :- module{path: _}, !call{func: "example.com/plugin.hook", callee: "q"}.
+x(1) :- module{path: _}.
+x(2) :- s1(_).
+x(3) :- s1(_).
+"#;
+    let possible = [module(&fixture("unknown/possible/plugin.cir.json"))];
+    let values = |agg: &str| -> Vec<String> {
+        let a = answer(&format!("{rules}?- {agg}."), &possible);
+        a.lines()
+            .map(|l| {
+                let (v, why) = l.split_once('\t').unwrap_or((l, ""));
+                assert!(why.starts_with("possible: example.com/plugin.hook"), "{l}");
+                v.to_string()
+            })
+            .collect()
+    };
+    assert_eq!(values("N = count{ x(K) }"), ["1", "2", "3"]);
+    assert_eq!(values("N = min{ K : x(K) }"), ["1"]);
+    assert_eq!(values("N = max{ K : x(K) }"), ["1", "2", "3"]);
+    assert_eq!(values("N = sum{ K : x(K) }"), ["1", "6"]);
+    assert_eq!(values("N = collect{ K : x(K) }"), ["[1]", "[1, 2, 3]"]);
+    // The definite fixture: all three hold, one value, definite.
+    let definite = [module(&fixture("unknown/definite/plugin.cir.json"))];
+    assert_eq!(
+        answer(&format!("{rules}?- N = count{{ x(K) }}."), &definite),
+        "3\n"
+    );
+}
+
+/// An aggregate inside a body a disjunction expands into is compiled once per body: 32
+/// alternatives around an aggregate over 32 more compile into 32 + 32 * 32 bodies, past the
+/// limit, though each rule alone is within it.
+#[test]
+fn the_bodies_of_aggregates_inside_disjunctions_count_toward_the_limit() {
+    let alts = |var: &str, n: usize| {
+        let a: Vec<String> = (1..=n).map(|k| format!("{var} == \"{k}\"")).collect();
+        format!("({})", a.join(" or "))
+    };
+    let q = |n: usize| {
+        format!(
+            "?- func{{id: F, name: K}}, {}, N = count{{ func{{id: G, name: L}}, {} }}.",
+            alts("K", n),
+            alts("L", n)
+        )
+    };
+    let none: [Module; 0] = [];
+    assert!(
+        run(
+            &parse(&q(31)).unwrap(),
+            &FactBase::build(&none),
+            &Names::default()
+        )
+        .is_ok()
+    );
+    let err = run(
+        &parse(&q(32)).unwrap(),
+        &FactBase::build(&none),
+        &Names::default(),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("more than 1024 bodies") && err.contains("limit of cq"),
+        "{err}"
+    );
+}
+
+/// A body of 1000 literals (MAX_BODY) runs on a test thread's small stack: evaluation keeps
+/// its own stack. Two groups of 999 flatten into a body of 1999 and are refused.
+#[test]
+fn a_long_body_runs_without_recursion_and_flattened_groups_count_toward_the_limit() {
+    let definite = [module(&fixture("unknown/definite/plugin.cir.json"))];
+    let q = format!(
+        "?- func{{id: F, name: \"hook\"}}{}.",
+        ", func{id: F, name: ~\"o\"}".repeat(codespec_query::MAX_BODY - 1)
+    );
+    assert_eq!(answer(&q, &definite), "example.com/plugin.hook\n");
+    let g = format!("({})", vec!["1 == 1"; 999].join(", "));
+    let err = run(
+        &parse(&format!("?- func{{id: F}}, {g}, {g}.")).unwrap(),
+        &FactBase::build(&definite),
+        &Names::default(),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("1999 literals once its parenthesised groups are flattened"),
+        "{err}"
+    );
+}
+
+/// Making a struct makes the named types its fields hold by value, at any depth, an array's
+/// element too, as `codespec effects` counts them for RTA; not a pointer's.
+#[test]
+fn makes_holds_the_types_a_made_struct_holds_by_value() {
+    let named = |n: &str| serde_json::json!({"k": "named", "name": n});
+    let field = |n: &str, t: serde_json::Value| serde_json::json!({"name": n, "t": t});
+    let strukt = |n: &str, fields: Vec<serde_json::Value>| {
+        serde_json::json!({"k": "struct", "name": n, "exported": true, "fields": fields,
+            "pos": "m.go:1"})
+    };
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "go", "name": "hand-written", "version": "0"},
+        "layout": [],
+        "types": [
+            strukt("Outer", vec![
+                field("in", named("Inner")),
+                field("arr", serde_json::json!({"k": "array", "len": 2, "elem": named("Leaf")})),
+                field("p", serde_json::json!({"k": "ptr", "elem": named("Ptr")})),
+            ]),
+            strukt("Inner", vec![field("deep", named("Deep"))]),
+            strukt("Leaf", vec![]),
+            strukt("Ptr", vec![]),
+            strukt("Deep", vec![]),
+        ],
+        "funcs": [{"name": "New", "exported": true, "params": [], "results": [], "pos": "m.go:2",
+            "body": [{"k": "let", "names": ["v"], "pos": "m.go:3",
+                "rhs": [{"k": "struct", "name": "Outer", "fields": [], "t": named("Outer")}]}]}]
+    });
+    let m = Module::from_json(serde_json::to_string(&doc).unwrap().as_bytes())
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        answer("?- makes(F, T).", &[m]),
+        ["Deep", "Inner", "Leaf", "Outer"]
+            .iter()
+            .map(|t| format!("example.com/m.New\texample.com/m.{t}\n"))
+            .collect::<String>()
+    );
+}

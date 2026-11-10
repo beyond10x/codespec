@@ -80,7 +80,7 @@ effect{func: node, effect: string, pos: string}
 syscall{func: node, name: string, pos: string}
     codespec effects: func may make the syscall through the call at pos, from the barrier given
 makes{func: node, t: type}
-    func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type
+    func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type; making a struct makes the named types its fields hold by value
 implements{t: type, iface: string}
     the method set of t holds every method of the interface iface with an identical signature (the CHA test); iface a declared interface or one a call list names
 

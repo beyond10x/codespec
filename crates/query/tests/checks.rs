@@ -263,3 +263,37 @@ fn one_names_file_serves_codespec_check_and_the_cq_checks() {
         "the names file changes the findings of {changed} cases"
     );
 }
+
+/// cq reads a names list as `codespec check` reads the list of that name, so its table names
+/// exactly the lists of `codespec check`; a names file naming a list neither a module declares
+/// nor `codespec check` has is refused, naming it, as `codespec check` refuses it.
+#[test]
+fn cq_knows_the_names_lists_of_codespec_check_and_refuses_any_other() {
+    let check: BTreeSet<&str> = codespec_check::CHECKS
+        .iter()
+        .flat_map(|c| c.lists.iter().map(|l| l.name))
+        .collect();
+    let cq: BTreeSet<&str> = codespec_query::CHECK_LISTS
+        .iter()
+        .map(|(n, _)| *n)
+        .collect();
+    assert_eq!(cq, check);
+    assert_eq!(
+        codespec_query::CHECK_LISTS.len(),
+        cq.len(),
+        "each list once"
+    );
+    let src = std::fs::read_to_string(checks_dir().join("dropped-error.cq")).unwrap();
+    let program = parse(&src).unwrap();
+    let none: [Module; 0] = [];
+    let with = |names: &[u8]| {
+        run(
+            &program,
+            &FactBase::build(&none),
+            &Names::from_json(names).unwrap(),
+        )
+    };
+    let err = with(br#"{"never-fial": ["x"]}"#).unwrap_err();
+    assert!(err.contains("no list never-fial"), "{err}");
+    assert!(with(br#"{"receive": ["x"], "never-fail": ["x"]}"#).is_ok());
+}

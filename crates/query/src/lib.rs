@@ -17,7 +17,8 @@
 //! the SHA-256 of the codespec version and the SHA-256 of each document, sorted: the same
 //! documents in any order give the same file, a changed one another. A second run reads the file
 //! instead of the documents. [`load_with`] adds `codespec effects`' summaries and barrier, for
-//! `effect` and `syscall`, to the input and to the digest.
+//! `effect` and `syscall`, to the input and to the digest; the summaries in the order given,
+//! since the first summary naming an extern gives its effects.
 //!
 //! `reaches_path` ([`WAITING`]) is the witness of a path pattern: the schema names it as not
 //! built yet, and a query naming it is refused.
@@ -28,13 +29,21 @@
 //! statement without a call list, a call of a function value or through an interface (`calls`
 //! links neither); the same place in a document given twice is one site. Each site comes with
 //! the facts it could hold: an opaque function could make any call, hold any statement and
-//! expression; a foreign statement without a call list any call and expression; an unlinked call
-//! could reach any function. A negated atom holds definitely when no fact satisfies it and none
-//! of those facts would (the relation is evaluated a second time over them); when one of those
-//! would, or when every fact that satisfies it only possibly holds, it holds possibly, resting on
-//! those sites, and so does every row that rests on it, printed `possible: <site> at <pos>
-//! (<reason>)`. A definite fact refutes it. An aggregate over facts that rest on sites rests on
-//! them too.
+//! expression, take any parameters, return any results, start and end anywhere, contain any
+//! node and make a value of any type; a foreign statement without a call list any call and
+//! expression, and any value made; an unlinked call could reach any function. Over the call
+//! graph, a function from which an unknown site is reached may have any effect, make any
+//! syscall and share a component with any function, and any function may be `reached` once a
+//! reached function holds an opaque function's or a foreign statement's code. A negated atom
+//! holds definitely when no fact satisfies it and none of those facts would (the relation is
+//! evaluated a second time over them); when one of those would, or when every fact that
+//! satisfies it only possibly holds, it holds possibly, resting on those sites, and so does
+//! every row that rests on it, printed `possible: <site> at <pos> (<reason>)`. A definite fact
+//! refutes it. A fact derived twice rests on the sites of either derivation; one resting on
+//! fewer sites replaces the others. An aggregate over facts that only possibly hold takes each
+//! value they allow, resting on their sites: `count`, `min` and `max` every value over the facts
+//! that hold and some of the others, `sum` and `collect` the value over those that hold and the
+//! value over all.
 //!
 //! # The language
 //!
@@ -47,14 +56,18 @@
 //! as `T.bits`, aggregates `N = count{body}` and `M = min{X : body}` (`max`, `sum`, `collect`),
 //! grouped by the variables the body shares with the rest of the rule (the body binds them
 //! itself: it is evaluated on its own, `_` and every field a record pattern leaves out a variable
-//! of its own, so `count{call{func: F, callee: C}}` counts the calls), and the builtins
-//! `word(S, I, W)` (the words of a name as `codespec check` splits them), `int(S, N)`,
-//! `replace(S, From, To, R)` and `concat(A, B, R)`. `names never-fail = ["…", …].` declares a
-//! names list that [`Names`] (`--names`, the file `codespec check --names` reads) may replace;
-//! `X in @names.l` holds for an entry equal to `X`, one ending in `*` that `X` starts with, or one
-//! starting with `*` that `X` ends with, and with `X` unbound gives each entry as written. One
-//! `?- body.` is the query: its rows are the bindings of its variables outside aggregates and
-//! negations, in the order they first occur, sorted.
+//! of its own, so `count{call{func: F, callee: C}}` counts the calls; a variable only an inner
+//! aggregate's body holds is that aggregate's own), and the builtins `word(S, I, W)` (the words
+//! of a name as `codespec check` splits them), `int(S, N)`, `replace(S, From, To, R)` and
+//! `concat(A, B, R)`. `names never-fail = ["…", …].` declares a names list that [`Names`]
+//! (`--names`, the file `codespec check --names` reads) may replace; a names file naming a list
+//! that neither the module declares nor `codespec check` has ([`CHECK_LISTS`]) is refused.
+//! `X in @names.l` holds for an entry equal to `X`, and reads `*` as `codespec check` reads it in
+//! that list ([`Glob`]): an entry ending in `*` that `X` starts with, in a list `codespec check`
+//! matches calls or names with by prefix and in every list only cq has; one starting with `*`
+//! that `X` ends with, in the list of file names. With `X` unbound it gives each entry as
+//! written. One `?- body.` is the query: its rows are the bindings of its variables outside
+//! aggregates and negations, in the order they first occur, sorted.
 //!
 //! Evaluation is bottom-up and semi-naive, stratum by stratum; a negation or an aggregate inside
 //! a recursion is refused. [`explain`] prints the rules under the stratum of their heads.
@@ -63,16 +76,32 @@
 //!
 //! Hostile input ends in an error, never in a crash: parentheses, negated conditions,
 //! aggregates and the operators of a term nest at most [`MAX_NESTING`] deep; a body holds at most
-//! [`MAX_BODY`] literals; the disjunctions of one rule expand into at most [`MAX_BODIES`]
-//! bodies; a regular expression's groups nest at most [`MAX_GROUPS`] deep, its counts are at most
-//! [`MAX_COUNT`] and it compiles to at most [`MAX_PROGRAM`] instructions, matched by a Pike VM in
-//! time linear in the string. Strata come from an SCC computed without recursion, so a chain of
+//! [`MAX_BODY`] literals, as written and once its parenthesised groups are flattened; a program
+//! compiles into at most [`MAX_BODIES`] bodies, every disjunction expanded and the negations and
+//! aggregates inside a disjunction counted once for every body they sit in; a regular
+//! expression's groups nest at most [`MAX_GROUPS`] deep, its counts are at most [`MAX_COUNT`]
+//! and it compiles to at most [`MAX_PROGRAM`] instructions of [`INST_BYTES`] bytes, each class
+//! stored once however often a count repeats it, matched by a Pike VM in time linear in the
+//! string. A rule's body is searched with a stack of its own, not by recursion, so a body of any
+//! length runs on any thread. Strata come from an SCC computed without recursion, so a chain of
 //! rules of any length is safe; an index key holds any number of columns.
 //!
 //! # Gaps
 //!
 //! - `calls` links the static calls only: no dispatch candidates under CHA or RTA. `reached` is
 //!   `codespec reach` with `rta` from every `main.main` and `init`.
+//! - `effect` and `syscall` rest on the sites of `unknown` only: an extern without a summary,
+//!   which `codespec effects` reports as unknown, is no site of cq, so a negated `effect` across
+//!   one is definite.
+//! - An opaque function's statements and expressions are wild in `stmt` and `expr` with any id,
+//!   not in `let_name`, `field_init`, the control-flow relations or def-use: a rule that finds
+//!   one of its nodes in the second evaluation and asks those relations of it sees only the
+//!   facts the documents hold.
+//! - An aggregate over a relation an unknown site could add to takes the value over the facts
+//!   the documents hold (and their sites), not every value the site allows; `sum` and `collect`
+//!   over facts that only possibly hold take two values, not every one between.
+//! - A fact whose sites are replaced by fewer ones more than 16 times keeps its sites from then
+//!   on, so evaluation always ends; it may then name more sites than it rests on.
 //! - `--explain` prints the rules by stratum, not one derivation tree per finding (§ 7).
 //! - The checks under `checks/` give `codespec check`'s findings on every fixture of
 //!   `crates/check` they run on, but: `insecure-random` takes neither `--strict` nor `--report`;
@@ -93,7 +122,7 @@ use std::path::{Path, PathBuf};
 
 pub use engine::MAX_BODIES;
 pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, WAITING, schema_text};
-pub use regex::{MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
+pub use regex::{INST_BYTES, MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
 pub use syntax::{MAX_BODY, MAX_NESTING, Program};
 
 /// The format of the JSON report.
@@ -152,7 +181,8 @@ pub fn digest(documents: &[Vec<u8>]) -> String {
 }
 
 /// The cache key of a set of documents read with effect summaries and a barrier: as [`digest`],
-/// then `summary <SHA-256>` for each summary, sorted, and `barrier <SHA-256>`.
+/// then `summary <SHA-256>` for each summary, in the order given (the first summary naming an
+/// extern gives its effects), and `barrier <SHA-256>`.
 pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option<&[u8]>) -> String {
     let mut each: Vec<String> = documents.iter().map(|d| sha256::hex(d)).collect();
     each.sort();
@@ -161,10 +191,10 @@ pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option
         key += &e;
         key.push('\n');
     }
-    let mut sums: Vec<String> = summaries.iter().map(|d| sha256::hex(d)).collect();
-    sums.sort();
-    for e in sums {
-        key += &format!("summary {e}\n");
+    // In the order given: `codespec effects` takes an extern's effects from the first summary
+    // naming it, so another order may give other facts.
+    for d in summaries {
+        key += &format!("summary {}\n", sha256::hex(d));
     }
     if let Some(b) = barrier {
         key += &format!("barrier {}\n", sha256::hex(b));
@@ -250,6 +280,57 @@ pub fn load_with(
     })
 }
 
+/// How the entries of a names list match a string, as `codespec check` reads that list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glob {
+    /// An entry equal to the string (`codespec check` compares the list with `==`, or splits its
+    /// entries into words).
+    Exact,
+    /// Also an entry ending in `*` whose rest the string starts with (`name_in`, `named_by`).
+    Prefix,
+    /// Also an entry starting with `*` whose rest the string ends with (`file_in`).
+    File,
+}
+
+/// The names lists of `codespec check`, each with how it reads the list's entries. A list a cq
+/// module declares under another name reads them as [`Glob::Prefix`].
+pub const CHECK_LISTS: &[(&str, Glob)] = &[
+    ("receive", Glob::Prefix),
+    ("receive-wrappers", Glob::Prefix),
+    ("insert", Glob::Prefix),
+    ("remove", Glob::Prefix),
+    ("not-containers", Glob::Prefix),
+    ("random", Glob::Exact),
+    ("token", Glob::Exact),
+    ("parse", Glob::Prefix),
+    ("ranged", Glob::Exact),
+    ("fold", Glob::Prefix),
+    ("fold-words", Glob::Exact),
+    ("clone", Glob::Exact),
+    ("copy", Glob::Prefix),
+    ("writers", Glob::Exact),
+    ("ignore", Glob::Prefix),
+    ("never-fail", Glob::Exact),
+    ("buffered", Glob::Exact),
+    ("unwrapped", Glob::Prefix),
+    ("lock", Glob::Prefix),
+    ("unlock", Glob::Prefix),
+    ("holders", Glob::Exact),
+    ("arm", Glob::Prefix),
+    ("stop", Glob::Prefix),
+    ("resources", Glob::Exact),
+    ("close", Glob::Exact),
+    ("accept", Glob::Prefix),
+    ("blocking", Glob::Prefix),
+    ("deadline", Glob::Prefix),
+    ("after", Glob::Prefix),
+    ("periodic", Glob::Prefix),
+    ("open", Glob::Prefix),
+    ("consume", Glob::Prefix),
+    ("insert-scan", Glob::Prefix),
+    ("generated", Glob::File),
+];
+
 /// The names lists a names file replaces, by list name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Names {
@@ -259,7 +340,8 @@ pub struct Names {
 impl Names {
     /// A names file: a JSON object of list name to an array of strings, as `codespec check --names`
     /// reads it. Each replaces the list of that name a module declares; a list the module does not
-    /// declare is left alone, so one file serves every check.
+    /// declare is left alone, so one file serves every check and `codespec check`, but [`run`]
+    /// refuses a list that neither the module declares nor [`CHECK_LISTS`] holds.
     pub fn from_json(bytes: &[u8]) -> Result<Names, String> {
         let lists: BTreeMap<String, Vec<String>> = serde_json::from_slice(bytes)
             .map_err(|e| format!("names: an object of list name to an array of strings: {e}"))?;

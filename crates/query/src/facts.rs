@@ -342,7 +342,7 @@ pub const RELATIONS: &[Relation] = &[
     Relation {
         name: "makes",
         fields: &[("func", N), ("t", T)],
-        about: "func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type",
+        about: "func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type; making a struct makes the named types its fields hold by value",
         group: Group::Graph,
     },
     Relation {
@@ -374,6 +374,15 @@ pub const WAITING: &[Waiting] = &[Waiting {
     fields: "from, to, path",
     why: "is the witness of a path pattern (§ 5.2 of docs/query-language.md), which cq does not run yet",
 }];
+
+/// Whether a site holds code nothing read: an opaque function, a foreign statement without a
+/// call list (not a call the fact base cannot link, which `codespec reach` resolves itself).
+pub(crate) fn hides_code(site: &crate::Site) -> bool {
+    site.reason.starts_with(OPAQUE) || site.reason.starts_with(FOREIGN)
+}
+
+const OPAQUE: &str = "opaque function: ";
+const FOREIGN: &str = "foreign statement without a call list: ";
 
 pub fn waiting(name: &str) -> Option<&'static Waiting> {
     WAITING.iter().find(|w| w.name == name)
@@ -776,6 +785,54 @@ impl Builder {
         }
         for r in rows {
             self.add("scc", r);
+        }
+    }
+
+    /// A struct's value holds its fields' values: making one makes every named type its fields
+    /// hold by value (an array's element too, not a pointer's), at any depth, as `codespec
+    /// effects` counts them for RTA.
+    fn fields_made(&mut self, modules: &[&Module]) {
+        let mut fields_of: HashMap<String, Vec<String>> = HashMap::new();
+        for m in modules {
+            for d in &m.types {
+                if let TypeDecl::Struct { name, fields, .. } = d {
+                    let mut held = Vec::new();
+                    for f in fields {
+                        let mut t = &f.t;
+                        while let Type::Array { elem, .. } = t {
+                            t = elem;
+                        }
+                        if matches!(t, Type::Named { .. } | Type::Extern { .. }) {
+                            held.push(self.ty(m, t));
+                        }
+                    }
+                    fields_of.insert(key(label(m), "", name), held);
+                }
+            }
+        }
+        let made: Vec<Vec<Value>> = self
+            .rels
+            .get("makes")
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect();
+        for row in made {
+            let (Value::Str(f), Value::Str(t)) = (&row[0], &row[1]) else {
+                continue;
+            };
+            let mut seen: BTreeSet<String> = BTreeSet::new();
+            let mut stack = vec![t.clone()];
+            while let Some(t) = stack.pop() {
+                // A generic type's id carries its arguments: `example.com/m.Box[int]`.
+                let decl = t.split('[').next().unwrap_or(&t);
+                for u in fields_of.get(decl).into_iter().flatten() {
+                    if seen.insert(u.clone()) {
+                        stack.push(u.clone());
+                        self.add("makes", vec![s(f), s(u)]);
+                    }
+                }
+            }
         }
     }
 
@@ -1618,14 +1675,15 @@ impl Walker<'_> {
                             &self.func,
                             &id,
                             pos.clone(),
-                            format!("foreign statement without a call list: {reason}"),
+                            format!("{FOREIGN}{reason}"),
                         );
                         let f = s(&self.func);
                         self.b
                             .add_wild("call", &[("site", s(&id)), ("func", f.clone())], site);
                         self.b.add_wild("calls", &[("site", s(&id))], site);
                         self.b
-                            .add_wild("expr", &[("func", f), ("stmt", s(&id))], site);
+                            .add_wild("expr", &[("func", f.clone()), ("stmt", s(&id))], site);
+                        self.b.add_wild("makes", &[("func", f)], site);
                     }
                 }
             }
@@ -2227,15 +2285,11 @@ impl FactBase {
                 if !recv.is_empty() {
                     b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
                 }
-                let site = b.unknown(
-                    &id,
-                    &id,
-                    at(m, &o.pos),
-                    format!("opaque function: {}", o.reason),
-                );
-                for rel in ["stmt", "expr"] {
+                let site = b.unknown(&id, &id, at(m, &o.pos), format!("{OPAQUE}{}", o.reason));
+                for rel in ["stmt", "expr", "param", "result", "entry", "exit", "makes"] {
                     b.add_wild(rel, &[("func", s(&id))], site);
                 }
+                b.add_wild("contains", &[("outer", s(&id))], site);
                 b.add_wild("call", &[("site", s(&id)), ("func", s(&id))], site);
                 b.add_wild("calls", &[("site", s(&id))], site);
                 if !o.calls.is_empty() {
@@ -2322,6 +2376,7 @@ impl FactBase {
                 }
             }
         }
+        b.fields_made(&order);
         b.scc();
         for (func, rel, name, pos) in effects(modules, summaries, barrier) {
             b.add(rel, vec![s(func), s(name), s(pos)]);

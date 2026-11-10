@@ -14,8 +14,8 @@ use std::rc::Rc;
 
 use crate::facts::{FactBase, ON_DEMAND, Ty, relation};
 use crate::regex::Regex;
-use crate::syntax::{AggFn, Args, Atom, Field, Lit, Op, Program, Rule, Term, query_text};
-use crate::{Answer, Names, Row, Value};
+use crate::syntax::{AggFn, Args, Atom, Field, Lit, MAX_BODY, Op, Program, Rule, Term, query_text};
+use crate::{Answer, CHECK_LISTS, Glob, Names, Row, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum V {
@@ -116,27 +116,44 @@ type Index = HashMap<Vec<V>, Vec<usize>>;
 struct Store {
     tuples: Vec<Vec<V>>,
     anns: Vec<Ann>,
+    /// How often each tuple's annotation was replaced by a smaller one.
+    shrunk: Vec<u8>,
     at: HashMap<Vec<V>, usize>,
     /// The tuples with a wild field; never in an index.
     tops: Vec<usize>,
     indexes: RefCell<HashMap<Vec<usize>, Index>>,
 }
 
+/// How often a fact's annotation is replaced by a smaller one; past that it only grows, so a
+/// fixed point is always reached.
+const MAX_SHRINKS: u8 = 16;
+
+/// Whether the sorted `a` lies inside the sorted `b`.
+fn subset(a: &[u32], b: &[u32]) -> bool {
+    a.iter().all(|x| b.binary_search(x).is_ok())
+}
+
 impl Store {
-    /// Adds a fact or what it rests on; whether anything changed.
+    /// Adds a fact or what it rests on; whether anything changed. A fact derived twice rests on
+    /// the sites of either derivation: a definite derivation makes it definite, one resting on
+    /// fewer sites replaces the annotation (the fact holds whenever those sites allow it, the
+    /// other derivation adds nothing), and one resting on other sites adds them.
     fn insert(&mut self, t: Vec<V>, ann: Ann) -> Option<usize> {
         if let Some(&k) = self.at.get(&t) {
             let old = &mut self.anns[k];
-            if old.is_empty() {
+            if old.is_empty() || subset(old, &ann) {
                 return None;
             }
-            if ann.is_empty() {
-                old.clear();
+            if subset(&ann, old) {
+                if self.shrunk[k] == MAX_SHRINKS && !ann.is_empty() {
+                    return None;
+                }
+                self.shrunk[k] = self.shrunk[k].saturating_add(1);
+                *old = ann;
                 return Some(k);
             }
-            let before = old.len();
             union(old, &ann);
-            return (old.len() != before).then_some(k);
+            return Some(k);
         }
         let k = self.tuples.len();
         if t.iter().any(V::has_top) {
@@ -149,6 +166,7 @@ impl Store {
         self.at.insert(t.clone(), k);
         self.tuples.push(t);
         self.anns.push(ann);
+        self.shrunk.push(0);
         Some(k)
     }
 
@@ -215,33 +233,41 @@ impl Builtin {
     }
 }
 
-/// A names list: an entry ending in `*` names every string starting with the rest, one starting
-/// with `*` every string ending in it, as `codespec check` reads its lists.
+/// A names list, its entries read as `codespec check` reads the list of that name ([`Glob`]).
 #[derive(Debug)]
 struct NameList {
     entries: Vec<String>,
     exact: BTreeSet<String>,
+    glob: Glob,
 }
 
 impl NameList {
-    fn new(entries: &[String]) -> NameList {
+    fn new(entries: &[String], glob: Glob) -> NameList {
         NameList {
             entries: entries.to_vec(),
             exact: entries.iter().cloned().collect(),
+            glob,
         }
     }
 
     fn holds(&self, s: &str) -> bool {
-        self.exact.contains(s)
-            || self.entries.iter().any(|e| {
-                if let Some(prefix) = e.strip_suffix('*') {
-                    s.starts_with(prefix)
-                } else if let Some(suffix) = e.strip_prefix('*') {
+        if self.exact.contains(s) {
+            return true;
+        }
+        match self.glob {
+            Glob::Exact => false,
+            Glob::Prefix => self
+                .entries
+                .iter()
+                .any(|e| e.strip_suffix('*').is_some_and(|p| s.starts_with(p))),
+            Glob::File => self.entries.iter().any(|e| {
+                if let Some(suffix) = e.strip_prefix('*') {
                     s.ends_with(suffix)
                 } else {
-                    false
+                    e.strip_suffix('*').is_some_and(|p| s.starts_with(p))
                 }
-            })
+            }),
+        }
     }
 }
 
@@ -354,8 +380,28 @@ fn lit_vars(l: &Lit, out: &mut Vec<String>) {
     }
 }
 
-/// The most bodies the disjunctions of one rule expand into.
+/// The most bodies a program compiles into: the bodies the disjunctions of its rules and its
+/// query expand into, with those of the negations and aggregates inside them, once for every
+/// body they sit in.
 pub const MAX_BODIES: usize = 1024;
+
+/// How many literals a body holds once its parenthesised groups are flattened, the longest
+/// alternative of each counted.
+fn flat_len(body: &[Lit]) -> usize {
+    body.iter().fold(0usize, |n, l| match l {
+        Lit::Or(alts) => n.saturating_add(alts.iter().map(|a| flat_len(a)).max().unwrap_or(0)),
+        _ => n.saturating_add(1),
+    })
+}
+
+/// The variables of `l` outside the bodies of the aggregates in it.
+fn visible_vars(l: &Lit, out: &mut Vec<String>) {
+    match l {
+        Lit::Agg { var, .. } => out.push(var.clone()),
+        Lit::Or(alts) => alts.iter().flatten().for_each(|l| visible_vars(l, out)),
+        l => lit_vars(l, out),
+    }
+}
 
 /// How many bodies `body` expands into, counted without expanding, saturating.
 fn bodies(body: &[Lit]) -> usize {
@@ -399,6 +445,8 @@ struct Compiler<'a> {
     names: &'a BTreeMap<String, Vec<String>>,
     lists: HashMap<String, Rc<NameList>>,
     fresh: usize,
+    /// The bodies compiled so far.
+    bodies: usize,
 }
 
 fn negate(op: Op) -> Option<Op> {
@@ -447,7 +495,11 @@ impl Compiler<'_> {
                 "no names list {name}: declare it with names {name} = [\"…\"]."
             ));
         };
-        let l = Rc::new(NameList::new(items));
+        let glob = CHECK_LISTS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map_or(Glob::Prefix, |(_, g)| *g);
+        let l = Rc::new(NameList::new(items, glob));
         self.lists.insert(name.to_string(), l.clone());
         Ok(l)
     }
@@ -700,6 +752,11 @@ impl Compiler<'_> {
                 let body: Vec<Lit> = body.iter().map(|l| self.name_anys(l)).collect();
                 let mut vs = Vec::new();
                 body.iter().for_each(|l| lit_vars(l, &mut vs));
+                // A variable only an inner aggregate's body holds, and nothing outside this
+                // aggregate, is that inner aggregate's own: not a column here.
+                let mut visible = Vec::new();
+                body.iter().for_each(|l| visible_vars(l, &mut visible));
+                vs.retain(|v| visible.contains(v) || elsewhere(v));
                 let (mut outer, mut local) = (Vec::new(), Vec::new());
                 for v in vs {
                     if outer.contains(&v) || local.contains(&v) {
@@ -805,20 +862,32 @@ impl Compiler<'_> {
                 r.head
             ));
         };
+        let what = if r.head.rel == "__query" {
+            "the query".to_string()
+        } else {
+            r.head.to_string()
+        };
         let n = bodies(&r.body);
         if n > MAX_BODIES {
             return Err(format!(
-                "{}: its disjunctions expand into {} bodies, more than {MAX_BODIES}, the limit of cq; split it into rules",
-                if r.head.rel == "__query" {
-                    "the query".to_string()
-                } else {
-                    r.head.to_string()
-                },
+                "{what}: its disjunctions expand into {} bodies, more than {MAX_BODIES}, the limit of cq; split it into rules",
                 if n == usize::MAX {
                     "too many".to_string()
                 } else {
                     n.to_string()
                 }
+            ));
+        }
+        if self.bodies + n > MAX_BODIES {
+            return Err(format!(
+                "{what}: the program compiles into more than {MAX_BODIES} bodies (the disjunctions of its rules expanded, with the negations and aggregates inside them once for every body they sit in), the limit of cq; split the disjunctions into rules"
+            ));
+        }
+        self.bodies += n;
+        let len = flat_len(&r.body);
+        if len > MAX_BODY {
+            return Err(format!(
+                "{what}: a body of {len} literals once its parenthesised groups are flattened, more than {MAX_BODY}, the limit of cq"
             ));
         }
         for body in expand(&r.body) {
@@ -1058,9 +1127,20 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
     let Some(query) = &p.query else {
         return Err("the module has no query: add one, ?- …".into());
     };
-    // A names file serves several modules (and codespec check): a list this module does not
-    // declare is left alone.
+    // A names file serves several modules and codespec check: a list this module does not
+    // declare is left alone, one neither it nor codespec check has is refused, as codespec check
+    // refuses it.
     let mut lists: BTreeMap<String, Vec<String>> = p.names.iter().cloned().collect();
+    for name in names.lists.keys() {
+        if !lists.contains_key(name) && !CHECK_LISTS.iter().any(|(n, _)| n == name) {
+            let mut known: BTreeSet<&str> = CHECK_LISTS.iter().map(|(n, _)| *n).collect();
+            known.extend(lists.keys().map(String::as_str));
+            return Err(format!(
+                "names: no list {name}; the lists are {}",
+                known.into_iter().collect::<Vec<_>>().join(", ")
+            ));
+        }
+    }
     for (name, items) in &names.lists {
         if let Some(l) = lists.get_mut(name) {
             *l = items.clone();
@@ -1073,6 +1153,7 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         names: &lists,
         lists: HashMap::new(),
         fresh: 0,
+        bodies: 0,
     };
     for r in &p.rules {
         if relation(&r.head.rel).is_some() || Builtin::of(&r.head.rel).is_some() {
@@ -1233,7 +1314,14 @@ struct Eval<'a> {
     upper: Vec<Store>,
     /// The relations evaluated in the upper mode too.
     in_upper: Vec<bool>,
+    closure: RefCell<Option<Closure>>,
 }
+
+/// Each function, the functions it reaches and the unknown sites it reaches ([`Eval::closure`]).
+type Closure = Rc<Vec<(Rc<str>, Vec<Rc<str>>, Ann)>>;
+
+/// The relations of the call graph whose upper bound [`Eval::graph_wild`] computes.
+const GRAPH_WILD: &[&str] = &["effect", "syscall", "scc", "reached"];
 
 fn eqv(a: &V, b: &V, mode: Mode) -> bool {
     a == b || (mode == Mode::Upper && (*a == V::Top || *b == V::Top))
@@ -1269,7 +1357,15 @@ impl<'a> Eval<'a> {
         }
         let mut st = Store::default();
         if name == "reaches" {
-            self.reaches(&mut st, upper);
+            for (f, reached, sites) in self.closure().iter() {
+                let f = V::Str(f.clone());
+                for g in reached {
+                    st.insert(vec![f.clone(), V::Str(g.clone())], Vec::new());
+                }
+                if upper && !sites.is_empty() {
+                    st.insert(vec![f, V::Top], sites.clone());
+                }
+            }
         } else {
             for row in self.fb.rels.get(name).into_iter().flatten() {
                 st.insert(row.iter().map(V::of).collect(), Vec::new());
@@ -1282,6 +1378,7 @@ impl<'a> Eval<'a> {
                         .collect();
                     st.insert(t, vec![*site as u32]);
                 }
+                self.graph_wild(name, &mut st);
             }
         }
         let st = Rc::new(st);
@@ -1289,9 +1386,73 @@ impl<'a> Eval<'a> {
         st
     }
 
-    /// `reaches`: the closure of call → calls; in the upper mode, a function from which some
-    /// unknown site is reached reaches anything, resting on those sites.
-    fn reaches(&self, st: &mut Store, upper: bool) {
+    /// The facts an unknown site could add to a relation of the call graph: a function from
+    /// which some unknown site is reached may have any effect and make any syscall, and may sit in
+    /// a component with any function, resting on those sites; any function may be reached when
+    /// a reached function holds code nothing read (an opaque function, a foreign statement
+    /// without a call list).
+    fn graph_wild(&self, name: &str, st: &mut Store) {
+        if !GRAPH_WILD.contains(&name) {
+            return;
+        }
+        if name == "reached" {
+            let reached: HashSet<&str> = self
+                .fb
+                .rels
+                .get("reached")
+                .into_iter()
+                .flatten()
+                .filter_map(|r| match &r[0] {
+                    Value::Str(f) => Some(f.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let mut sites = Vec::new();
+            for row in self.fb.rels.get("unknown").into_iter().flatten() {
+                if let (Value::Str(f), Some(k)) = (&row[0], self.site_of(row))
+                    && reached.contains(f.as_str())
+                    && crate::facts::hides_code(&self.fb.sites[k as usize])
+                {
+                    sites.push(k);
+                }
+            }
+            sites.sort_unstable();
+            sites.dedup();
+            if !sites.is_empty() {
+                st.insert(vec![V::Top], sites);
+            }
+            return;
+        }
+        let arity = relation(name).expect("a relation").fields.len();
+        for (f, _, sites) in self.closure().iter() {
+            if !sites.is_empty() {
+                let mut t = vec![V::Top; arity];
+                t[0] = V::Str(f.clone());
+                st.insert(t, sites.clone());
+            }
+        }
+    }
+
+    /// The site of an `unknown` row.
+    fn site_of(&self, row: &[Value]) -> Option<u32> {
+        let (Value::Str(site), Value::Str(pos), Value::Str(reason)) = (&row[1], &row[2], &row[3])
+        else {
+            return None;
+        };
+        self.fb
+            .sites
+            .iter()
+            .position(|s| s.site == *site && s.pos == *pos && s.reason == *reason)
+            .map(|k| k as u32)
+    }
+
+    /// Each function the linked calls leave from or an unknown site sits in: the functions the
+    /// calls reach from it, and the unknown sites reached (its own, its wild calls and the wild
+    /// links of its sites, and those of every function it reaches). Computed once.
+    fn closure(&self) -> Closure {
+        if let Some(c) = self.closure.borrow().as_ref() {
+            return c.clone();
+        }
         let mut func_of: HashMap<&str, &str> = HashMap::new();
         for row in self.fb.rels.get("call").into_iter().flatten() {
             if let (Value::Str(site), Value::Str(f)) = (&row[0], &row[1]) {
@@ -1306,35 +1467,35 @@ impl<'a> Eval<'a> {
                 next.entry(f).or_default().insert(t);
             }
         }
-        // The unknown sites of each function: its wild calls, and wild links of its sites.
         let mut own: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
-        if upper {
-            for (row, site) in self.fb.wild.get("call").into_iter().flatten() {
-                if let Some(Value::Str(f)) = &row[1] {
-                    own.entry(f).or_default().insert(*site as u32);
-                }
+        for (row, site) in self.fb.wild.get("call").into_iter().flatten() {
+            if let Some(Value::Str(f)) = &row[1] {
+                own.entry(f).or_default().insert(*site as u32);
             }
-            for (row, site) in self.fb.wild.get("calls").into_iter().flatten() {
-                if let Some(Value::Str(s)) = &row[0] {
-                    let f =
-                        func_of.get(s.as_str()).copied().or_else(|| {
-                            self.fb.wild.get("call").into_iter().flatten().find_map(
-                                |(w, _)| match (&w[0], &w[1]) {
-                                    (Some(Value::Str(ws)), Some(Value::Str(wf))) if ws == s => {
-                                        Some(wf.as_str())
-                                    }
-                                    _ => None,
-                                },
-                            )
-                        });
-                    if let Some(f) = f {
-                        own.entry(f).or_default().insert(*site as u32);
-                    }
+        }
+        for (row, site) in self.fb.wild.get("calls").into_iter().flatten() {
+            if let Some(Value::Str(s)) = &row[0] {
+                let f = func_of.get(s.as_str()).copied().or_else(|| {
+                    self.fb
+                        .wild
+                        .get("call")
+                        .into_iter()
+                        .flatten()
+                        .find_map(|(w, _)| match (&w[0], &w[1]) {
+                            (Some(Value::Str(ws)), Some(Value::Str(wf))) if ws == s => {
+                                Some(wf.as_str())
+                            }
+                            _ => None,
+                        })
+                });
+                if let Some(f) = f {
+                    own.entry(f).or_default().insert(*site as u32);
                 }
             }
         }
         let mut froms: BTreeSet<&str> = next.keys().copied().collect();
         froms.extend(own.keys().copied());
+        let mut out = Vec::new();
         for from in froms {
             let mut seen: BTreeSet<&str> = BTreeSet::new();
             let mut stack: Vec<&str> = next.get(from).into_iter().flatten().copied().collect();
@@ -1343,18 +1504,21 @@ impl<'a> Eval<'a> {
                     stack.extend(next.get(g).into_iter().flatten().copied());
                 }
             }
-            let f = V::Str(Rc::from(from));
             let mut sites: BTreeSet<u32> = own.get(from).cloned().unwrap_or_default();
             for g in &seen {
-                st.insert(vec![f.clone(), V::Str(Rc::from(*g))], Vec::new());
                 if let Some(s) = own.get(g) {
                     sites.extend(s);
                 }
             }
-            if upper && !sites.is_empty() {
-                st.insert(vec![f, V::Top], sites.into_iter().collect());
-            }
+            out.push((
+                Rc::from(from),
+                seen.into_iter().map(Rc::from).collect(),
+                sites.into_iter().collect(),
+            ));
         }
+        let c = Rc::new(out);
+        *self.closure.borrow_mut() = Some(c.clone());
+        c
     }
 
     fn store(&self, rel: Rel, mode: Mode) -> StoreRef<'_> {
@@ -1370,7 +1534,11 @@ impl<'a> Eval<'a> {
     /// Whether `rel` has an upper bound to consult, beyond its lower one.
     fn has_upper(&self, rel: Rel) -> bool {
         match rel {
-            Rel::Base(name) => self.fb.wild.contains_key(name) || ON_DEMAND.contains(&name),
+            Rel::Base(name) => {
+                self.fb.wild.contains_key(name)
+                    || ON_DEMAND.contains(&name)
+                    || GRAPH_WILD.contains(&name)
+            }
             Rel::Derived(d) => self.in_upper[d],
         }
     }
@@ -1411,55 +1579,78 @@ impl<'a> Eval<'a> {
             .collect()
     }
 
-    /// Runs the steps of `r` from `k`, each solution's head tuple and what it rests on to `out`.
-    #[allow(clippy::too_many_arguments)]
+    /// Runs the steps of `r`, each solution's head tuple and what it rests on to `out`. The
+    /// search keeps one frame per step on a stack of its own, so a body of any length runs
+    /// without recursion; `delta` restricts the scan at its step to the given tuples.
     fn steps(
         &self,
         r: &CRule,
-        k: usize,
-        b: &mut Vec<Option<V>>,
-        ann: &Ann,
         delta: Option<(usize, &[usize])>,
         mode: Mode,
         out: &mut Vec<(Vec<V>, Ann)>,
     ) {
-        let Some(step) = r.steps.get(k) else {
-            let t: Option<Vec<V>> = r.args.iter().map(|a| value_of(a, b)).collect();
-            if let Some(t) = t {
-                out.push((t, ann.clone()));
+        let mut b: Vec<Option<V>> = vec![None; r.vars];
+        let head =
+            |b: &[Option<V>]| -> Option<Vec<V>> { r.args.iter().map(|a| value_of(a, b)).collect() };
+        if r.steps.is_empty() {
+            if let Some(t) = head(&b) {
+                out.push((t, Vec::new()));
             }
             return;
-        };
-        match step {
+        }
+        let first = self.ways(r, 0, &mut b, &Vec::new(), delta, mode);
+        let mut stack = vec![Frame {
+            k: 0,
+            ann: Vec::new(),
+            ways: first,
+            next: 0,
+            set: Vec::new(),
+        }];
+        while let Some(f) = stack.last_mut() {
+            for x in f.set.drain(..) {
+                b[x] = None;
+            }
+            let Some(ann) = f.take(&mut b, mode) else {
+                stack.pop();
+                continue;
+            };
+            let k = f.k + 1;
+            if k == r.steps.len() {
+                if let Some(t) = head(&b) {
+                    out.push((t, ann));
+                }
+                continue;
+            }
+            let ways = self.ways(r, k, &mut b, &ann, delta, mode);
+            stack.push(Frame {
+                k,
+                ann,
+                ways,
+                next: 0,
+                set: Vec::new(),
+            });
+        }
+    }
+
+    /// The ways step `k` of `r` goes on from the bindings `b`, the solution so far resting on
+    /// `ann`. `b` is as it was when this returns.
+    fn ways<'s>(
+        &'s self,
+        r: &'s CRule,
+        k: usize,
+        b: &mut [Option<V>],
+        ann: &Ann,
+        delta: Option<(usize, &[usize])>,
+        mode: Mode,
+    ) -> Ways<'s> {
+        let one = |binds: Vec<(usize, V)>, a: Ann| Ways::Binds(vec![(binds, a)]);
+        let none = || Ways::Binds(Vec::new());
+        match &r.steps[k] {
             Step::Scan(rel, args) => {
                 let st = self.store(*rel, mode);
                 let only = delta.filter(|(j, _)| *j == k).map(|(_, d)| d);
-                for t in self.matches(&st, args, b, only, mode) {
-                    let tuple = &st.tuples[t];
-                    let mut set = Vec::new();
-                    let mut ok = true;
-                    for (c, a) in args.iter().enumerate() {
-                        if let Arg::Var(x) = a
-                            && b[*x].is_none()
-                        {
-                            b[*x] = Some(tuple[c].clone());
-                            set.push(*x);
-                        } else if let Arg::Var(x) = a
-                            && set.contains(x)
-                            && !eqv(b[*x].as_ref().expect("set"), &tuple[c], mode)
-                        {
-                            ok = false;
-                        }
-                    }
-                    if ok {
-                        let mut a2 = ann.clone();
-                        union(&mut a2, &st.anns[t]);
-                        self.steps(r, k + 1, b, &a2, delta, mode, out);
-                    }
-                    for x in set {
-                        b[x] = None;
-                    }
-                }
+                let ts = self.matches(&st, args, b, only, mode);
+                Ways::Tuples { st, args, ts }
             }
             Step::Neg(rel, args) => {
                 let low = self.store(*rel, Mode::Lower);
@@ -1470,7 +1661,7 @@ impl<'a> Eval<'a> {
                         // A definite fact refutes the negation; one that only possibly holds
                         // leaves it possible, resting on the sites that fact rests on.
                         if found.iter().any(|&t| low.anns[t].is_empty()) {
-                            return;
+                            return none();
                         }
                         for &t in &found {
                             union(&mut a2, &low.anns[t]);
@@ -1488,7 +1679,7 @@ impl<'a> Eval<'a> {
                             .any(|a| value_of(a, b).is_some_and(|v| v.has_top()));
                         if !wild {
                             if found.iter().any(|&t| low.anns[t].is_empty()) {
-                                return;
+                                return none();
                             }
                             for &t in &found {
                                 union(&mut a2, &low.anns[t]);
@@ -1496,26 +1687,23 @@ impl<'a> Eval<'a> {
                         }
                     }
                 }
-                self.steps(r, k + 1, b, &a2, delta, mode, out);
+                one(Vec::new(), a2)
             }
             Step::Cmp(x, op, y) => {
+                let (vx, vy) = (value_of(x, b), value_of(y, b));
                 if *op == Op::Bind {
-                    let (vx, vy) = (value_of(x, b), value_of(y, b));
-                    match (x, y, vx, vy) {
+                    return match (x, y, vx, vy) {
                         (Arg::Var(s), _, None, Some(v)) | (_, Arg::Var(s), Some(v), None) => {
-                            b[*s] = Some(v);
-                            self.steps(r, k + 1, b, ann, delta, mode, out);
-                            b[*s] = None;
+                            one(vec![(*s, v)], ann.clone())
                         }
                         (_, _, Some(p), Some(q)) if eqv(&p, &q, mode) => {
-                            self.steps(r, k + 1, b, ann, delta, mode, out);
+                            one(Vec::new(), ann.clone())
                         }
-                        _ => {}
-                    }
-                    return;
+                        _ => none(),
+                    };
                 }
-                let (Some(p), Some(q)) = (value_of(x, b), value_of(y, b)) else {
-                    return;
+                let (Some(p), Some(q)) = (vx, vy) else {
+                    return none();
                 };
                 let holds = if mode == Mode::Upper && (p.has_top() || q.has_top()) {
                     true
@@ -1540,7 +1728,9 @@ impl<'a> Eval<'a> {
                     }
                 };
                 if holds {
-                    self.steps(r, k + 1, b, ann, delta, mode, out);
+                    one(Vec::new(), ann.clone())
+                } else {
+                    none()
                 }
             }
             Step::Match(x, re, neg) => {
@@ -1550,18 +1740,20 @@ impl<'a> Eval<'a> {
                     _ => *neg,
                 };
                 if holds {
-                    self.steps(r, k + 1, b, ann, delta, mode, out);
+                    one(Vec::new(), ann.clone())
+                } else {
+                    none()
                 }
             }
             Step::In(x, list, neg) => {
                 let v = value_of(x, b);
                 if let (Arg::Var(s), None) = (x, &v) {
-                    for e in &list.entries {
-                        b[*s] = Some(V::Str(Rc::from(e.as_str())));
-                        self.steps(r, k + 1, b, ann, delta, mode, out);
-                    }
-                    b[*s] = None;
-                    return;
+                    return Ways::Binds(
+                        list.entries
+                            .iter()
+                            .map(|e| (vec![(*s, V::Str(Rc::from(e.as_str())))], ann.clone()))
+                            .collect(),
+                    );
                 }
                 let holds = match v {
                     Some(V::Str(s)) => list.holds(&s) != *neg,
@@ -1569,52 +1761,14 @@ impl<'a> Eval<'a> {
                     _ => *neg,
                 };
                 if holds {
-                    self.steps(r, k + 1, b, ann, delta, mode, out);
+                    one(Vec::new(), ann.clone())
+                } else {
+                    none()
                 }
             }
             Step::Builtin(which, args) => {
-                let input: Vec<Option<V>> = args.iter().map(|a| value_of(a, b)).collect();
-                let outputs: Vec<Vec<V>> = if input.iter().flatten().any(V::has_top) {
-                    vec![vec![V::Top; args.len()]]
-                } else {
-                    let str_of = |k: usize| match &input[k] {
-                        Some(V::Str(s)) => Some(s.clone()),
-                        _ => None,
-                    };
-                    match which {
-                        Builtin::Word => match str_of(0) {
-                            Some(s) => words(&s)
-                                .into_iter()
-                                .enumerate()
-                                .map(|(n, w)| {
-                                    vec![V::Str(s.clone()), V::Int(n as i64), V::Str(Rc::from(w))]
-                                })
-                                .collect(),
-                            None => Vec::new(),
-                        },
-                        Builtin::Int => match str_of(0).and_then(|s| s.parse::<i64>().ok()) {
-                            Some(n) => vec![vec![input[0].clone().expect("bound"), V::Int(n)]],
-                            None => Vec::new(),
-                        },
-                        Builtin::Replace => match (str_of(0), str_of(1), str_of(2)) {
-                            (Some(s), Some(f), Some(t)) if !f.is_empty() => vec![vec![
-                                V::Str(s.clone()),
-                                V::Str(f.clone()),
-                                V::Str(t.clone()),
-                                V::Str(Rc::from(s.replace(&*f, &t))),
-                            ]],
-                            _ => Vec::new(),
-                        },
-                        Builtin::Concat => match (str_of(0), str_of(1)) {
-                            (Some(x), Some(y)) => vec![vec![
-                                V::Str(x.clone()),
-                                V::Str(y.clone()),
-                                V::Str(Rc::from(format!("{x}{y}"))),
-                            ]],
-                            _ => Vec::new(),
-                        },
-                    }
-                };
+                let outputs = builtin(*which, args, b);
+                let mut ways = Vec::new();
                 for o in outputs {
                     let mut set = Vec::new();
                     let mut ok = true;
@@ -1632,13 +1786,15 @@ impl<'a> Eval<'a> {
                             }
                         }
                     }
+                    let binds: Vec<(usize, V)> = set
+                        .into_iter()
+                        .map(|x| (x, b[x].take().expect("set")))
+                        .collect();
                     if ok {
-                        self.steps(r, k + 1, b, ann, delta, mode, out);
-                    }
-                    for x in set {
-                        b[x] = None;
+                        ways.push((binds, ann.clone()));
                     }
                 }
+                Ways::Binds(ways)
             }
             Step::Agg {
                 var,
@@ -1669,38 +1825,26 @@ impl<'a> Eval<'a> {
                         union(&mut a2, &up.anns[t]);
                     }
                 }
-                let vals = || {
-                    found
-                        .iter()
-                        .map(|&t| st.tuples[t][target.expect("a target")].clone())
-                };
-                let result = if mode == Mode::Upper && wild {
-                    Some(V::Top)
+                let results: Vec<V> = if mode == Mode::Upper && wild {
+                    vec![V::Top]
                 } else {
-                    match func {
-                        AggFn::Count => Some(V::Int(found.len() as i64)),
-                        AggFn::Min => vals().min(),
-                        AggFn::Max => vals().max(),
-                        AggFn::Sum => vals().try_fold(V::Int(0), |acc, v| arith(&acc, '+', &v)),
-                        AggFn::Collect => {
-                            let set: BTreeSet<V> = vals().collect();
-                            Some(V::List(set.into_iter().collect()))
-                        }
-                    }
+                    let (sure, maybe): (Vec<usize>, Vec<usize>) =
+                        found.iter().partition(|&&t| st.anns[t].is_empty());
+                    let value = |t: usize| st.tuples[t][target.expect("a target")].clone();
+                    aggregate(*func, &sure, &maybe, value)
                 };
-                let Some(result) = result else { return };
-                match &b[*var] {
-                    Some(v) => {
-                        if eqv(v, &result, mode) {
-                            self.steps(r, k + 1, b, &a2, delta, mode, out);
+                let mut ways = Vec::new();
+                for result in results {
+                    match &b[*var] {
+                        Some(v) => {
+                            if eqv(v, &result, mode) {
+                                ways.push((Vec::new(), a2.clone()));
+                            }
                         }
-                    }
-                    None => {
-                        b[*var] = Some(result);
-                        self.steps(r, k + 1, b, &a2, delta, mode, out);
-                        b[*var] = None;
+                        None => ways.push((vec![(*var, result)], a2.clone())),
                     }
                 }
+                Ways::Binds(ways)
             }
         }
     }
@@ -1727,16 +1871,15 @@ impl<'a> Eval<'a> {
             let mut found: Vec<(usize, Vec<V>, Ann)> = Vec::new();
             for r in &rules {
                 let mut out = Vec::new();
-                let mut b = vec![None; r.vars];
                 if first {
-                    self.steps(r, 0, &mut b, &Vec::new(), None, mode, &mut out);
+                    self.steps(r, None, mode, &mut out);
                 } else {
                     for k in recursive(r) {
                         let Step::Scan(Rel::Derived(d), _) = &r.steps[k] else {
                             unreachable!("a recursive scan")
                         };
                         let Some(dl) = delta.get(d) else { continue };
-                        self.steps(r, 0, &mut b, &Vec::new(), Some((k, dl)), mode, &mut out);
+                        self.steps(r, Some((k, dl)), mode, &mut out);
                     }
                 }
                 found.extend(out.into_iter().map(|(t, a)| (r.head, t, a)));
@@ -1762,6 +1905,167 @@ impl<'a> Eval<'a> {
             delta = next;
         }
     }
+}
+
+/// The ways one step goes on, as [`Eval::ways`] gives them.
+enum Ways<'s> {
+    /// The tuples a scan matched, bound as its arguments say.
+    Tuples {
+        st: StoreRef<'s>,
+        args: &'s [Arg],
+        ts: Vec<usize>,
+    },
+    /// Bindings, each with what the solution then rests on.
+    Binds(Vec<(Vec<(usize, V)>, Ann)>),
+}
+
+/// One step on the search stack: its ways, the next to try, the variables the current one bound.
+struct Frame<'s> {
+    k: usize,
+    /// What the solution rests on before this step.
+    ann: Ann,
+    ways: Ways<'s>,
+    next: usize,
+    set: Vec<usize>,
+}
+
+impl Frame<'_> {
+    /// Binds the next way that agrees with `b`; what the solution then rests on.
+    fn take(&mut self, b: &mut [Option<V>], mode: Mode) -> Option<Ann> {
+        loop {
+            match &self.ways {
+                Ways::Tuples { st, args, ts } => {
+                    let &t = ts.get(self.next)?;
+                    self.next += 1;
+                    let tuple = &st.tuples[t];
+                    let mut ok = true;
+                    for (c, a) in args.iter().enumerate() {
+                        if let Arg::Var(x) = a {
+                            if b[*x].is_none() {
+                                b[*x] = Some(tuple[c].clone());
+                                self.set.push(*x);
+                            } else if self.set.contains(x)
+                                && !eqv(b[*x].as_ref().expect("set"), &tuple[c], mode)
+                            {
+                                ok = false;
+                            }
+                        }
+                    }
+                    if !ok {
+                        for x in self.set.drain(..) {
+                            b[x] = None;
+                        }
+                        continue;
+                    }
+                    let mut a = self.ann.clone();
+                    union(&mut a, &st.anns[t]);
+                    return Some(a);
+                }
+                Ways::Binds(list) => {
+                    let (binds, a) = list.get(self.next)?;
+                    self.next += 1;
+                    for (x, v) in binds {
+                        b[*x] = Some(v.clone());
+                        self.set.push(*x);
+                    }
+                    return Some(a.clone());
+                }
+            }
+        }
+    }
+}
+
+/// The tuples a builtin gives for the arguments `b` binds: every argument, inputs included.
+fn builtin(which: Builtin, args: &[Arg], b: &[Option<V>]) -> Vec<Vec<V>> {
+    let input: Vec<Option<V>> = args.iter().map(|a| value_of(a, b)).collect();
+    if input.iter().flatten().any(V::has_top) {
+        return vec![vec![V::Top; args.len()]];
+    }
+    let str_of = |k: usize| match &input[k] {
+        Some(V::Str(s)) => Some(s.clone()),
+        _ => None,
+    };
+    match which {
+        Builtin::Word => match str_of(0) {
+            Some(s) => words(&s)
+                .into_iter()
+                .enumerate()
+                .map(|(n, w)| vec![V::Str(s.clone()), V::Int(n as i64), V::Str(Rc::from(w))])
+                .collect(),
+            None => Vec::new(),
+        },
+        Builtin::Int => match str_of(0).and_then(|s| s.parse::<i64>().ok()) {
+            Some(n) => vec![vec![input[0].clone().expect("bound"), V::Int(n)]],
+            None => Vec::new(),
+        },
+        Builtin::Replace => match (str_of(0), str_of(1), str_of(2)) {
+            (Some(s), Some(f), Some(t)) if !f.is_empty() => vec![vec![
+                V::Str(s.clone()),
+                V::Str(f.clone()),
+                V::Str(t.clone()),
+                V::Str(Rc::from(s.replace(&*f, &t))),
+            ]],
+            _ => Vec::new(),
+        },
+        Builtin::Concat => match (str_of(0), str_of(1)) {
+            (Some(x), Some(y)) => vec![vec![
+                V::Str(x.clone()),
+                V::Str(y.clone()),
+                V::Str(Rc::from(format!("{x}{y}"))),
+            ]],
+            _ => Vec::new(),
+        },
+    }
+}
+
+/// An aggregate over `n` tuples whose aggregated values are `vals`.
+fn fold(func: AggFn, n: usize, mut vals: impl Iterator<Item = V>) -> Option<V> {
+    match func {
+        AggFn::Count => Some(V::Int(n as i64)),
+        AggFn::Min => vals.min(),
+        AggFn::Max => vals.max(),
+        AggFn::Sum => vals.try_fold(V::Int(0), |acc, v| arith(&acc, '+', &v)),
+        AggFn::Collect => {
+            let set: BTreeSet<V> = vals.collect();
+            Some(V::List(set.into_iter().collect()))
+        }
+    }
+}
+
+/// The values an aggregate takes when the tuples `sure` hold and each of `maybe` may or may not:
+/// for `count`, `min` and `max` every value it takes over `sure` and some of `maybe`; for `sum`
+/// and `collect` the value over `sure` and the value over all of them.
+fn aggregate(func: AggFn, sure: &[usize], maybe: &[usize], value: impl Fn(usize) -> V) -> Vec<V> {
+    let all = sure.iter().chain(maybe).map(|&t| value(t));
+    let whole = fold(func, sure.len() + maybe.len(), all);
+    if maybe.is_empty() {
+        return whole.into_iter().collect();
+    }
+    let base = fold(func, sure.len(), sure.iter().map(|&t| value(t)));
+    let mut out: BTreeSet<V> = BTreeSet::new();
+    match func {
+        AggFn::Count => {
+            out.extend((sure.len()..=sure.len() + maybe.len()).map(|n| V::Int(n as i64)));
+        }
+        AggFn::Min | AggFn::Max => {
+            for v in maybe.iter().map(|&t| value(t)) {
+                let beyond = match &base {
+                    None => true,
+                    Some(m) if func == AggFn::Min => v < *m,
+                    Some(m) => v > *m,
+                };
+                if beyond {
+                    out.insert(v);
+                }
+            }
+            out.extend(base);
+        }
+        AggFn::Sum | AggFn::Collect => {
+            out.extend(base);
+            out.extend(whole);
+        }
+    }
+    out.into_iter().collect()
 }
 
 enum StoreRef<'a> {
@@ -1841,6 +2145,7 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         lower: (0..n).map(|_| Store::default()).collect(),
         upper: (0..n).map(|_| Store::default()).collect(),
         in_upper,
+        closure: RefCell::new(None),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {
