@@ -247,6 +247,10 @@ fn refusal(e: &FeatureResult) -> String {
             None,
         ),
         Some(Reason::ReadFailed) => ("the reader refuses it".to_string(), e.detail.as_deref()),
+        Some(Reason::Refused) if e.runner.is_some() => (
+            "the Go writer refuses it and the evaluator does not run it".to_string(),
+            e.detail.as_deref(),
+        ),
         Some(Reason::Refused) => ("the writer refuses it".to_string(), e.detail.as_deref()),
         Some(r) => (r.to_string(), e.detail.as_deref()),
         None => ("refused".to_string(), None),
@@ -341,6 +345,7 @@ mod tests {
             }),
             detail: (reason == Some(Reason::SubjectMissing))
                 .then(|| "the module does not use op.add outside a foreign statement".into()),
+            runner: None,
         }
     }
 
