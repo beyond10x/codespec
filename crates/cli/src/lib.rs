@@ -3,6 +3,7 @@
 //! reference.
 
 pub mod measure;
+pub mod query;
 
 use std::path::PathBuf;
 
@@ -281,6 +282,17 @@ pub enum Cmd {
         #[arg(long = "exported", value_name = "MODULE")]
         exported: Vec<String>,
     },
+    /// Answer a question over modules read as one program, written in cq, a typed Datalog with
+    /// named-field record patterns over the fact base --schema prints, and print one row per
+    /// answer. Exit 0 with no row, 1 with rows, 2 on an error.
+    ///
+    /// The fact base is built once per set of documents and cached next to the first as
+    /// .cq/<digest>.facts, the digest a SHA-256 of the documents and the codespec version. Rules
+    /// may recurse, negate (stratified) and aggregate (count, min, max, sum, collect). A row that
+    /// rests on a negation crossing code the fact base cannot see (an opaque function, a foreign
+    /// statement without a call list, an unresolved call) is marked possible, with the unknown
+    /// sites. Path patterns and properties are refused.
+    Query(query::Args),
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
     /// differing line otherwise.

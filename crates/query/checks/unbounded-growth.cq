@@ -1,0 +1,46 @@
+// unbounded-growth: a function that receives from the network, then at a later line calls an
+// insert method of a type, with no remove method of that type called after the receive, in the
+// function or in any function the calls after the receive reach. Name based, as codespec check.
+
+names receive = [
+  "net.Conn.Read", "net.PacketConn.ReadFrom", "net.Listener.Accept", "net.TCPConn.Read",
+  "net.UDPConn.Read", "net.UDPConn.ReadFrom", "net.UDPConn.ReadFromUDP",
+  "net.UDPConn.ReadFromUDPAddrPort", "net.UDPConn.ReadMsgUDP", "net.UDPConn.ReadMsgUDPAddrPort",
+  "net.UnixConn.Read", "net.UnixConn.ReadFrom", "net.UnixConn.ReadFromUnix",
+  "net.UnixConn.ReadMsgUnix", "net.IPConn.Read", "net.IPConn.ReadFrom", "net.IPConn.ReadFromIP",
+  "net.IPConn.ReadMsgIP", "net.TCPListener.Accept", "net.TCPListener.AcceptTCP",
+  "net.UnixListener.Accept", "net.UnixListener.AcceptUnix", "crypto/tls.Conn.Read"
+].
+names insert = [
+  "Add", "Put", "Store", "Set", "Insert", "LoadOrStore", "Push",
+  "add", "put", "store", "set", "insert", "push"
+].
+
+// A function of the set named as a receive that calls a receive receives, to a fixed point.
+receive_wrapper(F) :- func{id: F, name: ~"^(Read|Accept|Recv)"}.
+receives(F) :- receive_wrapper(F), call{func: F, callee: C}, C in @names.receive.
+receives(F) :- receive_wrapper(F), call{func: F, site: S}, calls{site: S, target: G}, receives(G).
+
+receive_line(F, L) :- call{func: F, callee: C, line: L}, C in @names.receive.
+receive_line(F, L) :- call{func: F, site: S, line: L}, calls{site: S, target: G}, receives(G).
+first_receive(F, L) :- receive_line(F, L), L = min{ L2 : receive_line(F, L2) }.
+
+after(F, S) :- first_receive(F, L0), call{func: F, site: S, line: L}, L > L0.
+method_call(S, T, N) :- call{site: S, kind: ~"^(method|iface)$", type: T, name: N}.
+
+inserts(F, S, T) :- after(F, S), method_call(S, T, N), N in @names.insert,
+                    call{site: S, callee: C},
+                    !(C ~ "^(sync\.WaitGroup|sync\.Pool|sync/atomic|net/http\.Header|net/url\.Values|net/textproto\.MIMEHeader)\.").
+
+removing(N) :- method_call(_, _, N), N ~ "^([Dd]elete|[Rr]emove|[Ee]vict|[Cc]lear|[Dd]rop|[Pp]op)".
+removing(N) :- method_call(_, _, N), N ~ "^(LoadAndDelete|CompareAndDelete|Done)$".
+
+reached_after(F, G) :- after(F, S), calls{site: S, target: G}.
+reached_after(F, H) :- reached_after(F, G), call{func: G, site: S}, calls{site: S, target: H}.
+
+removes(F, T) :- after(F, S), method_call(S, T, N), removing(N).
+removes(F, T) :- reached_after(F, G), call{func: G, site: S}, method_call(S, T, N), removing(N).
+
+growth(Pos, F) :- inserts(F, S, T), call{site: S, pos: Pos}, !removes(F, T).
+
+?- growth(Pos, F).

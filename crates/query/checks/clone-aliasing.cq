@@ -1,0 +1,33 @@
+// clone-aliasing: sibling clone functions (a word in clone; one name once a type name of the
+// module in it is replaced, or one method name on two types), where one calls a copy function and
+// another calls none and passes a slice through: a struct literal field or a field assignment
+// whose value is a slice read from a field or a method (read body).
+
+names clone = ["clone", "copy", "dup", "duplicate"].
+names copy = ["slices.Clone", "bytes.Clone", "maps.Clone", "Clone", "clone"].
+
+clone_fn(F, M, N) :- func{id: F, module: M, name: N, kind: K}, K != "lambda",
+                     word(N, _, W), W in @names.clone.
+module_type(M, T) :- type{kind: "named", path: M, name: T, decl: D}, D != "".
+module_type(M, T) :- func{module: M, kind: "opaque", recv: T}, T != "".
+
+typed_shape(F, M, K) :- clone_fn(F, M, N), module_type(M, T), replace(N, T, "<T>", K), K != N.
+shape(F, M, K) :- typed_shape(F, M, K).
+shape(F, M, N) :- clone_fn(F, M, N), !typed_shape(F, M, _).
+siblings(A, B) :- shape(A, M, K), shape(B, M, K), A != B.
+
+copies(F) :- call{func: F, callee: C}, C in @names.copy.
+copies(F) :- call{func: F, name: N}, N in @names.copy.
+
+passed_slice(V) :- expr{id: V, kind: ~"^(field|method|extern_method|iface_call)$", t: T},
+                   type{id: T, kind: "slice"}.
+passes(B, L, Pos) :- field_init{expr: E, value: V}, passed_slice(V), expr{id: E, func: B, stmt: S},
+                     stmt{id: S, line: L, pos: Pos}.
+passes(B, L, Pos) :- stmt{id: S, kind: "assign", func: B, line: L, pos: Pos},
+                     expr{parent: S, slot: "lhs", index: I, kind: "field"},
+                     expr{parent: S, slot: "rhs", index: I, id: V}, passed_slice(V).
+first_pass(B, Pos) :- passes(B, L, Pos), L = min{ L2 : passes(B, L2, _) }.
+
+aliasing(Pos, B) :- siblings(A, B), copies(A), !copies(B), first_pass(B, Pos).
+
+?- aliasing(Pos, B).

@@ -1,0 +1,42 @@
+// dropped-error: in a read body, a call whose last result is error used as a statement, or bound
+// by a let or an assign whose last name is _; not one ignore names, and not a call on a value of
+// a never_fail type. The parameters every caller fills with such a value, which codespec check
+// also follows, are not followed here.
+
+names ignore = ["fmt.Print", "fmt.Printf", "fmt.Println", "fmt.Fprint", "fmt.Fprintf", "fmt.Fprintln"].
+names never_fail = ["strings.Builder", "bytes.Buffer", "hash.Hash", "hash.Hash32", "hash.Hash64"].
+
+ends_in_error(T, 1) :- type{id: T, kind: "error"}.
+ends_in_error(T, N) :- type{id: T, kind: "tuple", fields: N}, type_elem{type: T, last: true, t: E},
+                       type{id: E, kind: "error"}.
+
+dropped(S, X) :- stmt{id: S, kind: "expr"}, expr{parent: S, slot: "x", id: X, t: T},
+                 ends_in_error(T, _).
+dropped(S, X) :- stmt{id: S, kind: "let"}, let_name{stmt: S, last: true, name: "_"},
+                 expr{parent: S, slot: "rhs", index: 0, id: X, t: T},
+                 R = count{ expr{parent: S, slot: "rhs", id: Y} }, R == 1,
+                 ends_in_error(T, N), N = count{ let_name{stmt: S, index: I} }.
+dropped(S, X) :- stmt{id: S, kind: "assign", op: ""},
+                 expr{parent: S, slot: "lhs", index: J, kind: "var", name: "_"},
+                 N = count{ expr{parent: S, slot: "lhs", id: L} }, J == N - 1,
+                 expr{parent: S, slot: "rhs", index: 0, id: X, t: T},
+                 R = count{ expr{parent: S, slot: "rhs", id: Y} }, R == 1, ends_in_error(T, N).
+
+// The receiver of a method call, without the conversions to an interface, & and * around it.
+peel(R, R) :- expr{kind: ~"^(method|extern_method|iface_call)$", x: R}.
+peel(R, B) :- peel(R, Y), expr{id: Y, kind: "to_iface", x: B}.
+peel(R, B) :- peel(R, Y), expr{id: Y, kind: "unop", op: ~"^[&*]$", x: B}.
+peelable(Y) :- expr{id: Y, kind: "to_iface"}.
+peelable(Y) :- expr{id: Y, kind: "unop", op: ~"^[&*]$"}.
+
+type_name(T, N) :- type{id: T, kind: ~"^(extern|named)$", path: P, name: Nm}, concat(P, ".", Q),
+                   concat(Q, Nm, N).
+type_name(T, N) :- type{id: T, kind: "ptr", elem: E}, type_name(E, N).
+never_fails(X) :- expr{id: X, x: R}, peel(R, B), !peelable(B), expr{id: B, t: T},
+                  type_name(T, N), N in @names.never_fail.
+
+reported(Pos, F) :- dropped(S, X), call{site: X, kind: K, callee: C, name: Nm}, K != "ref",
+                    !(C in @names.ignore), !(Nm in @names.ignore), !never_fails(X),
+                    stmt{id: S, func: F, pos: Pos}.
+
+?- reported(Pos, F).

@@ -1,0 +1,75 @@
+// The fact base of codespec query: every relation, its fields in order and their types.
+// A node is <module path>.<function key>#<index path>; a position is <module path>/<file>:<line>.
+
+// From the documents, every reader.
+
+module{path: string, name: string, lang: string, reader: string, version: string}
+    one per document; path is its import path, or its name when it has none
+func{id: node, module: string, name: string, recv: string, exported: bool, kind: string, pos: string, line: int}
+    every function: kind func, method, init, lambda (id the literal's node) or opaque (no body read)
+param{func: node, index: int, name: string, t: type}
+    every parameter; the receiver of a method at index -1
+result{func: node, index: int, name: string, t: type}
+    every result type
+stmt{id: node, func: node, kind: string, op: string, pos: string, line: int, parent: node}
+    every statement; func the declared function holding it, parent the node it sits in, op an assign's operator
+expr{id: node, func: node, kind: string, t: type, stmt: node, parent: node, slot: string, index: int, op: string, name: string, value: string, x: node, y: node}
+    every expression: slot and index its place in parent (index -1 outside a list); x and y its operands
+let_name{stmt: node, index: int, name: string, last: bool}
+    every name a let binds
+field_init{expr: node, index: int, name: string, value: node}
+    every field of a struct literal
+call{site: node, func: node, kind: string, callee: string, path: string, type: string, name: string, recv: node, args: int, pos: string, line: int, listed: bool}
+    every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value); callee <path>.<name> or <path>.<type>.<name>
+type{id: type, kind: string, name: string, path: string, bits: int, signed: bool, elem: type, key: type, fields: int, under: type, decl: string}
+    every type the documents name or declare; bits and signed of an integer, a named integer resolved; decl the kind of a declared type
+type_elem{type: type, index: int, t: type, last: bool}
+    every element of a tuple type
+type_field{type: type, index: int, name: string, t: type}
+    every field of a declared struct
+fact{kind: string, module: string, item: string}
+    the facts of codespec pass: fallible, comma_ok, shared, messages, read_only, displays, unordered_iteration
+refusal{module: string, pos: string, what: string, reason: string}
+    every refusal a reader recorded
+foreign{stmt: node, lang: string, reason: string, calls_known: bool}
+    every foreign statement; calls_known when the reader listed its calls
+unknown{func: node, site: node, pos: string, reason: string}
+    every place the fact base cannot see: an opaque function, a foreign statement without a call list, a call of a function value or through an interface
+reader_has{lang: string, part: string}
+    what the readers of a language fill: bodies, calls, externs, dispatch
+method_set{t: type, name: string, sig: string, target: string}
+    the method sets the reader listed, the target as a callee
+
+// Derived per read body.
+
+contains{outer: node, inner: node}
+    inner lies inside outer, at any depth
+cfg_next{from: node, to: node}
+    control may pass from one statement to the next
+entry{func: node, node: node}
+    the first statement of a body (a function or a function literal)
+exit{func: node, node: node}
+    every return of a body and every statement that falls off its end
+dominates{a: node, b: node}
+    every path from the entry to b passes a; a dominates itself
+postdominates{a: node, b: node}
+    every path from b to an exit passes a; a postdominates itself
+guards{cond: node, node: node, branch: bool}
+    node runs only when cond, the condition of an if or a for, is branch
+def{var: string, node: node}
+    node sets the local var (<body>$<name>): let, var, assign, incr, decr, for_range, lookup_else; a parameter at its body
+use{var: string, node: node}
+    the expression node reads the local var
+flows{from: node, to: node}
+    the definition at from reaches the use at to
+value{expr: node, var: string}
+    the expression is the local var
+
+// From codespec's graph.
+
+calls{site: node, target: node}
+    a call linked to the function of the set it names: a function, a method of a declared type, a function used as a value
+reaches{from: node, to: node}
+    to is reached from from by one or more calls
+reached{func: node}
+    codespec reach (rta) reaches func from every main.main and init

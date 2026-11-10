@@ -2,6 +2,22 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec query` answers a question over a set of `cir/1` documents written in cq, a typed
+  Datalog with named-field record patterns (`call{func: F, callee: C}`), recursion, stratified
+  negation and aggregates (crate `b10x-codespec-query`). `--schema` prints the fact base's
+  relations: functions, statements, expressions and calls, each node with the id
+  `<module path>.<function key>#<index path>`, types, facts, control flow, dominance, def-use and
+  the call graph. The fact base is cached as `.cq/<digest>.facts` next to the first document. A
+  row whose negation crosses an opaque function, a foreign statement without a call list or an
+  unlinked call is marked `possible`, with those sites. `--explain` prints the rules by stratum.
+  Path patterns and properties are refused by name. Seven of the eight checks of the first plan
+  item are written in cq in `crates/query/checks` and give the findings `codespec check` gives on
+  their fixtures; `lock-without-unlock` waits for properties and the `defer` statement.
+
 ## 0.6.1
 
 ### Changed
