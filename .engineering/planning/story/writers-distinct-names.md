@@ -7,7 +7,7 @@ title: A writer never gives two names of a document one name in its output
 summary: Name collisions and reserved names in the Rust, C and Go writers are renamed, not written as they come.
 relations:
 - decomposes: epic:adapters-untrusted-input
-revision: 1
+revision: 2
 ---
 # Story: A writer never gives two names of a document one name in its output
 
@@ -31,6 +31,11 @@ Found by `review-result:adversary-writers-validate-names-pass-1` and
 - Rust writer: rustc folds identifiers to NFC, so U+212B and U+00C5 become one identifier
   (`adapters/rust/src/write.rs:543`, N3).
 - Go and C comments keep bidi control characters (N5).
+
+- Go writer: a constant or module variable is written with a name a local can also take, so the
+  local shadows it: `static mut TOTAL` with `let total` gives Rust 5,5 and Go 10,0
+  (`adapters/go/cmd/codespec-write-go/write.go:1005`;
+  `review-result:adversary-reader-rust-kit-pass-1`, F9).
 
 ## Acceptance
 
