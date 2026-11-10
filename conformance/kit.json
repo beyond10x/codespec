@@ -528,6 +528,11 @@
       "description": "`name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`."
     },
     {
+      "id": "stmt.raise",
+      "family": "statement",
+      "description": "Leaves the function, and every caller up to the framework that started it, with `x`, a value of an extern type (Java: `throw` of a jar's unchecked exception): no result is returned. The function lists the type in `raises`."
+    },
+    {
       "id": "stmt.return",
       "family": "statement",
       "description": "the `return` statement"

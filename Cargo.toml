@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/model", "crates/passes", "crates/harness", "crates/cli", "crates/docs", "adapters/rust", "adapters/rust-read", "crates/conformance", "adapters/rust-run", "crates/effects", "adapters/c", "adapters/c-run", "adapters/c-read", "crates/check"]
+members = ["crates/model", "crates/passes", "crates/harness", "crates/cli", "crates/docs", "adapters/rust", "adapters/rust-read", "crates/conformance", "adapters/rust-run", "crates/effects", "adapters/c", "adapters/c-run", "adapters/c-read", "crates/check", "crates/query", "crates/eval"]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/beyond10x/codespec"
@@ -20,3 +20,4 @@ serde_json = "1.0"
 sha2 = "0.10"
 syn = { version = "3", default-features = false, features = ["full", "parsing", "printing"] }
 toml = { version = "1.2", default-features = false, features = ["parse", "serde"] }
+unicode-ident = "1.0"

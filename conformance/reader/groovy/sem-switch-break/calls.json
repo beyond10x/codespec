@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Until",
+      "args": [
+        "10",
+        "3"
+      ]
+    },
+    {
+      "func": "Until",
+      "args": [
+        "10",
+        "20"
+      ]
+    }
+  ]
+}

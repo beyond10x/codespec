@@ -2,9 +2,10 @@ package intrinsic_sorted_keys
 
 import "sort"
 
-// case.cir.json is written by hand: Go has no expression for a map's keys in order, and the Go
-// reader reads none of the loops and sort calls below as one. The Java reader writes sorted_keys
-// for a loop over a TreeMap's keySet.
+// case.cir.json is written by hand: the Go reader reads none of the loops and sort calls below as
+// sorted_keys, and reads slices.Sorted(maps.Keys(m)) as one over integer keys only (Go orders
+// strings by byte, sorted_keys by UTF-16 code unit). The Java reader writes sorted_keys for a
+// loop over a TreeMap's keySet.
 
 // Join concatenates the distinct strings in ascending order.
 func Join(a string, b string, c string) string {

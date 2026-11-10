@@ -1,0 +1,23 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Negative",
+      "args": [
+        "31"
+      ]
+    },
+    {
+      "func": "Show",
+      "args": [
+        "31"
+      ]
+    },
+    {
+      "func": "Text",
+      "args": [
+        "31"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T06:31:22Z",
+  "actor": "human:timo",
+  "artifact": "story:writers-validate-names",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:security-writers-validate-names-pass-1",
+    "reference": "b2abea1",
+    "review": "review-result:security-writers-validate-names-pass-1",
+    "outcome": "fixed"
+  }
+}

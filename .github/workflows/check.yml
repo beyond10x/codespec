@@ -31,6 +31,7 @@ jobs:
           - test b10x-codespec-model b10x-codespec-passes b10x-codespec-harness
           - test b10x-codespec-cli
           - test b10x-codespec-check
+          - test b10x-codespec-query
           - test b10x-codespec-conformance --lib --bins
           - test b10x-codespec-conformance --test=adversary2
           - test b10x-codespec-conformance --test=adversary_conform

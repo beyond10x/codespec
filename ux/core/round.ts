@@ -9,6 +9,7 @@ import type { Baseline } from './ratchet.ts';
 import { gateCounts, readResults, toMeasured, type PageResult, type TaskResult } from './results.ts';
 import { loadScenarios } from './scenarios.ts';
 import { loadFindings } from './findings.ts';
+import { assetResults } from './specs.ts';
 
 export function nextRound(roundsDir: string): string {
   const n = existsSync(roundsDir)
@@ -21,6 +22,45 @@ export function nextRound(roundsDir: string): string {
 }
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+export interface ScrollPage {
+  path: string;
+  count: number;
+  widest: string;
+  last: number | null;
+}
+
+type ScrollUnit = Pick<PageResult, 'path' | 'viewport'> & { overflow: Pick<PageResult['overflow'], 'scrollContainers'> };
+
+/** Scroll containers per page over the given units, the widest of each page, and the last round's
+ * count (0 for a page it did not list; null without a last round). Pages of the last round that
+ * have none now stay listed with 0, so a fix shows too. */
+export function scrollContainerPages(units: ScrollUnit[], last: { path: string; count: number }[] | null): ScrollPage[] {
+  const by = new Map<string, { count: number; widest: string; over: number }>();
+  for (const u of units) {
+    for (const c of u.overflow.scrollContainers) {
+      const e = by.get(u.path) ?? { count: 0, widest: '', over: -1 };
+      e.count++;
+      if (c.scrollWidth - c.clientWidth > e.over) {
+        e.over = c.scrollWidth - c.clientWidth;
+        e.widest = `${c.scrollWidth} in ${c.clientWidth} at ${u.viewport}`;
+      }
+      by.set(u.path, e);
+    }
+  }
+  for (const l of last ?? []) if (!by.has(l.path)) by.set(l.path, { count: 0, widest: '', over: -1 });
+  return [...by.entries()]
+    .map(([path, e]) => ({ path, count: e.count, widest: e.widest, last: last ? (last.find((l) => l.path === path)?.count ?? 0) : null }))
+    .sort((a, b) => b.count - a.count || a.path.localeCompare(b.path));
+}
+
+export function scrollContainerLines(pages: ScrollPage[]): string[] {
+  return [
+    '| page | this round | last round | widest (content in box, px) |',
+    '|---|---|---|---|',
+    ...pages.map((p) => `| \`${p.path}\` | ${p.count} | ${p.last ?? '–'} | ${p.widest || '–'} |`),
+  ];
+}
 
 export interface RoundInput {
   adapter: Adapter;
@@ -65,6 +105,8 @@ export function writeRound(i: RoundInput): void {
   const roundNo = Number(id.slice(2));
   const rotatingCard = rotating.length ? rotating[(roundNo - 1) % rotating.length] : null;
   const findings = loadFindings(join(i.ux, adapter.dirs.findings));
+  const pwFile = join(i.out, 'playwright.json');
+  const assets = existsSync(pwFile) ? assetResults(JSON.parse(readFileSync(pwFile, 'utf8'))) : [];
 
   // Worst moments: gating results with the most failures, then the most serious/critical axe nodes.
   const worst = gating
@@ -124,9 +166,16 @@ export function writeRound(i: RoundInput): void {
     measured,
     measured_only: measuredOnly,
     scroll_containers_gating: sum(gating.map((r) => r.overflow.scrollContainers.length)),
+    scroll_container_pages: scrollContainerPages(gating, prev?.scroll_container_pages ?? null),
     failure_kinds: [...failureKinds.entries()].map(([k, v]) => ({ kind: k, count: v.count, waived_by: [...v.waivedBy].sort(), pages: v.pages.size })),
     worst: worstOut,
     screen_only: tasks.map((t) => ({ scenario: t.scenario, ...t.result })),
+    regression_assets: {
+      passed: assets.filter((a) => a.ok).length,
+      failed: assets.filter((a) => !a.ok).length,
+      failing: assets.filter((a) => !a.ok).map((a) => `${a.file}::${a.title}`),
+      findings_tests: assets.filter((a) => a.file === 'l2-findings.spec.ts').map((a) => ({ title: a.title, ok: a.ok })),
+    },
     findings: findings.map((f) => ({ id: f.header.id, severity: f.header.severity, status: f.header.status, title: f.header.title })),
     missing_inputs: [
       'L6 trial sessions and their rrweb recordings: none recorded in this round',
@@ -176,6 +225,9 @@ export function writeRound(i: RoundInput): void {
     );
   }
   L.push('');
+  L.push('## Scroll containers at the gating viewports (measured, not gated)', '');
+  if (!prev?.scroll_container_pages) L.push(`The last round${prevId ? ` (${prevId})` : ''} kept no page list, so its column is "–".`, '');
+  L.push(...scrollContainerLines(round.scroll_container_pages), '');
   L.push('## Measured-only viewports (reported, not gated)', '');
   L.push('| viewport | checked | page scroll | overflow | always-visible misses | axe serious+critical nodes | scroll containers |', '|---|---|---|---|---|---|---|');
   for (const m of measuredOnly) L.push(`| ${m.viewport} | ${m.checked} | ${m.page_scroll} | ${m.overflow} | ${m.always_visible_misses} | ${m.axe_serious_critical} | ${m.scroll_containers} |`);
@@ -190,6 +242,12 @@ export function writeRound(i: RoundInput): void {
     const f = `shots/sheet-${s.name}.jpg`;
     if (existsSync(join(dir, f))) L.push(`- [${s.page!.path}](${f})`);
   }
+  L.push('');
+  L.push('## Regression assets', '');
+  L.push(`L1 and \`l2-findings.spec.ts\` in this run: ${round.regression_assets.passed} passed, ${round.regression_assets.failed} failed. The Rust assets in \`crates/docs\` run under \`cargo test -p codespec-docs\`, not here.`, '');
+  L.push('| finding test | result |', '|---|---|');
+  for (const a of round.regression_assets.findings_tests) L.push(`| ${a.title} | ${a.ok ? 'pass' : '**fail**'} |`);
+  for (const a of round.regression_assets.failing.filter((x) => !x.startsWith('l2-findings'))) L.push(`| ${a} | **fail** |`);
   L.push('');
   L.push('## Findings', '', '| id | severity | status | title |', '|---|---|---|---|');
   for (const f of round.findings) L.push(`| ${f.id} | ${f.severity} | ${f.status} | ${f.title} |`);

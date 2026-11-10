@@ -1,0 +1,371 @@
+{
+  "format": "cir/1",
+  "name": "type_tuple_error",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.7.0"
+  },
+  "types": [],
+  "errors": [
+    {
+      "name": "ErrNegative",
+      "message": "negative",
+      "pos": "case.go:5"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "doubled",
+      "exported": false,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "errvar",
+                  "name": "ErrNegative",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:9"
+            }
+          ],
+          "pos": "case.go:8"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        }
+      ],
+      "pos": "case.go:7"
+    },
+    {
+      "name": "Quadruple",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "d",
+            "err"
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "doubled",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "n",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:17"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "err",
+              "t": {
+                "k": "error"
+              }
+            },
+            "y": {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "err",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:19"
+            }
+          ],
+          "pos": "case.go:18"
+        },
+        {
+          "k": "let",
+          "names": [
+            "q",
+            "err2"
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "doubled",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "d",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "case.go:21"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "!=",
+            "x": {
+              "k": "var",
+              "name": "err2",
+              "t": {
+                "k": "error"
+              }
+            },
+            "y": {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "err2",
+                  "t": {
+                    "k": "error"
+                  }
+                }
+              ],
+              "pos": "case.go:23"
+            }
+          ],
+          "pos": "case.go:22"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "q",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "case.go:25"
+        }
+      ],
+      "doc": "Quadruple doubles n twice, binding both results of each call: a call that returns a value and\nan error is of a tuple type.",
+      "pos": "case.go:16"
+    }
+  ],
+  "layout": [
+    "error:ErrNegative",
+    "func:doubled",
+    "func:Quadruple"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "doubled",
+      "Quadruple"
+    ]
+  }
+}

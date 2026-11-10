@@ -2,11 +2,14 @@
 format: aep.planning-md/3
 id: epic:codebase-transformations
 kind: epic
-status: draft
+status: active
 title: Programmatic transformations and pattern queries over a whole codebase
 relations:
 - depends_on: epic:whole-repo-to-syscalls
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 3}
 ---
 # Epic: Programmatic transformations and pattern queries over a whole codebase
 

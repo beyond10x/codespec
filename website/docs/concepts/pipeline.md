@@ -1,7 +1,7 @@
 ---
 title: Readers, passes and writers
 sidebar_position: 2
-description: The adapter boundary, the passes and the seven facts, the two writers, and how refusals travel through the pipeline.
+description: The adapter boundary, the passes and the seven facts, the Go and Rust writers, and how refusals travel through the pipeline.
 lede: Readers and writers are separate programs that codespec checks at every crossing; passes in between compute the facts, so writers decide nothing themselves.
 source: crates/cli/src/main.rs, crates/passes/src/lib.rs, crates/passes/tests/passes.rs, adapters/go/cmd, adapters/rust/src/write.rs, adapters/rust/tests/writer.rs
 ---
@@ -33,7 +33,11 @@ handles its target best:
 | `codespec-write-go` | Go | `go/ast`, `go/printer`, `go/format` | shipped |
 | `codespec-write-rust` | Rust | `syn`, `prettyplease` | shipped |
 | `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
-| `codespec-read-c` | C | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
+| `codespec-read-c` | Rust | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
+| `codespec-write-c` | Rust | C11 with the header-only runtime `codespec_rt.h` | shipped |
+| `codespec-write-cir` | Rust | a copy of the module, which `codespec-run-cir` runs with the `cir/1` evaluator | shipped |
+| `codespec-read-java` | Java | javac's attributed trees | shipped |
+| `codespec-read-groovy` | Java | the Groovy 2.4 compiler and its static type checker | shipped |
 
 How to add one: [Add a reader or writer adapter](/docs/guides/add-an-adapter).
 
@@ -74,10 +78,11 @@ the foreign source returns or writes is unknown. The exact rules are in the crat
 ### Go
 
 `codespec-write-go` builds a `go/ast` tree from the module and prints it with `go/printer`, then
-`go/format`. A `foreign` Go statement is spliced back verbatim. `foreign` source in any other
-language is refused. A construct Go cannot hold is refused whole: exit 1, a message with its
-position, nothing written. Its output is gofmt-clean and vetted, and the Go reader reads it back
-to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
+`go/format`. A `foreign` Go statement or variable initializer is spliced back verbatim. A `cir/1`
+document that holds foreign Go is code: writing and building a document from an untrusted source
+runs it. `foreign` source in any other language is refused. A construct Go cannot hold is refused
+whole: exit 1, a message with its position, nothing written. Its output is gofmt-clean and
+vetted, and the Go reader reads it back to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
 
 ### Rust
 

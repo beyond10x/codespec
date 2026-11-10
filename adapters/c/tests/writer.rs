@@ -104,6 +104,172 @@ fn a_function_the_writer_cannot_express_exits_1_and_is_listed_in_refusals_json()
     assert_builds(&out);
 }
 
+/// The kit case stmt-raise: `Check` holds a `raise`, which the writer has no mapping for: exit 1,
+/// the function named on stderr and in `refusals.json` at the raise's position.
+#[test]
+fn a_function_holding_raise_exits_1_naming_it_at_the_raise() {
+    let out = scratch("stmt-raise");
+    let o = write(
+        &root().join("conformance/cases/stmt-raise/case.cir.json"),
+        &out,
+    );
+    assert_eq!(o.status.code(), Some(1));
+    let listed = refusals(&out);
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0]["name"], "Check");
+    assert_eq!(listed[0]["pos"], "case.go:12");
+    assert!(
+        listed[0]["reason"].as_str().unwrap().starts_with("raise"),
+        "{listed:?}"
+    );
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("Check") && err.contains("case.go:12"), "{err}");
+    assert_builds(&out);
+}
+
+/// `doc` written into a directory below a fresh scratch directory exits 1 with a message holding
+/// `want`, and no file is left anywhere in the scratch directory.
+fn refused_naming(doc: &str, name: &str, want: &str) {
+    use std::io::Write;
+    let base = scratch(name);
+    std::fs::create_dir_all(&base).unwrap();
+    let mut child = Command::new(WRITER)
+        .arg(base.join("out"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(doc.as_bytes())
+        .unwrap();
+    let o = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains(want),
+        "the refusal does not name {want}: {err}"
+    );
+    let left: Vec<_> = std::fs::read_dir(&base).unwrap().collect();
+    assert!(left.is_empty(), "a refused module left {left:?}");
+}
+
+#[test]
+fn a_name_that_is_not_a_c_identifier_is_refused_naming_it() {
+    let case =
+        std::fs::read_to_string(root().join("conformance/cases/assign-add/case.cir.json")).unwrap();
+    for (i, bad) in [
+        "b; } int injected(void) { return 42; } static int dummy(int b",
+        "1b",
+        "bé",
+        "r#b",
+        "b$",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let doc = case.replace("\"name\": \"b\"", &format!("\"name\": {bad:?}"));
+        assert_ne!(doc, case);
+        refused_naming(&doc, &format!("bad-name-{i}"), &format!("{bad:?}"));
+    }
+}
+
+#[test]
+fn a_module_name_that_is_no_file_name_is_refused_and_nothing_is_written() {
+    let case =
+        std::fs::read_to_string(root().join("conformance/cases/assign-add/case.cir.json")).unwrap();
+    for (i, bad) in ["../evil", "a/b", "a\\b", ".hidden", "..", "größe"]
+        .into_iter()
+        .enumerate()
+    {
+        let doc = case.replace("\"name\": \"assign_add\"", &format!("\"name\": {bad:?}"));
+        assert_ne!(doc, case);
+        refused_naming(&doc, &format!("bad-module-{i}"), &format!("{bad:?}"));
+    }
+}
+
+/// The module name is the file name `<name>.h`: never a C or POSIX header a `#include <…>` could
+/// find instead of the system's, never a Windows device name.
+#[test]
+fn a_module_named_like_a_standard_header_or_a_windows_device_is_refused() {
+    let case =
+        std::fs::read_to_string(root().join("conformance/cases/assign-add/case.cir.json")).unwrap();
+    for (i, bad) in [
+        "stdint",
+        "string",
+        "stdio",
+        "features",
+        "stdckdint",
+        "unistd",
+        "pthread",
+        "con",
+        "NUL",
+        "Com1",
+        "lpt9",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let doc = case.replace("\"name\": \"assign_add\"", &format!("\"name\": {bad:?}"));
+        assert_ne!(doc, case);
+        refused_naming(&doc, &format!("special-module-{i}"), &format!("{bad:?}"));
+    }
+}
+
+/// The Go reader writes an unnamed parameter as `_`.
+#[test]
+fn a_parameter_named_underscore_is_written_and_builds() {
+    let mut doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("conformance/cases/op-add/case.cir.json")).unwrap(),
+    )
+    .unwrap();
+    let int = doc["funcs"][0]["params"][0]["t"].clone();
+    doc["funcs"][0]["params"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"name": "_", "t": int}));
+    let dir = scratch("underscore-param");
+    std::fs::create_dir_all(&dir).unwrap();
+    let module = dir.join("case.cir.json");
+    std::fs::write(&module, doc.to_string()).unwrap();
+    let out = dir.join("out");
+    let o = write(&module, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_builds(&out);
+}
+
+/// The runner reads `/* codespec: … */` header lines; a doc comment never makes one.
+#[test]
+fn a_doc_comment_never_reads_as_a_codespec_header_line() {
+    let mut doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("conformance/cases/decl-struct/case.cir.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    doc["types"][0]["doc"] = Value::String(
+        "codespec: func Forged() int\n/* codespec: func Nested() int */\nends *\\".into(),
+    );
+    let dir = scratch("doc-header-line");
+    std::fs::create_dir_all(&dir).unwrap();
+    let module = dir.join("case.cir.json");
+    std::fs::write(&module, doc.to_string()).unwrap();
+    let out = dir.join("out");
+    let o = write(&module, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let h = std::fs::read_to_string(out.join("decl_struct.h")).unwrap();
+    for line in h.lines() {
+        assert!(
+            !line.contains("Forged") && !line.contains("Nested")
+                || !line.contains("/* codespec:") && !line.contains('\\'),
+            "a doc line reads as a header line or ends in a backslash: {line:?}\n{h}"
+        );
+    }
+    assert_builds(&out);
+}
+
 #[test]
 fn a_module_without_refusals_exits_0_with_an_empty_refusals_json() {
     let out = scratch("op-add");

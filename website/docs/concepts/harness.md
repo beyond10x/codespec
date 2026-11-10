@@ -11,11 +11,8 @@ source: crates/harness/src/lib.rs, crates/harness/tests/harness.rs, crates/cli/t
 `codespec harness <example>` builds every implementation the example's `harness.toml` lists, runs
 each on one generated trace per seed, and compares every output byte for byte with the first
 implementation's, the reference. Any difference fails the run.
-
-```shell-session
-$ codespec harness examples/orders --seeds 200 --commands 300 --build-dir work/harness
-harness: 200 seeds x 300 commands, 3 implementations (original, go, rust), 79990 output lines each, byte-equal
-```
+[Getting started](/docs/getting-started#run-the-harness) runs it on `examples/orders`, with its
+output.
 
 ## The manifest
 

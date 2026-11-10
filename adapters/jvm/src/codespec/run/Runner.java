@@ -51,7 +51,8 @@ import java.util.stream.Stream;
  * <p>A printable value is an integer in decimal, {@code true} or {@code false}, a {@code String} as
  * Go's {@code strconv.Quote} writes it, a {@code List} as {@code [} its elements separated by one
  * space {@code ]} and an enum constant as its name, quoted, since the JVM readers read an enum over
- * {@code string}. A string holding a character outside printable ASCII other than the escapes
+ * {@code string}. A result of type {@code Object} prints the value it holds, so a {@code null} there
+ * is refused when the call returns it. A string holding a character outside printable ASCII other than the escapes
  * {@code strconv.Quote} writes the same way for every character is refused (exit 2), and so is any
  * other parameter or result type.
  *
@@ -307,7 +308,7 @@ public final class Runner {
         if (t == void.class || t == long.class || t == Long.class || t == int.class || t == Integer.class
                 || t == short.class || t == Short.class || t == byte.class || t == Byte.class
                 || t == boolean.class || t == Boolean.class || t == String.class || t.isEnum()
-                || List.class.isAssignableFrom(t)) {
+                || List.class.isAssignableFrom(t) || t == Object.class) {
             return;
         }
         throw new Refused(func + ": result type " + t.getName() + " cannot be printed");

@@ -1,0 +1,35 @@
+{"format":"codespec-eval-trace/1","module":"orders"}
+{"event":"call","n":1,"func":"New","args":["chan"]}
+{"event":"return","n":1,"bind":"s","results":["&Service{orders: map[], events: chan, seq: 0}"]}
+{"event":"call","n":2,"func":"Service.Place","recv":"s","args":["\"ann\"","30","false"]}
+{"event":"effect","node":"orders.Service.Place#4","pos":"orders.go:69","effect":"send","value":"OrderPlaced{ID: \"o-1\", Customer: \"ann\", Total: 30}"}
+{"event":"return","n":2,"bind":"id","results":["\"o-1\"","nil"]}
+{"event":"call","n":3,"func":"Service.Place","recv":"s","args":["\"bob\"","0","false"]}
+{"event":"return","n":3,"results":["\"\"","error(\"total must be positive\")"]}
+{"event":"call","n":4,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}
+{"event":"effect","node":"orders.Service.Pay#3","pos":"orders.go:82","effect":"send","value":"OrderPaid{ID: \"o-1\"}"}
+{"event":"return","n":4,"results":["nil"]}
+{"event":"call","n":5,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}
+{"event":"return","n":5,"results":["error(ErrWrongState{Status: \"paid\"})"]}
+{"event":"call","n":6,"func":"Service.Ship","recv":"s","args":["\"o-1\"","\"TRK-1\""]}
+{"event":"fault","node":"orders.Service.Ship#4","pos":"orders.go:96","nth":1,"do":"closed"}
+{"event":"panic","n":6,"node":"orders.Service.Ship#4","pos":"orders.go:96","reason":"send on closed channel"}
+{"event":"update","node":"orders.Service.Ship#2","pos":"orders.go:94","value":"\"shipped\""}
+{"event":"update","node":"orders.Service.Ship#3","pos":"orders.go:95","value":"\"TRK-1\""}
+{"event":"summary","fault":"orders.Service.Ship#4","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":2}
+{"event":"call","n":7,"func":"Service.Cancel","recv":"s","args":["\"o-1\""]}
+{"event":"return","n":7,"results":["error(ErrWrongState{Status: \"shipped\"})"]}
+{"event":"call","n":8,"func":"Service.Place","recv":"s","args":["\"cy\"","12","true"]}
+{"event":"effect","node":"orders.Service.Place#4","pos":"orders.go:69","effect":"send","value":"OrderPlaced{ID: \"o-2\", Customer: \"cy\", Total: 12}"}
+{"event":"return","n":8,"bind":"gift","results":["\"o-2\"","nil"]}
+{"event":"call","n":9,"func":"Service.PendingOrders","recv":"s","args":[]}
+{"event":"return","n":9,"results":["[Order{ID: \"o-2\", Customer: \"cy\", Total: 12, Status: \"pending\", Tracking: \"\", Gift: true}]"]}
+{"event":"call","n":10,"func":"Service.Cancel","recv":"s","args":["\"o-2\""]}
+{"event":"effect","node":"orders.Service.Cancel#3","pos":"orders.go:109","effect":"send","value":"OrderCancelled{ID: \"o-2\"}"}
+{"event":"return","n":10,"results":["nil"]}
+{"event":"call","n":11,"func":"Service.Pay","recv":"s","args":["\"o-9\""]}
+{"event":"return","n":11,"results":["error(\"no order o-9\")"]}
+{"event":"call","n":12,"func":"Service.Get","recv":"s","args":["\"o-1\""]}
+{"event":"return","n":12,"results":["Order{ID: \"o-1\", Customer: \"ann\", Total: 30, Status: \"shipped\", Tracking: \"TRK-1\", Gift: false}","true"]}
+{"event":"call","n":13,"func":"Service.Get","recv":"s","args":["\"o-2\""]}
+{"event":"return","n":13,"results":["Order{ID: \"o-2\", Customer: \"cy\", Total: 12, Status: \"cancelled\", Tracking: \"\", Gift: true}","true"]}

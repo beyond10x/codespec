@@ -24,7 +24,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module};
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, printable};
 
 /// The claim: what the acceptance test of `adapters/rust-run` shows the writer writing.
 fn manifest() -> AdapterManifest {
@@ -65,6 +65,7 @@ fn manifest() -> AdapterManifest {
             "expr.spread",
             "expr.to_iface",
             "stmt.foreign",
+            "stmt.raise",
             "type.array",
             "type.extern",
             "type.float",
@@ -87,7 +88,7 @@ fn main() -> ExitCode {
     match run(Path::new(out)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("codespec-write-rust: {e}");
+            eprintln!("codespec-write-rust: {}", printable(&e));
             ExitCode::FAILURE
         }
     }

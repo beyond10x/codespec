@@ -142,6 +142,7 @@ pub fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }

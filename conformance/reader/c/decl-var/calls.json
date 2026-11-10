@@ -1,0 +1,25 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Calls",
+      "args": []
+    },
+    {
+      "func": "Greet",
+      "args": [
+        "\"ann\""
+      ]
+    },
+    {
+      "func": "Greet",
+      "args": [
+        "\"bo\""
+      ]
+    },
+    {
+      "func": "Calls",
+      "args": []
+    }
+  ]
+}

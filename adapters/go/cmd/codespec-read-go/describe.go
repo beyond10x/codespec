@@ -4,16 +4,32 @@ import "strings"
 
 // The reader's claim: the features it was seen to read, outside a `foreign` statement, from the
 // Go source of their conformance cases, plus `foreign`, which the stmt-foreign case reads to (a
-// `defer` kept verbatim). No fact (facts are computed by `codespec pass`), no `lookup_else`
-// (written by the lookup-guard pass, and a reader's claim covers only what the reader prints:
-// docs/conformance.md § 5), and nothing no case exercises.
+// `defer` kept verbatim). No fact: facts are computed by `codespec pass`.
+//
+// claimNot is every feature whose kit case this reader does not read to it, each with its reason
+// (README.md § Features left unclaimed):
+//
+//   - decl.union: Go has no tagged union.
+//   - expr.zero: this reader never writes `zero`; it reads a zero value as the Go source writes
+//     it: a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T`.
+//   - intrinsic.sorted_keys: this reader reads `slices.Sorted(maps.Keys(m))` as sorted_keys over
+//     integer keys only (Go orders strings by byte, sorted_keys by UTF-16 code unit); the kit
+//     case's Go source collects the keys in a loop and sorts them with `sort.Strings` and
+//     `sort.Ints`, which it does not read as sorted_keys.
+//   - type.unit: Go gives a call of a function without results no type; this reader types it as
+//     an empty tuple.
+//   - stmt.lookup_else: this reader writes a comma-ok `let` and an `if`; only the lookup-guard
+//     pass makes them a `lookup_else`, and a reader's claim covers only what the reader prints
+//     (docs/conformance.md § 5).
+//   - stmt.raise: Go has no statement that leaves a function with a value of another package's
+//     type to the framework that started it; the kit case is written by hand from the Java
+//     reader's output.
 var (
 	claimFeatures = []string{
 		"assign.*", "decl.*", "expr.*", "intrinsic.*", "op.*", "sem.*", "stmt.*", "type.*", "unop.*",
 	}
 	claimNot = []string{
-		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.tuple",
-		"type.unit",
+		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "stmt.raise", "type.unit",
 	}
 )
 

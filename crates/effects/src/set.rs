@@ -129,6 +129,7 @@ fn expr_pos(s: &Stmt) -> Pos {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
@@ -1498,6 +1499,39 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
     let incomplete = |n: usize| has(reach_of(n), INCOMPLETE);
     let n_effects = EFFECTS.len();
 
+    // What each node can raise: a function's own `raises` (its module's callees included), and
+    // what every node it calls raises, across modules, to a fixed point.
+    let mut raises: Vec<BTreeSet<String>> = g
+        .nodes
+        .iter()
+        .map(|node| match &node.kind {
+            Kind::Func(mi, i) => modules[*mi].funcs[*i]
+                .raises
+                .iter()
+                .filter_map(|t| match t {
+                    Type::Extern { path, name, .. } => Some(format!("{path}.{name}")),
+                    _ => None,
+                })
+                .collect(),
+            _ => BTreeSet::new(),
+        })
+        .collect();
+    loop {
+        let mut changed = false;
+        for n in 0..g.nodes.len() {
+            for (t, _) in &g.nodes[n].edges {
+                if *t != n {
+                    let add: Vec<String> = raises[*t].difference(&raises[n]).cloned().collect();
+                    changed |= !add.is_empty();
+                    raises[n].extend(add);
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
     let reported = |m: &Module| {
         opts.report.is_empty() || opts.report.iter().any(|r| *r == m.path || *r == m.name)
     };
@@ -1629,6 +1663,7 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
             name,
             pos: pos.clone(),
             effects,
+            raises: raises[n].iter().cloned().collect(),
             unknown,
             syscalls,
             effect_sites,

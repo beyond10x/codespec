@@ -1,0 +1,23 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Pick",
+      "args": [
+        "0"
+      ]
+    },
+    {
+      "func": "Pick",
+      "args": [
+        "1"
+      ]
+    },
+    {
+      "func": "Pick",
+      "args": [
+        "2"
+      ]
+    }
+  ]
+}

@@ -5,15 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/build"
+	"go/build/constraint"
 	"go/format"
 	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"go/types"
+	"io"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // The writer: a cir/1 module to one go/ast file. Every node is built without source positions;
@@ -66,8 +71,29 @@ var stdPackages = map[string]string{
 	"sync": "sync", "time": "time",
 }
 
-func write(m *Module) ([]byte, error) {
-	w := &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
+func write(m *Module) (src []byte, err error) {
+	// The document is read here without the strict reader's checks, so a part it lacks reaches
+	// the writer as a nil pointer: that is a refusal like any other, never a panic, and it names
+	// the position of the declaration or statement being written.
+	var w *writer
+	defer func() {
+		if r := recover(); r != nil {
+			src, err = nil, fmt.Errorf("the document cannot be written: %v", r)
+			if w != nil && w.pos != "" {
+				err = fmt.Errorf("%s: %w", w.pos, err)
+			}
+		}
+	}()
+	// The name is the package clause and the file name: an identifier, never a path, never a
+	// file name the go command skips or reads as a build constraint or a test file, never
+	// `documentation` (a package clause go/build ignores) and never a Windows device name.
+	// `main` is written as it is: the package of a Go command, which builds when the module
+	// declares func main.
+	if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "documentation" ||
+		windowsDevice(m.Name) || !plainGoFile(m.Name+".go") {
+		return nil, fmt.Errorf("module name %q is not a Go package name the go command builds as %s.go", m.Name, m.Name)
+	}
+	w = &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
 	for i := range m.Types {
 		w.types[m.Types[i].Name] = &m.Types[i]
 	}
@@ -173,6 +199,11 @@ func (w *writer) render(pieces []piece) ([]byte, error) {
 		}
 		pieces = append([]piece{{node: imp}}, pieces...)
 	}
+	for _, p := range pieces {
+		if err := checkNode(p.node); err != nil {
+			return nil, err
+		}
+	}
 	fset := token.NewFileSet()
 	for _, p := range pieces {
 		if p.doc != "" {
@@ -190,13 +221,72 @@ func (w *writer) render(pieces []piece) ([]byte, error) {
 	return out, nil
 }
 
+// comment writes doc as one // line per line. A line the go command would read as a build
+// constraint (go/format moves every // +build line to the top of the file) is written in
+// parentheses, so it stays text.
 func comment(doc string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(doc, "\n") {
+		c := "// " + line
 		if line == "" {
-			b.WriteString("//\n")
+			c = "//"
+		} else if constraint.IsPlusBuild(c) || constraint.IsGoBuild(c) {
+			c = "// (" + line + ")"
+		}
+		b.WriteString(c + "\n")
+	}
+	return b.String()
+}
+
+// plainGoFile reports whether the go command compiles a file of this name on every platform:
+// no leading _ or ., no _test suffix, and no _GOOS or _GOARCH suffix it reads as a constraint.
+// The context names no real platform, so every known GOOS and GOARCH suffix fails to match.
+func plainGoFile(name string) bool {
+	if strings.HasSuffix(name, "_test.go") {
+		return false
+	}
+	ctx := build.Default
+	ctx.GOOS, ctx.GOARCH = "codespec", "codespec"
+	ctx.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("package p\n")), nil
+	}
+	ok, err := ctx.MatchFile(".", name)
+	return err == nil && ok
+}
+
+// windowsDevice reports whether name, before its first ., is in any case a name Windows opens
+// as a device whatever the extension: CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM0 to COM9 and
+// LPT0 to LPT9 (also with a superscript ¹, ² or ³). The model crate's is_windows_device_name
+// holds the same list for the Rust and C writers.
+func windowsDevice(name string) bool {
+	stem, _, _ := strings.Cut(strings.ToLower(name), ".")
+	switch stem {
+	case "con", "prn", "aux", "nul", "conin$", "conout$":
+		return true
+	}
+	if len(stem) < 4 || (stem[:3] != "com" && stem[:3] != "lpt") {
+		return false
+	}
+	switch stem[3:] {
+	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³":
+		return true
+	}
+	return false
+}
+
+// printable is s with every character that is not printable written as its Go escape, so a
+// refusal message never carries a control character from the document to a terminal.
+func printable(s string) string {
+	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsPrint(r) {
+			b.WriteRune(r)
 		} else {
-			b.WriteString("// " + line + "\n")
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
 		}
 	}
 	return b.String()
@@ -266,6 +356,58 @@ func (w *writer) decls() ([]piece, error) {
 }
 
 func ident(name string) *ast.Ident { return ast.NewIdent(name) }
+
+// checkNode refuses a tree holding an identifier that is not a Go identifier or a literal that is
+// not exactly one Go literal token. go/printer prints both verbatim, so a name or literal of the
+// document that is anything else would be code in the written file. Every tree the writer builds
+// passes through here before it is printed (render, typeSrc).
+func checkNode(n ast.Node) error {
+	var err error
+	ast.Inspect(n, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.Ident:
+			if err == nil && !token.IsIdentifier(x.Name) {
+				err = fmt.Errorf("name %q is not a Go identifier", x.Name)
+			}
+		case *ast.BasicLit:
+			if err == nil && !oneLiteral(x) {
+				err = fmt.Errorf("literal %q is not one Go literal", x.Value)
+			}
+		}
+		return err == nil
+	})
+	return err
+}
+
+// oneLiteral reports whether l's text scans as exactly one token of l's kind, comments counted.
+func oneLiteral(l *ast.BasicLit) bool {
+	var s scanner.Scanner
+	bad := false
+	s.Init(token.NewFileSet().AddFile("", -1, len(l.Value)), []byte(l.Value), func(token.Position, string) { bad = true }, scanner.ScanComments)
+	if _, tok, _ := s.Scan(); tok != l.Kind {
+		return false
+	}
+	_, tok, lit := s.Scan()
+	if tok == token.SEMICOLON && lit == "\n" {
+		_, tok, _ = s.Scan()
+	}
+	return tok == token.EOF && !bad
+}
+
+// literal reports whether x, parsed from a cir/1 `lit`, is one literal: a basic literal, perhaps
+// signed, or true or false. Any other expression would be code the document never declared.
+func literal(x ast.Expr) bool {
+	if u, ok := x.(*ast.UnaryExpr); ok && (u.Op == token.SUB || u.Op == token.ADD) {
+		x = u.X
+	}
+	switch x := x.(type) {
+	case *ast.BasicLit:
+		return true
+	case *ast.Ident:
+		return x.Name == "true" || x.Name == "false"
+	}
+	return false
+}
 
 func (w *writer) typ(t Type) ast.Expr {
 	switch t.K {
@@ -768,6 +910,10 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 			}
 			tok = t
 		}
+		if len(s.Lhs) == 0 || len(s.Rhs) == 0 {
+			w.refuse("assignment of %d values to %d targets", len(s.Rhs), len(s.Lhs))
+			return nil
+		}
 		return []ast.Stmt{&ast.AssignStmt{Lhs: w.exprs(s.Lhs), Tok: tok, Rhs: w.exprs(s.Rhs)}}
 	case "incr":
 		return []ast.Stmt{&ast.IncDecStmt{X: w.expr(*s.X), Tok: token.INC}}
@@ -848,6 +994,9 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 		return []ast.Stmt{get, &ast.IfStmt{Cond: &ast.UnaryExpr{Op: token.NOT, X: ident(ok)}, Body: &ast.BlockStmt{List: then}}}
 	case "foreign":
 		return w.foreign(s)
+	case "raise":
+		w.refuse("function %s: raise has no Go mapping: the writer does not write leaving a function, and every caller up to the framework, by a raised value", printable(w.fn.key()))
+		return nil
 	}
 	w.refuse("statement %q has no Go form", s.K)
 	return nil
@@ -992,6 +1141,10 @@ func (w *writer) expr(e Expr) ast.Expr {
 		x, err := parser.ParseExpr(e.Value)
 		if err != nil {
 			w.refuse("literal %q is not Go: %v", e.Value, err)
+			return ident("nil")
+		}
+		if !literal(x) {
+			w.refuse("literal %q is not one Go literal", e.Value)
 			return ident("nil")
 		}
 		stripPositions(x)

@@ -1,0 +1,100 @@
+{
+  "format": "cir/1",
+  "name": "main",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "main",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "run",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "plugin.go:4"
+        }
+      ],
+      "pos": "plugin.go:3"
+    },
+    {
+      "name": "run",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "hook",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "plugin.go:8"
+        }
+      ],
+      "pos": "plugin.go:7"
+    },
+    {
+      "name": "shutdown",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "exit",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "plugin.go:16"
+        }
+      ],
+      "pos": "plugin.go:15"
+    },
+    {
+      "name": "exit",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "plugin.go:19"
+    }
+  ],
+  "layout": [
+    "func:main",
+    "func:run",
+    "func:hook",
+    "func:shutdown",
+    "func:exit"
+  ],
+  "path": "example.com/plugin",
+  "opaque": [
+    {
+      "name": "hook",
+      "pos": "plugin.go:12",
+      "reason": "declared without a body",
+      "no_body": true,
+      "calls": []
+    }
+  ]
+}

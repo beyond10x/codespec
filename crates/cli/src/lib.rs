@@ -2,7 +2,9 @@
 //! (`src/main.rs`) runs it; the documentation generator (`codespec-docs`) walks it for the CLI
 //! reference.
 
+pub mod eval;
 pub mod measure;
+pub mod query;
 
 use std::path::PathBuf;
 
@@ -102,7 +104,8 @@ pub enum Cmd {
         #[arg(long)]
         corpus: Option<PathBuf>,
         /// Directory holding the adapter, its runner and, for a reader, codespec-write-go and
-        /// codespec-run-go.
+        /// codespec-run-go, and codespec-write-cir and codespec-run-cir, which judge a case the Go
+        /// writer refuses.
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
         /// Where each case is written, read and built; emptied first. Defaults to
@@ -280,6 +283,90 @@ pub enum Cmd {
         /// entry; repeat for several.
         #[arg(long = "exported", value_name = "MODULE")]
         exported: Vec<String>,
+    },
+    /// Answer a question over modules read as one program, written in cq, a typed Datalog with
+    /// named-field record patterns over the fact base --schema prints, and print one row per
+    /// answer. Exit 0 with no row, 1 with rows, 2 on an error.
+    ///
+    /// The fact base is built once per set of documents and cached next to the first as
+    /// .cq/<digest>.facts, the digest a SHA-256 of the documents and the codespec version. Rules
+    /// may recurse, negate (stratified) and aggregate (count, min, max, sum, collect). A row that
+    /// rests on a negation crossing code the fact base cannot see (an opaque function, a foreign
+    /// statement without a call list, an unresolved call) is marked possible, with the unknown
+    /// sites. Path patterns and properties are refused.
+    Query(query::Args),
+    /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
+    /// print one line per call, as the conformance kit's runners print them. Exit 0 when every
+    /// call is made, 1 when the run stops (a foreign statement executed, a raise reached, an
+    /// extern without a built-in handler, a panic, the step budget), naming the node by its id on
+    /// standard error,
+    /// 2 when the module or the calls are refused. Limits: calls nest at most 1000 deep, and
+    /// statements and expressions at most 10,000 levels counted through calls; a type
+    /// nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a
+    /// module calling an undeclared function, with a wrong argument count, naming an undeclared
+    /// type or a type holding itself, or an argument outside its parameter's width, is refused.
+    ///
+    /// With --session instead of --calls, the calls of a codespec-session/1 file run in order,
+    /// reusing results earlier calls bound, and standard output is the run's trace,
+    /// codespec-eval-trace/1: one JSON object per call, return, effect, panic and stop. A panic
+    /// ends its call, not the session. Externs go to their handlers: os.Getenv reads only the
+    /// --env given; an extern without one stops the run unless a --stub answers for it, and
+    /// standard error names every site a stub answered at.
+    ///
+    /// A fault plan, --fault or --faults (codespec-faults/1), makes the effect at a node id (an
+    /// extern call or a send) fail at a call count, before a stub or handler answers: error,
+    /// value, closed, block or panic. The trace says where it fired, what its call left changed
+    /// in older memory, and whether its error was propagated, kept, handled or dropped, or live
+    /// when the run stopped. --each runs the
+    /// session once per site of the --sites file and call count up to --max-nth, a send closed,
+    /// a call returning an error given one, another call panicking, and writes each trace into
+    /// --out, printing its path; exit 1 when a run stopped.
+    Eval {
+        /// The cir/1 module to run.
+        module: PathBuf,
+        /// The calls to make, a codespec-calls/1 document.
+        #[arg(long, required_unless_present = "session", conflicts_with = "session")]
+        calls: Option<PathBuf>,
+        /// The session to run, a codespec-session/1 document; prints its trace.
+        #[arg(long)]
+        session: Option<PathBuf>,
+        /// A variable of the run's environment, KEY=VALUE; repeat for several. The run sees no
+        /// other.
+        #[arg(long, value_name = "KEY=VALUE")]
+        env: Vec<String>,
+        /// A stub answering in place of a handler: SITE=VALUES, SITE an extern's key (every call
+        /// of it) or a call's node id (that call), VALUES one JSON value per result, separated by
+        /// spaces (null for a nil error); repeat for several.
+        #[arg(long, value_name = "SITE=VALUES")]
+        stub: Vec<String>,
+        /// A fault: SITE:NTH=DO, SITE an effect's node id, NTH a call count from 1 or *, DO
+        /// error, value, closed, block or panic, a JSON message or values after it; repeat for
+        /// several sites.
+        #[arg(long, value_name = "SITE:NTH=DO", requires = "session")]
+        fault: Vec<String>,
+        /// A fault plan, a codespec-faults/1 document.
+        #[arg(long, requires = "session")]
+        faults: Option<PathBuf>,
+        /// Run the session once per site of --sites and call count up to --max-nth, each trace
+        /// written into --out.
+        #[arg(
+            long,
+            requires_all = ["session", "sites", "out"],
+            conflicts_with_all = ["fault", "faults"]
+        )]
+        each: bool,
+        /// The sites --each faults: one node id per line.
+        #[arg(long, requires = "each")]
+        sites: Option<PathBuf>,
+        /// The last call count --each faults at each site.
+        #[arg(long, default_value_t = 1, requires = "each")]
+        max_nth: u64,
+        /// The directory --each writes its traces into.
+        #[arg(long, requires = "each")]
+        out: Option<PathBuf>,
+        /// The statements, calls and loop iterations the run may execute before it stops.
+        #[arg(long, default_value_t = 10_000_000)]
+        max_steps: u64,
     },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first

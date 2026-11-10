@@ -21,7 +21,7 @@ import java.util.Map;
  */
 public final class Main {
     /** The workspace version; written into every document as {@code reader.version}. */
-    public static final String VERSION = "0.6.1";
+    public static final String VERSION = "0.7.0";
 
     /**
      * The reader's claim: every feature whose kit cases in the Groovy corpus {@code
@@ -95,7 +95,12 @@ public final class Main {
         return b.toString();
     }
 
+    /** Runs the reader on the stack {@link codespec.jvm.Bounded} states; deeper is a refusal. */
     public static void main(String[] args) {
+        codespec.jvm.Bounded.run("codespec-read-groovy", () -> run(args));
+    }
+
+    private static void run(String[] args) {
         PrintStream stdout = new PrintStream(System.out, false, StandardCharsets.UTF_8);
         if (args.length == 1 && args[0].equals("--describe")) {
             stdout.print(describe());

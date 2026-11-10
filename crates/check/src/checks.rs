@@ -1185,7 +1185,7 @@ impl<'a> Locks<'_, 'a> {
 
     /// The calls of one statement, its nested blocks and function literals not included; a
     /// `foreign` statement's whole call list.
-    fn stmt(&self, s: &'a Stmt, st: &mut State<'a>) {
+    fn stmt(&mut self, s: &'a Stmt, st: &mut State<'a>) {
         let mut calls = Vec::new();
         match s {
             Stmt::Foreign {
@@ -1205,6 +1205,20 @@ impl<'a> Locks<'_, 'a> {
         }
         for c in &calls {
             self.apply(c, st);
+            // A callee that raises leaves this function at the call too, with what it holds.
+            if !c.in_lambda
+                && let Some(t) = self.set.target(c)
+                && self.set.funs[t].func.is_some_and(|f| !f.raises.is_empty())
+            {
+                self.held_at(
+                    st,
+                    format!(
+                        "may leave through {}, which raises, at {}",
+                        self.set.funs[t].key,
+                        at(self.m, c.pos)
+                    ),
+                );
+            }
         }
     }
 
@@ -1229,6 +1243,10 @@ impl<'a> Locks<'_, 'a> {
                 Stmt::Return { pos, .. } => {
                     self.stmt(s, &mut st);
                     self.held_at(&st, format!("returns at {}", at(self.m, pos)));
+                }
+                Stmt::Raise { pos, .. } => {
+                    self.stmt(s, &mut st);
+                    self.held_at(&st, format!("raises at {}", at(self.m, pos)));
                 }
                 Stmt::Break { .. } => flow.breaks.push(st),
                 Stmt::Continue { .. } => flow.continues.push(st),

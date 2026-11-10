@@ -28,7 +28,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use codespec_conformance::conform::{FeatureResult, Reason, Report, Verdict, claim, read_kit};
+use codespec_conformance::conform::{
+    EVAL_RUNNER, EVAL_WRITER, FeatureResult, Reason, Report, Verdict, claim, read_kit,
+};
 use codespec_conformance::load_cases;
 use serde_json::{Map, Value, json};
 
@@ -47,14 +49,18 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("Java", "java"),
     ("Groovy", "groovy"),
     ("C", "c"),
+    ("Evaluator", "cir"),
 ];
 
-/// One adapter as the matrix sees it: its manifest's bytes and, when one exists, its report.
+/// One adapter as the matrix sees it: its manifest's bytes, when one exists its report, and the
+/// reasons the adapter gives for features it leaves out of its claim (by feature id), which the
+/// note of such a cell carries.
 pub struct Adapter {
     pub role: &'static str,
     pub lang: &'static str,
     pub manifest: Vec<u8>,
     pub report: Option<Report>,
+    pub reasons: &'static [(&'static str, &'static str)],
 }
 
 /// The matrix for the feature list `features` (the bytes of `schemas/cir-1.features.json`), the
@@ -114,7 +120,18 @@ pub fn document(features: &[u8], kit: &Path, adapters: &[Adapter]) -> Result<Str
                         let cell = if role == "reader" && f.family == "fact" {
                             ("n/a", None)
                         } else {
-                            state(claimed.contains(&f.id), a.report.is_some(), entry, name)
+                            let (s, note) =
+                                state(claimed.contains(&f.id), a.report.is_some(), entry, name);
+                            let why = a.reasons.iter().find(|(id, _)| *id == f.id);
+                            match (why, note) {
+                                (Some((_, why)), Some(n)) if !claimed.contains(&f.id) => {
+                                    (s, Some(format!("{n} {why}")))
+                                }
+                                (Some((_, why)), None) if !claimed.contains(&f.id) => {
+                                    (s, Some(why.to_string()))
+                                }
+                                (_, note) => (s, note),
+                            }
                         };
                         cells.insert(f.id.clone(), cell_value(cell));
                     }
@@ -232,6 +249,14 @@ fn refusal(e: &FeatureResult) -> String {
             None,
         ),
         Some(Reason::ReadFailed) => ("the reader refuses it".to_string(), e.detail.as_deref()),
+        Some(Reason::Refused) if e.runner.as_deref() == Some(EVAL_RUNNER) => (
+            "the Go writer refuses it and the evaluator stops in it".to_string(),
+            e.detail.as_deref(),
+        ),
+        Some(Reason::Refused) if e.runner.as_deref() == Some(EVAL_WRITER) => (
+            "the Go writer and the evaluator's writer refuse it".to_string(),
+            e.detail.as_deref(),
+        ),
         Some(Reason::Refused) => ("the writer refuses it".to_string(), e.detail.as_deref()),
         Some(r) => (r.to_string(), e.detail.as_deref()),
         None => ("refused".to_string(), None),
@@ -326,6 +351,7 @@ mod tests {
             }),
             detail: (reason == Some(Reason::SubjectMissing))
                 .then(|| "the module does not use op.add outside a foreign statement".into()),
+            runner: None,
         }
     }
 
@@ -388,6 +414,7 @@ mod tests {
                     entry("op.div", false, Verdict::Pass, None),
                 ],
             )),
+            reasons: &[("op.div", "A fixture reason it is left out.")],
         };
         // A Rust writer with a manifest and no report: every claim is `claimed`.
         let rust_writer = Adapter {
@@ -395,6 +422,7 @@ mod tests {
             lang: "rust",
             manifest: manifest("writer", "rust", &["op.add", "fact.fallible"]),
             report: None,
+            reasons: &[],
         };
         // A Java reader and no Java writer: the write column is `none` for every row.
         let java_reader = Adapter {
@@ -402,6 +430,7 @@ mod tests {
             lang: "java",
             manifest: manifest("reader", "java", &["op.add"]),
             report: None,
+            reasons: &[],
         };
         let text = document(&features, &kit, &[go_reader, rust_writer, java_reader]).unwrap();
         let doc: Value = serde_json::from_str(&text).unwrap();
@@ -422,6 +451,10 @@ mod tests {
             "Case some-case: its module does not use the feature."
         );
         assert_eq!(cell(&doc, "Go", "read", "op.div")["state"], "refused");
+        assert_eq!(
+            cell(&doc, "Go", "read", "op.div")["note"],
+            "Not claimed, though its case some-case passes. A fixture reason it is left out."
+        );
         assert_eq!(cell(&doc, "Go", "read", "op.rem"), "refused");
         assert_eq!(cell(&doc, "Go", "read", "fact.fallible"), "n/a");
         assert_eq!(cell(&doc, "Rust", "write", "op.add"), "claimed");
@@ -464,8 +497,38 @@ mod tests {
                 "go",
                 vec![entry("op.add", true, Verdict::Pass, None)],
             )),
+            reasons: &[],
         };
         let e = document(&features, &root.join("conformance"), &[stale]).unwrap_err();
         assert!(e.contains("manifest only: [\"op.sub\"]"), "{e}");
+    }
+
+    /// A reader's case the Go writer refuses: the note says whether the evaluator's writer refused
+    /// the module or the evaluator ran it and stopped, with the evaluator's own message.
+    #[test]
+    fn a_refusal_judged_by_the_evaluator_says_whether_it_ran_and_stopped_or_was_not_run() {
+        let judged = |runner: &str, detail: &str| {
+            let mut e = entry("decl.union", false, Verdict::Refused, Some(Reason::Refused));
+            e.step = Some(4);
+            e.runner = Some(runner.into());
+            e.detail = Some(detail.into());
+            state(false, true, Some(&e), "Rust").1.unwrap()
+        };
+        assert_eq!(
+            judged(
+                "codespec-run-cir",
+                "codespec-run-cir: stopped at m.F#0 (case.rs:3): unsupported: a verb"
+            ),
+            "Case some-case: the Go writer refuses it and the evaluator stops in it: \
+             codespec-run-cir: stopped at m.F#0 (case.rs:3): unsupported: a verb."
+        );
+        assert_eq!(
+            judged(
+                "codespec-write-cir",
+                "codespec-write-cir: refused F (case.rs:3): foreign rust statement: kept"
+            ),
+            "Case some-case: the Go writer and the evaluator's writer refuse it: \
+             codespec-write-cir: refused F (case.rs:3): foreign rust statement: kept."
+        );
     }
 }

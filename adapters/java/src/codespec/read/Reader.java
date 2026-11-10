@@ -16,7 +16,13 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
+import com.sun.source.tree.ImportTree;
+import com.sun.source.tree.LabeledStatementTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.LiteralTree;
+import com.sun.source.tree.MemberReferenceTree;
+import com.sun.source.tree.NewArrayTree;
+import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
@@ -38,6 +44,7 @@ import com.sun.source.util.TreeScanner;
 import com.sun.source.util.TreePathScanner;
 import codespec.jvm.JvmTypes;
 import com.sun.source.util.Trees;
+import java.math.BigInteger;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -130,6 +137,18 @@ import javax.tools.ToolProvider;
  *       since Java evaluates and drops that expression.
  * </ul>
  *
+ * <p>In a package read (not a project's, whose modules stay as they were) it also maps, each
+ * listed with its limits in README.md: shifts with the count masked as Java masks it; a labeled
+ * {@code break} or {@code continue} of the innermost loop; {@code double} and {@code float}; a
+ * mutable static field of a primitive or {@code String} as a module-level {@code var};
+ * {@code Object} as {@code any}; an interface with several implementations as a cir/1 interface;
+ * an unbounded static generic method; the primitive functional interfaces of {@code
+ * java.util.function} as function types, with lambdas, method references and calls of them;
+ * variable arity methods and arrays as slices; an exception leaf whose constructor formats its
+ * parameters as {@code errorf}; {@code System.out.println} of an integer, a boolean or a
+ * String. A sealed interface whose permitted classes are records without members is a union,
+ * refused at its line while {@link #READ_UNIONS} is off.
+ *
  * <p>A project directory (one with {@code pom.xml}, {@code build.gradle} or {@code
  * build.gradle.kts}) is read with {@link #readProject}: every package under {@code src/main/java}
  * in one javac analysis, one module per package, against the jars of {@code
@@ -143,6 +162,26 @@ import javax.tools.ToolProvider;
  * injection resolved to the one bean or to an extern. A {@code @RegisterRestClient} interface is
  * externs, and Panache, {@code EntityManager} and JDBC calls are externs ({@link
  * #effectsSummary} gives them {@code net} and {@code db}).
+ *
+ * <p>A project read (not a package's, which refuses them as before) also maps, each listed with its
+ * refused forms in README.md: a second constructor as {@code New<Class>2}, the n-th as {@code
+ * New<Class><n>}; a static nested class as a struct of its simple name; a {@code static final}
+ * field set by a literal or by a jar's static method with constant arguments as a module-level
+ * variable, {@code C.class.getName()} as the literal of the class's binary name; the {@code id} a
+ * class extending {@code PanacheEntity} inherits, as the struct's first field; and a static Panache
+ * method called on an entity as an extern call with the entity as its type argument. It records the
+ * JPA annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and
+ * {@code @Column} on a struct or its instance field in {@code persistence}, each with what it marks
+ * and its arguments on one line. A {@code @Provider} class implementing {@code ExceptionMapper} of
+ * a jar's exception is an {@code exception-mapper} entry naming its {@code toResponse}; any other
+ * is refused at its line. A {@code throw new X(…)} of a jar's unchecked exception in a method an
+ * entry names is a {@code raise}, listed in the function's {@code raises} ({@link #raise}); a call
+ * of such a method is refused. A path parameter only the framework passes is printed as it is
+ * ({@link #pathParameter}). Refused too: a field of a class of another package, whose object is an opaque extern here, a
+ * call of another package's method or constructor that package's module does not declare in a form
+ * this module can call ({@link #declaredFn}; the extern takes that module's signature), and an
+ * access of a managed class's field that Quarkus turns into a call of code ({@link
+ * #managedAccessor}).
  *
  * <p>Everything else is kept as a {@code foreign} statement holding its Java source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line; either way it is listed as a
@@ -188,6 +227,13 @@ public final class Reader {
     private final List<Object> outBeans = new ArrayList<>();
     private final List<Object> outInjects = new ArrayList<>();
     private final List<String> outTransactional = new ArrayList<>();
+    private final List<Object> outPersistence = new ArrayList<>();
+    /**
+     * The JPA annotations a project read records in {@code persistence} instead of refusing, on a
+     * class and on its instance fields; anywhere else they stay refusals.
+     */
+    private static final Set<String> PERSISTENCE = Set.of("jakarta.persistence.Entity", "jakarta.persistence.Cacheable",
+        "jakarta.persistence.Id", "jakarta.persistence.GeneratedValue", "jakarta.persistence.Column");
 
     private static final String REST_CLIENT = "org.eclipse.microprofile.rest.client.inject.RegisterRestClient";
     private static final String REST_CLIENT_QUALIFIER = "org.eclipse.microprofile.rest.client.inject.RestClient";
@@ -199,6 +245,17 @@ public final class Reader {
     private static final String SCHEDULED = "io.quarkus.scheduler.Scheduled";
     private static final String INCOMING = "org.eclipse.microprofile.reactive.messaging.Incoming";
     private static final List<String> HTTP_METHODS = List.of("GET", "POST", "PUT", "DELETE", "PATCH");
+    private static final String EXCEPTION_MAPPER = "jakarta.ws.rs.ext.ExceptionMapper";
+    /** The registration of an {@link #EXCEPTION_MAPPER}: on one, an {@code exception-mapper} entry, elsewhere a refusal. */
+    private static final String PROVIDER = "jakarta.ws.rs.ext.Provider";
+    private static final String PATH_PARAM = "jakarta.ws.rs.PathParam";
+    /** The Panache superclass whose one field, {@code id}, a project read gives every entity extending it. */
+    private static final String PANACHE_ENTITY = "io.quarkus.hibernate.orm.panache.PanacheEntity";
+    private static final List<String> PANACHE_ENTITY_BASES = List.of(
+        "io.quarkus.hibernate.orm.panache.PanacheEntityBase", "io.quarkus.hibernate.reactive.panache.PanacheEntityBase");
+    /** The JPA annotations of a class Quarkus manages: it rewrites accesses of its public fields into accessor calls. */
+    private static final List<String> MANAGED = List.of(
+        "jakarta.persistence.Entity", "jakarta.persistence.MappedSuperclass", "jakarta.persistence.Embeddable");
     private static final List<String> SCOPES = List.of(
         "jakarta.enterprise.context.ApplicationScoped", "jakarta.inject.Singleton",
         "jakarta.enterprise.context.RequestScoped", "jakarta.enterprise.context.Dependent");
@@ -266,12 +323,49 @@ public final class Reader {
     /** Every compilation unit, in file order. */
     private final List<CompilationUnitTree> units = new ArrayList<>();
 
-    /** Top-level type declarations, in file then source order. */
+    /**
+     * Top-level type declarations, in file then source order; in a project read each followed by the
+     * static classes nested in it that are read ({@link #nested}).
+     */
     private final List<TreePath> decls = new ArrayList<>();
+    /** The static nested classes of a project read that are read as structs of their own. */
+    private final Set<Tree> nested = new HashSet<>();
+    /** Why each class nested in a top-level class of a project read is not read. */
+    private final Map<Tree, String> nestedWhy = new HashMap<>();
+    /** The structs the other packages of a project read, which this module names as their modules do. */
+    private final Set<TypeElement> otherStructs = new HashSet<>();
+    /** Whether {@link #declared} ran {@link #signatures} on this package's classification. */
+    private boolean signed;
     private final Set<TypeElement> structs = new HashSet<>();
     private final Set<TypeElement> enums = new HashSet<>();
     private final Set<TypeElement> interfaces = new HashSet<>();
     private final Map<TypeElement, TypeElement> implOf = new HashMap<>();
+    /** The interfaces of a package read with more than one implementation, cir/1 interfaces, with those classes. */
+    private final Map<TypeElement, List<TypeElement>> impls = new HashMap<>();
+    /** The methods of each interface of {@link #impls}, as cir/1 interface methods sorted by name. */
+    private final Map<TypeElement, List<Map<String, Object>>> ifaceMethods = new HashMap<>();
+    /**
+     * The sealed interfaces of a package read whose permitted classes are records of the package
+     * without members of their own, cir/1 unions, with those records in {@code permits} order.
+     */
+    private final Map<TypeElement, List<TypeElement>> unions = new HashMap<>();
+    /**
+     * Whether a sealed interface of records is emitted as a union. Off: the reader's check writes
+     * every read as Go, and the Go writer refuses a union, so a union read cannot be checked; the
+     * interface is refused at its line instead, its records with it.
+     */
+    static final boolean READ_UNIONS = false;
+    /** The generic static methods the module reads. */
+    private final Set<ExecutableElement> genericMethods = new HashSet<>();
+    /** The static fields that are module-level variables, with their names. */
+    private final Map<VariableElement, String> vars = new HashMap<>();
+    /**
+     * The exception leaves whose one constructor passes {@code String.format("<literal>", p1, …, pn)}
+     * of its parameters, in order, to {@code super}: a throw is that format, {@code errorf}.
+     */
+    private final Map<TypeElement, String> formattedLeaves = new HashMap<>();
+    private final List<Object> outInterfaces = new ArrayList<>();
+    private final List<Object> outVars = new ArrayList<>();
     private TypeElement errorRoot;
     private final Map<TypeElement, String> errorLeaves = new HashMap<>();
     private final Map<VariableElement, String> consts = new HashMap<>();
@@ -303,7 +397,13 @@ public final class Reader {
         boolean optional;
         /** Declares a checked exception outside the package's hierarchy. */
         String foreignThrows;
+        /** A variable arity method: its last parameter is the slice of the arguments it takes. */
+        boolean variadic;
+        /** The type parameters of a generic static method, each over {@code any}. */
+        List<String> tparams = new ArrayList<>();
         TreePath path;
+        /** A lambda's body: Java compiles it to a method of its own, neither a constructor nor an accessor. */
+        boolean inLambda;
 
         List<Map<String, Object>> results() {
             List<Map<String, Object>> r = new ArrayList<>(values);
@@ -328,6 +428,10 @@ public final class Reader {
         final boolean hasThis;
         final Set<String> used = new HashSet<>();
         final Deque<String> breaks = new ArrayDeque<>();
+        /** The label of each enclosing loop, innermost first; {@code ""} for a loop without one. */
+        final Deque<String> loopLabels = new ArrayDeque<>();
+        /** The label of the labeled statement being read, until the loop it labels takes it. */
+        String nextLabel = "";
         /** The collections the enclosing for-each loops iterate, by the local or field naming them. */
         final Deque<Element> iterating = new ArrayDeque<>();
 
@@ -358,6 +462,16 @@ public final class Reader {
         final Set<String> projectClasses = new HashSet<>();
         /** The beans of the project: a class with a scope annotation, in source order. */
         final List<TypeElement> beans = new ArrayList<>();
+        /**
+         * The compilation units of each package and its classification, made once: what another
+         * package's module reads of its classes ({@link #otherPackages}).
+         */
+        final Map<String, List<CompilationUnitTree>> packages = new TreeMap<>();
+        final Map<String, Reader> classified = new HashMap<>();
+        /** {@link #mayRaise} of each method asked about, once for the read. */
+        final Map<ExecutableElement, Boolean> mayRaise = new HashMap<>();
+        /** The methods some source of the project calls or references, made once ({@link #calledInProject}). */
+        Set<Element> called;
 
         Analysis(JavacTask task, List<CompilationUnitTree> units) {
             this.task = task;
@@ -454,6 +568,7 @@ public final class Reader {
         for (CompilationUnitTree cu : a.units) {
             byPackage.computeIfAbsent(cu.getPackageName() == null ? "" : cu.getPackageName().toString(), k -> new ArrayList<>()).add(cu);
         }
+        a.packages.putAll(byPackage);
         Map<String, Map<String, Object>> out = new TreeMap<>();
         for (Map.Entry<String, List<CompilationUnitTree>> e : byPackage.entrySet()) {
             out.put(e.getKey(), new Reader(a, true).module(e.getValue()));
@@ -477,9 +592,18 @@ public final class Reader {
         for (CompilationUnitTree cu : a.units) {
             for (Tree t : cu.getTypeDecls()) {
                 if (t instanceof ClassTree) {
-                    TypeElement te = r.element(new TreePath(new TreePath(cu), t));
-                    if (te.getKind() == ElementKind.CLASS && !te.getModifiers().contains(Modifier.ABSTRACT) && r.scope(te) != null) {
-                        a.beans.add(te);
+                    TreePath tp = new TreePath(new TreePath(cu), t);
+                    List<TypeElement> classes = new ArrayList<>(List.of(r.element(tp)));
+                    for (Tree m : ((ClassTree) t).getMembers()) {
+                        if (m instanceof ClassTree) {
+                            classes.add(r.element(new TreePath(tp, m)));
+                        }
+                    }
+                    for (TypeElement te : classes) {
+                        if (te.getKind() == ElementKind.CLASS && !te.getModifiers().contains(Modifier.ABSTRACT) && r.scope(te) != null
+                            && (te.getNestingKind() == javax.lang.model.element.NestingKind.TOP_LEVEL || te.getModifiers().contains(Modifier.STATIC))) {
+                            a.beans.add(te);
+                        }
                     }
                 }
             }
@@ -542,10 +666,13 @@ public final class Reader {
         StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ROOT, StandardCharsets.UTF_8);
         List<CompilationUnitTree> units = new ArrayList<>();
         JavacTask task;
+        // What javac prints besides diagnostics: its report of a crash, printed unless the crash is
+        // a stack overflow, which codespec.jvm.Bounded turns into a refusal.
+        java.io.StringWriter javacOut = new java.io.StringWriter();
         try {
             fm.setLocation(StandardLocation.SOURCE_PATH, List.of());
             fm.setLocation(StandardLocation.CLASS_PATH, classpath.stream().map(Path::toFile).toList());
-            task = (JavacTask) javac.getTask(null, fm, diags,
+            task = (JavacTask) javac.getTask(javacOut, fm, diags,
                 List.of("-proc:none", "-implicit:none", "-encoding", "UTF-8", "-Xlint:none", "-nowarn"),
                 null, fm.getJavaFileObjectsFromPaths(files));
             for (CompilationUnitTree cu : task.parse()) {
@@ -554,7 +681,13 @@ public final class Reader {
             task.analyze();
         } catch (IOException e) {
             throw new Failure(dir + ": " + e.getMessage());
+        } catch (RuntimeException | Error e) {
+            if (!codespec.jvm.Bounded.overflow(e)) {
+                System.err.print(javacOut);
+            }
+            throw e;
         }
+        System.err.print(javacOut);
         List<String> errors = new ArrayList<>();
         for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
             if (d.getKind() == Diagnostic.Kind.ERROR) {
@@ -583,30 +716,11 @@ public final class Reader {
     // ---- the module ----
 
     private Map<String, Object> module(List<CompilationUnitTree> units) throws Failure {
-        String pkg = null;
-        for (CompilationUnitTree cu : units) {
-            String p = cu.getPackageName() == null ? "" : cu.getPackageName().toString();
-            if (p.isEmpty()) {
-                throw new Failure(fileName(cu) + ": no package declaration");
-            }
-            if (pkg != null && !pkg.equals(p)) {
-                throw new Failure(fileName(cu) + ": package " + p + ", other files are in " + pkg);
-            }
-            pkg = p;
-            this.units.add(cu);
-            try {
-                sources.put(cu, cu.getSourceFile().getCharContent(true).toString());
-            } catch (IOException e) {
-                throw new Failure(fileName(cu) + ": " + e.getMessage());
-            }
-            for (Tree t : cu.getTypeDecls()) {
-                if (t instanceof ClassTree) {
-                    decls.add(new TreePath(new TreePath(cu), t));
-                }
-            }
+        prepare(units);
+        String pkg = pkgName;
+        if (project) {
+            otherPackages();
         }
-        pkgName = pkg;
-        classify();
         signatures();
         for (TreePath p : decls) {
             emit(p);
@@ -630,6 +744,9 @@ public final class Reader {
         if (!outErrors.isEmpty()) {
             doc.put("errors", outErrors);
         }
+        if (!outVars.isEmpty()) {
+            doc.put("vars", outVars);
+        }
         doc.put("funcs", outFuncs);
         if (!externs.isEmpty()) {
             doc.put("externs", new ArrayList<Object>(externs.values()));
@@ -640,6 +757,9 @@ public final class Reader {
         }
         if (project) {
             doc.put("path", pkg);
+        }
+        if (!outInterfaces.isEmpty()) {
+            doc.put("interfaces", outInterfaces);
         }
         if (!outEntries.isEmpty()) {
             doc.put("entries", outEntries);
@@ -653,7 +773,226 @@ public final class Reader {
         if (!outTransactional.isEmpty()) {
             doc.put("transactional", new ArrayList<Object>(outTransactional));
         }
+        if (!outPersistence.isEmpty()) {
+            doc.put("persistence", outPersistence);
+        }
         return doc;
+    }
+
+    /**
+     * What the other packages of the project read, which this module's names of their classes
+     * follow: the structs they make.
+     */
+    private void otherPackages() throws Failure {
+        for (String pkg : analysis.packages.keySet()) {
+            if (!pkg.equals(pkgName)) {
+                otherStructs.addAll(declarer(pkg).structs);
+            }
+        }
+    }
+
+    /**
+     * The classification of package {@code pkg} of the project, made once and shared: its structs,
+     * and, once {@link #declared} asks, the functions its module declares.
+     */
+    private Reader declarer(String pkg) throws Failure {
+        Reader other = analysis.classified.get(pkg);
+        if (other == null) {
+            other = new Reader(analysis, true);
+            other.prepare(analysis.packages.get(pkg));
+            analysis.classified.put(pkg, other);
+        }
+        return other;
+    }
+
+    /**
+     * Whether the module of another package of the project declares what {@code e} names there: the
+     * function of a method or constructor, the struct of a class, the interface of an interface. A
+     * call or type of a class of another package names only what that module holds.
+     */
+    private boolean declared(Element e) {
+        TypeElement te = e instanceof TypeElement ? (TypeElement) e : (TypeElement) e.getEnclosingElement();
+        Reader other;
+        try {
+            other = declarer(packageOf(te));
+        } catch (Failure f) {
+            return false;
+        }
+        if (e instanceof TypeElement) {
+            return other.structs.contains(te) || other.interfaces.contains(te) || other.enums.contains(te);
+        }
+        if (te.getKind() == ElementKind.INTERFACE) {
+            return other.interfaces.contains(te);
+        }
+        return declaredFn(e) != null;
+    }
+
+    /**
+     * The function the module of another package of the project declares for the method or
+     * constructor {@code e}, or null when it declares none: its signature, not the Java one, is what
+     * a call of it from this module must use. The default constructor javac adds is the {@code
+     * New<Class>} that module makes up; a class declaring a constructor has no default one.
+     */
+    private Fn declaredFn(Element e) {
+        TypeElement te = (TypeElement) e.getEnclosingElement();
+        Reader other;
+        try {
+            other = declarer(packageOf(te));
+        } catch (Failure f) {
+            return null;
+        }
+        if (!other.signed) {
+            other.signed = true;
+            other.signatures();
+        }
+        if (other.fns.containsKey(e)) {
+            return other.fns.get(e);
+        }
+        return e.getKind() == ElementKind.CONSTRUCTOR && generated(e) ? other.ctors.get(te) : null;
+    }
+
+    /**
+     * Why a call of {@code fn}, a function another package's module declares, is not read here, or
+     * null: its signature as that module declares it is what the extern must say, and this module has
+     * no form for a call of one that returns an error (a checked exception), an Optional's {@code (T,
+     * bool)}, or that is generic or variable arity.
+     */
+    private static String foreignCallShape(Fn fn) {
+        if (fn.throwsErr || fn.foreignThrows != null) {
+            return "it throws a checked exception, which its module declares as an error result this call would have to"
+                + " handle";
+        }
+        if (fn.optional) {
+            return "it returns an Optional, which its module declares as a value and a bool";
+        }
+        if (!fn.tparams.isEmpty() || fn.variadic) {
+            return "its module declares it generic or of variable arity";
+        }
+        return null;
+    }
+
+    /** {@link #foreignType} of each of {@code ts}. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> foreignTypes(List<Map<String, Object>> ts, String pkg) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> t : ts) {
+            out.add((Map<String, Object>) foreignType(t, pkg));
+        }
+        return out;
+    }
+
+    /**
+     * A type of another package's module as this module names it: a struct, enum or interface of
+     * that package, or a pointer to one, is the extern type of the package.
+     */
+    @SuppressWarnings("unchecked")
+    private static Object foreignType(Object t, String pkg) {
+        if (t instanceof Map) {
+            Map<String, Object> m = (Map<String, Object>) t;
+            if ("ptr".equals(m.get("k")) && m.get("elem") instanceof Map && "named".equals(((Map<String, Object>) m.get("elem")).get("k"))) {
+                return foreignType(m.get("elem"), pkg);
+            }
+            if ("named".equals(m.get("k"))) {
+                Map<String, Object> x = Json.obj();
+                x.put("k", "extern");
+                x.put("path", pkg);
+                x.put("name", m.get("name"));
+                return x;
+            }
+            Map<String, Object> out = Json.obj();
+            for (Map.Entry<String, Object> en : m.entrySet()) {
+                out.put(en.getKey(), foreignType(en.getValue(), pkg));
+            }
+            return out;
+        }
+        if (t instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object o : (List<Object>) t) {
+                out.add(foreignType(o, pkg));
+            }
+            return out;
+        }
+        return t;
+    }
+
+    /** Take in the units of one package and classify its declarations. */
+    private void prepare(List<CompilationUnitTree> units) throws Failure {
+        String pkg = null;
+        for (CompilationUnitTree cu : units) {
+            String p = cu.getPackageName() == null ? "" : cu.getPackageName().toString();
+            if (p.isEmpty()) {
+                throw new Failure(fileName(cu) + ": no package declaration");
+            }
+            if (pkg != null && !pkg.equals(p)) {
+                throw new Failure(fileName(cu) + ": package " + p + ", other files are in " + pkg);
+            }
+            pkg = p;
+            this.units.add(cu);
+            try {
+                sources.put(cu, cu.getSourceFile().getCharContent(true).toString());
+            } catch (IOException e) {
+                throw new Failure(fileName(cu) + ": " + e.getMessage());
+            }
+            for (Tree t : cu.getTypeDecls()) {
+                if (t instanceof ClassTree) {
+                    decls.add(new TreePath(new TreePath(cu), t));
+                }
+            }
+        }
+        pkgName = pkg;
+        if (project) {
+            nestedClasses();
+        }
+        classify();
+    }
+
+    /**
+     * The classes nested in the top-level classes of a project read: each static class is read as a
+     * struct of its own simple name, after the class it is nested in; an inner class, a nested
+     * interface, enum or record, or a nested class whose simple name another type of the package has,
+     * is refused at its line ({@link #nestedWhy}). A static nested class has no object of the
+     * enclosing class, so nothing of it is lost; an inner class's objects hold one, which a cir/1
+     * struct has no field for.
+     */
+    private void nestedClasses() {
+        Set<String> names = new HashSet<>();
+        for (TreePath p : decls) {
+            names.add(classTree(p).getSimpleName().toString());
+        }
+        List<TreePath> all = new ArrayList<>();
+        for (TreePath p : decls) {
+            all.add(p);
+            if (element(p).getKind() != ElementKind.CLASS) {
+                continue;
+            }
+            for (Tree m : classTree(p).getMembers()) {
+                if (!(m instanceof ClassTree)) {
+                    continue;
+                }
+                TreePath np = new TreePath(p, m);
+                TypeElement ne = element(np);
+                String n = ne.getSimpleName().toString();
+                String why = null;
+                if (ne.getKind() != ElementKind.CLASS) {
+                    why = "nested " + ne.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + ": only a static nested class is read";
+                } else if (!ne.getModifiers().contains(Modifier.STATIC)) {
+                    why = "inner class: each object holds the object of " + element(p).getSimpleName()
+                        + " it was made in, which a cir/1 struct has no field for";
+                } else if (names.contains(n)) {
+                    why = "a nested class named as another type of the package: the types of a cir/1 module have one name each";
+                }
+                if (why != null) {
+                    nestedWhy.put(m, why);
+                    continue;
+                }
+                names.add(n);
+                nested.add(m);
+                all.add(np);
+            }
+        }
+        decls.clear();
+        decls.addAll(all);
     }
 
     private static String file(String pos) {
@@ -692,19 +1031,62 @@ public final class Reader {
 
     private void classify() {
         Set<TypeElement> refused = new HashSet<>();
+        Map<TypeElement, String> unionWhy = new HashMap<>();
+        Set<TypeElement> variants = new HashSet<>();
+        if (!project) {
+            for (TreePath p : decls) {
+                TypeElement te = element(p);
+                if (te.getKind() == ElementKind.INTERFACE && te.getModifiers().contains(Modifier.SEALED)) {
+                    String why = unionShape(te, classTree(p));
+                    unionWhy.put(te, why);
+                    if (why == null) {
+                        List<TypeElement> rs = new ArrayList<>();
+                        for (TypeMirror s : te.getPermittedSubclasses()) {
+                            rs.add((TypeElement) types.asElement(s));
+                        }
+                        unions.put(te, rs);
+                        variants.addAll(rs);
+                    }
+                }
+            }
+        }
         // Shapes that do not depend on other declarations.
         for (TreePath p : decls) {
             TypeElement te = element(p);
             ClassTree ct = classTree(p);
             CompilationUnitTree cu = p.getCompilationUnit();
-            refuseAnnotations(cu, ct.getModifiers());
+            boolean mapper = project && te.getKind() == ElementKind.CLASS && exceptionMapper(te);
+            if (mapper && mapperShape(te) != null) {
+                refuseDecl(cu, ct, ct.getModifiers(), te.getSimpleName().toString(), "a class implementing ExceptionMapper "
+                    + mapperShape(te));
+                refused.add(te);
+                continue;
+            }
+            refuseAnnotations(cu, ct.getModifiers(), te.getKind() == ElementKind.CLASS, mapper ? Set.of(PROVIDER) : Set.of());
             String why = null;
             switch (te.getKind()) {
                 case ANNOTATION_TYPE:
                     why = "annotation type: annotations with behaviour are outside cir/1";
                     break;
+                case RECORD:
+                    if (project) {
+                        why = te.getKind() + " is outside cir/1";
+                    } else if (!variants.contains(te)) {
+                        why = "record other than a variant of a sealed interface: a cir/1 struct is mutable and compared by"
+                            + " identity through its pointer";
+                    }
+                    break;
                 case INTERFACE:
                     if (project && annotation(te, REST_CLIENT) != null) {
+                        break;
+                    }
+                    if (unionWhy.containsKey(te)) {
+                        why = unionWhy.get(te);
+                        if (why == null && !READ_UNIONS) {
+                            unions.remove(te);
+                            why = "sealed interface of records: a cir/1 union, which the reader does not emit while the Go writer"
+                                + " that checks a read refuses every union";
+                        }
                         break;
                     }
                     why = interfaceShape(ct);
@@ -763,8 +1145,14 @@ public final class Reader {
                 continue; // a refused second root
             } else if (errorRoot != null && sup.equals(errorRoot.getQualifiedName().toString())) {
                 String msg = errorLeafMessage(p);
+                String format = msg == null && !project ? errorLeafFormat(p) : null;
+                if (format != null) {
+                    formattedLeaves.put(te, format);
+                    continue;
+                }
                 if (msg == null) {
-                    why = "exception class other than one constructor without parameters calling super(\"<message>\")";
+                    why = "exception class other than one constructor without parameters calling super(\"<message>\")"
+                        + " or one calling super(String.format(\"<format>\", <its parameters in order>))";
                 } else {
                     errorLeaves.put(te, msg);
                     continue;
@@ -781,20 +1169,29 @@ public final class Reader {
                         why = "implements " + qname(i) + ": only an interface of the package with one implementation is read";
                         break;
                     }
-                    if (implOf.containsKey(ie)) {
+                    if (implOf.containsKey(ie) && project) {
                         why = "a second implementation of interface " + ie.getSimpleName() + " (the first is "
                             + implOf.get(ie).getSimpleName() + "): interfaces with more than one implementation are outside cir/1";
-                        if (project) {
-                            implOf.remove(ie);
-                            interfaces.remove(ie);
-                        }
+                        implOf.remove(ie);
+                        interfaces.remove(ie);
                         break;
                     }
                 }
                 if (why == null) {
                     for (TypeMirror i : te.getInterfaces()) {
-                        if (!externalInterface((TypeElement) types.asElement(i))) {
-                            implOf.put((TypeElement) types.asElement(i), te);
+                        TypeElement ie = (TypeElement) types.asElement(i);
+                        if (externalInterface(ie)) {
+                            continue;
+                        }
+                        if (implOf.containsKey(ie) || impls.containsKey(ie)) {
+                            // A second implementation: the interface is a cir/1 interface of them all.
+                            List<TypeElement> all = impls.computeIfAbsent(ie, k -> new ArrayList<>());
+                            if (implOf.containsKey(ie)) {
+                                all.add(implOf.remove(ie));
+                            }
+                            all.add(te);
+                        } else {
+                            implOf.put(ie, te);
                         }
                     }
                     structs.add(te);
@@ -821,6 +1218,22 @@ public final class Reader {
                             implOf.remove(i);
                         }
                     }
+                    for (List<TypeElement> all : impls.values()) {
+                        all.remove(te);
+                    }
+                    refuseDecl(p.getCompilationUnit(), classTree(p), classTree(p).getModifiers(), te.getSimpleName().toString(), why);
+                    changed = true;
+                }
+            }
+            for (TreePath p : decls) {
+                TypeElement te = element(p);
+                if (!impls.containsKey(te)) {
+                    continue;
+                }
+                String why = ifaceMethodsOf(te);
+                if (why != null) {
+                    impls.remove(te);
+                    ifaceMethods.remove(te);
                     refuseDecl(p.getCompilationUnit(), classTree(p), classTree(p).getModifiers(), te.getSimpleName().toString(), why);
                     changed = true;
                 }
@@ -831,8 +1244,266 @@ public final class Reader {
                 for (VariableTree f : nullableFields(p)) {
                     unassigned.add((VariableElement) trees.getElement(new TreePath(p, f)));
                 }
+                if (extendsPanacheEntity(element(p))) {
+                    unassigned.add(panacheId());
+                }
             }
         }
+        // A persistence annotation is a mark only on a struct: on a class read otherwise, or not at
+        // all, it is refused like any other annotation.
+        for (TreePath p : decls) {
+            TypeElement te = element(p);
+            if (project && te.getKind() == ElementKind.CLASS && !structs.contains(te) && !exceptionMapper(te)) {
+                CompilationUnitTree cu = p.getCompilationUnit();
+                for (AnnotationTree a : classTree(p).getModifiers().getAnnotations()) {
+                    TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
+                    String qn = at == null ? "" : qname(at);
+                    if (PERSISTENCE.contains(qn)) {
+                        refuse(pos(cu, a), source(cu, a), "annotation " + qn + " on a class read as no struct: annotations"
+                            + " with behaviour are outside cir/1, and a persistence mark is on a struct or its field");
+                    }
+                }
+            }
+        }
+    }
+
+    /** Whether a class of a project read is a JAX-RS {@code ExceptionMapper}. */
+    private boolean exceptionMapper(TypeElement te) {
+        TypeElement em = elements.getTypeElement(EXCEPTION_MAPPER);
+        return em != null && types.isAssignable(types.erasure(te.asType()), types.erasure(em.asType()));
+    }
+
+    /**
+     * Why an {@code ExceptionMapper} is no {@code exception-mapper} entry, or null when it is one:
+     * registered by {@code @Provider}, declaring its own {@code toResponse}, whose parameter is a
+     * jar's class, an extern type the module can name in {@code raises}.
+     */
+    private String mapperShape(TypeElement te) {
+        if (annotation(te, PROVIDER) == null) {
+            return "without @Provider: nothing in the source registers it, so the module cannot name the framework's call of"
+                + " it as an entry";
+        }
+        ExecutableElement m = mapperMethod(te);
+        if (m == null) {
+            return "without its own toResponse(e): the entry names a function of the class";
+        }
+        TypeMirror t = m.getParameters().get(0).asType();
+        if (t.getKind() != TypeKind.DECLARED || isProjectClass((TypeElement) types.asElement(t))) {
+            return "of " + t + ", a class of the project: what a function raises, and so what the entry takes, is a jar's class";
+        }
+        return null;
+    }
+
+    /** The {@code toResponse(e)} an {@code ExceptionMapper} declares itself, or null. */
+    private ExecutableElement mapperMethod(TypeElement te) {
+        for (Element e : te.getEnclosedElements()) {
+            if (e.getKind() == ElementKind.METHOD && e.getSimpleName().contentEquals("toResponse")
+                && !e.getModifiers().contains(Modifier.STATIC) && ((ExecutableElement) e).getParameters().size() == 1) {
+                return (ExecutableElement) e;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether an entry names the method: an http method of a {@code @Path} class, a {@code @Scheduled}
+     * or {@code @Incoming} method, the {@code toResponse} of a registered {@code ExceptionMapper}.
+     * {@link #framework} makes the entries.
+     */
+    private boolean entryMethod(ExecutableElement m) {
+        if (!(m.getEnclosingElement() instanceof TypeElement) || m.getKind() != ElementKind.METHOD) {
+            return false;
+        }
+        TypeElement te = (TypeElement) m.getEnclosingElement();
+        if (annotation(m, SCHEDULED) != null || annotation(m, INCOMING) != null) {
+            return true;
+        }
+        if (annotation(te, PATH) != null) {
+            for (String verb : HTTP_METHODS) {
+                if (annotation(m, "jakarta.ws.rs." + verb) != null) {
+                    return true;
+                }
+            }
+        }
+        return te.getKind() == ElementKind.CLASS && exceptionMapper(te) && mapperShape(te) == null && m.equals(mapperMethod(te));
+    }
+
+    /**
+     * Whether a method of the project may hold a {@code raise}: an entry names it and its body holds,
+     * outside a lambda or a class body, a {@code throw} that {@link #throwStmt} reads as a {@code raise}
+     * ({@link #throwRaises}); a {@code throw} of the package's checked exceptions is a return. A call of it is refused: what it raises leaves
+     * every caller up to the framework, and only a function the framework calls lists it.
+     */
+    private boolean mayRaise(ExecutableElement m) {
+        Boolean known = analysis.mayRaise.get(m);
+        if (known != null) {
+            return known;
+        }
+        boolean[] found = {false};
+        TreePath mp = trees.getPath(m);
+        if (mp != null && mp.getLeaf() instanceof MethodTree && ((MethodTree) mp.getLeaf()).getBody() != null && entryMethod(m)) {
+            new TreePathScanner<Void, Void>() {
+                @Override
+                public Void visitThrow(ThrowTree t, Void x) {
+                    found[0] |= throwRaises(getCurrentPath());
+                    return null;
+                }
+
+                @Override
+                public Void visitLambdaExpression(LambdaExpressionTree l, Void x) {
+                    return null;
+                }
+
+                @Override
+                public Void visitClass(ClassTree c, Void x) {
+                    return null;
+                }
+            }.scan(new TreePath(mp, ((MethodTree) mp.getLeaf()).getBody()), null);
+        }
+        analysis.mayRaise.put(m, found[0]);
+        return found[0];
+    }
+
+    /** Whether a method of the project's sources calls {@code m} or names it by a method reference. */
+    private boolean calledInProject(ExecutableElement m) {
+        if (analysis.called == null) {
+            Set<Element> called = new HashSet<>();
+            for (CompilationUnitTree cu : analysis.units) {
+                new TreePathScanner<Void, Void>() {
+                    @Override
+                    public Void visitMethodInvocation(MethodInvocationTree t, Void x) {
+                        called.add(trees.getElement(getCurrentPath()));
+                        return super.visitMethodInvocation(t, x);
+                    }
+
+                    @Override
+                    public Void visitMemberReference(MemberReferenceTree t, Void x) {
+                        called.add(trees.getElement(getCurrentPath()));
+                        return super.visitMemberReference(t, x);
+                    }
+                }.scan(cu, null);
+            }
+            analysis.called = called;
+        }
+        return analysis.called.contains(m);
+    }
+
+    /**
+     * Whether a parameter of an http entry is a path parameter the framework alone passes: no
+     * annotation, or {@code @PathParam} of its own name, a template variable {@code {name}} without a
+     * regular expression in the entry's joined path, and no call of the method in the project's
+     * sources. The framework hands it the non-empty segment it matched, converted, never null.
+     */
+    private boolean pathParameter(VariableElement v) {
+        if (!project || !(v.getEnclosingElement() instanceof ExecutableElement)) {
+            return false;
+        }
+        ExecutableElement m = (ExecutableElement) v.getEnclosingElement();
+        TypeElement te = (TypeElement) m.getEnclosingElement();
+        AnnotationMirror classPath = annotation(te, PATH);
+        boolean http = false;
+        for (String verb : HTTP_METHODS) {
+            http |= annotation(m, "jakarta.ws.rs." + verb) != null;
+        }
+        if (classPath == null || !http) {
+            return false;
+        }
+        String name = v.getSimpleName().toString();
+        List<? extends AnnotationMirror> anns = v.getAnnotationMirrors();
+        if (!anns.isEmpty() && !(anns.size() == 1 && name.equals(attribute(anns.get(0), "value"))
+            && annotation(v, PATH_PARAM) != null)) {
+            return false;
+        }
+        AnnotationMirror methodPath = annotation(m, PATH);
+        String path = joinPaths(attribute(classPath, "value"), methodPath == null ? null : attribute(methodPath, "value"));
+        return List.of(path.split("/")).contains("{" + name + "}") && !calledInProject(m);
+    }
+
+    /**
+     * The field {@code id} of Panache's {@code PanacheEntity}, or null without it on the class path.
+     * The jar declares it {@code public Long id} without an initializer, and no constructor of the
+     * class assigns it: it is null until {@code persist()} gives the entity its key.
+     */
+    private VariableElement panacheId() {
+        TypeElement pe = elements.getTypeElement(PANACHE_ENTITY);
+        if (pe == null) {
+            return null;
+        }
+        for (Element e : pe.getEnclosedElements()) {
+            if (e.getKind() == ElementKind.FIELD && e.getSimpleName().contentEquals("id") && !e.getModifiers().contains(Modifier.STATIC)) {
+                return (VariableElement) e;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether a class of a project read extends {@code PanacheEntity} directly: its struct holds the
+     * inherited {@code id} before its own fields.
+     */
+    private boolean extendsPanacheEntity(TypeElement te) {
+        return project && qname(te.getSuperclass()).equals(PANACHE_ENTITY) && panacheId() != null;
+    }
+
+    /**
+     * Whether {@code te} is a Panache entity, a subclass of a Panache entity base.
+     */
+    private boolean panacheEntity(TypeElement te) {
+        for (String b : PANACHE_ENTITY_BASES) {
+            TypeElement be = elements.getTypeElement(b);
+            if (be != null && types.isAssignable(types.erasure(te.asType()), types.erasure(be.asType()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Why a sealed interface is not a cir/1 union, or {@code null}: no members, no type parameters,
+     * no super-interface, and every permitted class a record of the package implementing only it,
+     * with no type parameters, no member of its own and components the reader reads.
+     */
+    private String unionShape(TypeElement te, ClassTree ct) {
+        if (!ct.getTypeParameters().isEmpty()) {
+            return "generic sealed interface: generics declared by the code are outside cir/1";
+        }
+        if (!ct.getImplementsClause().isEmpty()) {
+            return "sealed interface extending another: inheritance is outside cir/1";
+        }
+        if (!ct.getMembers().isEmpty()) {
+            return "sealed interface with members: a cir/1 union has variants only";
+        }
+        List<? extends TypeMirror> permitted = te.getPermittedSubclasses();
+        if (permitted.isEmpty()) {
+            return "sealed interface without permitted classes";
+        }
+        for (TypeMirror s : permitted) {
+            TypeElement r = (TypeElement) types.asElement(s);
+            String what = "permitted class " + r.getSimpleName();
+            if (r.getKind() != ElementKind.RECORD || !inPackage(r)) {
+                return what + " is not a record of the package: only records are cir/1 union variants";
+            }
+            if (!r.getTypeParameters().isEmpty()) {
+                return what + " is generic: generics declared by the code are outside cir/1";
+            }
+            if (r.getInterfaces().size() != 1) {
+                return what + " implements another interface: a cir/1 union variant is no other type";
+            }
+            TreePath rp = trees.getPath(r);
+            // javac gives the implicit members (accessors, toString, equals, hashCode) no origin
+            // of their own, so the body's source is what says the record declares nothing.
+            if (!source(rp.getCompilationUnit(), rp.getLeaf()).replaceAll("\\s+", "").endsWith("{}")) {
+                return what + " declares members: a cir/1 union variant has fields only";
+            }
+            for (javax.lang.model.element.RecordComponentElement c : r.getRecordComponents()) {
+                try {
+                    typeOf(c.asType());
+                } catch (Unsupported u) {
+                    return what + " component " + c.getSimpleName() + ": " + u.getMessage();
+                }
+            }
+        }
+        return null;
     }
 
     private String interfaceShape(ClassTree ct) {
@@ -849,6 +1520,107 @@ public final class Reader {
             }
         }
         return null;
+    }
+
+    /**
+     * The methods of an interface with several implementations, as cir/1 interface methods sorted
+     * by name, into {@link #ifaceMethods}; or why the interface is not read.
+     */
+    /**
+     * The cir/1 name of an interface method: its Java name spelled exported, as a cir/1 interface
+     * method's spelling says it is (Go's convention); every method of a Java interface is public,
+     * and so is each implementation, which writers export under that same spelling.
+     */
+    static String ifaceMethodName(String javaName) {
+        return javaName.isEmpty() ? javaName : Character.toUpperCase(javaName.charAt(0)) + javaName.substring(1);
+    }
+
+    private String ifaceMethodsOf(TypeElement ie) {
+        TreeMap<String, Map<String, Object>> byName = new TreeMap<>();
+        for (Element e : ie.getEnclosedElements()) {
+            if (e.getKind() != ElementKind.METHOD) {
+                continue;
+            }
+            ExecutableElement m = (ExecutableElement) e;
+            String name = m.getSimpleName().toString();
+            if (byName.containsKey(ifaceMethodName(name))) {
+                return "a second method named " + ifaceMethodName(name) + ": overloading is outside cir/1";
+            }
+            if (!m.getThrownTypes().isEmpty() || m.isVarArgs() || qname(m.getReturnType()).equals("java.util.Optional")) {
+                return "interface method " + name + " that throws, takes variable arity or returns an Optional";
+            }
+            List<Object> params = new ArrayList<>();
+            List<Object> results = new ArrayList<>();
+            try {
+                for (VariableElement v : m.getParameters()) {
+                    params.add(typeOf(v.asType()));
+                }
+                if (m.getReturnType().getKind() != TypeKind.VOID) {
+                    results.add(typeOf(m.getReturnType()));
+                }
+            } catch (Unsupported u) {
+                return "interface method " + name + ": " + u.getMessage();
+            }
+            Map<String, Object> x = Json.obj();
+            x.put("name", ifaceMethodName(name));
+            x.put("params", params);
+            x.put("results", results);
+            byName.put(ifaceMethodName(name), x);
+        }
+        ifaceMethods.put(ie, new ArrayList<>(byName.values()));
+        return null;
+    }
+
+    /** The interface with several implementations that the named type {@code t} is, or null. */
+    private TypeElement iface(Map<String, Object> t) {
+        if (!"named".equals(t.get("k"))) {
+            return null;
+        }
+        for (TypeElement ie : impls.keySet()) {
+            if (ie.getSimpleName().contentEquals((String) t.get("name"))) {
+                return ie;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * {@code e}, an object of a class implementing {@code ie}, used where a value of {@code ie} is
+     * expected: every method of the interface must be a method the module reads of that class,
+     * with the interface's signature, or the class does not implement the cir/1 interface.
+     */
+    private Map<String, Object> toIface(Map<String, Object> e, TypeElement ie, Map<String, Object> want) {
+        Map<String, Object> t = type(e);
+        if (!"ptr".equals(t.get("k")) || !"named".equals(sub(t, "elem").get("k"))) {
+            throw new Unsupported("a " + describe(t) + " where interface " + ie.getSimpleName() + " is expected");
+        }
+        String cls = (String) sub(t, "elem").get("name");
+        TypeElement impl = null;
+        for (TypeElement s : impls.get(ie)) {
+            if (s.getSimpleName().contentEquals(cls)) {
+                impl = s;
+            }
+        }
+        if (impl == null) {
+            throw new Unsupported("class " + cls + " does not implement interface " + ie.getSimpleName());
+        }
+        for (Map<String, Object> m : ifaceMethods.get(ie)) {
+            Fn found = null;
+            for (Fn fn : fns.values()) {
+                if (fn.cls.equals(impl) && !fn.isStatic && !fn.isCtor && fn.exported && ifaceMethodName(fn.name).equals(m.get("name"))) {
+                    found = fn;
+                }
+            }
+            if (found == null || !new ArrayList<Object>(found.params).equals(m.get("params"))
+                || !new ArrayList<Object>(found.results()).equals(m.get("results"))) {
+                throw new Unsupported("class " + cls + " does not have the method " + m.get("name") + " of interface "
+                    + ie.getSimpleName() + " as the module reads it");
+            }
+        }
+        Map<String, Object> x = kind("to_iface");
+        x.put("x", e);
+        x.put("t", want);
+        return x;
     }
 
     private String enumShape(TreePath p) {
@@ -980,6 +1752,54 @@ public final class Reader {
     }
 
     /**
+     * The format of an exception leaf whose one constructor takes parameters and only calls {@code
+     * super(String.format("<format>", p1, …, pn))} with its parameters, each once, in order; else
+     * null. A throw of it is that format applied to the throw's arguments, which Java evaluates in
+     * order before it formats them, as {@code errorf}'s arguments are.
+     */
+    private String errorLeafFormat(TreePath p) {
+        ClassTree ct = classTree(p);
+        if (!ct.getImplementsClause().isEmpty() || !ct.getTypeParameters().isEmpty()) {
+            return null;
+        }
+        String format = null;
+        for (Tree m : ct.getMembers()) {
+            if (isSerialVersionUid(p, m)) {
+                continue;
+            }
+            if (!(m instanceof MethodTree)) {
+                return null;
+            }
+            MethodTree mt = (MethodTree) m;
+            Element e = trees.getElement(new TreePath(p, m));
+            if (e.getKind() != ElementKind.CONSTRUCTOR || generated(e) || format != null || mt.getParameters().isEmpty()) {
+                return null;
+            }
+            List<? extends StatementTree> body = ctorStatements(mt);
+            ExpressionTree arg = body.size() == 1 ? superArgument(body.get(0)) : null;
+            if (!(arg instanceof MethodInvocationTree)) {
+                return null;
+            }
+            MethodInvocationTree mi = (MethodInvocationTree) arg;
+            Element called = trees.getElement(new TreePath(new TreePath(new TreePath(new TreePath(p, m), mt.getBody()), body.get(0)), arg));
+            if (!(called instanceof ExecutableElement) || !called.getSimpleName().contentEquals("format")
+                || !((TypeElement) called.getEnclosingElement()).getQualifiedName().contentEquals("java.lang.String")
+                || mi.getArguments().size() != mt.getParameters().size() + 1
+                || mi.getArguments().get(0).getKind() != Tree.Kind.STRING_LITERAL) {
+                return null;
+            }
+            for (int i = 0; i < mt.getParameters().size(); i++) {
+                ExpressionTree a = mi.getArguments().get(i + 1);
+                if (!(a instanceof IdentifierTree) || !((IdentifierTree) a).getName().equals(mt.getParameters().get(i).getName())) {
+                    return null;
+                }
+            }
+            format = (String) ((LiteralTree) mi.getArguments().get(0)).getValue();
+        }
+        return format;
+    }
+
+    /**
      * Instance fields of a reference type (anything but a primitive) without an initializer that some
      * constructor does not assign before it does anything else: on such a path a fresh object holds
      * null in the field, and cir/1's zero value of its type ({@code ""}, {@code 0}, an empty slice) is
@@ -1081,11 +1901,15 @@ public final class Reader {
     }
 
     private String structShape(TreePath p) {
+        boolean inheritsId = extendsPanacheEntity(element(p));
         for (Tree m : classTree(p).getMembers()) {
             if (m instanceof VariableTree) {
                 Element e = trees.getElement(new TreePath(p, m));
                 if (e.getModifiers().contains(Modifier.STATIC)) {
                     continue;
+                }
+                if (inheritsId && e.getSimpleName().contentEquals("id")) {
+                    return "field id hides PanacheEntity.id: a cir/1 struct has one field of a name";
                 }
                 try {
                     typeOf(e.asType());
@@ -1117,24 +1941,57 @@ public final class Reader {
             CompilationUnitTree cu = p.getCompilationUnit();
             Set<String> methodNames = new HashSet<>();
             boolean explicitCtor = false;
+            boolean declaresCtor = false;
             for (Tree m : classTree(p).getMembers()) {
                 TreePath mp = new TreePath(p, m);
                 if (m instanceof ClassTree) {
-                    refuseDecl(cu, m, ((ClassTree) m).getModifiers(), ((ClassTree) m).getSimpleName().toString(),
-                        "nested class: only top-level classes are read");
+                    if (nested.contains(m)) {
+                        continue;
+                    }
+                    String why = !project ? "nested class: only top-level classes are read"
+                        : nestedWhy.containsKey(m) ? nestedWhy.get(m)
+                        : "a class nested in a nested class: only a class nested in a top-level class is read";
+                    refuseDecl(cu, m, ((ClassTree) m).getModifiers(), ((ClassTree) m).getSimpleName().toString(), why);
                     continue;
                 }
                 if (m instanceof VariableTree) {
                     VariableTree vt = (VariableTree) m;
-                    refuseAnnotations(cu, vt.getModifiers());
                     VariableElement ve = (VariableElement) trees.getElement(mp);
+                    refuseAnnotations(cu, vt.getModifiers(), !ve.getModifiers().contains(Modifier.STATIC));
                     if (!ve.getModifiers().contains(Modifier.STATIC)) {
                         continue;
                     }
                     String why = null;
+                    String vname = ve.getSimpleName().toString();
+                    boolean mutable = !ve.getModifiers().contains(Modifier.FINAL);
+                    if (mutable && !project) {
+                        why = varShape(vt, ve);
+                        if (why == null && (funcNames.contains(vname) || consts.containsValue(vname) || vars.containsValue(vname))) {
+                            why = "a second module-level name " + vname;
+                        }
+                        if (why == null) {
+                            vars.put(ve, vname);
+                        } else {
+                            refuseDecl(cu, m, vt.getModifiers(), te.getSimpleName() + "." + vt.getName(), why);
+                        }
+                        continue;
+                    }
+                    if (project && !mutable && ve.getConstantValue() == null) {
+                        why = staticFinalShape(mp, vt, ve);
+                        if (why == null && (funcNames.contains(vname) || consts.containsValue(vname) || vars.containsValue(vname))) {
+                            why = "a second module-level name " + vname;
+                        }
+                        if (why == null) {
+                            vars.put(ve, vname);
+                        } else {
+                            refuseDecl(cu, m, vt.getModifiers(), te.getSimpleName() + "." + vt.getName(), why);
+                        }
+                        continue;
+                    }
                     if (!ve.getModifiers().contains(Modifier.FINAL) || ve.getConstantValue() == null) {
                         why = "static field other than a compile-time constant: module-level state is outside cir/1";
-                    } else if (funcNames.contains(ve.getSimpleName().toString()) || consts.containsValue(ve.getSimpleName().toString())) {
+                    } else if (funcNames.contains(ve.getSimpleName().toString()) || consts.containsValue(ve.getSimpleName().toString())
+                        || vars.containsValue(ve.getSimpleName().toString())) {
                         why = "a second constant named " + ve.getSimpleName();
                     } else {
                         try {
@@ -1163,21 +2020,34 @@ public final class Reader {
                     refuseAnnotations(cu, param.getModifiers());
                 }
                 boolean ctor = ee.getKind() == ElementKind.CONSTRUCTOR;
-                String name = ctor ? "New" + te.getSimpleName() : ee.getSimpleName().toString();
+                declaresCtor |= ctor;
+                String name = ctor ? (project ? ctorName(ee) : "New" + te.getSimpleName()) : ee.getSimpleName().toString();
                 String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name + "(…)";
                 String why = null;
-                if (ctor && explicitCtor) {
+                if (ctor && project && callsThis(mt)) {
+                    why = "a constructor calling this(…): Java runs the field initializers once, in the constructor it calls,"
+                        + " and cir/1 has no call of a constructor on an object already made";
+                } else if (ctor && explicitCtor && !project) {
                     why = "a second constructor: overloading is outside cir/1";
+                } else if (ctor && project && !name.equals("New" + te.getSimpleName()) && funcNames.contains(name)) {
+                    why = "a second function named " + name + " in the package";
                 } else if (!ctor && methodNames.contains(name)) {
                     why = "a second method named " + name + ": overloading is outside cir/1";
                 } else if (!ctor && ee.getModifiers().contains(Modifier.STATIC) && funcNames.contains(name)) {
                     why = "a second function named " + name + " in the package";
-                } else if (!ee.getTypeParameters().isEmpty()) {
-                    why = "generic method: generics declared by the code are outside cir/1";
+                } else if (!ctor && ee.getModifiers().contains(Modifier.STATIC) && vars.containsValue(name)) {
+                    why = "a function named as the module-level variable " + name;
+                } else if (!ee.getTypeParameters().isEmpty() && (project || !ee.getModifiers().contains(Modifier.STATIC))) {
+                    why = "generic method other than a static one of a package read: generics declared by the code are outside cir/1";
+                } else if (!ee.getTypeParameters().isEmpty() && !unbounded(ee)) {
+                    why = "generic method with a bounded type parameter: only type parameters over any are read";
                 } else if (mt.getBody() == null) {
                     why = "method without a body";
-                } else if (ee.isVarArgs()) {
+                } else if (ee.isVarArgs() && project) {
                     why = "variable arity method";
+                }
+                if (why == null && !ee.getTypeParameters().isEmpty()) {
+                    genericMethods.add(ee);
                 }
                 Fn fn = null;
                 if (why == null) {
@@ -1193,8 +2063,11 @@ public final class Reader {
                 }
                 fns.put(ee, fn);
                 if (ctor) {
+                    if (!explicitCtor) {
+                        ctors.put(te, fn);
+                    }
                     explicitCtor = true;
-                    ctors.put(te, fn);
+                    funcNames.add(name);
                 } else {
                     methodNames.add(name);
                     if (fn.isStatic) {
@@ -1202,7 +2075,7 @@ public final class Reader {
                     }
                 }
             }
-            if (!explicitCtor) {
+            if (!explicitCtor && !(project && declaresCtor)) {
                 Fn fn = new Fn();
                 fn.name = "New" + te.getSimpleName();
                 fn.exported = te.getModifiers().contains(Modifier.PUBLIC);
@@ -1215,6 +2088,153 @@ public final class Reader {
         }
     }
 
+    /**
+     * The function a project read makes of a constructor: {@code New<Class>} for the first the class
+     * declares, {@code New<Class><n>} for the n-th after it, in source order, read or refused; a
+     * call names the one javac chose. The default constructor javac adds is {@code New<Class>}.
+     */
+    private String ctorName(ExecutableElement ce) {
+        TypeElement te = (TypeElement) ce.getEnclosingElement();
+        int i = 0;
+        for (Element e : te.getEnclosedElements()) {
+            if (e.getKind() != ElementKind.CONSTRUCTOR || generated(e)) {
+                continue;
+            }
+            if (e.equals(ce)) {
+                break;
+            }
+            i++;
+        }
+        return "New" + te.getSimpleName() + (i == 0 ? "" : String.valueOf(i + 1));
+    }
+
+    /** Whether a constructor starts by calling another of its class, {@code this(…)}. */
+    private static boolean callsThis(MethodTree mt) {
+        List<? extends StatementTree> body = mt.getBody() == null ? List.of() : mt.getBody().getStatements();
+        if (body.isEmpty() || !(body.get(0) instanceof ExpressionStatementTree)) {
+            return false;
+        }
+        ExpressionTree e = ((ExpressionStatementTree) body.get(0)).getExpression();
+        return e instanceof MethodInvocationTree && ((MethodInvocationTree) e).getMethodSelect() instanceof IdentifierTree
+            && ((IdentifierTree) ((MethodInvocationTree) e).getMethodSelect()).getName().contentEquals("this");
+    }
+
+    /**
+     * Why a {@code static final} field of a project read that is not a compile-time constant is not
+     * read as a module-level variable, or null. Java runs its initializer when it first uses the
+     * class, cir/1 when it loads the module; the value is the same when the initializer is a literal,
+     * or a call of a static method of a jar whose arguments are literals, constants or {@code
+     * C.class.getName()}, and the method gives the same value whenever it is called (README.md,
+     * Assumptions). A call of the module's own code or of a value computed at run time could see
+     * another state at load than at first use.
+     */
+    private String staticFinalShape(TreePath fp, VariableTree vt, VariableElement ve) {
+        try {
+            typeOf(ve.asType());
+        } catch (Unsupported u) {
+            return u.getMessage();
+        }
+        ExpressionTree init = vt.getInitializer();
+        String why = "a static field initialized other than by a literal or by a call of a jar's static method with constant"
+            + " arguments: Java runs the initializer when it first uses the class, a module-level variable is set when the"
+            + " module is loaded";
+        if (init == null || init.getKind() == Tree.Kind.NULL_LITERAL || init.getKind() == Tree.Kind.CHAR_LITERAL) {
+            return why;
+        }
+        TreePath ip = new TreePath(fp, init);
+        if (!(init instanceof LiteralTree)) {
+            if (!(init instanceof MethodInvocationTree) || !(trees.getElement(ip) instanceof ExecutableElement)) {
+                return why;
+            }
+            ExecutableElement m = (ExecutableElement) trees.getElement(ip);
+            TypeElement owner = (TypeElement) m.getEnclosingElement();
+            if (!m.getModifiers().contains(Modifier.STATIC) || isProjectClass(owner) || owner.getQualifiedName().toString().startsWith("java.")) {
+                return why;
+            }
+            for (ExpressionTree a : ((MethodInvocationTree) init).getArguments()) {
+                TreePath ap = new TreePath(ip, a);
+                Element ae = trees.getElement(ap);
+                boolean constant = a instanceof LiteralTree && a.getKind() != Tree.Kind.NULL_LITERAL
+                    || ae instanceof VariableElement && ((VariableElement) ae).getConstantValue() != null
+                    || classNameOf(ap) != null;
+                if (!constant) {
+                    return why;
+                }
+            }
+        }
+        try {
+            Map<String, Object> t = typeOf(ve.asType());
+            checkTyped(coerce(expr(ip, new Ctx(null, fp.getCompilationUnit(), false)), t));
+        } catch (Unsupported u) {
+            return u.getMessage();
+        }
+        return null;
+    }
+
+    /**
+     * The binary name of the class {@code C} when {@code p} is {@code C.class.getName()} of a class
+     * or interface, which is the name {@code getName} returns; else null.
+     */
+    private String classNameOf(TreePath p) {
+        if (!(p.getLeaf() instanceof MethodInvocationTree)) {
+            return null;
+        }
+        MethodInvocationTree mi = (MethodInvocationTree) p.getLeaf();
+        if (!mi.getArguments().isEmpty() || !(mi.getMethodSelect() instanceof MemberSelectTree)) {
+            return null;
+        }
+        MemberSelectTree sel = (MemberSelectTree) mi.getMethodSelect();
+        if (!sel.getIdentifier().contentEquals("getName") || !(sel.getExpression() instanceof MemberSelectTree)
+            || !((MemberSelectTree) sel.getExpression()).getIdentifier().contentEquals("class")) {
+            return null;
+        }
+        ExpressionTree of = ((MemberSelectTree) sel.getExpression()).getExpression();
+        TypeMirror t = trees.getTypeMirror(new TreePath(new TreePath(new TreePath(p, sel), sel.getExpression()), of));
+        if (t == null || t.getKind() != TypeKind.DECLARED) {
+            return null;
+        }
+        return elements.getBinaryName((TypeElement) ((DeclaredType) t).asElement()).toString();
+    }
+
+    /**
+     * Why a static field that is not final is not read as a module-level variable, or null: its
+     * initializer is absent, for a type whose zero value is Java's default (an integer, a boolean,
+     * a double or a float), or a literal, so when Java initializes the class does not matter.
+     */
+    private String varShape(VariableTree vt, VariableElement ve) {
+        Map<String, Object> t;
+        try {
+            t = typeOf(ve.asType());
+        } catch (Unsupported u) {
+            return u.getMessage();
+        }
+        ExpressionTree init = vt.getInitializer();
+        if (init == null) {
+            return isInt(t) || isFloat(t) || t.equals(tBool()) ? null
+                : "a static field of a reference type without an initializer holds null, which no cir/1 zero value of "
+                    + describe(t) + " is";
+        }
+        if (!(init instanceof LiteralTree) || init.getKind() == Tree.Kind.NULL_LITERAL || init.getKind() == Tree.Kind.CHAR_LITERAL) {
+            return "a static field initialized other than by a literal: Java runs the initializer when it first uses the class";
+        }
+        return null;
+    }
+
+    /** A module-level variable: its type, and its literal initializer converted to that type. */
+    private void emitVar(CompilationUnitTree cu, VariableTree vt, VariableElement ve) {
+        Map<String, Object> t = typeOf(ve.asType());
+        Map<String, Object> d = Json.obj();
+        d.put("name", vars.get(ve));
+        d.put("t", t);
+        if (vt.getInitializer() != null) {
+            Ctx none = new Ctx(null, cu, false);
+            d.put("init", coerce(expr(new TreePath(trees.getPath(ve), vt.getInitializer()), none), t));
+        }
+        d.put("pos", declPos(cu, vt, vt.getModifiers()));
+        outVars.add(d);
+        layout.add("var:" + vars.get(ve));
+    }
+
     private Fn signature(TypeElement te, ExecutableElement ee, TreePath mp, String name) {
         Fn fn = new Fn();
         fn.name = name;
@@ -1223,6 +2243,10 @@ public final class Reader {
         fn.isCtor = ee.getKind() == ElementKind.CONSTRUCTOR;
         fn.cls = te;
         fn.path = mp;
+        fn.variadic = ee.isVarArgs();
+        for (javax.lang.model.element.TypeParameterElement tp : ee.getTypeParameters()) {
+            fn.tparams.add(tp.getSimpleName().toString());
+        }
         for (VariableElement v : ee.getParameters()) {
             fn.paramNames.add(v.getSimpleName().toString());
             fn.params.add(typeOf(v.asType()));
@@ -1255,12 +2279,24 @@ public final class Reader {
         return fn;
     }
 
+    /** Whether every type parameter of a method is bounded by {@code Object} alone: Go's {@code any}. */
+    private static boolean unbounded(ExecutableElement ee) {
+        for (javax.lang.model.element.TypeParameterElement tp : ee.getTypeParameters()) {
+            List<? extends TypeMirror> bounds = tp.getBounds();
+            if (bounds.size() != 1 || !(bounds.get(0) instanceof DeclaredType)
+                || !((TypeElement) ((DeclaredType) bounds.get(0)).asElement()).getQualifiedName().contentEquals("java.lang.Object")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private boolean isErrorType(TypeMirror t) {
         if (t.getKind() != TypeKind.DECLARED) {
             return false;
         }
         TypeElement te = (TypeElement) types.asElement(t);
-        return te.equals(errorRoot) || errorLeaves.containsKey(te);
+        return te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te);
     }
 
     // ---- emitting declarations ----
@@ -1301,6 +2337,43 @@ public final class Reader {
             layout.add("error:" + name);
             return;
         }
+        if (unions.containsKey(te)) {
+            Map<String, Object> d = Json.obj();
+            d.put("k", "union");
+            d.put("name", name);
+            d.put("exported", te.getModifiers().contains(Modifier.PUBLIC));
+            List<Object> vs = new ArrayList<>();
+            for (TypeElement r : unions.get(te)) {
+                Map<String, Object> v = Json.obj();
+                v.put("name", r.getSimpleName().toString());
+                List<Object> fields = new ArrayList<>();
+                for (javax.lang.model.element.RecordComponentElement c : r.getRecordComponents()) {
+                    Map<String, Object> f = Json.obj();
+                    f.put("name", c.getSimpleName().toString());
+                    f.put("t", typeOf(c.asType()));
+                    fields.add(f);
+                }
+                v.put("fields", fields);
+                vs.add(v);
+            }
+            d.put("variants", vs);
+            putDoc(d, te);
+            d.put("pos", declPos(cu, ct, ct.getModifiers()));
+            outTypes.add(d);
+            layout.add("type:" + name);
+            return;
+        }
+        if (impls.containsKey(te)) {
+            Map<String, Object> d = Json.obj();
+            d.put("name", name);
+            d.put("exported", te.getModifiers().contains(Modifier.PUBLIC));
+            d.put("methods", new ArrayList<Object>(ifaceMethods.get(te)));
+            putDoc(d, te);
+            d.put("pos", declPos(cu, ct, ct.getModifiers()));
+            outInterfaces.add(d);
+            layout.add("type:" + name);
+            return;
+        }
         if (!structs.contains(te)) {
             return;
         }
@@ -1309,6 +2382,12 @@ public final class Reader {
         d.put("name", name);
         d.put("exported", te.getModifiers().contains(Modifier.PUBLIC));
         List<Object> fields = new ArrayList<>();
+        if (extendsPanacheEntity(te)) {
+            Map<String, Object> f = Json.obj();
+            f.put("name", "id");
+            f.put("t", fieldType(panacheId()));
+            fields.add(f);
+        }
         for (Tree m : ct.getMembers()) {
             if (m instanceof VariableTree) {
                 Element e = trees.getElement(new TreePath(p, m));
@@ -1326,7 +2405,7 @@ public final class Reader {
         outTypes.add(d);
         layout.add("type:" + name);
         Fn ctor = ctors.get(te);
-        if (ctor.path == p) {
+        if (ctor != null && ctor.path == p) {
             emitFunc(ctor);
         }
         for (Tree m : ct.getMembers()) {
@@ -1341,12 +2420,113 @@ public final class Reader {
                 c.put("pos", declPos(cu, m, ((VariableTree) m).getModifiers()));
                 outConsts.add(c);
                 layout.add("const:" + consts.get(ve));
+            } else if (m instanceof VariableTree && vars.containsKey(e)) {
+                emitVar(cu, (VariableTree) m, (VariableElement) e);
             } else if (m instanceof MethodTree && fns.containsKey(e)) {
                 emitFunc(fns.get(e));
             }
         }
         if (project) {
+            persistence(cu, name, ct.getModifiers());
+            for (Tree m : ct.getMembers()) {
+                if (m instanceof VariableTree && !trees.getElement(new TreePath(p, m)).getModifiers().contains(Modifier.STATIC)) {
+                    persistence(cu, name + "." + ((VariableTree) m).getName(), ((VariableTree) m).getModifiers());
+                }
+            }
             framework(p, te, ct);
+        }
+    }
+
+    /**
+     * Java source text on one line: comments dropped, and every run of white space and comments
+     * outside a literal one space. A string, character or text block literal is copied byte for
+     * byte, so a tab or a text block's line break stays in it.
+     */
+    private static String oneLine(String src) {
+        StringBuilder b = new StringBuilder();
+        boolean space = false;
+        int i = 0;
+        int n = src.length();
+        while (i < n) {
+            char c = src.charAt(i);
+            if (Character.isWhitespace(c)) {
+                space = true;
+                i++;
+                continue;
+            }
+            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '/') {
+                while (i < n && src.charAt(i) != '\n' && src.charAt(i) != '\r') {
+                    i++;
+                }
+                space = true;
+                continue;
+            }
+            if (c == '/' && i + 1 < n && src.charAt(i + 1) == '*') {
+                int end = src.indexOf("*/", i + 2);
+                i = end < 0 ? n : end + 2;
+                space = true;
+                continue;
+            }
+            if (space && b.length() > 0) {
+                b.append(' ');
+            }
+            space = false;
+            int end = i + 1;
+            if (src.startsWith("\"\"\"", i)) {
+                end = literalEnd(src, i + 3, "\"\"\"");
+            } else if (c == '"' || c == '\'') {
+                end = literalEnd(src, i + 1, String.valueOf(c));
+            }
+            b.append(src, i, end);
+            i = end;
+        }
+        return b.toString();
+    }
+
+    /** The index after the {@code close} that ends a literal whose content starts at {@code from}, skipping escapes. */
+    private static int literalEnd(String src, int from, String close) {
+        int i = from;
+        while (i < src.length()) {
+            if (src.charAt(i) == '\\') {
+                i += 2;
+            } else if (src.startsWith(close, i)) {
+                return i + close.length();
+            } else {
+                i++;
+            }
+        }
+        return src.length();
+    }
+
+    /** The JPA annotations of a struct or of one of its fields, {@code at}, as {@code persistence} marks. */
+    private void persistence(CompilationUnitTree cu, String at, ModifiersTree mods) {
+        for (AnnotationTree a : mods.getAnnotations()) {
+            TypeMirror t = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
+            String qn = t == null ? "" : qname(t);
+            if (!PERSISTENCE.contains(qn)) {
+                continue;
+            }
+            Map<String, Object> x = Json.obj();
+            x.put("at", at);
+            x.put("mark", qn.substring(qn.lastIndexOf('.') + 1));
+            List<Object> args = new ArrayList<>();
+            for (ExpressionTree e : a.getArguments()) {
+                String arg = oneLine(source(cu, e));
+                if (arg.chars().anyMatch(Character::isISOControl)) {
+                    refuse(pos(cu, a), source(cu, a), "annotation " + qn + " with an argument holding a control character in"
+                        + " a literal: a persistence mark's arguments are one line each");
+                    args = null;
+                    break;
+                }
+                args.add(arg);
+            }
+            if (args == null) {
+                continue;
+            }
+            if (!args.isEmpty()) {
+                x.put("args", args);
+            }
+            outPersistence.add(x);
         }
     }
 
@@ -1402,6 +2582,11 @@ public final class Reader {
                 if (incoming != null) {
                     String channel = attribute(incoming, "value");
                     entry("incoming", fn.key(), "", channel == null ? "" : channel);
+                }
+                Map<String, Object> taken = fn.params.size() == 1 ? fn.params.get(0) : null;
+                if (te.getKind() == ElementKind.CLASS && exceptionMapper(te) && mapperShape(te) == null && ee.equals(mapperMethod(te))
+                    && "extern".equals(taken.get("k")) && !taken.containsKey("targs")) {
+                    entry("exception-mapper", fn.key(), "", taken.get("path") + "." + taken.get("name"));
                 }
             }
         }
@@ -1469,18 +2654,25 @@ public final class Reader {
         outInjects.add(x);
     }
 
-    /** The qualified name of the one bean of the project that is a {@code t}; empty when none or several are. */
+    /**
+     * The one bean of the project that is a {@code t}, as its package and the name its module lists
+     * it by; empty when none or several are, or when its package reads it as no struct and so lists
+     * no bean of it.
+     */
     private String resolveBean(TypeMirror t) {
         TypeMirror want = types.erasure(t);
-        String found = "";
+        TypeElement found = null;
         int n = 0;
         for (TypeElement b : analysis.beans) {
             if (types.isAssignable(types.erasure(b.asType()), want)) {
-                found = b.getQualifiedName().toString();
+                found = b;
                 n++;
             }
         }
-        return n == 1 ? found : "";
+        if (n != 1 || !structs.contains(found) && !otherStructs.contains(found)) {
+            return "";
+        }
+        return packageOf(found) + "." + found.getSimpleName();
     }
 
     /** The resource's path and the method's joined: every segment, one {@code /} between, a leading {@code /}. */
@@ -1524,6 +2716,16 @@ public final class Reader {
         Map<String, Object> f = Json.obj();
         f.put("name", fn.name);
         f.put("exported", fn.exported);
+        if (!fn.tparams.isEmpty()) {
+            List<Object> tps = new ArrayList<>();
+            for (String tp : fn.tparams) {
+                Map<String, Object> x = Json.obj();
+                x.put("name", tp);
+                x.put("constraint", kind("any"));
+                tps.add(x);
+            }
+            f.put("tparams", tps);
+        }
         if (!fn.isStatic && !fn.isCtor) {
             Map<String, Object> recv = Json.obj();
             recv.put("name", "this");
@@ -1535,6 +2737,9 @@ public final class Reader {
             Map<String, Object> pm = Json.obj();
             pm.put("name", fn.paramNames.get(i));
             pm.put("t", fn.params.get(i));
+            if (fn.variadic && i == fn.params.size() - 1) {
+                pm.put("variadic", Boolean.TRUE);
+            }
             params.add(pm);
         }
         f.put("params", params);
@@ -1568,6 +2773,10 @@ public final class Reader {
             pos = declPos(cu, ct, ct.getModifiers());
             body.add(thisAlloc(fn, ctx, pos));
             body.add(ret(successResults(ctx, null), pos));
+        }
+        List<Object> raises = raisesOf(body);
+        if (!raises.isEmpty()) {
+            f.put("raises", raises);
         }
         f.put("body", body);
         if (fn.path.getLeaf() instanceof MethodTree) {
@@ -1651,12 +2860,28 @@ public final class Reader {
         return stmt(new TreePath(parent, s), ctx);
     }
 
+    /** The body of a loop: {@code break} and {@code continue} inside it, by its label or none, leave it. */
     private List<Object> inside(String target, TreePath parent, StatementTree s, Ctx ctx) {
         ctx.breaks.push(target);
+        ctx.loopLabels.push(ctx.nextLabel);
+        ctx.nextLabel = "";
         try {
             return body(parent, s, ctx);
         } finally {
             ctx.breaks.pop();
+            ctx.loopLabels.pop();
+        }
+    }
+
+    /**
+     * Whether a {@code break} or {@code continue} naming {@code label} names the innermost loop: a
+     * cir/1 {@code break} or {@code continue} leaves or ends the innermost loop, from inside a
+     * switch too, so a jump to that loop's label is one and a jump to an outer loop is not.
+     */
+    private static void innermostLoop(String label, String what, Ctx ctx) {
+        if (!label.equals(ctx.loopLabels.peek())) {
+            throw new Unsupported("labeled " + what + " of a loop other than the innermost: cir/1 " + what
+                + " leaves the innermost loop");
         }
     }
 
@@ -1711,7 +2936,11 @@ public final class Reader {
                 return forEach(p, ctx, pos);
             case BREAK: {
                 if (((BreakTree) s).getLabel() != null) {
-                    throw new Unsupported("labeled break is outside cir/1");
+                    if (project) {
+                        throw new Unsupported("labeled break is outside cir/1");
+                    }
+                    innermostLoop(((BreakTree) s).getLabel().toString(), "break", ctx);
+                    return List.of(simple("break", pos));
                 }
                 if (!"loop".equals(ctx.breaks.peek())) {
                     throw new Unsupported("break out of a switch other than at the end of a case: cir/1 break leaves a loop");
@@ -1720,9 +2949,28 @@ public final class Reader {
             }
             case CONTINUE:
                 if (((ContinueTree) s).getLabel() != null) {
-                    throw new Unsupported("labeled continue is outside cir/1");
+                    if (project) {
+                        throw new Unsupported("labeled continue is outside cir/1");
+                    }
+                    innermostLoop(((ContinueTree) s).getLabel().toString(), "continue", ctx);
                 }
                 return List.of(simple("continue", pos));
+            case LABELED_STATEMENT: {
+                if (project) {
+                    throw new Unsupported("labeled statement is outside cir/1");
+                }
+                LabeledStatementTree ls = (LabeledStatementTree) s;
+                Tree.Kind k = ls.getStatement().getKind();
+                if (k != Tree.Kind.WHILE_LOOP && k != Tree.Kind.FOR_LOOP && k != Tree.Kind.ENHANCED_FOR_LOOP) {
+                    throw new Unsupported("label on a statement other than a while, for or for-each loop");
+                }
+                ctx.nextLabel = ls.getLabel().toString();
+                try {
+                    return strict(new TreePath(p, ls.getStatement()), ctx);
+                } finally {
+                    ctx.nextLabel = "";
+                }
+            }
             case SWITCH:
                 return switchStmt(p, ctx, pos);
             case RETURN:
@@ -1737,8 +2985,6 @@ public final class Reader {
                 throw new Unsupported("do-while is outside cir/1");
             case BLOCK:
                 throw new Unsupported("a nested block is outside cir/1");
-            case LABELED_STATEMENT:
-                throw new Unsupported("labeled statement is outside cir/1");
             case CLASS:
                 throw new Unsupported("local class is outside cir/1");
             default:
@@ -1821,6 +3067,12 @@ public final class Reader {
                     return assignUnassigned(target, new TreePath(ep, at.getVariable()), new TreePath(ep, at.getExpression()), ctx, pos);
                 }
                 refuseUnassigned(new TreePath(ep, at.getExpression()), "assigned", ESCAPES);
+                Element av = trees.getElement(new TreePath(ep, at.getVariable()));
+                if (av != null && av.getKind() == ElementKind.LOCAL_VARIABLE && av.asType().getKind() == TypeKind.DECLARED && impls.containsKey((TypeElement) types.asElement(av.asType()))) {
+                    throw new Unsupported("an assignment to " + av.getSimpleName() + ", a local of interface "
+                        + types.asElement(av.asType()).getSimpleName() + ": the Go writer declares a local with the type of the"
+                        + " value it starts with, so another implementation is not assignable to it");
+                }
                 Map<String, Object> lhs = place(new TreePath(ep, at.getVariable()), ctx);
                 Map<String, Object> rhs = coerce(expr(new TreePath(ep, at.getExpression()), ctx), type(lhs));
                 return List.of(assign("", lhs, rhs, pos));
@@ -1832,19 +3084,43 @@ public final class Reader {
             case REMAINDER_ASSIGNMENT:
             case AND_ASSIGNMENT:
             case OR_ASSIGNMENT:
-            case XOR_ASSIGNMENT: {
+            case XOR_ASSIGNMENT:
+            case LEFT_SHIFT_ASSIGNMENT:
+            case RIGHT_SHIFT_ASSIGNMENT: {
+                if (project && (e.getKind() == Tree.Kind.LEFT_SHIFT_ASSIGNMENT || e.getKind() == Tree.Kind.RIGHT_SHIFT_ASSIGNMENT)) {
+                    throw new Unsupported("expression statement " + e.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + " is outside cir/1");
+                }
                 CompoundAssignmentTree ct = (CompoundAssignmentTree) e;
                 refuseUnassigned(new TreePath(ep, ct.getVariable()), "the target of " + compoundOp(e.getKind()),
                     "Java unboxes or prints the null" + STOPS);
                 refuseUnassigned(new TreePath(ep, ct.getExpression()), "an operand of " + compoundOp(e.getKind()),
                     "Java unboxes or prints the null" + STOPS);
                 Map<String, Object> lhs = place(new TreePath(ep, ct.getVariable()), ctx);
+                String k = (String) lhs.get("k");
+                if (("index".equals(k) || "field".equals(k) || "global".equals(k)) && callsCode(new TreePath(ep, ct.getExpression()))) {
+                    throw new Unsupported(compoundOp(e.getKind()) + " on an array element, a field or a module-level variable with a"
+                        + " call in its right operand: Java reads the target before the call, cir/1 after it");
+                }
                 Map<String, Object> rhs = expr(new TreePath(ep, ct.getExpression()), ctx);
                 String op = compoundOp(e.getKind());
                 Map<String, Object> lt = type(lhs);
+                if (op.equals("<<=") || op.equals(">>=")) {
+                    if (!isInt(lt)) {
+                        throw new Unsupported(op + " on a " + describe(lt));
+                    }
+                    return List.of(assign(op, lhs, shiftCount(rhs, lt), pos));
+                }
                 if (lt.equals(tString())) {
                     if (!op.equals("+=") || !type(rhs).equals(tString())) {
                         throw new Unsupported("+= of a value other than a String to a String");
+                    }
+                } else if (isFloat(lt)) {
+                    if (op.equals("%=")) {
+                        throw new Unsupported("%= on a floating-point value: cir/1 % is an integer remainder");
+                    }
+                    if (!op.equals("+=") && !op.equals("-=") && !op.equals("*=") && !op.equals("/=")) {
+                        throw new Unsupported(op + " on a " + describe(lt));
                     }
                 } else if (!isInt(lt)) {
                     throw new Unsupported(op + " on a " + describe(lt));
@@ -1873,6 +3149,44 @@ public final class Reader {
         }
     }
 
+    /**
+     * Whether an expression calls code that may write what it names: a method or constructor of the
+     * package, or the abstract method of a functional interface, which runs a lambda of it.
+     */
+    private boolean callsCode(TreePath p) {
+        boolean[] found = {false};
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree mi, Void x) {
+                note(trees.getElement(getCurrentPath()));
+                return super.visitMethodInvocation(mi, x);
+            }
+
+            @Override
+            public Void visitNewClass(NewClassTree nc, Void x) {
+                note(trees.getElement(getCurrentPath()));
+                return super.visitNewClass(nc, x);
+            }
+
+            @Override
+            public Void visitLambdaExpression(LambdaExpressionTree l, Void x) {
+                return null;
+            }
+
+            private void note(Element e) {
+                if (e == null || !(e.getEnclosingElement() instanceof TypeElement)) {
+                    found[0] = true;
+                    return;
+                }
+                TypeElement owner = (TypeElement) e.getEnclosingElement();
+                if (inPackage(owner) || function(owner.getQualifiedName().toString()) != null) {
+                    found[0] = true;
+                }
+            }
+        }.scan(p, null);
+        return found[0];
+    }
+
     private static String compoundOp(Tree.Kind k) {
         switch (k) {
             case PLUS_ASSIGNMENT:
@@ -1889,6 +3203,10 @@ public final class Reader {
                 return "&=";
             case OR_ASSIGNMENT:
                 return "|=";
+            case LEFT_SHIFT_ASSIGNMENT:
+                return "<<=";
+            case RIGHT_SHIFT_ASSIGNMENT:
+                return ">>=";
             default:
                 return "^=";
         }
@@ -1945,8 +3263,9 @@ public final class Reader {
     private Map<String, Object> place(TreePath p, Ctx ctx) {
         Map<String, Object> x = expr(p, ctx);
         String k = (String) x.get("k");
-        if (!k.equals("var") && !k.equals("field")) {
-            throw new Unsupported("assignment to something other than a local or a field");
+        boolean arrayElement = k.equals("index") && p.getLeaf() instanceof ArrayAccessTree;
+        if (!k.equals("var") && !k.equals("field") && !k.equals("global") && !arrayElement) {
+            throw new Unsupported("assignment to something other than a local, a field or an array element");
         }
         return x;
     }
@@ -1955,7 +3274,8 @@ public final class Reader {
      * Refuse a String or boxed parameter printed as it is, by concatenation or {@code String.format},
      * in a method that never compares it with {@code null}: Java prints a null one as {@code null},
      * and a cir/1 string or integer has no null. Every other use of a parameter assumes it is not
-     * null (README.md, Assumptions).
+     * null (README.md, Assumptions). A path parameter only the framework passes ({@link
+     * #pathParameter}) is never null.
      */
     private void refusePrintedNullable(TreePath part, Ctx ctx) {
         part = unparen(part);
@@ -1964,7 +3284,8 @@ public final class Reader {
             return;
         }
         String q = qname(e.asType());
-        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)) {
+        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)
+            || pathParameter((VariableElement) e)) {
             return;
         }
         boolean[] checked = {false};
@@ -2324,7 +3645,8 @@ public final class Reader {
             over = expr(ep, ctx);
             source = named(ep);
             String cls = qname(types.erasure(trees.getTypeMirror(ep)));
-            if (!"slice".equals(type(over).get("k")) || !(cls.equals("java.util.List") || cls.equals("java.util.ArrayList"))) {
+            boolean array = trees.getTypeMirror(ep).getKind() == TypeKind.ARRAY;
+            if (!"slice".equals(type(over).get("k")) || !(cls.equals("java.util.List") || cls.equals("java.util.ArrayList") || array)) {
                 throw new Unsupported("for-each over something other than a List or a map's keySet()");
             }
             if (!sub(type(over), "elem").equals(vt)) {
@@ -2386,7 +3708,7 @@ public final class Reader {
                 StatementTree end = stmts.get(stmts.size() - 1);
                 if (end instanceof BreakTree && ((BreakTree) end).getLabel() == null) {
                     stmts = stmts.subList(0, stmts.size() - 1);
-                } else if (!exits(end) && !(end instanceof ContinueTree) && !last) {
+                } else if (!exits(end) && !(end instanceof ContinueTree) && !(end instanceof BreakTree) && !last) {
                     throw new Unsupported("a case falling through to the next is outside cir/1");
                 }
             }
@@ -2470,14 +3792,36 @@ public final class Reader {
         return st;
     }
 
+    /**
+     * Whether {@link #throwStmt} reads the {@code throw} at {@code p} as a {@code raise}: in project mode,
+     * {@code throw new X(…)} of a jar's unchecked exception, not a sentinel or formatted error of the
+     * package's checked-exception hierarchy, without a class body.
+     */
+    private boolean throwRaises(TreePath p) {
+        ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
+        if (!project || !(e instanceof NewClassTree)) {
+            return false;
+        }
+        NewClassTree nc = (NewClassTree) e;
+        TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(new TreePath(p, e)));
+        boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
+        return !sentinel && !formattedLeaves.containsKey(te) && nc.getClassBody() == null && !isProjectClass(te)
+            && unchecked(te);
+    }
+
     private List<Object> throwStmt(TreePath p, Ctx ctx, String pos) {
         ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
         if (!(e instanceof NewClassTree)) {
             throw new Unsupported("throw of something other than new <exception>()");
         }
         NewClassTree nc = (NewClassTree) e;
-        TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(new TreePath(p, e)));
-        if (!errorLeaves.containsKey(te) || !nc.getArguments().isEmpty() || nc.getClassBody() != null) {
+        TreePath np = new TreePath(p, e);
+        TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(np));
+        boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
+        if (throwRaises(p)) {
+            return List.of(raise(np, te, ctx, pos));
+        }
+        if (!sentinel && !formattedLeaves.containsKey(te) || nc.getClassBody() != null) {
             throw new Unsupported("throw of an exception outside the package's checked-exception hierarchy");
         }
         if (!ctx.fn.throwsErr) {
@@ -2487,12 +3831,125 @@ public final class Reader {
         for (Map<String, Object> t : ctx.fn.values) {
             rs.add(zero(t));
         }
-        Map<String, Object> ev = Json.obj();
-        ev.put("k", "errvar");
-        ev.put("name", te.getSimpleName().toString());
-        ev.put("t", tError());
-        rs.add(ev);
+        if (sentinel) {
+            Map<String, Object> ev = Json.obj();
+            ev.put("k", "errvar");
+            ev.put("name", te.getSimpleName().toString());
+            ev.put("t", tError());
+            rs.add(ev);
+        } else {
+            rs.add(errorf(np, nc, formattedLeaves.get(te), ctx));
+        }
         return List.of(ret(rs, pos));
+    }
+
+    /** Whether {@code te} is an unchecked exception: a {@code RuntimeException} or an {@code Error}. */
+    private boolean unchecked(TypeElement te) {
+        for (String base : List.of("java.lang.RuntimeException", "java.lang.Error")) {
+            TypeElement b = elements.getTypeElement(base);
+            if (b != null && types.isSubtype(te.asType(), b.asType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@code throw new X(…)} of a jar's unchecked exception in a method an entry names: {@code raise}
+     * of the constructed value. Java leaves the method and every caller up to the framework, which
+     * hands the exception to its mapper; {@link #emitFunc} lists the type in {@code raises}. In any
+     * other method it is refused: a caller would have to list what it raises, and so its callers.
+     */
+    private Map<String, Object> raise(TreePath np, TypeElement te, Ctx ctx, String pos) {
+        Element m = ctx.fn.inLambda || !(ctx.fn.path.getLeaf() instanceof MethodTree) ? null : trees.getElement(ctx.fn.path);
+        if (!(m instanceof ExecutableElement) || !entryMethod((ExecutableElement) m)) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + " in a method no entry names: it leaves every caller up"
+                + " to the framework, and cir/1 raises only out of a function an entry names");
+        }
+        if (overridesProjectMethod((ExecutableElement) m)) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + " in a method overriding one of the project's: a call"
+                + " through the type it overrides would not list what it raises");
+        }
+        Map<String, Object> x = expr(np, ctx);
+        Map<String, Object> t = type(x);
+        if (!"extern".equals(t.get("k")) || t.containsKey("targs")) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + ", whose value is not of an extern type");
+        }
+        Map<String, Object> st = Json.obj();
+        st.put("k", "raise");
+        st.put("x", x);
+        st.put("pos", pos);
+        return st;
+    }
+
+    /** Whether {@code m} overrides a method a class or interface of the project's sources declares. */
+    private boolean overridesProjectMethod(ExecutableElement m) {
+        TypeElement owner = (TypeElement) m.getEnclosingElement();
+        Deque<TypeMirror> todo = new ArrayDeque<>(types.directSupertypes(owner.asType()));
+        while (!todo.isEmpty()) {
+            TypeElement s = (TypeElement) types.asElement(todo.pop());
+            if (s == null) {
+                continue;
+            }
+            if (isProjectClass(s)) {
+                for (Element e : s.getEnclosedElements()) {
+                    if (e.getKind() == ElementKind.METHOD && elements.overrides(m, (ExecutableElement) e, owner)) {
+                        return true;
+                    }
+                }
+            }
+            todo.addAll(types.directSupertypes(s.asType()));
+        }
+        return false;
+    }
+
+    /**
+     * The extern types the statements raise, sorted by path, then name, each once: the {@code raises}
+     * of the function. A refused statement is {@code foreign} and raises nothing here.
+     */
+    private static List<Object> raisesOf(Object body) {
+        TreeMap<String, Object> out = new TreeMap<>();
+        Deque<Object> todo = new ArrayDeque<>(List.of(body));
+        while (!todo.isEmpty()) {
+            Object o = todo.pop();
+            if (o instanceof Map) {
+                Map<?, ?> m = (Map<?, ?>) o;
+                if ("raise".equals(m.get("k"))) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> t = (Map<String, Object>) ((Map<String, Object>) m.get("x")).get("t");
+                    out.put(t.get("path") + "\u0000" + t.get("name"), t);
+                }
+                todo.addAll(m.values());
+            } else if (o instanceof List) {
+                todo.addAll((List<?>) o);
+            }
+        }
+        return new ArrayList<>(out.values());
+    }
+
+    /**
+     * {@code new Leaf(a1, …, an)} of a leaf whose constructor formats its parameters: {@code
+     * errorf(<format>, a1, …, an)}, each argument of the constructor's parameter type and printed as
+     * {@link #format} prints it.
+     */
+    private Map<String, Object> errorf(TreePath np, NewClassTree nc, String fmt, Ctx ctx) {
+        ExecutableElement ctor = (ExecutableElement) trees.getElement(np);
+        List<Character> verbs = formatVerbs(fmt);
+        if (verbs.size() != nc.getArguments().size()) {
+            throw new Unsupported("an exception format with " + verbs.size() + " conversions and " + nc.getArguments().size()
+                + " arguments");
+        }
+        List<Object> args = new ArrayList<>();
+        args.add(lit(quote(fmt), tString()));
+        for (int i = 0; i < nc.getArguments().size(); i++) {
+            TreePath ap = new TreePath(np, nc.getArguments().get(i));
+            refusePrintedNullable(ap, ctx);
+            refuseUnassigned(ap, "printed in an exception's message", "Java prints null" + STOPS);
+            Map<String, Object> x = coerce(expr(ap, ctx), typeOf(ctor.getParameters().get(i).asType()));
+            checkVerb(verbs.get(i), type(x));
+            args.add(x);
+        }
+        return intrinsic("errorf", args, tError());
     }
 
     /** The package method a call that throws the package's exceptions invokes, or null. */
@@ -2509,6 +3966,9 @@ public final class Reader {
         Element e = trees.getElement(p);
         if (p.getLeaf() instanceof NewClassTree) {
             TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(p));
+            if (project && structs.contains(te) && fns.get(e) != null) {
+                return fns.get(e);
+            }
             return structs.contains(te) ? ctors.get(te) : null;
         }
         if (!(e instanceof ExecutableElement)) {
@@ -2568,6 +4028,10 @@ public final class Reader {
 
     private Map<String, Object> expr(TreePath p, Ctx ctx) {
         ExpressionTree e = (ExpressionTree) p.getLeaf();
+        Map<String, Object> folded = wrappedConstant(p);
+        if (folded != null) {
+            return folded;
+        }
         switch (e.getKind()) {
             case PARENTHESIZED:
                 return expr(new TreePath(p, ((ParenthesizedTree) e).getExpression()), ctx);
@@ -2581,10 +4045,18 @@ public final class Reader {
                 return lit(quote((String) ((LiteralTree) e).getValue()), tString());
             case NULL_LITERAL:
                 return nil(NULL);
-            case CHAR_LITERAL:
             case FLOAT_LITERAL:
+                if (project) {
+                    throw new Unsupported("char and floating-point values are outside the reader's types");
+                }
+                return floatLit((double) (Float) ((LiteralTree) e).getValue(), "32");
             case DOUBLE_LITERAL:
-                throw new Unsupported("char and floating-point values are outside the reader's types");
+                if (project) {
+                    throw new Unsupported("char and floating-point values are outside the reader's types");
+                }
+                return floatLit((Double) ((LiteralTree) e).getValue(), "64");
+            case CHAR_LITERAL:
+                throw new Unsupported("char values are outside the reader's types");
             case IDENTIFIER:
                 return ident(p, ctx);
             case MEMBER_SELECT:
@@ -2611,8 +4083,12 @@ public final class Reader {
                 return binary(p, ctx);
             case LEFT_SHIFT:
             case RIGHT_SHIFT:
+                if (project) {
+                    throw new Unsupported("shift: Java masks the shift count, cir/1 does not say so");
+                }
+                return shift(p, ctx);
             case UNSIGNED_RIGHT_SHIFT:
-                throw new Unsupported("shift: Java masks the shift count, cir/1 does not say so");
+                throw new Unsupported(">>>: an unsigned shift of a signed integer is outside cir/1");
             case UNARY_MINUS:
             case UNARY_PLUS:
             case LOGICAL_COMPLEMENT:
@@ -2620,14 +4096,23 @@ public final class Reader {
                 refuseUnassigned(new TreePath(p, ((UnaryTree) e).getExpression()), "an operand of a unary operator", "Java unboxes the null" + STOPS);
                 Map<String, Object> t = typeOf(trees.getTypeMirror(p));
                 Map<String, Object> x = coerce(expr(new TreePath(p, ((UnaryTree) e).getExpression()), ctx), t);
+                if (e.getKind() == Tree.Kind.UNARY_MINUS && isFloat(t) && constant(x)) {
+                    throw new Unsupported("- of a floating-point constant: a Go constant has no negative zero");
+                }
                 String op = e.getKind() == Tree.Kind.UNARY_MINUS ? "-"
                     : e.getKind() == Tree.Kind.UNARY_PLUS ? "+" : e.getKind() == Tree.Kind.LOGICAL_COMPLEMENT ? "!" : "^";
                 return unop(op, x, t);
             }
             case LAMBDA_EXPRESSION:
-                throw new Unsupported("lambda: functions as values are outside cir/1");
+                if (project) {
+                    throw new Unsupported("lambda: functions as values are outside cir/1");
+                }
+                return lambda(p, ctx);
             case MEMBER_REFERENCE:
-                throw new Unsupported("method reference: functions as values are outside cir/1");
+                if (project) {
+                    throw new Unsupported("method reference: functions as values are outside cir/1");
+                }
+                return methodRef(p, ctx);
             case CONDITIONAL_EXPRESSION:
                 throw new Unsupported("?: is outside cir/1");
             case INSTANCE_OF:
@@ -2641,9 +4126,33 @@ public final class Reader {
             case POSTFIX_DECREMENT:
             case PREFIX_DECREMENT:
                 throw new Unsupported("++ or -- inside an expression");
-            case ARRAY_ACCESS:
-            case NEW_ARRAY:
-                throw new Unsupported("arrays are outside the reader's types");
+            case ARRAY_ACCESS: {
+                if (project) {
+                    throw new Unsupported("arrays are outside the reader's types");
+                }
+                ArrayAccessTree aa = (ArrayAccessTree) e;
+                Map<String, Object> x = expr(new TreePath(p, aa.getExpression()), ctx);
+                Map<String, Object> i = coerce(expr(new TreePath(p, aa.getIndex()), ctx), tInt("32"));
+                return index(x, i, typeOf(trees.getTypeMirror(p)));
+            }
+            case NEW_ARRAY: {
+                NewArrayTree na = (NewArrayTree) e;
+                if (project || !na.getDimensions().isEmpty() || na.getInitializers() == null) {
+                    throw new Unsupported("an array of a given length: cir/1 makes only an empty slice; write its elements"
+                        + " out, {a, b}");
+                }
+                Map<String, Object> st = typeOf(trees.getTypeMirror(p));
+                List<Object> args = new ArrayList<>();
+                Map<String, Object> mk = kind("make");
+                mk.put("t", st);
+                args.add(mk);
+                for (ExpressionTree x : na.getInitializers()) {
+                    TreePath xp = new TreePath(p, x);
+                    refuseUnassigned(xp, "an element of an array", ESCAPES);
+                    args.add(coerce(expr(xp, ctx), sub(st, "elem")));
+                }
+                return args.size() == 1 ? mk : intrinsic("append", args, st);
+            }
             default:
                 throw new Unsupported(e.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ') + " is outside cir/1");
         }
@@ -2673,7 +4182,7 @@ public final class Reader {
                 return varRef(id.getName().toString(), typeOf(trees.getTypeMirror(p)));
             case FIELD:
             case ENUM_CONSTANT:
-                return fieldRef((VariableElement) el, null, ctx);
+                return fieldRef((VariableElement) el, null, ctx, ctx == null || ctx.fn == null ? null : ctx.fn.cls);
             default:
                 throw new Unsupported(el.getKind().toString().toLowerCase(Locale.ROOT) + " " + id.getName() + " as a value");
         }
@@ -2683,6 +4192,10 @@ public final class Reader {
         MemberSelectTree ms = (MemberSelectTree) p.getLeaf();
         if (ms.getIdentifier().contentEquals("class")) {
             throw new Unsupported("class literal: reflection is outside cir/1");
+        }
+        TreePath xp = new TreePath(p, ms.getExpression());
+        if (!project && ms.getIdentifier().contentEquals("length") && trees.getTypeMirror(xp).getKind() == TypeKind.ARRAY) {
+            return size(expr(xp, ctx));
         }
         Element el = trees.getElement(p);
         if (el == null || el.getKind() != ElementKind.FIELD && el.getKind() != ElementKind.ENUM_CONSTANT) {
@@ -2694,10 +4207,20 @@ public final class Reader {
             }
             return fieldRef((VariableElement) el, null, ctx);
         }
-        return fieldRef((VariableElement) el, expr(new TreePath(p, ms.getExpression()), ctx), ctx);
+        TypeMirror xt = trees.getTypeMirror(xp);
+        TypeElement holder = xt != null && xt.getKind() == TypeKind.DECLARED ? (TypeElement) ((DeclaredType) xt).asElement() : null;
+        return fieldRef((VariableElement) el, expr(new TreePath(p, ms.getExpression()), ctx), ctx, holder);
     }
 
     private Map<String, Object> fieldRef(VariableElement el, Map<String, Object> recv, Ctx ctx) {
+        return fieldRef(el, recv, ctx, null);
+    }
+
+    /**
+     * A field read or written; {@code holder} is the class of the object it is reached through, the
+     * receiver's static type or the class of {@code this}, or null when not known.
+     */
+    private Map<String, Object> fieldRef(VariableElement el, Map<String, Object> recv, Ctx ctx, TypeElement holder) {
         TypeElement owner = (TypeElement) el.getEnclosingElement();
         String name = el.getSimpleName().toString();
         if (el.getKind() == ElementKind.ENUM_CONSTANT) {
@@ -2710,14 +4233,40 @@ public final class Reader {
             if (consts.containsKey(el)) {
                 return constRef(consts.get(el), typeOf(el.asType()));
             }
+            if (vars.containsKey(el)) {
+                if (ctx != null && ctx.used.contains(vars.get(el))) {
+                    throw new Unsupported("static field " + owner.getSimpleName() + "." + name + " where a local or a parameter"
+                        + " is named " + vars.get(el) + ": a module-level variable and a local of one name are one name in"
+                        + " the written function");
+                }
+                Map<String, Object> g = kind("global");
+                g.put("name", vars.get(el));
+                g.put("t", typeOf(el.asType()));
+                return g;
+            }
             String on = owner.getQualifiedName().toString();
             if ((on.equals("java.lang.Integer") || on.equals("java.lang.Long")) && el.getConstantValue() != null) {
                 return constLit(el.getConstantValue(), typeOf(el.asType()));
             }
             throw new Unsupported("static field " + owner.getSimpleName() + "." + name);
         }
-        if (!structs.contains(owner)) {
+        TypeElement through = holder != null ? holder : owner;
+        if (project && (inOtherPackage(owner) || inOtherPackage(through))) {
+            throw new Unsupported("field " + name + " of " + through.getQualifiedName() + ", a class of another package: its"
+                + " object is an extern here, whose fields are not part of the module, and Java reads and writes the one"
+                + " object the caller holds");
+        }
+        boolean inherited = project && el.equals(panacheId()) && holder != null && structs.contains(holder)
+            && extendsPanacheEntity(holder);
+        if (!structs.contains(owner) && !inherited) {
             throw new Unsupported("field of " + owner.getQualifiedName() + ", which is not read");
+        }
+        if (project) {
+            String accessor = managedAccessor(holder != null ? holder : owner, owner, el, ctx);
+            if (accessor != null) {
+                throw new Unsupported("field " + name + " of the managed class " + (holder != null ? holder : owner).getSimpleName()
+                    + ": Quarkus (Panache or Hibernate ORM) makes the access a call of " + accessor + ", which the class declares");
+            }
         }
         Map<String, Object> x = recv != null ? recv : thisRef(ctx);
         Map<String, Object> f = Json.obj();
@@ -2726,6 +4275,110 @@ public final class Reader {
         f.put("name", name);
         f.put("t", fieldType(el));
         return derefed(el) ? unop("*", f, typeOf(el.asType())) : f;
+    }
+
+    /**
+     * The getter or setter of field {@code el} that a managed class declares, when Quarkus turns the
+     * access into a call of it, which runs that method's code; null for any other access.
+     *
+     * <p>Quarkus 3 ({@code PanacheHibernateCommonResourceProcessor}, Panache or plain Hibernate ORM)
+     * rewrites every read and write of a public, non-static, non-{@code @Transient} field of a
+     * managed class ({@code @Entity}, {@code @MappedSuperclass}, {@code @Embeddable}, not a record)
+     * into a call of its getter or setter, in every class, the managed class's own methods included,
+     * except in a constructor of the class the access goes through or of a managed subclass of it,
+     * and in that class's getter or setter of the field itself. A class without that method gets a
+     * generated one, which only reads or writes the field. The method is matched by name and
+     * descriptor: {@code is} for a {@code boolean} field, {@code get} for any other, without
+     * parameters and of the field's type; {@code set} with one parameter of the field's type and no
+     * result; each before the field's name with its first letter upper-cased, or unchanged when its
+     * second letter is upper case ({@code xCoord} gives {@code getxCoord}). A class extending a
+     * Panache entity base counts as managed whether it is annotated or not.
+     */
+    private String managedAccessor(TypeElement holder, TypeElement owner, VariableElement el, Ctx ctx) {
+        if (!el.getModifiers().contains(Modifier.PUBLIC) || el.getModifiers().contains(Modifier.STATIC)
+            || annotation(el, "jakarta.persistence.Transient") != null) {
+            return null;
+        }
+        List<TypeElement> chain = new ArrayList<>();
+        for (TypeElement c = holder; ; c = (TypeElement) types.asElement(c.getSuperclass())) {
+            if (!managed(c)) {
+                return null;
+            }
+            chain.add(c);
+            if (c.equals(owner)) {
+                break;
+            }
+            if (c.getSuperclass().getKind() != TypeKind.DECLARED) {
+                return null;
+            }
+        }
+        String name = el.getSimpleName().toString();
+        String cap = name.length() > 1 && Character.isUpperCase(name.charAt(1)) ? name
+            : Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        String getter = (el.asType().getKind() == TypeKind.BOOLEAN ? "is" : "get") + cap;
+        String setter = "set" + cap;
+        TypeMirror ft = types.erasure(el.asType());
+        Fn fn = ctx == null ? null : ctx.fn;
+        Element self = null;
+        if (fn != null && !fn.inLambda && fn.cls != null) {
+            if (fn.isCtor && inManagedHierarchy(fn.cls, holder)) {
+                return null;
+            }
+            Element m = fn.path != null && fn.path.getLeaf() instanceof MethodTree ? trees.getElement(fn.path) : null;
+            if (m instanceof ExecutableElement && fn.cls.equals(holder) && holder.equals(owner)
+                && isAccessor((ExecutableElement) m, getter, setter, ft)) {
+                // Inside the getter its read is direct and a write calls the setter; inside the setter
+                // the other way round. Whether this access reads or writes is not known here, so only
+                // the other accessor, declared, makes it a call of code.
+                self = m;
+            }
+        }
+        for (TypeElement c : chain) {
+            for (Element m : c.getEnclosedElements()) {
+                if (m.getKind() == ElementKind.METHOD && !m.equals(self) && isAccessor((ExecutableElement) m, getter, setter, ft)) {
+                    return c.getSimpleName() + "." + m.getSimpleName();
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Whether {@code m} is the getter {@code getter} or the setter {@code setter} of a field of erased type {@code ft}. */
+    private boolean isAccessor(ExecutableElement m, String getter, String setter, TypeMirror ft) {
+        String n = m.getSimpleName().toString();
+        if (n.equals(getter)) {
+            return m.getParameters().isEmpty() && types.isSameType(types.erasure(m.getReturnType()), ft);
+        }
+        return n.equals(setter) && m.getParameters().size() == 1 && m.getReturnType().getKind() == TypeKind.VOID
+            && types.isSameType(types.erasure(m.getParameters().get(0).asType()), ft);
+    }
+
+    /** Whether Quarkus manages {@code c}: an {@code @Entity}, {@code @MappedSuperclass} or {@code @Embeddable} class, or a Panache entity. */
+    private boolean managed(TypeElement c) {
+        if (c.getKind() != ElementKind.CLASS) {
+            return false;
+        }
+        for (String a : MANAGED) {
+            if (annotation(c, a) != null) {
+                return true;
+            }
+        }
+        return panacheEntity(c);
+    }
+
+    /**
+     * Whether {@code cls} is {@code target} or reaches it through managed superclasses: a constructor
+     * of such a class accesses the field directly.
+     */
+    private boolean inManagedHierarchy(TypeElement cls, TypeElement target) {
+        for (TypeElement c = cls; ; c = (TypeElement) types.asElement(c.getSuperclass())) {
+            if (c.equals(target)) {
+                return true;
+            }
+            if (!managed(c) || c.getSuperclass().getKind() != TypeKind.DECLARED) {
+                return false;
+            }
+        }
     }
 
     /**
@@ -2799,21 +4452,29 @@ public final class Reader {
             return newClass(p, ctx, mayThrow);
         }
         MethodInvocationTree mi = (MethodInvocationTree) t;
-        if (!mi.getTypeArguments().isEmpty()) {
+        ExecutableElement m = (ExecutableElement) trees.getElement(p);
+        if (project && mayRaise(m)) {
+            throw new Unsupported("call of " + m.getEnclosingElement().getSimpleName() + "." + m.getSimpleName() + ", which raises:"
+                + " a raise leaves every caller up to the framework, and only a function an entry names raises here");
+        }
+        if (!mi.getTypeArguments().isEmpty() && !genericMethods.contains(m)) {
             throw new Unsupported("explicit type arguments: generics are outside cir/1");
         }
-        ExecutableElement m = (ExecutableElement) trees.getElement(p);
         TypeElement owner = (TypeElement) m.getEnclosingElement();
         String on = owner.getQualifiedName().toString();
         String name = m.getSimpleName().toString();
+        if (project && on.equals("java.lang.Class") && classNameOf(p) != null) {
+            return lit(quote(classNameOf(p)), tString());
+        }
         if (on.equals("java.lang.Class") || on.startsWith("java.lang.reflect.") || name.equals("getClass")) {
             throw new Unsupported("reflection: " + owner.getSimpleName() + "." + name + " is outside cir/1");
         }
         if (on.startsWith("java.util.stream.") || (on.startsWith("java.util.") && (name.equals("stream") || name.equals("parallelStream")))) {
             throw new Unsupported("stream: " + owner.getSimpleName() + "." + name + " is outside cir/1");
         }
-        if (on.startsWith("java.util.function.")) {
-            throw new Unsupported("call through a functional interface: lambdas are outside cir/1");
+        if (on.startsWith("java.util.function.") && (project || function(on) == null || !name.equals(function(on)[1]))) {
+            throw new Unsupported("call through a functional interface other than the abstract method of one the reader"
+                + " reads as a function type");
         }
         ExpressionTree sel = mi.getMethodSelect();
         TreePath selPath = new TreePath(p, sel);
@@ -2836,19 +4497,51 @@ public final class Reader {
             if (fn.optional) {
                 throw new Unsupported("use of an Optional result");
             }
-            List<Object> args = args(p, mi.getArguments(), fn.params, ctx);
+            Map<String, Map<String, Object>> bound = typeArguments(p, mi, m, fn);
+            List<Object> args = args(p, mi.getArguments(), substitute(fn.params, bound), fn.variadic, ctx);
             Map<String, Object> c = Json.obj();
             if (fn.isStatic) {
                 c.put("k", "call");
                 c.put("name", fn.name);
+                if (!fn.tparams.isEmpty()) {
+                    List<Object> targs = new ArrayList<>();
+                    for (String tp : fn.tparams) {
+                        targs.add(bound.get(tp));
+                    }
+                    c.put("targs", targs);
+                }
             } else {
                 c.put("k", "method");
                 c.put("x", recvPath == null ? thisRef(ctx) : expr(recvPath, ctx));
                 c.put("name", fn.name);
             }
             c.put("args", args);
-            c.put("t", resultType(fn));
+            c.put("t", substitute(List.of(resultType(fn)), bound).get(0));
             return c;
+        }
+        TypeElement io = owner.getKind() == ElementKind.INTERFACE ? owner : null;
+        if (io != null && impls.containsKey(io)) {
+            return ifaceCall(p, mi, m, io, recvPath, ctx);
+        }
+        String[] sam = function(on);
+        if (sam != null && name.equals(sam[1]) && recvPath != null) {
+            Map<String, Object> f = expr(recvPath, ctx);
+            Map<String, Object> ft = type(f);
+            if (!"func".equals(ft.get("k"))) {
+                throw new Unsupported(owner.getSimpleName() + "." + name + " on a " + describe(ft));
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> fps = (List<Map<String, Object>>) ft.get("params");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> frs = (List<Map<String, Object>>) ft.get("results");
+            Map<String, Object> c = kind("call_value");
+            c.put("f", f);
+            c.put("args", args(p, mi.getArguments(), fps, false, ctx));
+            c.put("t", frs.isEmpty() ? tUnit() : frs.get(0));
+            return c;
+        }
+        if (!project && isSystemOut(recvPath) && on.equals("java.io.PrintStream") && name.equals("println") && mi.getArguments().size() <= 1) {
+            return println(p, mi, ctx);
         }
         if (inPackage(owner) && !(project && owner.getKind() == ElementKind.INTERFACE && !implOf.containsKey(owner))) {
             throw new Unsupported("call of " + owner.getSimpleName() + "." + name + ", which is not read");
@@ -2928,6 +4621,22 @@ public final class Reader {
                                            TreePath recvPath, Ctx ctx) {
         boolean isStatic = m.getModifiers().contains(Modifier.STATIC);
         String name = m.getSimpleName().toString();
+        Fn foreign = null;
+        if (inOtherPackage(owner)) {
+            if (owner.getKind() == ElementKind.INTERFACE) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + " through an interface of another"
+                    + " package: the reader builds a call of another package only from a function its module declares");
+            }
+            foreign = declaredFn(m);
+            if (foreign == null) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + ", which its package does not read:"
+                    + " the module of the package declares no function for it");
+            }
+            String why = foreignCallShape(foreign);
+            if (why != null) {
+                throw new Unsupported("call of " + owner.getQualifiedName() + "." + name + " of another package: " + why);
+            }
+        }
         Map<String, Object> recv = null;
         if (!isStatic) {
             recv = recvPath == null ? thisRef(ctx) : expr(recvPath, ctx);
@@ -2940,12 +4649,17 @@ public final class Reader {
             }
         }
         List<Map<String, Object>> sigParams = new ArrayList<>();
-        for (VariableElement v : m.getParameters()) {
-            sigParams.add(signatureType(v.asType()));
-        }
         List<Map<String, Object>> sigResults = new ArrayList<>();
-        if (m.getReturnType().getKind() != TypeKind.VOID) {
-            sigResults.add(signatureType(m.getReturnType()));
+        if (foreign != null) {
+            sigParams.addAll(foreignTypes(foreign.params, packageOf(owner)));
+            sigResults.addAll(foreignTypes(foreign.results(), packageOf(owner)));
+        } else {
+            for (VariableElement v : m.getParameters()) {
+                sigParams.add(signatureType(v.asType()));
+            }
+            if (m.getReturnType().getKind() != TypeKind.VOID) {
+                sigResults.add(signatureType(m.getReturnType()));
+            }
         }
         boolean variadic = m.isVarArgs();
         Map<String, Object> declared = Json.obj();
@@ -2955,6 +4669,13 @@ public final class Reader {
         declared.put("name", name);
         if (!isStatic) {
             declared.put("recv", externType(owner, List.of()));
+        }
+        Map<String, Object> entity = isStatic ? panacheStaticEntity(owner, name, recvPath, ctx) : null;
+        if (entity != null) {
+            Map<String, Object> tp = Json.obj();
+            tp.put("name", "E");
+            tp.put("constraint", kind("any"));
+            declared.put("tparams", new ArrayList<Object>(List.of(tp)));
         }
         declared.put("params", new ArrayList<Object>(sigParams));
         declared.put("results", new ArrayList<Object>(sigResults));
@@ -2970,13 +4691,17 @@ public final class Reader {
                 : variadic ? sub(sigParams.get(sigParams.size() - 1), "elem") : null;
             args.add(externArg(expr(ap, ctx), want));
         }
-        Map<String, Object> t = m.getReturnType().getKind() == TypeKind.VOID ? tUnit() : signatureType(trees.getTypeMirror(p));
+        Map<String, Object> t = m.getReturnType().getKind() == TypeKind.VOID ? tUnit()
+            : foreign != null ? sigResults.get(0) : signatureType(trees.getTypeMirror(p));
         registerExtern(path, typeName, name, declared);
         Map<String, Object> c = Json.obj();
         if (isStatic) {
             c.put("k", "extern");
             c.put("path", path);
             c.put("name", name);
+            if (entity != null) {
+                c.put("targs", new ArrayList<Object>(List.of(entity)));
+            }
         } else {
             c.put("k", "extern_method");
             c.put("path", path);
@@ -2987,6 +4712,74 @@ public final class Reader {
         c.put("args", args);
         c.put("t", t);
         return c;
+    }
+
+    /**
+     * The entity a static method of a Panache entity base is called on, as the type argument of the
+     * extern's one type parameter {@code E}, or null for any other static method. Panache gives each
+     * entity its own copy of the method, run on that entity's table: {@code Fruit.deleteAll()} and
+     * {@code Other.deleteAll()} are one Java method and two operations. The entity is the class javac
+     * calls the method on: the class the call names; for an unqualified call, the calling class when
+     * it inherits the method, else the class a static import names. javac calls the base itself for
+     * a call naming the base and for an unqualified call in a class nested in an entity; Panache gives
+     * the base no copy and its own method only throws, so such a call is refused, as is one where
+     * javac's class is not known (a static field's initializer).
+     */
+    private Map<String, Object> panacheStaticEntity(TypeElement owner, String name, TreePath recvPath, Ctx ctx) {
+        if (!project || !PANACHE_ENTITY_BASES.contains(owner.getQualifiedName().toString())) {
+            return null;
+        }
+        TypeElement entity = null;
+        if (recvPath != null && trees.getElement(recvPath) instanceof TypeElement) {
+            entity = (TypeElement) trees.getElement(recvPath);
+        } else if (recvPath == null && ctx != null && ctx.fn != null && ctx.fn.cls != null) {
+            if (types.isSubtype(types.erasure(ctx.fn.cls.asType()), types.erasure(owner.asType()))) {
+                entity = ctx.fn.cls;
+            } else {
+                boolean outer = false;
+                for (Element e = ctx.fn.cls.getEnclosingElement(); e instanceof TypeElement; e = e.getEnclosingElement()) {
+                    outer |= types.isSubtype(types.erasure(e.asType()), types.erasure(owner.asType()));
+                }
+                entity = outer ? owner : staticImport(ctx.cu, name, owner);
+            }
+        }
+        if (entity == null || entity.equals(owner)) {
+            throw new Unsupported("a Panache static method " + name + " that javac calls on " + owner.getSimpleName()
+                + " itself, or on a class not known here: Panache runs a copy of it for each entity, and the base's own"
+                + " method only throws");
+        }
+        if (structs.contains(entity)) {
+            return tNamed(entity.getSimpleName().toString());
+        }
+        if (inPackage(entity) || inOtherPackage(entity) && !declared(entity)) {
+            throw new Unsupported("a Panache static method called on " + entity.getSimpleName() + ", which is not read");
+        }
+        return externType(entity, List.of());
+    }
+
+    /**
+     * The class a static import of {@code cu} brings the method {@code name} in from, a subclass of
+     * {@code base}: a single-static-import of it, else an on-demand one; null when none does.
+     */
+    private TypeElement staticImport(CompilationUnitTree cu, String name, TypeElement base) {
+        TypeElement onDemand = null;
+        for (ImportTree it : cu.getImports()) {
+            if (!it.isStatic() || !(it.getQualifiedIdentifier() instanceof MemberSelectTree)) {
+                continue;
+            }
+            MemberSelectTree q = (MemberSelectTree) it.getQualifiedIdentifier();
+            TypeElement from = elements.getTypeElement(q.getExpression().toString());
+            if (from == null || !types.isSubtype(types.erasure(from.asType()), types.erasure(base.asType()))) {
+                continue;
+            }
+            if (q.getIdentifier().contentEquals(name)) {
+                return from;
+            }
+            if (q.getIdentifier().contentEquals("*") && onDemand == null) {
+                onDemand = from;
+            }
+        }
+        return onDemand;
     }
 
     /** The path of a static extern: the package of another package's class, else the class. */
@@ -3029,6 +4822,27 @@ public final class Reader {
             throw new Unsupported("String.format of a format that is not a literal: its conversions are unknown");
         }
         String f = (String) ((LiteralTree) as.get(0)).getValue();
+        List<Character> verbs = formatVerbs(f);
+        if (verbs.size() != as.size() - 1) {
+            throw new Unsupported("String.format with " + verbs.size() + " conversions and " + (as.size() - 1) + " arguments");
+        }
+        List<Object> args = new ArrayList<>();
+        args.add(expr(new TreePath(p, as.get(0)), ctx));
+        for (int i = 1; i < as.size(); i++) {
+            TreePath ap = new TreePath(p, as.get(i));
+            refusePrintedNullable(ap, ctx);
+            if (trees.getTypeMirror(ap).getKind() == TypeKind.ARRAY) {
+                throw new Unsupported("String.format with an array of arguments");
+            }
+            Map<String, Object> x = expr(ap, ctx);
+            checkVerb(verbs.get(i - 1), type(x));
+            args.add(x);
+        }
+        return intrinsic("sprintf", args, tString());
+    }
+
+    /** The conversions of a literal format, {@code s} or {@code d} each; any other is refused. */
+    private static List<Character> formatVerbs(String f) {
         List<Character> verbs = new ArrayList<>();
         for (int i = 0; i < f.length(); i++) {
             if (f.charAt(i) != '%') {
@@ -3044,27 +4858,16 @@ public final class Reader {
             }
             i++;
         }
-        if (verbs.size() != as.size() - 1) {
-            throw new Unsupported("String.format with " + verbs.size() + " conversions and " + (as.size() - 1) + " arguments");
+        return verbs;
+    }
+
+    /** Refuse a value a conversion prints otherwise than {@code sprintf}: only %s of a String and %d of an integer. */
+    private static void checkVerb(char verb, Map<String, Object> t) {
+        boolean fits = verb == 's' ? t.equals(tString()) : isInt(t);
+        if (!fits) {
+            throw new Unsupported("String.format %" + verb + " of a " + describe(t)
+                + ": only %s of a String and %d of an integer print alike");
         }
-        List<Object> args = new ArrayList<>();
-        args.add(expr(new TreePath(p, as.get(0)), ctx));
-        for (int i = 1; i < as.size(); i++) {
-            TreePath ap = new TreePath(p, as.get(i));
-            refusePrintedNullable(ap, ctx);
-            if (trees.getTypeMirror(ap).getKind() == TypeKind.ARRAY) {
-                throw new Unsupported("String.format with an array of arguments");
-            }
-            Map<String, Object> x = expr(ap, ctx);
-            Map<String, Object> t = type(x);
-            boolean fits = verbs.get(i - 1) == 's' ? t.equals(tString()) : isInt(t);
-            if (!fits) {
-                throw new Unsupported("String.format %" + verbs.get(i - 1) + " of a " + describe(t)
-                    + ": only %s of a String and %d of an integer print alike");
-            }
-            args.add(x);
-        }
-        return intrinsic("sprintf", args, tString());
     }
 
     /**
@@ -3098,6 +4901,12 @@ public final class Reader {
         if (structs.contains(te)) {
             Fn fn = ctors.get(te);
             Element called = trees.getElement(p);
+            if (project && fns.get(called) != null) {
+                fn = fns.get(called);
+            }
+            if (fn == null) {
+                throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read");
+            }
             boolean synthesized = fns.get(called) == null && called != null && generated(called) && fn.params.isEmpty();
             if (fns.get(called) != fn && !synthesized || nc.getArguments().size() != fn.params.size()) {
                 throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read: the class"
@@ -3112,7 +4921,7 @@ public final class Reader {
             Map<String, Object> c = Json.obj();
             c.put("k", "call");
             c.put("name", fn.name);
-            c.put("args", args(p, nc.getArguments(), fn.params, ctx));
+            c.put("args", args(p, nc.getArguments(), fn.params, fn.variadic, ctx));
             c.put("t", resultType(fn));
             return c;
         }
@@ -3123,7 +4932,7 @@ public final class Reader {
             mk.put("t", typeOf(tm));
             return mk;
         }
-        if (errorLeaves.containsKey(te)) {
+        if (errorLeaves.containsKey(te) || formattedLeaves.containsKey(te)) {
             throw new Unsupported("an exception created other than by throw");
         }
         if (project && !inPackage(te) && trees.getElement(p) instanceof ExecutableElement) {
@@ -3137,18 +4946,37 @@ public final class Reader {
      * class for a jar's, {@code New<C>} of the package for a class of another package.
      */
     private Map<String, Object> externNew(TreePath p, NewClassTree nc, TypeElement te, ExecutableElement ce, TypeMirror tm, Ctx ctx) {
+        Fn foreign = null;
+        if (inOtherPackage(te)) {
+            foreign = declaredFn(ce);
+            if (foreign == null) {
+                throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " that its package does not read:"
+                    + " the module of the package declares no function for it");
+            }
+            String why = foreignCallShape(foreign);
+            if (why != null) {
+                throw new Unsupported("a call of a constructor of " + te.getQualifiedName() + " of another package: " + why);
+            }
+        }
         List<Map<String, Object>> sigParams = new ArrayList<>();
-        for (VariableElement v : ce.getParameters()) {
-            sigParams.add(signatureType(v.asType()));
+        List<Map<String, Object>> sigResults = new ArrayList<>();
+        if (foreign != null) {
+            sigParams.addAll(foreignTypes(foreign.params, packageOf(te)));
+            sigResults.addAll(foreignTypes(foreign.results(), packageOf(te)));
+        } else {
+            for (VariableElement v : ce.getParameters()) {
+                sigParams.add(signatureType(v.asType()));
+            }
+            sigResults.add(externType(te, List.of()));
         }
         boolean variadic = ce.isVarArgs();
         String path = staticPath(te);
-        String name = inOtherPackage(te) ? "New" + te.getSimpleName() : "<init>";
+        String name = foreign != null ? foreign.name : "<init>";
         Map<String, Object> declared = Json.obj();
         declared.put("path", path);
         declared.put("name", name);
         declared.put("params", new ArrayList<Object>(sigParams));
-        declared.put("results", new ArrayList<Object>(List.of(externType(te, List.of()))));
+        declared.put("results", new ArrayList<Object>(sigResults));
         if (variadic) {
             declared.put("variadic", Boolean.TRUE);
         }
@@ -3167,17 +4995,320 @@ public final class Reader {
         c.put("path", path);
         c.put("name", name);
         c.put("args", args);
-        c.put("t", signatureType(tm));
+        c.put("t", foreign != null ? sigResults.get(0) : signatureType(tm));
         return c;
     }
 
-    private List<Object> args(TreePath p, List<? extends ExpressionTree> as, List<Map<String, Object>> params, Ctx ctx) {
+    /**
+     * The arguments of a call. For a variable arity method, Java passes an array as the last
+     * argument itself, which is a {@code spread} of the slice; any other arguments for the last
+     * parameter are its elements, each of the slice's element type.
+     */
+    private List<Object> args(TreePath p, List<? extends ExpressionTree> as, List<Map<String, Object>> params, boolean variadic,
+                              Ctx ctx) {
         List<Object> out = new ArrayList<>();
+        int fixed = variadic ? params.size() - 1 : params.size();
         for (int i = 0; i < as.size(); i++) {
-            refuseUnassigned(new TreePath(p, as.get(i)), "an argument of a call", ESCAPES);
-            out.add(coerce(expr(new TreePath(p, as.get(i)), ctx), params.get(i)));
+            TreePath ap = new TreePath(p, as.get(i));
+            refuseUnassigned(ap, "an argument of a call", ESCAPES);
+            if (i < fixed) {
+                out.add(coerce(expr(ap, ctx), params.get(i)));
+                continue;
+            }
+            Map<String, Object> slice = params.get(params.size() - 1);
+            if (as.size() == params.size() && trees.getTypeMirror(ap).getKind() == TypeKind.ARRAY) {
+                Map<String, Object> s = kind("spread");
+                s.put("x", coerce(expr(ap, ctx), slice));
+                s.put("t", slice);
+                out.add(s);
+            } else {
+                out.add(coerce(expr(ap, ctx), sub(slice, "elem")));
+            }
         }
         return out;
+    }
+
+    /**
+     * The type arguments of a call of a generic method: written out, or as javac infers them from
+     * the method's type at the call, each the type of an argument whose parameter is that type
+     * variable, else of the result.
+     */
+    private Map<String, Map<String, Object>> typeArguments(TreePath p, MethodInvocationTree mi, ExecutableElement m, Fn fn) {
+        Map<String, Map<String, Object>> bound = new HashMap<>();
+        if (fn.tparams.isEmpty()) {
+            return bound;
+        }
+        List<? extends javax.lang.model.element.TypeParameterElement> tps = m.getTypeParameters();
+        if (!mi.getTypeArguments().isEmpty()) {
+            for (int i = 0; i < tps.size(); i++) {
+                bound.put(fn.tparams.get(i), typeOf(trees.getTypeMirror(new TreePath(p, mi.getTypeArguments().get(i)))));
+            }
+            return bound;
+        }
+        TypeMirror at = trees.getTypeMirror(new TreePath(p, mi.getMethodSelect()));
+        if (!(at instanceof javax.lang.model.type.ExecutableType)) {
+            throw new Unsupported("a call of generic method " + fn.name + " whose type arguments javac does not give");
+        }
+        javax.lang.model.type.ExecutableType inst = (javax.lang.model.type.ExecutableType) at;
+        for (int i = 0; i < tps.size(); i++) {
+            TypeMirror tv = tps.get(i).asType();
+            TypeMirror found = null;
+            for (int j = 0; j < m.getParameters().size() && found == null; j++) {
+                if (types.isSameType(m.getParameters().get(j).asType(), tv)) {
+                    found = inst.getParameterTypes().get(j);
+                }
+            }
+            if (found == null && types.isSameType(m.getReturnType(), tv)) {
+                found = inst.getReturnType();
+            }
+            if (found == null) {
+                throw new Unsupported("a call of generic method " + fn.name + " whose type argument for "
+                    + tps.get(i).getSimpleName() + " no parameter or result names: write it out");
+            }
+            bound.put(fn.tparams.get(i), typeOf(found));
+        }
+        return bound;
+    }
+
+    /** {@code ts} with each type parameter {@code bound} names replaced by its type argument. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> substitute(List<Map<String, Object>> ts, Map<String, Map<String, Object>> bound) {
+        if (bound.isEmpty()) {
+            return ts;
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> t : ts) {
+            if ("param".equals(t.get("k")) && bound.containsKey(t.get("name"))) {
+                out.add(bound.get(t.get("name")));
+                continue;
+            }
+            Map<String, Object> c = Json.obj();
+            for (Map.Entry<String, Object> e : t.entrySet()) {
+                Object v = e.getValue();
+                if (v instanceof Map) {
+                    v = substitute(List.of((Map<String, Object>) v), bound).get(0);
+                } else if (v instanceof List) {
+                    List<Object> l = new ArrayList<>();
+                    for (Object o : (List<?>) v) {
+                        l.add(o instanceof Map ? substitute(List.of((Map<String, Object>) o), bound).get(0) : o);
+                    }
+                    v = l;
+                }
+                c.put(e.getKey(), v);
+            }
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** A call of a method of an interface with several implementations: the method of the object it holds runs. */
+    private Map<String, Object> ifaceCall(TreePath p, MethodInvocationTree mi, ExecutableElement m, TypeElement ie, TreePath recvPath,
+                                          Ctx ctx) {
+        if (recvPath == null) {
+            throw new Unsupported("a call of interface method " + m.getSimpleName() + " without a receiver");
+        }
+        Map<String, Object> sig = null;
+        for (Map<String, Object> x : ifaceMethods.get(ie)) {
+            if (ifaceMethodName(m.getSimpleName().toString()).equals(x.get("name"))) {
+                sig = x;
+            }
+        }
+        if (sig == null) {
+            throw new Unsupported("method " + m.getSimpleName() + " is not one of interface " + ie.getSimpleName());
+        }
+        Map<String, Object> recv = coerce(expr(recvPath, ctx), tNamed(ie.getSimpleName().toString()));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> ps = (List<Map<String, Object>>) sig.get("params");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rs = (List<Map<String, Object>>) sig.get("results");
+        Map<String, Object> c = kind("iface_call");
+        c.put("iface", ie.getSimpleName().toString());
+        c.put("name", ifaceMethodName(m.getSimpleName().toString()));
+        c.put("recv", recv);
+        c.put("args", args(p, mi.getArguments(), ps, false, ctx));
+        c.put("t", rs.isEmpty() ? tUnit() : rs.get(0));
+        return c;
+    }
+
+    /** The function type a lambda or method reference is converted to, or refused. */
+    private Map<String, Object> functionTarget(TreePath p) {
+        Map<String, Object> ft = typeOf(trees.getTypeMirror(p));
+        if (!"func".equals(ft.get("k"))) {
+            throw new Unsupported("a function value of " + describe(ft) + ": only the functional interfaces the reader reads as"
+                + " function types");
+        }
+        return ft;
+    }
+
+    /**
+     * {@code Class::method} of a static method the module reads, or {@code x::method} of an
+     * instance method bound to the value of {@code x}, which Java evaluates once, where the
+     * reference stands, as cir/1 does; the method's signature must be the function type's, so Java
+     * neither boxes nor widens through it.
+     */
+    private Map<String, Object> methodRef(TreePath p, Ctx ctx) {
+        MemberReferenceTree mr = (MemberReferenceTree) p.getLeaf();
+        Map<String, Object> ft = functionTarget(p);
+        if (mr.getMode() != MemberReferenceTree.ReferenceMode.INVOKE) {
+            throw new Unsupported("a constructor reference: cir/1 has no function value of a constructor");
+        }
+        Element e = trees.getElement(p);
+        Fn fn = e == null ? null : fns.get(e);
+        if (fn == null || fn.isCtor) {
+            throw new Unsupported("a reference to a method the module does not read");
+        }
+        if (fn.throwsErr || fn.optional || fn.variadic || !fn.tparams.isEmpty()) {
+            throw new Unsupported("a reference to a method that throws, returns an Optional, takes variable arity or is generic");
+        }
+        if (!new ArrayList<Object>(fn.params).equals(ft.get("params")) || !new ArrayList<Object>(fn.results()).equals(ft.get("results"))) {
+            throw new Unsupported("a reference to " + fn.key() + ", whose signature is not the function type's: Java converts"
+                + " through it");
+        }
+        TreePath qp = new TreePath(p, mr.getQualifierExpression());
+        Map<String, Object> r = kind("func_ref");
+        r.put("name", fn.name);
+        if (fn.isStatic) {
+            if (!namesAType(qp)) {
+                throw new Unsupported("a static method referenced through an expression, which Java evaluates and then ignores");
+            }
+        } else {
+            if (namesAType(qp)) {
+                throw new Unsupported("a reference to an instance method through its class, which takes the object as its first"
+                    + " argument");
+            }
+            refuseUnassigned(qp, "the receiver of a method reference", ESCAPES);
+            r.put("recv", expr(qp, ctx));
+        }
+        r.put("t", ft);
+        return r;
+    }
+
+    /**
+     * A lambda: its parameters and results are those of the function type, its body read as a
+     * function's, returning the function's result. Java captures only effectively final locals,
+     * so capturing by value and by reference are alike; {@code captures} names each local,
+     * parameter or {@code this} of the enclosing function it uses.
+     */
+    private Map<String, Object> lambda(TreePath p, Ctx ctx) {
+        LambdaExpressionTree lt = (LambdaExpressionTree) p.getLeaf();
+        Map<String, Object> ft = functionTarget(p);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fps = (List<Map<String, Object>>) ft.get("params");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> frs = (List<Map<String, Object>>) ft.get("results");
+        Fn lf = new Fn();
+        lf.name = ctx.fn.name;
+        lf.isStatic = ctx.fn.isStatic;
+        lf.cls = ctx.fn.cls;
+        lf.path = ctx.fn.path;
+        lf.inLambda = true;
+        lf.values.addAll(frs);
+        Ctx lc = new Ctx(lf, ctx.cu, ctx.hasThis);
+        lc.used.addAll(ctx.used);
+        List<Object> params = new ArrayList<>();
+        Set<Element> own = new HashSet<>();
+        for (int i = 0; i < lt.getParameters().size(); i++) {
+            VariableTree v = lt.getParameters().get(i);
+            Element ve = trees.getElement(new TreePath(p, v));
+            own.add(ve);
+            if (!typeOf(ve.asType()).equals(fps.get(i))) {
+                throw new Unsupported("a lambda parameter of a type other than the function type's");
+            }
+            Map<String, Object> pm = Json.obj();
+            pm.put("name", v.getName().toString());
+            pm.put("t", fps.get(i));
+            params.add(pm);
+        }
+        TreePath bp = new TreePath(p, lt.getBody());
+        List<Object> body = new ArrayList<>();
+        if (lt.getBodyKind() == LambdaExpressionTree.BodyKind.EXPRESSION) {
+            if (frs.isEmpty()) {
+                body.addAll(stmtOf(bp, lc));
+            } else {
+                refuseUnassigned(bp, "returned", ESCAPES);
+                body.add(ret(List.of(coerce(expr(bp, lc), frs.get(0))), pos(ctx.cu, lt.getBody())));
+            }
+        } else {
+            BlockTree bt = (BlockTree) lt.getBody();
+            for (StatementTree s : bt.getStatements()) {
+                List<Object> out = strict(new TreePath(bp, s), lc);
+                for (Object o : out) {
+                    checkTyped(o);
+                }
+                body.addAll(out);
+            }
+        }
+        List<String> captures = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitVariable(VariableTree v, Void x) {
+                own.add(trees.getElement(getCurrentPath()));
+                return super.visitVariable(v, x);
+            }
+
+            @Override
+            public Void visitIdentifier(IdentifierTree id, Void x) {
+                Element e = trees.getElement(getCurrentPath());
+                String n = id.getName().toString();
+                boolean local = e != null && (e.getKind() == ElementKind.LOCAL_VARIABLE || e.getKind() == ElementKind.PARAMETER)
+                    && !own.contains(e);
+                boolean self = n.equals("this") || e != null && (e.getKind() == ElementKind.FIELD || e.getKind() == ElementKind.METHOD)
+                    && !e.getModifiers().contains(Modifier.STATIC) && !(getCurrentPath().getParentPath().getLeaf() instanceof MemberSelectTree
+                        && ((MemberSelectTree) getCurrentPath().getParentPath().getLeaf()).getExpression() != id);
+                String c = local ? n : self ? "this" : null;
+                if (c != null && !captures.contains(c)) {
+                    captures.add(c);
+                }
+                return super.visitIdentifier(id, x);
+            }
+        }.scan(bp, null);
+        Map<String, Object> l = kind("lambda");
+        l.put("params", params);
+        l.put("results", new ArrayList<Object>(frs));
+        l.put("captures", new ArrayList<Object>(captures));
+        l.put("body", body);
+        l.put("t", ft);
+        return l;
+    }
+
+    /** The statements of an expression lambda's body that gives no value: the expression as a statement. */
+    private List<Object> stmtOf(TreePath ep, Ctx ctx) {
+        List<Object> out = exprStmt(ep, ctx, pos(ctx.cu, ep.getLeaf()));
+        for (Object o : out) {
+            checkTyped(o);
+        }
+        return out;
+    }
+
+    /** Whether a receiver is {@code System.out}. */
+    private boolean isSystemOut(TreePath recv) {
+        if (recv == null || !(recv.getLeaf() instanceof MemberSelectTree)) {
+            return false;
+        }
+        Element e = trees.getElement(recv);
+        return e != null && e.getKind() == ElementKind.FIELD && e.getSimpleName().contentEquals("out")
+            && ((TypeElement) e.getEnclosingElement()).getQualifiedName().contentEquals("java.lang.System");
+    }
+
+    /**
+     * {@code System.out.println(x)}: {@code println}, for an integer, a boolean or a String, which
+     * Java prints as cir/1's {@code println} does, then a newline (README.md, Assumptions: the line
+     * separator is {@code \n}).
+     */
+    private Map<String, Object> println(TreePath p, MethodInvocationTree mi, Ctx ctx) {
+        List<Object> args = new ArrayList<>();
+        for (ExpressionTree a : mi.getArguments()) {
+            TreePath ap = new TreePath(p, a);
+            refusePrintedNullable(ap, ctx);
+            refuseUnassigned(ap, "printed by println", "Java prints null" + STOPS);
+            Map<String, Object> x = expr(ap, ctx);
+            Map<String, Object> t = type(x);
+            if (!isInt(t) && !t.equals(tBool()) && !t.equals(tString())) {
+                throw new Unsupported("println of a " + describe(t) + ": only an integer, a boolean or a String prints alike");
+            }
+            args.add(x);
+        }
+        return intrinsic("println", args, tUnit());
     }
 
     private static Map<String, Object> resultType(Fn fn) {
@@ -3219,6 +5350,10 @@ public final class Reader {
         Map<String, Object> x = expr(lp, ctx);
         Map<String, Object> y = expr(rp, ctx);
         String op = binOp(b.getKind());
+        if ((isFloat(type(x)) || isFloat(type(y))) && constant(x) && constant(y)) {
+            throw new Unsupported(op + " of two floating-point constants: Go evaluates a constant expression exactly and"
+                + " rounds once, Java rounds each operation");
+        }
         switch (b.getKind()) {
             case CONDITIONAL_AND:
             case CONDITIONAL_OR:
@@ -3243,9 +5378,14 @@ public final class Reader {
                         || b.getRightOperand().getKind() == Tree.Kind.NULL_LITERAL;
                     for (TreePath o : List.of(lp, rp)) {
                         TypeMirror ot = trees.getTypeMirror(o);
-                        if (!againstNull && (ot.getKind() == TypeKind.DECLARED || ot.getKind() == TypeKind.ARRAY)
-                            && types.asElement(ot).getKind() != ElementKind.ENUM) {
+                        if (!againstNull && (ot.getKind() == TypeKind.DECLARED || ot.getKind() == TypeKind.ARRAY
+                            || ot.getKind() == TypeKind.TYPEVAR)
+                            && (types.asElement(ot) == null || types.asElement(ot).getKind() != ElementKind.ENUM)) {
                             throw new Unsupported("== on two objects compares their identity, which cir/1 does not express");
+                        }
+                        if (againstNull && (ot.getKind() == TypeKind.ARRAY || qname(ot).equals("java.lang.Object"))) {
+                            throw new Unsupported("an array or Object against null: the slice of no arguments is nil where Java's"
+                                + " array is not null, and an any holding a nil is not nil");
                         }
                     }
                 }
@@ -3259,11 +5399,212 @@ public final class Reader {
                 return binop(op, x, y, tBool());
             }
             default:
-                if (!isInt(t)) {
+                if (isFloat(t)) {
+                    if (b.getKind() == Tree.Kind.REMAINDER) {
+                        throw new Unsupported("% on a floating-point value: cir/1 % is an integer remainder");
+                    }
+                    if (b.getKind() != Tree.Kind.PLUS && b.getKind() != Tree.Kind.MINUS && b.getKind() != Tree.Kind.MULTIPLY
+                        && b.getKind() != Tree.Kind.DIVIDE) {
+                        throw new Unsupported(op + " on a " + describe(t));
+                    }
+                } else if (!isInt(t)) {
                     throw new Unsupported(op + " on a " + describe(t));
                 }
                 return binop(op, coerce(x, t), coerce(y, t), t);
         }
+    }
+
+    /**
+     * {@code a << b} or {@code a >> b} of an int or a long: Java shifts by the count's low five or
+     * six bits, which the read writes out as {@code b & 31} or {@code b & 63} (a literal count
+     * masked as it is read), so the cir/1 shift never sees a count outside the operand's width.
+     */
+    private Map<String, Object> shift(TreePath p, Ctx ctx) {
+        BinaryTree b = (BinaryTree) p.getLeaf();
+        TreePath lp = new TreePath(p, b.getLeftOperand());
+        TreePath rp = new TreePath(p, b.getRightOperand());
+        String op = b.getKind() == Tree.Kind.LEFT_SHIFT ? "<<" : ">>";
+        for (TreePath o : List.of(lp, rp)) {
+            refuseUnassigned(o, "an operand of " + op, "Java unboxes the null" + STOPS);
+        }
+        Map<String, Object> t = typeOf(trees.getTypeMirror(p));
+        if (!isInt(t)) {
+            throw new Unsupported(op + " on a " + describe(t));
+        }
+        Map<String, Object> x = coerce(expr(lp, ctx), t);
+        Map<String, Object> count = shiftCount(expr(rp, ctx), t);
+        if ("lit".equals(x.get("k")) && !"lit".equals(count.get("k"))) {
+            throw new Unsupported("a shift of a literal by a count that is not constant: Go gives the literal the type its context"
+                + " wants, Java an int or a long");
+        }
+        return binop(op, x, count, t);
+    }
+
+    /** A shift count as Java takes it for a shift of {@code t}: its low five bits for an int, six for a long. */
+    private static Map<String, Object> shiftCount(Map<String, Object> y, Map<String, Object> t) {
+        Map<String, Object> yt = type(y);
+        if (!isInt(yt)) {
+            throw new Unsupported("a shift count of a " + describe(yt));
+        }
+        String width = (String) t.get("width");
+        if (!width.equals("32") && !width.equals("64")) {
+            throw new Unsupported("a shift of an int" + width + ", which Java shifts as an int");
+        }
+        long mask = width.equals("64") ? 63L : 31L;
+        if ("lit".equals(y.get("k"))) {
+            return lit(String.valueOf(Long.parseLong((String) y.get("value")) & mask), yt);
+        }
+        return binop("&", y, lit(String.valueOf(mask), yt), yt);
+    }
+
+    /**
+     * Whether a read expression is a constant as Go writes it: a literal, a constant's name, or an
+     * operator or conversion of constants, which Go evaluates exactly at compile time.
+     */
+    private static boolean constant(Map<String, Object> e) {
+        Object k = e.get("k");
+        if ("lit".equals(k) || "float".equals(k) || "const".equals(k)) {
+            return true;
+        }
+        if ("binop".equals(k)) {
+            return constant(sub(e, "x")) && constant(sub(e, "y"));
+        }
+        if ("unop".equals(k) || "conv".equals(k)) {
+            return constant(sub(e, "x"));
+        }
+        return false;
+    }
+
+    /**
+     * An integer constant expression whose value wraps (or whose shift count is masked), as the
+     * literal of the value Java gives it: written as an operator of literals, Go would evaluate it
+     * exactly, with no int or long to wrap in. One that does not wrap is read as it is written.
+     */
+    private Map<String, Object> wrappedConstant(TreePath p) {
+        switch (p.getLeaf().getKind()) {
+            case PARENTHESIZED:
+            case INT_LITERAL:
+            case LONG_LITERAL:
+            case IDENTIFIER:
+            case MEMBER_SELECT:
+                return null;
+            default:
+                break;
+        }
+        BigInteger[] v = intConstant(p);
+        if (v == null || v[0].equals(v[1])) {
+            return null;
+        }
+        TypeKind k = trees.getTypeMirror(p).getKind();
+        return lit(v[1].toString(), tInt(k == TypeKind.LONG ? "64" : "32"));
+    }
+
+    /**
+     * An int or long constant expression's value: exact, and as Java computes it in its type; or
+     * {@code null} when the expression is not one this evaluates.
+     */
+    private BigInteger[] intConstant(TreePath p) {
+        Tree t = p.getLeaf();
+        TypeMirror tm = trees.getTypeMirror(p);
+        if (tm == null || tm.getKind() != TypeKind.INT && tm.getKind() != TypeKind.LONG) {
+            return null;
+        }
+        boolean wide = tm.getKind() == TypeKind.LONG;
+        switch (t.getKind()) {
+            case PARENTHESIZED:
+                return intConstant(new TreePath(p, ((ParenthesizedTree) t).getExpression()));
+            case INT_LITERAL:
+            case LONG_LITERAL: {
+                BigInteger b = BigInteger.valueOf(((Number) ((LiteralTree) t).getValue()).longValue());
+                return new BigInteger[] {b, b};
+            }
+            case IDENTIFIER:
+            case MEMBER_SELECT: {
+                Element el = trees.getElement(p);
+                if (!(el instanceof VariableElement) || !(((VariableElement) el).getConstantValue() instanceof Number)) {
+                    return null;
+                }
+                BigInteger b = BigInteger.valueOf(((Number) ((VariableElement) el).getConstantValue()).longValue());
+                return new BigInteger[] {b, b};
+            }
+            case UNARY_MINUS:
+            case UNARY_PLUS:
+            case BITWISE_COMPLEMENT: {
+                BigInteger[] x = intConstant(new TreePath(p, ((UnaryTree) t).getExpression()));
+                if (x == null) {
+                    return null;
+                }
+                switch (t.getKind()) {
+                    case UNARY_MINUS:
+                        return new BigInteger[] {x[0].negate(), wrap(x[1].negate(), wide)};
+                    case UNARY_PLUS:
+                        return x;
+                    default:
+                        return new BigInteger[] {x[0].not(), wrap(x[1].not(), wide)};
+                }
+            }
+            case PLUS:
+            case MINUS:
+            case MULTIPLY:
+            case DIVIDE:
+            case REMAINDER:
+            case AND:
+            case OR:
+            case XOR:
+            case LEFT_SHIFT:
+            case RIGHT_SHIFT: {
+                BinaryTree b = (BinaryTree) t;
+                BigInteger[] x = intConstant(new TreePath(p, b.getLeftOperand()));
+                BigInteger[] y = intConstant(new TreePath(p, b.getRightOperand()));
+                if (x == null || y == null) {
+                    return null;
+                }
+                switch (t.getKind()) {
+                    case PLUS:
+                        return new BigInteger[] {x[0].add(y[0]), wrap(x[1].add(y[1]), wide)};
+                    case MINUS:
+                        return new BigInteger[] {x[0].subtract(y[0]), wrap(x[1].subtract(y[1]), wide)};
+                    case MULTIPLY:
+                        return new BigInteger[] {x[0].multiply(y[0]), wrap(x[1].multiply(y[1]), wide)};
+                    case DIVIDE:
+                    case REMAINDER: {
+                        if (y[0].signum() == 0 || y[1].signum() == 0) {
+                            return null;
+                        }
+                        boolean div = t.getKind() == Tree.Kind.DIVIDE;
+                        return new BigInteger[] {div ? x[0].divide(y[0]) : x[0].remainder(y[0]),
+                            wrap(div ? x[1].divide(y[1]) : x[1].remainder(y[1]), wide)};
+                    }
+                    case AND:
+                        return new BigInteger[] {x[0].and(y[0]), wrap(x[1].and(y[1]), wide)};
+                    case OR:
+                        return new BigInteger[] {x[0].or(y[0]), wrap(x[1].or(y[1]), wide)};
+                    case XOR:
+                        return new BigInteger[] {x[0].xor(y[0]), wrap(x[1].xor(y[1]), wide)};
+                    default: {
+                        if (project) {
+                            return null;
+                        }
+                        int count = y[1].intValue() & (wide ? 63 : 31);
+                        boolean left = t.getKind() == Tree.Kind.LEFT_SHIFT;
+                        BigInteger java = wrap(left ? x[1].shiftLeft(count) : x[1].shiftRight(count), wide);
+                        if (y[0].signum() < 0 || y[0].bitLength() > 31) {
+                            // A count Java masks has no exact shift: the read takes Java's value.
+                            return new BigInteger[] {java.add(BigInteger.ONE.shiftLeft(64)), java};
+                        }
+                        int exactCount = y[0].intValue();
+                        return new BigInteger[] {left ? x[0].shiftLeft(exactCount) : x[0].shiftRight(exactCount), java};
+                    }
+                }
+            }
+            default:
+                return null;
+        }
+    }
+
+    /** {@code v} wrapped to a long or an int, as Java's arithmetic leaves it. */
+    private static BigInteger wrap(BigInteger v, boolean wide) {
+        return BigInteger.valueOf(wide ? v.longValue() : v.intValue());
     }
 
     private static boolean isIntLit(Map<String, Object> e) {
@@ -3376,10 +5717,76 @@ public final class Reader {
         }
     }
 
-    /** The cir/1 type of {@code t}: the JVM type table of {@link JvmTypes}, with the package's own classes. */
+    /**
+     * The functional interfaces of {@code java.util.function} read as cir/1 function types: the
+     * interface, its one abstract method, and that method's parameter and result types as the
+     * JVM type table maps them ({@code ""} for none).
+     */
+    private static final String[][] FUNCTIONS = {
+        {"java.util.function.LongUnaryOperator", "applyAsLong", "long", "long"},
+        {"java.util.function.LongBinaryOperator", "applyAsLong", "long,long", "long"},
+        {"java.util.function.LongPredicate", "test", "long", "boolean"},
+        {"java.util.function.LongSupplier", "getAsLong", "", "long"},
+        {"java.util.function.IntUnaryOperator", "applyAsInt", "int", "int"},
+        {"java.util.function.IntBinaryOperator", "applyAsInt", "int,int", "int"},
+        {"java.util.function.IntPredicate", "test", "int", "boolean"},
+        {"java.util.function.IntSupplier", "getAsInt", "", "int"},
+        {"java.util.function.BooleanSupplier", "getAsBoolean", "", "boolean"},
+    };
+
+    private static String[] function(String qualifiedName) {
+        for (String[] f : FUNCTIONS) {
+            if (f[0].equals(qualifiedName)) {
+                return f;
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Object> primitiveType(String name) {
+        switch (name) {
+            case "long":
+                return tInt("64");
+            case "int":
+                return tInt("32");
+            default:
+                return tBool();
+        }
+    }
+
+    /** The cir/1 function type of a functional interface {@link #FUNCTIONS} lists. */
+    private static Map<String, Object> funcType(String[] f) {
+        List<Object> params = new ArrayList<>();
+        if (!f[2].isEmpty()) {
+            for (String p : f[2].split(",")) {
+                params.add(primitiveType(p));
+            }
+        }
+        List<Object> results = new ArrayList<>();
+        if (!f[3].isEmpty()) {
+            results.add(primitiveType(f[3]));
+        }
+        Map<String, Object> t = kind("func");
+        t.put("params", params);
+        t.put("results", results);
+        return t;
+    }
+
+    /**
+     * The cir/1 type of {@code t}: the JVM type table of {@link JvmTypes}, with the package's own
+     * classes, and what only this reader maps: {@code double} and {@code float}, an array as a
+     * slice, {@code Object} as {@code any}, a type variable of a generic static method as its
+     * {@code param}, and the functional interfaces of {@link #FUNCTIONS} as function types.
+     */
     private Map<String, Object> typeOf(TypeMirror t) {
         if (t.getKind() == TypeKind.NULL) {
             return NULL;
+        }
+        if (!project) {
+            Map<String, Object> own = packageOnlyType(t);
+            if (own != null) {
+                return own;
+            }
         }
         try {
             return JvmTypes.map(jvmType(t), this::ownType);
@@ -3389,6 +5796,43 @@ public final class Reader {
             }
             throw new Unsupported(o.getMessage());
         }
+    }
+
+    /**
+     * The types only a package read maps, or null for every other type; a project read keeps the
+     * table alone, so its modules and refusals are those it has always given.
+     */
+    private Map<String, Object> packageOnlyType(TypeMirror t) {
+        if (t.getKind() == TypeKind.DOUBLE) {
+            return tFloat("64");
+        }
+        if (t.getKind() == TypeKind.FLOAT) {
+            return tFloat("32");
+        }
+        if (t.getKind() == TypeKind.ARRAY) {
+            TypeMirror c = ((javax.lang.model.type.ArrayType) t).getComponentType();
+            return tSlice(typeOf(c));
+        }
+        if (t.getKind() == TypeKind.TYPEVAR) {
+            Element owner = ((javax.lang.model.type.TypeVariable) t).asElement().getEnclosingElement();
+            if (owner instanceof ExecutableElement && genericMethods.contains(owner)) {
+                Map<String, Object> pt = kind("param");
+                pt.put("name", ((javax.lang.model.type.TypeVariable) t).asElement().getSimpleName().toString());
+                return pt;
+            }
+            throw new Unsupported(JvmTypes.outside(t.toString()));
+        }
+        if (t.getKind() == TypeKind.DECLARED) {
+            String qn = qname(t);
+            if (qn.equals("java.lang.Object")) {
+                return kind("any");
+            }
+            String[] f = function(qn);
+            if (f != null) {
+                return funcType(f);
+            }
+        }
+        return null;
     }
 
     // ---- projects: classes of jars and of other packages ----
@@ -3458,8 +5902,13 @@ public final class Reader {
         return inOtherPackage(te) ? packageOf(te) : te.getQualifiedName().toString();
     }
 
+    /**
+     * The name of an extern type: the simple name, which is also the one another package's module
+     * declares a static nested class by; a class nested otherwise in another package, which its
+     * module does not declare, keeps the names of the classes it is nested in ({@code Outer.Inner}).
+     */
     private String externName(TypeElement te) {
-        if (inOtherPackage(te)) {
+        if (inOtherPackage(te) && te.getNestingKind() != javax.lang.model.element.NestingKind.TOP_LEVEL && !declared(te)) {
             String q = te.getQualifiedName().toString();
             return q.substring(packageOf(te).length() + 1);
         }
@@ -3515,10 +5964,11 @@ public final class Reader {
         return null;
     }
 
-    /** Drop every extern no call of a function the module reads names. */
+    /** Drop every extern no call of a function or a variable's initializer the module reads names. */
     private void pruneExterns() {
         Set<String> used = new HashSet<>();
         collectExterns(outFuncs, used);
+        collectExterns(outVars, used);
         externs.keySet().removeIf(k -> !used.contains(k));
     }
 
@@ -3621,7 +6071,9 @@ public final class Reader {
         List<TypeElement> own = new ArrayList<>(structs);
         own.addAll(enums);
         own.addAll(implOf.keySet());
+        own.addAll(impls.keySet());
         own.addAll(errorLeaves.keySet());
+        own.addAll(formattedLeaves.keySet());
         if (errorRoot != null) {
             own.add(errorRoot);
         }
@@ -3644,7 +6096,10 @@ public final class Reader {
         if (implOf.containsKey(te)) {
             return tPtr(tNamed(implOf.get(te).getSimpleName().toString()));
         }
-        if (te.equals(errorRoot) || errorLeaves.containsKey(te)) {
+        if (impls.containsKey(te)) {
+            return tNamed(te.getSimpleName().toString());
+        }
+        if (te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te)) {
             return tError();
         }
         return null;
@@ -3692,7 +6147,7 @@ public final class Reader {
         }
         if (t.equals(NULL)) {
             String k = (String) want.get("k");
-            if (!k.equals("ptr") && !k.equals("error")) {
+            if (!k.equals("ptr") && !k.equals("error") && !k.equals("func") && !k.equals("any") && iface(want) == null) {
                 throw new Unsupported("null where a " + describe(want) + " is expected");
             }
             return nil(want);
@@ -3703,6 +6158,23 @@ public final class Reader {
             if (bits == 64 || (v >= -(1L << (bits - 1)) && v < (1L << (bits - 1)))) {
                 return lit((String) e.get("value"), want);
             }
+        }
+        // A constant converted as Java converts it: an integer constant to the nearest double or
+        // float, a float constant to the double holding it exactly.
+        if ("lit".equals(e.get("k")) && isInt(t) && isFloat(want)) {
+            long v = Long.parseLong((String) e.get("value"));
+            return want.get("bits").equals("32") ? floatLit((float) v, "32") : floatLit((double) v, "64");
+        }
+        if ("float".equals(e.get("k")) && t.equals(tFloat("32")) && want.equals(tFloat("64"))) {
+            return floatLit(Float.parseFloat((String) e.get("value")), "64");
+        }
+        // Boxing a number, a boolean or a String into an Object: a cir/1 any holds the value.
+        if ("any".equals(want.get("k")) && (isInt(t) || t.equals(tBool()) || t.equals(tString()))) {
+            return e;
+        }
+        TypeElement to = iface(want);
+        if (to != null) {
+            return toIface(e, to, want);
         }
         throw new Unsupported("a " + describe(t) + " where a " + describe(want) + " is expected: implicit conversions are outside cir/1");
     }
@@ -3766,6 +6238,67 @@ public final class Reader {
         Map<String, Object> t = kind("ptr");
         t.put("elem", elem);
         return t;
+    }
+
+    private static Map<String, Object> tFloat(String bits) {
+        Map<String, Object> t = kind("float");
+        t.put("bits", bits);
+        return t;
+    }
+
+    private static boolean isFloat(Map<String, Object> t) {
+        return "float".equals(t.get("k"));
+    }
+
+    /** A float literal of {@code v} at {@code bits} bits, spelled as cir/1 spells it ({@link #floatSpelling}). */
+    private static Map<String, Object> floatLit(double v, String bits) {
+        if (Double.isNaN(v) || Double.isInfinite(v)) {
+            throw new Unsupported("a floating-point value that is not finite");
+        }
+        Map<String, Object> e = kind("float");
+        e.put("value", floatSpelling(v, bits.equals("32")));
+        e.put("t", tFloat(bits));
+        return e;
+    }
+
+    /**
+     * The spelling cir/1 gives a float literal ({@code float_spelling} of crates/model): the shortest
+     * decimal that reads back to {@code v} at its width, the nearest of them where several are as
+     * short, laid out plain when its decimal exponent {@code e} is {@code -7 < e < 21} ({@code 0.25},
+     * {@code 1000}, {@code -0}), else as {@code <d>[.<digits>]e<e>} ({@code 1.5e300}).
+     */
+    static String floatSpelling(double v, boolean f32) {
+        if (v == 0) {
+            return 1 / v < 0 ? "-0" : "0";
+        }
+        java.math.BigDecimal exact = new java.math.BigDecimal(v);
+        java.math.BigDecimal best = null;
+        for (int prec = 1; prec <= 17 && best == null; prec++) {
+            for (java.math.RoundingMode m : List.of(java.math.RoundingMode.HALF_EVEN, java.math.RoundingMode.FLOOR,
+                java.math.RoundingMode.CEILING)) {
+                java.math.BigDecimal r = exact.round(new java.math.MathContext(prec, m));
+                boolean back = f32 ? Float.parseFloat(r.toString()) == (float) v : Double.parseDouble(r.toString()) == v;
+                if (back && (best == null || r.subtract(exact).abs().compareTo(best.subtract(exact).abs()) < 0)) {
+                    best = r;
+                }
+            }
+        }
+        String sign = best.signum() < 0 ? "-" : "";
+        java.math.BigDecimal abs = best.abs().stripTrailingZeros();
+        String digits = abs.unscaledValue().toString();
+        int exp = digits.length() - 1 - abs.scale();
+        if (-7 < exp && exp < 21) {
+            int point = exp + 1;
+            if (point <= 0) {
+                return sign + "0." + "0".repeat(-point) + digits;
+            }
+            if (digits.length() <= point) {
+                return sign + digits + "0".repeat(point - digits.length());
+            }
+            return sign + digits.substring(0, point) + "." + digits.substring(point);
+        }
+        String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);
+        return sign + mantissa + "e" + exp;
     }
 
     private static Map<String, Object> tSlice(Map<String, Object> elem) {
@@ -3912,11 +6445,18 @@ public final class Reader {
         return i < 0 ? s : s.substring(0, i) + " …";
     }
 
+    /**
+     * List a refusal. In a project read a construct read more than once, such as a field initializer
+     * each constructor starts from, is listed once: one construct, one refusal.
+     */
     private void refuse(String pos, String what, String reason) {
         Map<String, Object> r = Json.obj();
         r.put("pos", pos);
         r.put("what", what);
         r.put("reason", reason);
+        if (project && refusals.contains(r)) {
+            return;
+        }
         refusals.add(r);
     }
 
@@ -3925,9 +6465,22 @@ public final class Reader {
     }
 
     private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods) {
+        refuseAnnotations(cu, mods, false);
+    }
+
+    /** With {@code persistence}, a class or instance field of a project read, whose JPA annotations {@link #persistence} records. */
+    private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods, boolean persistence) {
+        refuseAnnotations(cu, mods, persistence, Set.of());
+    }
+
+    /** With {@code mapped}, the annotations the declaration maps besides the Quarkus ones ({@code @Provider} on an exception mapper). */
+    private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods, boolean persistence, Set<String> mapped) {
         for (AnnotationTree a : mods.getAnnotations()) {
             TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
             String qn = at == null ? "" : qname(at);
+            if (project && persistence && PERSISTENCE.contains(qn) || mapped.contains(qn)) {
+                continue;
+            }
             if (!HARMLESS_ANNOTATIONS.contains(qn) && !(project && QUARKUS_ANNOTATIONS.contains(qn))) {
                 refuse(pos(cu, a), source(cu, a), "annotation " + qn + ": annotations with behaviour are outside cir/1");
             }

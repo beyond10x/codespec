@@ -1,0 +1,288 @@
+{
+  "format": "cir/1",
+  "name": "expr_spread_local",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.7.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "sum",
+      "exported": false,
+      "params": [
+        {
+          "name": "xs",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "variadic": true
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "t"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "x",
+          "over": {
+            "k": "var",
+            "name": "xs",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "t",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "t",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "x",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "case.go:7"
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "t",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        }
+      ],
+      "doc": "sum adds its arguments.",
+      "pos": "case.go:4"
+    },
+    {
+      "name": "Twice",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "xs"
+          ],
+          "rhs": [
+            {
+              "k": "intrinsic",
+              "name": "append",
+              "args": [
+                {
+                  "k": "make",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "slice",
+                "elem": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "sum",
+              "args": [
+                {
+                  "k": "spread",
+                  "x": {
+                    "k": "var",
+                    "name": "xs",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  },
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        }
+      ],
+      "doc": "Twice builds a slice of a, b, a and b and passes it to sum spread: 2*(a+b).",
+      "pos": "case.go:13"
+    }
+  ],
+  "layout": [
+    "func:sum",
+    "func:Twice"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

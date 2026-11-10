@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T10:08:40Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-c-kit-conventions",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-reader-c-kit-conventions-pass-1",
+    "reference": "bf89e62",
+    "review": "review-result:adversary-reader-c-kit-conventions-pass-1",
+    "outcome": "fixed"
+  }
+}

@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use codespec_model::{IntWidth, Type};
+use codespec_model::{FloatBits, IntWidth, Type};
 
 use crate::json::J;
 
@@ -22,6 +22,35 @@ pub struct Tables {
     pub globals: BTreeMap<String, Type>,
     /// The constants of anonymous enums, by name, typed `int`.
     pub consts: BTreeSet<String>,
+    /// Each newtype the module declares, a typedef in the source directory of an integer, `_Bool`
+    /// or floating-point type, by name, with the type it is defined over.
+    pub newtypes: BTreeMap<String, Type>,
+    /// Each typedef of the source directory refused as a newtype, by name, with why: a type it
+    /// names is refused where it is used.
+    pub bad_typedefs: BTreeMap<String, String>,
+    /// The tag of each struct, union and enum the source directory declares (`struct`, `union`,
+    /// `enum`), by name.
+    pub tags: BTreeMap<String, String>,
+    /// The source directory is in runtime form: it holds the kit's `codespec_rt.h` and a file
+    /// includes it.
+    pub runtime: bool,
+    /// The parameters and results of each function a `codespec: func` line types, by name.
+    pub sigs: BTreeMap<String, (Vec<Type>, Vec<Type>)>,
+    /// Each sentinel error, by name, with its message.
+    pub errors: BTreeMap<String, String>,
+    /// Each `static const cs_type` of the module, by name: its `CS_K_*` kind, the type name it
+    /// carries and, for `CS_K_NAMED`, the `cs_type` of the type it is defined over.
+    pub descs: BTreeMap<String, (String, String, Option<String>)>,
+    /// Each struct `<F>_result` that carries the results of `F`, by name, with `F`.
+    pub result_types: BTreeMap<String, String>,
+    /// The fields of each of those structs, name and C type, in order.
+    pub result_fields: BTreeMap<String, Vec<(String, String)>>,
+    /// The prefix `<m>_` of every name of a module the C writer wrote (its header `<m>.h` holds
+    /// the `codespec:` lines), empty otherwise.
+    pub prefix: String,
+    /// Each helper the C writer writes around one runtime call (`<m>_cs_append_int`), by name,
+    /// with the runtime function it calls and the C type of the value it takes.
+    pub helpers: BTreeMap<String, (String, String)>,
 }
 
 /// One typedef of a file: the type it names, spelled, and the module type it names when that
@@ -85,51 +114,147 @@ fn builtin(s: &str) -> Option<Type> {
     })
 }
 
+/// The parameter list of a function type spelled `(…)`, split at its top-level commas.
+fn params_of(list: &str) -> Option<Vec<String>> {
+    let inner = list.strip_prefix('(')?.strip_suffix(')')?;
+    let (mut out, mut depth, mut cur) = (Vec::new(), 0usize, String::new());
+    for c in inner.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.checked_sub(1)?,
+            ',' if depth == 0 => {
+                out.push(cur.trim().to_string());
+                cur.clear();
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur.trim().to_string());
+    }
+    Some(out)
+}
+
 impl Tables {
-    /// The `cir/1` type of a clang type object `{qualType, desugaredQualType}`.
+    /// The `cir/1` type of a clang type object `{qualType, desugaredQualType}`. The spelling
+    /// with its typedefs is read when it names a newtype of the module or a refused one, else the
+    /// desugared one.
     pub fn ty(&self, unit: &Unit, t: &J) -> Result<Type, String> {
         let q = clean(t.s("qualType"));
         let bare = q.strip_prefix("const ").unwrap_or(&q);
+        let bare = bare.strip_suffix(" const").unwrap_or(bare);
+        if self.runtime
+            && let Some(r) = crate::runtime::rt_type(bare)
+        {
+            return r;
+        }
         if let Some(Typedef { named: Some(n), .. }) = unit.typedefs.get(bare) {
             return self.named(n);
         }
         let d = t.s("desugaredQualType");
-        self.spelled(unit, if d.is_empty() { &q } else { d })
+        let newtype = q
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|w| self.newtypes.contains_key(w) || self.bad_typedefs.contains_key(w));
+        self.spelled(unit, if d.is_empty() || newtype { &q } else { d })
     }
 
     /// The `cir/1` type of the C type spelled `s`.
     pub fn spelled(&self, unit: &Unit, s: &str) -> Result<Type, String> {
         let s = clean(s);
+        if self.runtime {
+            let bare = s.strip_prefix("const ").unwrap_or(&s);
+            if let Some(r) = crate::runtime::rt_type(bare.strip_suffix(" const").unwrap_or(bare)) {
+                return r;
+            }
+        }
         if s == "const char *" || s == "char const *" {
             return Ok(Type::String);
         }
-        if s.contains("(*") || s.contains("(^") {
-            return Err("a function pointer".into());
-        }
-        if s.ends_with('*') {
-            return Err(format!("a pointer type ({s})"));
-        }
-        if s.contains('[') {
-            return Err(format!("an array type ({s})"));
-        }
-        if s.split_whitespace()
+        if s.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .any(|w| w == "volatile" || w == "_Atomic")
         {
             return Err(format!("a volatile or atomic type ({s})"));
         }
+        if let Some((result, list)) = s.split_once("(*)") {
+            if list.trim_start().starts_with('[') {
+                return Err(format!("a pointer to an array ({s})"));
+            }
+            return self.func(unit, result.trim(), list.trim());
+        }
+        if s.contains("(*") || s.contains("(^") {
+            return Err(format!("a pointer to a function pointer or an array ({s})"));
+        }
+        let s = match s.strip_suffix("*const") {
+            Some(x) => format!("{x}*"),
+            None => s.strip_suffix(" const").unwrap_or(&s).to_string(),
+        };
+        if let Some(elem) = s.strip_suffix('*') {
+            return match self.spelled(unit, elem.trim())? {
+                Type::Unit => Err(format!("a pointer to void ({s})")),
+                Type::String => Err(format!("a pointer to a string ({s})")),
+                elem => Ok(Type::Ptr {
+                    elem: Box::new(elem),
+                }),
+            };
+        }
+        if let Some(open) = s.find('[') {
+            let close = s[open..].find(']').map(|c| open + c);
+            let len = close.and_then(|c| s[open + 1..c].trim().parse::<u64>().ok());
+            let (Some(close), Some(len)) = (close, len) else {
+                return Err(format!("an array of no constant length ({s})"));
+            };
+            let elem = format!("{}{}", &s[..open], &s[close + 1..]);
+            return match self.spelled(unit, elem.trim())? {
+                Type::Unit | Type::String => Err(format!("an array of strings ({s})")),
+                elem => Ok(Type::Array {
+                    len,
+                    elem: Box::new(elem),
+                }),
+            };
+        }
         let s = s.strip_prefix("const ").unwrap_or(&s);
-        let s = s.strip_suffix(" const").unwrap_or(s);
         if s == "void" {
             return Ok(Type::Unit);
         }
         if let Some(t) = builtin(s) {
             return Ok(t);
         }
-        if matches!(s, "char" | "float" | "double" | "long double") {
-            return Err(match s {
-                "char" => "plain char, whose signedness is the platform's".to_string(),
-                _ => format!("the floating-point type {s}"),
-            });
+        match s {
+            "float" => {
+                return Ok(Type::Float {
+                    bits: FloatBits::W32,
+                });
+            }
+            "double" => {
+                return Ok(Type::Float {
+                    bits: FloatBits::W64,
+                });
+            }
+            "char" => return Err("plain char, whose signedness is the platform's".to_string()),
+            "long double" => {
+                return Err(
+                    "long double, whose width is the platform's and cir/1 does not have".into(),
+                );
+            }
+            _ => {}
+        }
+        if let Some(why) = self.bad_typedefs.get(s) {
+            return Err(format!("{s}, which is not read: {why}"));
+        }
+        if let Some(under) = self.newtypes.get(s) {
+            // Another file of the directory may typedef the name to another type.
+            if let Some(td) = unit.typedefs.get(s)
+                && td.named.is_none()
+                && self.spelled(unit, &td.target).ok().as_ref() != Some(under)
+            {
+                return Err(format!(
+                    "{s}, whose typedef here ({}) is not the one the module reads as its newtype {s}",
+                    td.target
+                ));
+            }
+            return self.named(s);
         }
         for tag in ["struct ", "enum ", "union "] {
             if let Some(name) = s.strip_prefix(tag) {
@@ -145,7 +270,9 @@ impl Tables {
                     self.enums.contains(name)
                 };
                 if !known {
-                    return Err(format!("{s}, which the source directory does not declare"));
+                    return Err(format!(
+                        "{s}, which the source directory does not declare before it is used"
+                    ));
                 }
                 return Ok(Type::Named {
                     name: name.into(),
@@ -162,12 +289,60 @@ impl Tables {
         Err(format!("the type {s}"))
     }
 
-    /// The module type `n`, a struct or enum the module declares and reads.
+    /// A function pointer `result (*)(list)`: a `func` type, without results for `void`.
+    fn func(&self, unit: &Unit, result: &str, list: &str) -> Result<Type, String> {
+        let s = format!("{result} (*){list}");
+        if result.contains('(') {
+            return Err(format!(
+                "a function pointer returning a function pointer ({s})"
+            ));
+        }
+        let Some(list) = params_of(list) else {
+            return Err(format!("the function pointer type {s}"));
+        };
+        let mut params = Vec::new();
+        match list.as_slice() {
+            [] => {
+                return Err(format!(
+                    "a function pointer without a prototype ({s}), whose parameters C does not say"
+                ));
+            }
+            [v] if v == "void" => {}
+            _ => {
+                for p in &list {
+                    if p == "..." {
+                        return Err(format!("a pointer to a variadic function ({s})"));
+                    }
+                    match self.spelled(unit, p)? {
+                        Type::Unit => return Err(format!("the function pointer type {s}")),
+                        t => params.push(t),
+                    }
+                }
+            }
+        }
+        let results = match self.spelled(unit, result)? {
+            Type::Unit => Vec::new(),
+            t => vec![t],
+        };
+        Ok(Type::Func { params, results })
+    }
+
+    /// The module type `n`, a struct, enum or newtype the module declares and reads.
+    pub fn module_type(&self, n: &str) -> Result<Type, String> {
+        match self.named(&format!("{}{n}", self.prefix)) {
+            Ok(t) => Ok(t),
+            Err(_) => self.named(n),
+        }
+    }
+
     fn named(&self, n: &str) -> Result<Type, String> {
         if let Some(why) = self.refused.get(n) {
             return Err(format!("{n}, which is not read: {why}"));
         }
-        if !self.structs.contains_key(n) && !self.enums.contains(n) {
+        if !self.structs.contains_key(n)
+            && !self.enums.contains(n)
+            && !self.newtypes.contains_key(n)
+        {
             return Err(format!("{n}, which the source directory does not declare"));
         }
         Ok(Type::Named {

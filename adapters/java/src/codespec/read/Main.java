@@ -29,7 +29,7 @@ import java.util.Map;
  */
 public final class Main {
     /** The workspace version; written into every document as {@code reader.version}. */
-    public static final String VERSION = "0.6.1";
+    public static final String VERSION = "0.7.0";
 
     /**
      * The reader's claim: the features its output for {@code examples/ledger} uses and the subject
@@ -40,18 +40,22 @@ public final class Main {
      */
     static final String[] CLAIM = {
         "assign.add", "assign.and", "assign.div", "assign.mul", "assign.or", "assign.rem",
-        "assign.sub", "assign.xor", "decl.enum", "decl.struct", "expr.binop", "expr.call",
-        "expr.const", "expr.conv", "expr.errvar", "expr.field", "expr.index", "expr.intrinsic",
-        "expr.lit", "expr.make", "expr.method", "expr.nil", "expr.struct", "expr.unop", "expr.var",
-        "expr.zero", "intrinsic.append", "intrinsic.len", "intrinsic.sorted_keys",
-        "intrinsic.sprintf", "op.add", "op.and", "op.div", "op.eq", "op.ge", "op.gt", "op.land",
-        "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem", "op.sub", "op.xor",
-        "sem.continue.post", "sem.error.propagate", "sem.int.wrap", "sem.map.order", "sem.rem.sign",
-        "stmt.assign", "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for",
-        "stmt.for_range", "stmt.if", "stmt.incr", "stmt.let", "stmt.return", "stmt.switch",
-        "type.bool", "type.error", "type.int", "type.map", "type.named", "type.ptr", "type.slice",
-        "type.string", "type.unit", "unop.complement", "unop.neg", "unop.not", "unop.plus",
-        "unop.ref",
+        "assign.shl", "assign.shr", "assign.sub", "assign.xor", "decl.enum", "decl.interface",
+        "decl.struct", "decl.type_params", "decl.var", "decl.variadic", "expr.binop", "expr.call",
+        "expr.call_value", "expr.const", "expr.conv", "expr.errvar", "expr.field", "expr.float",
+        "expr.func_ref", "expr.global", "expr.iface_call", "expr.index", "expr.instantiate",
+        "expr.intrinsic", "expr.lambda", "expr.lit", "expr.make", "expr.method", "expr.nil",
+        "expr.spread", "expr.struct", "expr.to_iface", "expr.unop", "expr.var", "expr.zero",
+        "intrinsic.append", "intrinsic.errorf", "intrinsic.len", "intrinsic.println",
+        "intrinsic.sorted_keys", "intrinsic.sprintf", "op.add", "op.and", "op.div", "op.eq", "op.ge",
+        "op.gt", "op.land", "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem",
+        "op.shl", "op.shr", "op.sub", "op.xor", "sem.continue.post", "sem.error.propagate",
+        "sem.int.wrap", "sem.map.order", "sem.rem.sign", "sem.switch.break", "stmt.assign",
+        "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range",
+        "stmt.if", "stmt.incr", "stmt.let", "stmt.return", "stmt.switch", "type.any", "type.bool",
+        "type.error", "type.float", "type.func", "type.int", "type.map", "type.named", "type.param",
+        "type.ptr", "type.slice", "type.string", "type.tuple", "type.unit", "unop.complement",
+        "unop.neg", "unop.not", "unop.plus", "unop.ref",
     };
 
     private Main() {}
@@ -80,7 +84,12 @@ public final class Main {
         "usage: codespec-read-java <package or project dir> | --packages <project dir> | --all <project dir> <out dir>"
             + " | --effects <project dir> | --describe";
 
+    /** Runs the reader on the stack {@link codespec.jvm.Bounded} states; deeper is a refusal. */
     public static void main(String[] args) {
+        codespec.jvm.Bounded.run("codespec-read-java", () -> run(args));
+    }
+
+    private static void run(String[] args) {
         if (args.length == 1 && args[0].equals("--describe")) {
             print(describe());
             return;

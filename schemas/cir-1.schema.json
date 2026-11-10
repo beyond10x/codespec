@@ -118,6 +118,13 @@
       "description": "The module's import path in the source language's spelling (`net/http`), when the reader\nknows it: the name an `extern` of another module uses for it.",
       "type": "string"
     },
+    "persistence": {
+      "description": "The marks (Java: JPA annotations) by which an object-relational mapper stores the module's\ntypes: on a type of `types` (`T`) or a field of one (`T.f`). Source order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Persistence"
+      }
+    },
     "reader": {
       "description": "Which reader produced this document.",
       "$ref": "#/$defs/Reader"
@@ -464,7 +471,7 @@
       ]
     },
     "Entry": {
-      "description": "A function a framework starts, not the program: a reader recognised it from the framework's\nannotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).",
+      "description": "A function a framework starts, not the program: a reader recognised it from the framework's\nannotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider`\nclass implementing `ExceptionMapper`).",
       "type": "object",
       "properties": {
         "consumes": {
@@ -479,7 +486,7 @@
           "type": "string"
         },
         "kind": {
-          "description": "One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer)\nor `incoming` (a message consumer).",
+          "description": "One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer),\n`incoming` (a message consumer) or `exception-mapper` (a function the framework calls with\nwhat an entry raised, when it is of the type `on` names; it takes that one value).",
           "type": "string"
         },
         "method": {
@@ -487,7 +494,7 @@
           "type": "string"
         },
         "on": {
-          "description": "`http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:\n`every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.",
+          "description": "`http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:\n`every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.\n`exception-mapper`: the extern type the function takes, `<path>.<name>` (the Java reader's\n`java.lang.Exception.Exception`, a jar class's path being its qualified name).",
           "type": "string"
         },
         "produces": {
@@ -1475,6 +1482,13 @@
         "pos": {
           "type": "string"
         },
+        "raises": {
+          "description": "The extern types the function can raise, outside its results: those of its own `raise`\nstatements and those every function of the module it calls lists, sorted by `path`, then\n`name`, each once. Strict reading computes them from the bodies and refuses any other list;\na function that lists any is one an entry names, or one only such functions call.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Type"
+          }
+        },
         "recv": {
           "anyOf": [
             {
@@ -1739,6 +1753,32 @@
       "required": [
         "name",
         "t"
+      ]
+    },
+    "Persistence": {
+      "description": "One persistence mark: an annotation of a type or of a field of it that tells an object-relational\nmapper how its objects are stored.",
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Its arguments as written, `name = value` each, in source order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "at": {
+          "description": "`T`, a type of `types`, or `T.f`, a field of it.",
+          "type": "string"
+        },
+        "mark": {
+          "description": "The annotation without its package: `Entity`, `Cacheable`, `Id`, `GeneratedValue`, `Column`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "mark"
       ]
     },
     "Reader": {
@@ -2138,6 +2178,28 @@
           "required": [
             "k",
             "results",
+            "pos"
+          ]
+        },
+        {
+          "description": "Leaves the function, and every caller up to the framework that started it, with `x`, a\nvalue of an extern type (Java: `throw` of a jar's unchecked exception): no result is\nreturned. The function lists the type in `raises`.",
+          "type": "object",
+          "properties": {
+            "k": {
+              "type": "string",
+              "const": "raise"
+            },
+            "pos": {
+              "type": "string"
+            },
+            "x": {
+              "$ref": "#/$defs/Expr"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "x",
             "pos"
           ]
         },

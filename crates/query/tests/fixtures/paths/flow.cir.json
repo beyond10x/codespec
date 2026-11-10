@@ -1,0 +1,268 @@
+{
+  "format": "cir/1",
+  "name": "flow",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Leaky",
+      "exported": true,
+      "params": [
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "open",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:4"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "call",
+                "name": "check",
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "flow.go:6"
+            }
+          ],
+          "pos": "flow.go:5"
+        },
+        {
+          "k": "return",
+          "results": [],
+          "pos": "flow.go:8"
+        }
+      ],
+      "pos": "flow.go:3"
+    },
+    {
+      "name": "Checked",
+      "exported": true,
+      "params": [
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "open",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:12"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "call",
+                "name": "check",
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "flow.go:14"
+            }
+          ],
+          "pos": "flow.go:13",
+          "else": [
+            {
+              "k": "expr",
+              "x": {
+                "k": "call",
+                "name": "check",
+                "args": [],
+                "t": {
+                  "k": "unit"
+                }
+              },
+              "pos": "flow.go:16"
+            }
+          ]
+        },
+        {
+          "k": "return",
+          "results": [],
+          "pos": "flow.go:18"
+        }
+      ],
+      "pos": "flow.go:11"
+    },
+    {
+      "name": "Twice",
+      "exported": true,
+      "params": [
+        {
+          "name": "ok",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "open",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:22"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "ok",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "return",
+              "results": [],
+              "pos": "flow.go:24"
+            }
+          ],
+          "pos": "flow.go:23"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "check",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:26"
+        },
+        {
+          "k": "return",
+          "results": [],
+          "pos": "flow.go:27"
+        }
+      ],
+      "pos": "flow.go:21"
+    },
+    {
+      "name": "Direct",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "open",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:31"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "check",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "flow.go:32"
+        },
+        {
+          "k": "return",
+          "results": [],
+          "pos": "flow.go:33"
+        }
+      ],
+      "pos": "flow.go:30"
+    },
+    {
+      "name": "open",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "flow.go:36"
+    },
+    {
+      "name": "check",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "flow.go:39"
+    }
+  ],
+  "layout": [
+    "func:Leaky",
+    "func:Checked",
+    "func:Twice",
+    "func:Direct",
+    "func:open",
+    "func:check"
+  ],
+  "path": "example.com/flow"
+}

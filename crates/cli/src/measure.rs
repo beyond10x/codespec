@@ -123,6 +123,7 @@ fn holds_foreign(body: &[Stmt]) -> bool {
         | Stmt::Break { .. }
         | Stmt::Continue { .. }
         | Stmt::Return { .. }
+        | Stmt::Raise { .. }
         | Stmt::Expr { .. }
         | Stmt::Send { .. } => false,
     })

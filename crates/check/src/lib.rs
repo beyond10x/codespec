@@ -79,8 +79,9 @@
 //!   error-typed global) and an error from a call `unwrapped` names (`context.Cause`), or from a
 //!   function of the set that wraps errors (an `errorf` with `%w`, `errors.Join`), directly or
 //!   through the local it was bound to: a wrapped sentinel does not match.
-//! - `lock-without-unlock`: in a read body, a `lock` call with a path to a `return`, or to the end
-//!   of the function, that passes no matching `unlock` (the entry at the same index). Locks are
+//! - `lock-without-unlock`: in a read body, a `lock` call with a path to a `return`, a `raise`, a
+//!   call of a function of the set that lists `raises` (the path may leave there), or the end of
+//!   the function, that passes no matching `unlock` (the entry at the same index). Locks are
 //!   matched by kind (`sync.Mutex.Lock` with `sync.Mutex.Unlock`), not by receiver. An unlock in a
 //!   `foreign` statement (`defer`, a deferred function literal) releases there and on; so does a
 //!   call of a function of the set that unlocks for its caller (its calls, in line order, unlock

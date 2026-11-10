@@ -18,7 +18,7 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.6.1";
+pub const VERSION: &str = "0.7.0";
 
 /// The date the list below was last checked against the tree.
 const AS_OF: &str = "2026-11-08";
@@ -86,7 +86,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         area: "Readers",
         label: "Rust reader on syn",
-        detail: "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for three named exceptions.",
+        detail: "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for four named exceptions, one its loop over a BTreeMap of string keys, which it refuses.",
         status: "shipped",
         evidence: Some(
             "adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions",
@@ -261,6 +261,14 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Conformance",
+        label: "C reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-c over its corpus, one C source per claimed feature, through the same four steps as the Go reader; codespec-run-c runs each source to the case's expected output first.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-c.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
         label: "Go writer conforms to the kit",
         detail: "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
         status: "shipped",
@@ -273,6 +281,30 @@ pub const CAPABILITIES: &[Capability] = &[
         detail: "codespec conform writes every case of the kit with codespec-write-rust and runs it with codespec-run-rust, as for the Go writer; a module without facts is refused naming codespec pass.",
         status: "shipped",
         evidence: Some("website/data/conformance/writer-rust.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Evaluator writer conforms to the kit",
+        detail: "codespec conform --lang cir --role writer copies every case of the kit with codespec-write-cir and runs it with the evaluator through codespec-run-cir; it claims every feature but the two it gives a reason for, stmt.foreign, which it refuses, and intrinsic.append, whose case passes.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-cir.json::conforms"),
+        href: "/docs/reference/support",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Differential runs against the evaluator",
+        detail: "Every exported function of the series and inventory examples gets 200 seeded calls, a method through a generated probe that builds its receiver, and the evaluator, codespec-run-go and codespec-run-rust print the same bytes; Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::eval-diff"),
+        href: "/docs/concepts/harness",
+    },
+    Capability {
+        area: "Conformance",
+        label: "C writer conforms to the kit",
+        detail: "codespec conform writes every case of the kit with codespec-write-c and runs it with codespec-run-c, which compiles the C11 with cc, as for the Go writer.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-c.json::conforms"),
         href: "/docs/guides/add-an-adapter",
     },
     Capability {
@@ -292,6 +324,14 @@ pub const CAPABILITIES: &[Capability] = &[
         status: "shipped",
         evidence: Some("Taskfile.yml::examples-effects"),
         href: "/docs/concepts/static-analysis",
+    },
+    Capability {
+        area: "Analysis",
+        label: "Evaluator",
+        detail: "codespec eval runs a cir/1 module on a calls file with a tree-walking interpreter and prints what the kit's native runners print; every kit case gives its expected output twice byte-equal, and a run that executes a foreign statement or calls an extern without a built-in handler stops naming the node.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::eval-kit"),
+        href: "/docs/reference/cli",
     },
 ];
 
@@ -389,6 +429,108 @@ mod tests {
         Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
     }
 
+    /// UXF-016: every place that lists the languages codespec reads and writes names every reader
+    /// and writer the support matrix has, and Status lists each one's conformance.
+    #[test]
+    fn every_language_list_names_every_adapter() {
+        let site = root().join("website");
+        let read = |rel: &str| fs::read_to_string(site.join(rel)).unwrap();
+        let matrix: serde_json::Value =
+            serde_json::from_str(&read("data/support-matrix.json")).unwrap();
+        let (mut readers, mut writers) = (Vec::new(), Vec::new());
+        for lang in matrix["languages"].as_array().unwrap() {
+            let name = lang["name"].as_str().unwrap().to_owned();
+            let has = |role: &str| {
+                lang[role]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .any(|v| v.as_str() != Some("none"))
+            };
+            if has("read") {
+                readers.push(name.clone());
+            }
+            if has("write") {
+                writers.push(name);
+            }
+        }
+        let words = |text: &str| -> Vec<String> {
+            text.split(|c: char| !c.is_alphanumeric())
+                .map(str::to_owned)
+                .collect()
+        };
+        let mut missing = Vec::new();
+        let mut check = |place: &str, text: &str, names: &[String]| {
+            let have = words(text);
+            for n in names {
+                if !have.contains(n) {
+                    missing.push(format!("{place}: {n}"));
+                }
+            }
+        };
+        let product: serde_json::Value = serde_json::from_str(&read("product.json")).unwrap();
+        let meta = product["product"]["meta"].as_str().unwrap();
+        let part = |word: &str| meta.split('·').find(|p| p.contains(word)).unwrap_or("");
+        check("product.json meta readers", part("readers"), &readers);
+        check("product.json meta writers", part("writers"), &writers);
+        let written = |text: &str| -> String {
+            text.split_once(" write")
+                .and_then(|(_, rest)| rest.split_once(" from "))
+                .map(|(list, _)| list.to_owned())
+                .unwrap_or_default()
+        };
+        for key in ["lede", "description"] {
+            let text = product["product"][key].as_str().unwrap();
+            check(
+                &format!("product.json {key} writers"),
+                &written(text),
+                &writers,
+            );
+        }
+        let steps = product["sections"][0]["steps"].as_array().unwrap();
+        let write_step = steps.iter().find(|s| s["label"] == "write").unwrap();
+        check(
+            "product.json write step",
+            write_step["description"].as_str().unwrap(),
+            &writers,
+        );
+        let index = read("docs/index.md");
+        let sentence = index
+            .split("This tree reads ")
+            .nth(1)
+            .and_then(|s| s.split(['.', '(']).next())
+            .unwrap_or("");
+        let (reads, writes) = sentence.split_once(" writes ").unwrap_or((sentence, ""));
+        check("docs/index.md reads", reads, &readers);
+        check("docs/index.md writes", writes, &writers);
+        let pipeline = read("docs/concepts/pipeline.md");
+        let labels: Vec<&str> = CAPABILITIES.iter().map(|c| c.label).collect();
+        for (role, noun, names) in [("read", "reader", &readers), ("write", "writer", &writers)] {
+            for n in names {
+                // The adapter's program is named by its `lang`, not the column's display name.
+                let lang = crate::support::LANGUAGES
+                    .iter()
+                    .find(|(name, _)| name == n)
+                    .map(|(_, lang)| *lang)
+                    .unwrap_or_else(|| panic!("{n}: not a language of the support matrix"));
+                let program = format!("`codespec-{role}-{lang}`");
+                for (place, text) in [
+                    ("docs/index.md", &index),
+                    ("docs/concepts/pipeline.md", &pipeline),
+                ] {
+                    if !text.contains(&program) {
+                        missing.push(format!("{place}: {program}"));
+                    }
+                }
+                let label = format!("{n} {noun} conforms to the kit");
+                if !labels.contains(&label.as_str()) {
+                    missing.push(format!("status: {label}"));
+                }
+            }
+        }
+        assert_eq!(missing, Vec::<String>::new());
+    }
+
     fn capability(status: &'static str, evidence: Option<&'static str>) -> Capability {
         Capability {
             area: "A",
@@ -404,7 +546,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.6.1\""));
+        assert!(document.contains("\"version\": \"0.7.0\""));
     }
 
     #[test]
