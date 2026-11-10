@@ -82,8 +82,10 @@ fn a_goto_reads_with_one_refusal_at_its_line_and_exits_zero() {
     assert_eq!(foreigns(&m), vec![(at, "goto again;".to_string())]);
 }
 
+/// The plain `+` reads as `+`; the claim of `sem.int.wrap` rests on the runtime form's
+/// `(int64_t)((uint64_t)a + (uint64_t)b)` alone (`tests/cases.rs`).
 #[test]
-fn the_reader_does_not_claim_int_wrap_for_a_signed_addition_that_overflows() {
+fn a_plain_signed_addition_that_overflows_reads_as_plus_and_the_claim_rests_on_the_runtime_form() {
     let text = "#include <limits.h>\n\nlong add(long a, long b) {\n    return a + b;\n}\n\nlong over(void) {\n    return add(LONG_MAX, 1);\n}\n";
     let dir = source("wrap", &[("wrap.c", text)]);
     let m = read(&dir);
@@ -102,7 +104,12 @@ fn the_reader_does_not_claim_int_wrap_for_a_signed_addition_that_overflows() {
         .expect("a strict manifest")
         .claimed();
     assert!(claimed.contains("op.add"), "{claimed:?}");
-    assert!(!claimed.contains("sem.int.wrap"), "{claimed:?}");
+    let wrap = root().join("conformance/cases/sem-int-wrap/c/case.c");
+    let text = std::fs::read_to_string(wrap).expect("the case.c of sem.int.wrap");
+    assert!(
+        text.contains("(int64_t)((uint64_t)a + (uint64_t)b)") && !text.contains("a + b;"),
+        "sem.int.wrap is claimed on the wrapping form only"
+    );
 }
 
 #[test]
@@ -631,10 +638,46 @@ fn the_c_corpus_holds_each_case_s_c_source_beside_its_calls() {
         get("stmt-for/calls.json"),
         std::fs::read(case.join("calls.json")).unwrap()
     );
+    assert_eq!(
+        get("op-eq/codespec_rt.h"),
+        std::fs::read(kit.join("c/codespec_rt.h")).unwrap(),
+        "the kit's runtime header lies beside each case.c"
+    );
     assert!(
-        !files.iter().any(|(f, _)| f.starts_with("stmt-send/")),
+        !files.iter().any(|(f, _)| f.starts_with("type-unit/")),
         "a case without c/case.c has no corpus entry"
     );
+}
+
+#[test]
+fn the_kit_s_runtime_header_is_the_one_the_c_writer_writes() {
+    let kit = std::fs::read(root().join("conformance/c/codespec_rt.h")).expect("the kit's header");
+    let writer = std::fs::read(root().join("adapters/c/src/codespec_rt.h")).expect("the writer's");
+    assert!(
+        kit == writer,
+        "conformance/c/codespec_rt.h differs from adapters/c/src/codespec_rt.h"
+    );
+}
+
+#[test]
+fn a_directory_named_zlib_1_3_1_reads_to_a_module_whose_name_is_an_identifier() {
+    let dir = source(
+        "zlib-1.3.1",
+        &[("z.c", "long one(void) {\n    return 1;\n}\n")],
+    );
+    let m = read(&dir);
+    assert_eq!(m.name, "zlib_1_3_1");
+    let dir = source("1z", &[("z.c", "long one(void) {\n    return 1;\n}\n")]);
+    assert_eq!(read(&dir).name, "_1z");
+}
+
+#[test]
+fn a_parameter_without_a_name_reads_as_underscore() {
+    let text = "#include <stdint.h>\n\nint64_t callback(int64_t, int64_t b) {\n    return b;\n}\n";
+    let (m, _) = read_clean("unnamed-param", text);
+    let f = m.funcs.iter().find(|f| f.name == "callback").expect("read");
+    let names: Vec<&str> = f.params.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["_", "b"]);
 }
 
 #[test]

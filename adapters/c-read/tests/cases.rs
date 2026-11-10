@@ -172,6 +172,11 @@ fn hold(case: &Case, tag: &str) -> Result<(), String> {
     let src = work.join(&case.name);
     std::fs::create_dir_all(&src).map_err(|e| e.to_string())?;
     std::fs::copy(case.dir.join("c/case.c"), src.join("case.c")).map_err(|e| e.to_string())?;
+    std::fs::copy(
+        root().join("conformance/c/codespec_rt.h"),
+        src.join("codespec_rt.h"),
+    )
+    .map_err(|e| e.to_string())?;
     let calls = case.dir.join("calls.json");
     let expected =
         std::fs::read_to_string(case.dir.join("expected.txt")).map_err(|e| e.to_string())?;
@@ -287,11 +292,24 @@ fn expr_binop_stmt_for_and_a_switch_read_as_c_and_written_as_go_print_expected_t
 }
 
 #[test]
-fn the_reader_claims_no_fact_not_foreign_and_not_int_wrap() {
+fn the_reader_claims_no_fact_not_foreign_and_int_wrap_only_from_the_runtime_form() {
     let claimed = claimed();
     let wrong: Vec<&String> = claimed
         .iter()
-        .filter(|id| id.starts_with("fact.") || *id == "stmt.foreign" || *id == "sem.int.wrap")
+        .filter(|id| id.starts_with("fact.") || *id == "stmt.foreign")
         .collect();
     assert!(wrong.is_empty(), "claimed: {wrong:?}");
+    // C's signed overflow is undefined: the claim of sem.int.wrap rests only on sources that
+    // wrap through uint64_t and the runtime's cs_div and cs_rem.
+    for c in cases()
+        .iter()
+        .filter(|c| c.c && c.subject == "sem.int.wrap")
+    {
+        let text = std::fs::read_to_string(c.dir.join("c/case.c")).expect("case.c");
+        assert!(
+            text.contains("#include \"codespec_rt.h\""),
+            "{}: sem.int.wrap read from C outside the runtime form",
+            c.name
+        );
+    }
 }

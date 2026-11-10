@@ -225,6 +225,39 @@ tasks:
       - task: java-classpath
         vars: {PROJECT: adapters/java/testdata/quarkus}
 
+  c-round-trip:
+    desc: Write every kit case's case.cir.json, passed, as C with codespec-write-c into target/c-round-trip, read each output with codespec-read-c, and print how many read with no refusal and no foreign statement, how many with one, and how many the writer or reader left without a module; of those read with no refusal, how many the writer wrote whole, and how many of those, passed, written as Go and run on calls.json, print expected.txt.
+    deps: [build]
+    env:
+      GOFLAGS: -buildvcs=false
+    cmds:
+      - rm -rf target/c-round-trip
+      - mkdir -p target/c-round-trip
+      - |
+        clean=0; refused=0; none=0; whole=0; same=0
+        for d in conformance/cases/*/; do
+          c=$(basename "$d"); w=target/c-round-trip/$c
+          mkdir -p "$w/c"
+          if ! {{.CODESPEC}} pass --out "$w/passed.json" "$d/case.cir.json" > "$w/log" 2>&1 \
+            || ! {{.CODESPEC}} write --lang c --adapters {{.ADAPTERS}} --out "$w/c" "$w/passed.json" >> "$w/log" 2>&1 \
+            || ! {{.ADAPTERS}}/codespec-read-c "$w/c" > "$w/read.json" 2>> "$w/log"; then
+            none=$((none+1)); continue
+          fi
+          n=$(jq '(.refusals | length) + ([.. | objects | select(.k? == "foreign")] | length)' "$w/read.json")
+          if [ "$n" != 0 ]; then refused=$((refused+1)); continue; fi
+          clean=$((clean+1))
+          [ "$(jq length "$w/c/refusals.json" 2>/dev/null || echo 0)" = 0 ] || continue
+          whole=$((whole+1))
+          if {{.CODESPEC}} pass --out "$w/read.passed.json" "$w/read.json" >> "$w/log" 2>&1 \
+            && {{.CODESPEC}} write --lang go --adapters {{.ADAPTERS}} --out "$w/go" "$w/read.passed.json" >> "$w/log" 2>&1 \
+            && {{.ADAPTERS}}/codespec-run-go -build "$w/run-go" "$w/go" "$d/calls.json" > "$w/go.txt" 2>> "$w/log" \
+            && cmp -s "$w/go.txt" "$d/expected.txt"; then
+            same=$((same+1))
+          fi
+        done
+        echo "c round trip: $clean read with no refusal, $refused with a refusal, $none without a module"
+        echo "c round trip: $whole of the $clean written whole by the C writer, $same of those run as Go print expected.txt"
+
   java-quarkus-check:
     desc: Read the Quarkus fixture as a project against its class path twice through codespec read, byte-equal, canonical and equal to adapters/java/testdata/quarkus.read.cir.json, then run codespec effects over it with the summary codespec-read-java --effects prints. Needs task java-quarkus-prepare first.
     cmds:

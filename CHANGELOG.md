@@ -43,6 +43,39 @@ Every change a user of `codespec` or of `cir/1` would notice.
   strings) as `sorted_keys`. Kit cases gain the Rust sources that hold the 22 new claims. A raw
   identifier (`r#type`, `struct r#match`, a raw trait or path segment) is named without its `r#`
   in every position.
+- `codespec-read-c` reads C in runtime form: a directory holding the kit's runtime header,
+  `conformance/c/codespec_rt.h` (the one the C writer writes), whose functions carry
+  `/* codespec: func … */` lines. It reads `cs_string`, `cs_slice`, `cs_map`, `cs_chan`, `cs_any`
+  and `cs_error` in the forms its crate doc lists (literals, wrapping arithmetic through
+  `uint64_t`, append, index, map put and get, send and receive, boxing, sentinel errors, string
+  builders as `sprintf`, `errorf` and `println`, result structs as tuples, multiple assignment,
+  lookup with a miss, switch as an if chain, loops over a slice or map as `range`), and refuses a
+  near miss of each by name. It claims 103 kit features, up from 76: `decl.var`, `expr.errvar`,
+  `expr.index`, `expr.intrinsic`, `expr.make`, `intrinsic.*`, `op.eq`, `sem.error.propagate`,
+  `sem.int.wrap`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break`,
+  `stmt.for_range`, `stmt.lookup_else`, `stmt.send`, `type.any`, `type.chan`, `type.error`,
+  `type.map`, `type.slice`, `type.tuple`, `unop.recv`. A directory name that is no identifier
+  (`zlib-1.3.1`) reads to one (`zlib_1_3_1`), and a parameter without a name reads as `_`.
+- `codespec-read-c` reads what the C writer writes: its `<m>_` prefix, its static helpers, its
+  range blocks, scoped `for`, `(void)` calls, shifts, zero literals and `int64_t` newtypes
+  (`task c-round-trip` re-reads the writer's output for every kit case). It refuses an operator
+  or call with two operands that make calls (C leaves their order unspecified), a multiple
+  assignment whose later target reads an earlier one, an assignment through `cs_map_get` or
+  `cs_chan_recv`, an argument or result of another type than the `codespec: func` line's, a
+  receive or send against a channel's direction, and a loop over a map whose result depends on
+  the order of its entries. `int64_t` and `uint64_t` take their width from the line.
+- `codespec-read-c` refuses more orders C leaves open: two operands of which one is an `append`
+  or an operation that can panic (an integer `/` or `%`, an index, a shift by a signed count)
+  beside a call; an assignment to a place reading a global, memory or a local whose address is
+  taken, from a call; a multiple assignment or a loop over a map that reads or writes through a
+  pointer where a name may be aliased. A call of a function without a `codespec: func` line
+  checks each argument against its C parameter type. A name of the C writer's that would lose
+  its prefix onto the name of another declaration, a parameter or a local keeps it, with a
+  refusal. A `codespec: func` line spells a receive-only channel `<-chan T`.
+- `codespec-run-c` compiles each `.c` file as its own translation unit, as the reader reads it.
+- `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
+  a call of a function without one is refused. The C row of the reader corpus holds
+  `codespec_rt.h` beside each `case.c`.
 
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with

@@ -85,7 +85,7 @@
 //! | `rust` | `rust/case.rs` | `src/lib.rs` and a `Cargo.toml` naming the package `<case>` with `-` read as `_`, with its own `[workspace]` |
 //! | `java` | `java/Case.java` | `Case.java` |
 //! | `groovy` | `groovy/Case.groovy`, else `java/Case.java` | `Case.groovy`: Groovy 2.4 compiles every Java source of the kit unchanged, and `codespec-run-groovy` runs it to the case's `expected.txt` at step 1; a case whose Java source means something else in Groovy (`/` on integers, a BigDecimal division there) carries its own `groovy/Case.groovy` |
-//! | `c` | `c/case.c` | `case.c` |
+//! | `c` | `c/case.c` | `case.c`, and beside it the kit's runtime header `c/codespec_rt.h` as `codespec_rt.h`, which a source in runtime form includes |
 //!
 //! each beside a copy of the case's `calls.json`. A case without the source has no corpus entry.
 //!
@@ -1630,7 +1630,13 @@ pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, E
                 out.push((format!("{name}/src/lib.rs"), text));
             }
             "java" => out.push((format!("{name}/Case.java"), text)),
-            "c" => out.push((format!("{name}/case.c"), text)),
+            "c" => {
+                out.push((format!("{name}/case.c"), text));
+                out.push((
+                    format!("{name}/codespec_rt.h"),
+                    read_file(&kit.join("c/codespec_rt.h"))?,
+                ));
+            }
             _ => out.push((format!("{name}/Case.groovy"), text)),
         }
         out.push((

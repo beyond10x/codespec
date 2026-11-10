@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Size",
+      "args": [
+        "\"\""
+      ]
+    },
+    {
+      "func": "Size",
+      "args": [
+        "\"four\""
+      ]
+    }
+  ]
+}
