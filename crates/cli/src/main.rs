@@ -39,6 +39,14 @@ fn main() -> ExitCode {
             }
         };
     }
+    if let Cmd::Eval {
+        module,
+        calls,
+        max_steps,
+    } = &command
+    {
+        return codespec_cli::eval::main(module, calls, *max_steps);
+    }
     match run(command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -326,6 +334,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
         }
         Cmd::Check { .. } => check(cmd).map(|_| ()),
         Cmd::Query(args) => codespec_cli::query::run(&args).map(|_| ()),
+        Cmd::Eval { .. } => unreachable!("main runs eval"),
         Cmd::Harness {
             example,
             seeds,

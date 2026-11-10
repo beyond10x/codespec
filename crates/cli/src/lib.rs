@@ -2,6 +2,7 @@
 //! (`src/main.rs`) runs it; the documentation generator (`codespec-docs`) walks it for the CLI
 //! reference.
 
+pub mod eval;
 pub mod measure;
 pub mod query;
 
@@ -293,6 +294,25 @@ pub enum Cmd {
     /// statement without a call list, an unresolved call) is marked possible, with the unknown
     /// sites. Path patterns and properties are refused.
     Query(query::Args),
+    /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
+    /// print one line per call, as the conformance kit's runners print them. Exit 0 when every
+    /// call is made, 1 when the run stops (a foreign statement executed, an extern without a
+    /// built-in handler, a panic, the step budget), naming the node by its id on standard error,
+    /// 2 when the module or the calls are refused. Limits: calls nest at most 1000 deep, and
+    /// statements and expressions at most 10,000 levels counted through calls; a type
+    /// nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a
+    /// module calling an undeclared function, with a wrong argument count, naming an undeclared
+    /// type or a type holding itself, or an argument outside its parameter's width, is refused.
+    Eval {
+        /// The cir/1 module to run.
+        module: PathBuf,
+        /// The calls to make, a codespec-calls/1 document.
+        #[arg(long)]
+        calls: PathBuf,
+        /// The statements, calls and loop iterations the run may execute before it stops.
+        #[arg(long, default_value_t = 10_000_000)]
+        max_steps: u64,
+    },
     /// Build every implementation EXAMPLE/harness.toml lists, run each on one generated trace per
     /// seed and require byte-equal output; exit 1 naming the seed, implementation and first
     /// differing line otherwise.

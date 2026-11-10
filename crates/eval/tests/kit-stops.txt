@@ -1,0 +1,1 @@
+stmt-foreign stopped at stmt_foreign.Count#1 (case.go:6): foreign: defer is outside cir/1 (go: `defer done()`)
