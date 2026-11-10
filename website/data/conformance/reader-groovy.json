@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "sha256": "40224a96be7dd426c3b50a315eabbbecd736a939273d0e6729b1b5caccff33b4"
   },
   "corpus": {
-    "sha256": "b290f8fac79093119b5534f46a7816ccd0db6b1be7253ac04fc33533365a79e5"
+    "sha256": "6c2751e6f6727d962413e60687531328518fa5a52def545593044942226719a1"
   },
   "codespec": "0.6.1",
   "features": [
@@ -72,14 +72,26 @@
     {
       "id": "assign.shl",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "assign-shl"
+      ],
+      "case": "assign-shl",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use assign.shl outside a foreign statement"
     },
     {
       "id": "assign.shr",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "assign-shr"
+      ],
+      "case": "assign-shr",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use assign.shr outside a foreign statement"
     },
     {
       "id": "assign.sub",
@@ -114,8 +126,14 @@
     {
       "id": "decl.interface",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-interface"
+      ],
+      "case": "decl-interface",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.interface outside a foreign statement"
     },
     {
       "id": "decl.newtype",
@@ -134,26 +152,50 @@
     {
       "id": "decl.type_params",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-generic"
+      ],
+      "case": "decl-generic",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.type_params outside a foreign statement"
     },
     {
       "id": "decl.union",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-union"
+      ],
+      "case": "decl-union",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.union outside a foreign statement"
     },
     {
       "id": "decl.var",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-var-int"
+      ],
+      "case": "decl-var-int",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.var outside a foreign statement"
     },
     {
       "id": "decl.variadic",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "decl-variadic-local"
+      ],
+      "case": "decl-variadic-local",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use decl.variadic outside a foreign statement"
     },
     {
       "id": "expr.binop",
@@ -174,8 +216,14 @@
     {
       "id": "expr.call_value",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-call-value"
+      ],
+      "case": "expr-call-value",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.call_value outside a foreign statement"
     },
     {
       "id": "expr.const",
@@ -228,26 +276,50 @@
     {
       "id": "expr.float",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-float"
+      ],
+      "case": "expr-float",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.float outside a foreign statement"
     },
     {
       "id": "expr.func_ref",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-func-value"
+      ],
+      "case": "expr-func-value",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.func_ref outside a foreign statement"
     },
     {
       "id": "expr.global",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-global"
+      ],
+      "case": "expr-global",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.global outside a foreign statement"
     },
     {
       "id": "expr.iface_call",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-iface-call"
+      ],
+      "case": "expr-iface-call",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.iface_call outside a foreign statement"
     },
     {
       "id": "expr.index",
@@ -260,8 +332,14 @@
     {
       "id": "expr.instantiate",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-instantiate"
+      ],
+      "case": "expr-instantiate",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.instantiate outside a foreign statement"
     },
     {
       "id": "expr.intrinsic",
@@ -274,8 +352,14 @@
     {
       "id": "expr.lambda",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-lambda"
+      ],
+      "case": "expr-lambda",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.lambda outside a foreign statement"
     },
     {
       "id": "expr.lit",
@@ -316,8 +400,14 @@
     {
       "id": "expr.spread",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-spread-local"
+      ],
+      "case": "expr-spread-local",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.spread outside a foreign statement"
     },
     {
       "id": "expr.struct",
@@ -336,8 +426,14 @@
     {
       "id": "expr.to_iface",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-to-iface"
+      ],
+      "case": "expr-to-iface",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.to_iface outside a foreign statement"
     },
     {
       "id": "expr.unop",
@@ -420,8 +516,14 @@
     {
       "id": "intrinsic.errorf",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-errorf"
+      ],
+      "case": "intrinsic-errorf",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use intrinsic.errorf outside a foreign statement"
     },
     {
       "id": "intrinsic.len",
@@ -434,8 +536,14 @@
     {
       "id": "intrinsic.println",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-println-int"
+      ],
+      "case": "intrinsic-println-int",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use intrinsic.println outside a foreign statement"
     },
     {
       "id": "intrinsic.sorted_keys",
@@ -574,14 +682,26 @@
     {
       "id": "op.shl",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "op-shl"
+      ],
+      "case": "op-shl",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use op.shl outside a foreign statement"
     },
     {
       "id": "op.shr",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "op-shr"
+      ],
+      "case": "op-shr",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use op.shr outside a foreign statement"
     },
     {
       "id": "op.sub",
@@ -653,8 +773,14 @@
     {
       "id": "sem.switch.break",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "sem-switch-break"
+      ],
+      "case": "sem-switch-break",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use sem.switch.break outside a foreign statement"
     },
     {
       "id": "stmt.assign",
@@ -779,8 +905,14 @@
     {
       "id": "type.any",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-any"
+      ],
+      "case": "type-any",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.any outside a foreign statement"
     },
     {
       "id": "type.array",
@@ -823,14 +955,26 @@
     {
       "id": "type.float",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-float-compare"
+      ],
+      "case": "type-float-compare",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.float outside a foreign statement"
     },
     {
       "id": "type.func",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-func"
+      ],
+      "case": "type-func",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.func outside a foreign statement"
     },
     {
       "id": "type.int",
@@ -859,8 +1003,14 @@
     {
       "id": "type.param",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-param"
+      ],
+      "case": "type-param",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.param outside a foreign statement"
     },
     {
       "id": "type.ptr",
@@ -889,8 +1039,14 @@
     {
       "id": "type.tuple",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "type-tuple-error"
+      ],
+      "case": "type-tuple-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use type.tuple outside a foreign statement"
     },
     {
       "id": "type.unit",
@@ -958,9 +1114,9 @@
     "claimed": 72,
     "pass": 72,
     "fail": 0,
-    "refused_unclaimed": 5,
+    "refused_unclaimed": 31,
     "pass_unclaimed": 0,
-    "untested": 50,
+    "untested": 24,
     "boundary_fail": 0
   },
   "conforms": true

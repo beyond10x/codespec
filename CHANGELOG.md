@@ -2,6 +2,25 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec-read-java` claims 102 of the 120 features a reader can claim, up from 77. A package
+  read now maps shifts with the count masked as Java masks it, labeled `break` and `continue` of
+  the innermost loop, `double` and `float`, mutable static fields as module-level variables,
+  `Object` as `any`, interfaces with several implementations, unbounded static generic methods,
+  the primitive functional interfaces with lambdas and method references, variable arity methods
+  and arrays as slices, formatted exception messages as `errorf` and `System.out.println`. Each has a refused edge (`>>>`, an outer loop's label,
+  `%` on a float, among others) at its line. A project read is unchanged. The kit holds the Java
+  sources of these cases and six new variant cases: `decl-var-int`, `type-float-compare`,
+  `type-tuple-error`, `intrinsic-println-int`, `decl-variadic-local` and `expr-spread-local`. The
+  case `decl-union` has a Java source, a sealed interface of records, which the reader refuses at
+  its line and does not claim, since the Go writer that checks a read refuses a union. `adapters/java/README.md` gives the reason for each feature the reader
+  leaves unclaimed.
+- `codespec-run-java` and `codespec-run-groovy` print a result of type `Object` as the value it
+  holds.
+
 ## 0.6.1
 
 ### Changed

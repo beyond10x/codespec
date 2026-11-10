@@ -32,31 +32,61 @@ A feature may be the subject of several kit cases. Where the Go-shaped case cann
 Java, a variant beside it is: `decl-enum-string` (an enum over `string`), `expr-intrinsic-slice`
 (`len` of a list), `expr-nil-error` and `expr-zero-error` (a value beside a nil error, the zero
 value beside a thrown sentinel), `stmt-expr-method` and `type-unit-method` (a call of a `void`
-method as a statement), `stmt-return-one` (one returned value), and `sem-int-wrap-no-div` (wrapping
-without the division the Groovy reader refuses). The kit cases without a Java source, and why:
+method as a statement), `stmt-return-one` (one returned value), `sem-int-wrap-no-div` (wrapping
+without the division the Groovy reader refuses), `decl-var-int` (a module-level integer, where
+`decl-var` prints a string parameter), `type-float-compare` (floats compared, where `type-float`
+prints them with `%v`), `type-tuple-error` (a value or an error, where `type-tuple` prints a
+float), `intrinsic-println-int` (a line of a string and an integer), `decl-variadic-local` and
+`expr-spread-local` (a variable arity method and a spread array without the `path.Join` extern).
+
+`decl-union` holds a Java source: a sealed interface whose permitted classes are records without
+members. The reader recognises it as a `union` but refuses it at its line (`Reader.READ_UNIONS` is
+off): the reader check writes every read as Go, and the Go writer refuses a union, so a read union
+would fail step 4 where a refused one is `refused`. `ReaderTest` requires that one refusal. The
+features left unclaimed, and why:
 
 | case | subject | why |
 |---|---|---|
 | `assign-and-not`, `op-and-not` | `assign.and_not`, `op.and_not` | Java has no `&^`; `a & ~b` is `op.and` and `unop.complement` |
-| `assign-shl`, `assign-shr`, `op-shl`, `op-shr` | `assign.shl`, `assign.shr`, `op.shl`, `op.shr` | refused by design: Java masks the shift count, cir/1 does not say so |
-| `decl-enum` | `decl.enum`, claimed and held by `decl-enum-string` | an enum is read over `string`, its constants' names; the case prints an enum over `int` |
+| `decl-embedded` | `decl.embedded` | Java has no embedded field; a class extending another is refused as inheritance |
 | `decl-newtype` | `decl.newtype` | Java has no defined type over a primitive or `String`; a class is a struct |
-| `expr-intrinsic` | `expr.intrinsic`, claimed and held by `expr-intrinsic-slice` | the case takes `len` of a string; `String.length()` counts UTF-16 units, `len` bytes, and is not read |
-| `expr-nil` | `expr.nil`, claimed and held by `expr-nil-error` | the case returns a nil slice; `null` where a `List` is expected is refused, since a null `List` is no empty one |
-| `expr-zero` | `expr.zero`, claimed and held by `expr-zero-error` | the case's error message carries the value (`errorf`); a Java error is a sentinel with a literal message, and a Java `""` is read as a literal |
-| `expr-to-error`, `intrinsic-errorf` | `expr.to_error`, `intrinsic.errorf` | refused by design: an error is a sentinel, an exception leaf with a literal message and no fields |
+| `decl-union` | `decl.union` | refused at the sealed interface while the Go writer, which checks a read, refuses a union |
+| `expr-extern`, `expr-extern-method`, `type-extern` | `expr.extern`, `expr.extern_method`, `type.extern` | a package read maps the JDK calls of its table and refuses the rest; externs come only from a project's jars, which a kit case has none of |
+| `expr-to-error` | `expr.to_error` | not mapped: the reader reads one checked-exception hierarchy whose leaves are sentinels or formats (`errorf`); an exception carrying fields would be a struct with an `Error` method, which that model does not hold |
 | `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
-| `intrinsic-println`, `stmt-expr` | `intrinsic.println`; `stmt.expr`, claimed and held by `stmt-expr-method` | the case prints; `System.out` is not in the reader's library table |
 | `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
-| `sem-switch-break` | `sem.switch.break` | refused by design: a `break` inside a `switch` is read only at the end of a case, where it leaves the switch; a labeled `break` is refused |
 | `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
 | `stmt-lookup-else` | `stmt.lookup_else` | the reader never produces it: `Map.get` of a value that is not a reference is refused (an absent key gives null), and `containsKey` is not read |
-| `stmt-return` | `stmt.return`, claimed and held by `stmt-return-one` | the case returns two values; a Java method returns one |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
 | `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |
-| `type-unit` | `type.unit`, claimed and held by `type-unit-method` | the case prints; `System.out` is not in the reader's library table |
-| `type-any` | `type.any` | `Object` is outside the JVM type table |
+| `type-array-float` | `type.array` | a Java array's length belongs to the object, not to its type: an array is read as a slice |
 | `unop-deref` | `unop.deref` | Java has no pointer to a local; an object reference is dereferenced implicitly |
+
+Claimed features whose Go-shaped case has no Java source, held by another case: `decl.enum` by
+`decl-enum-string` (the case prints an enum over `int`), `expr.intrinsic` by `expr-intrinsic-slice`
+(`String.length()` counts UTF-16 units, `len` bytes), `expr.nil` by `expr-nil-error` (a null
+`List` is no empty one), `expr.zero` by `expr-zero-error`, `stmt.expr` by `stmt-expr-method`,
+`stmt.return` by `stmt-return-one` (a Java method returns one value), `type.unit` by
+`type-unit-method`, `decl.var`, `type.float`, `type.tuple`, `intrinsic.println`, `decl.variadic` and
+`expr.spread` by the variants above.
+
+The constructs the kit work maps, each only in a package read (a project's modules are read as
+before):
+
+| Java | cir/1 |
+|---|---|
+| `<<`, `>>`, `<<=`, `>>=` on `long` or `int` | the shift with the count masked as Java masks it (`& 63`, `& 31`; a literal count masked as it is read); `>>>` is refused |
+| a labeled `break` or `continue` of the innermost loop | `break`, `continue`; one of an outer loop is refused |
+| `double`, `float`, their literals and `+ - * /` | `float` 64 and 32; `%` on a float is refused |
+| a mutable static field of a primitive or `String` with a literal initializer, or a primitive one without | a module-level `var` |
+| `Object` | `any` |
+| an interface with two or more implementations | a cir/1 interface, calls through it `iface_call`, a class converted to it `to_iface` |
+| a static generic method whose type parameters are unbounded | `tparams`, `param` types, calls with the type arguments javac infers |
+| `LongUnaryOperator`, `LongBinaryOperator`, `IntUnaryOperator`, `IntBinaryOperator`, `LongPredicate`, `IntPredicate`, `LongSupplier`, `IntSupplier`, `BooleanSupplier` | `func` types; a lambda `lambda`, a method reference of the same signature `func_ref`, a call of the abstract method `call_value` |
+| a variable arity method; an array initializer, `a[i]`, `.length`, for-each over an array | `variadic`, a spread when an array is passed; `append` to an empty slice, `index`, `len`, `for_range` |
+| an exception leaf whose one constructor passes `String.format("<format>", <its parameters>)` to `super` | `errorf` at its throw |
+| `System.out.println` of an integer, a boolean or a `String` | `println` |
+| a sealed interface whose permitted classes are records without members | `union`, refused while `READ_UNIONS` is off |
 
 `ReaderTest` holds the claim against the kit: every claimed feature is the subject of at least one
 kit case with a Java source.
@@ -156,3 +186,7 @@ them.
   before the receiver is evaluated.
 - The program runs under `Locale.ROOT`. `String.format("%d", n)` is read as `sprintf`, which prints
   ASCII digits; under a default locale whose digits are not ASCII, Java prints others.
+- The package never replaces `System.out` (`System.setOut`), and the line separator is `\n`: `System.out.println` is read as `println`, which ends a line with `\n`.
+- A mutable static field is initialized before any function of the module runs, as a module-level
+  `var` is; Java initializes it when the class is first used, which for a literal initializer is
+  the same value.

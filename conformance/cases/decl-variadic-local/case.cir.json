@@ -1,0 +1,270 @@
+{
+  "format": "cir/1",
+  "name": "decl_variadic_local",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.6.1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "sum",
+      "exported": false,
+      "params": [
+        {
+          "name": "xs",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "variadic": true
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "t"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:5"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "x",
+          "over": {
+            "k": "var",
+            "name": "xs",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "t",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "binop",
+                  "op": "+",
+                  "x": {
+                    "k": "var",
+                    "name": "t",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "y": {
+                    "k": "var",
+                    "name": "x",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "case.go:7"
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "t",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        }
+      ],
+      "doc": "sum adds its arguments; called with none it is 0.",
+      "pos": "case.go:4"
+    },
+    {
+      "name": "Sums",
+      "exported": true,
+      "params": [
+        {
+          "name": "a",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "b",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "call",
+                  "name": "sum",
+                  "args": [],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "y": {
+                  "k": "call",
+                  "name": "sum",
+                  "args": [
+                    {
+                      "k": "var",
+                      "name": "a",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "call",
+                "name": "sum",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "a",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  {
+                    "k": "var",
+                    "name": "b",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  },
+                  {
+                    "k": "lit",
+                    "value": "3",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:14"
+        }
+      ],
+      "doc": "Sums calls sum with no, one and three arguments.",
+      "pos": "case.go:13"
+    }
+  ],
+  "layout": [
+    "func:sum",
+    "func:Sums"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

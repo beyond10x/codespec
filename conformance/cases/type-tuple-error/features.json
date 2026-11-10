@@ -1,0 +1,24 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "type.tuple",
+    "expr.binop",
+    "expr.call",
+    "expr.errvar",
+    "expr.lit",
+    "expr.nil",
+    "expr.var",
+    "fact.fallible",
+    "op.lt",
+    "op.mul",
+    "op.ne",
+    "sem.error.propagate",
+    "sem.int.wrap",
+    "stmt.if",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.error",
+    "type.int"
+  ]
+}

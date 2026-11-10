@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "sha256": "40224a96be7dd426c3b50a315eabbbecd736a939273d0e6729b1b5caccff33b4"
   },
   "codespec": "0.6.1",
   "features": [
@@ -168,7 +168,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-var"
+        "decl-var",
+        "decl-var-int"
       ]
     },
     {
@@ -176,7 +177,8 @@
       "claimed": false,
       "verdict": "refused",
       "cases": [
-        "decl-variadic"
+        "decl-variadic",
+        "decl-variadic-local"
       ],
       "case": "decl-variadic",
       "reason": "refused",
@@ -381,7 +383,8 @@
       "claimed": false,
       "verdict": "refused",
       "cases": [
-        "expr-spread"
+        "expr-spread",
+        "expr-spread-local"
       ],
       "case": "expr-spread",
       "reason": "refused",
@@ -524,7 +527,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "intrinsic-println"
+        "intrinsic-println",
+        "intrinsic-println-int"
       ]
     },
     {
@@ -944,7 +948,8 @@
       "claimed": false,
       "verdict": "refused",
       "cases": [
-        "type-float"
+        "type-float",
+        "type-float-compare"
       ],
       "case": "type-float",
       "reason": "refused",
@@ -1025,7 +1030,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-tuple"
+        "type-tuple",
+        "type-tuple-error"
       ]
     },
     {

@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "sha256": "40224a96be7dd426c3b50a315eabbbecd736a939273d0e6729b1b5caccff33b4"
   },
   "corpus": {
-    "sha256": "b5630117d4ead5bc03cb828754c290a1f56077b9c890d70747185799d28e3061"
+    "sha256": "9e5e8a48056f177a8a87a777e24106cb39546f4bb5c86bbcc635c276491e5c8f"
   },
   "codespec": "0.6.1",
   "features": [
@@ -169,7 +169,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-var"
+        "decl-var",
+        "decl-var-int"
       ]
     },
     {
@@ -177,7 +178,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "decl-variadic"
+        "decl-variadic",
+        "decl-variadic-local"
       ]
     },
     {
@@ -355,7 +357,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "expr-spread"
+        "expr-spread",
+        "expr-spread-local"
       ]
     },
     {
@@ -524,7 +527,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "intrinsic-println"
+        "intrinsic-println",
+        "intrinsic-println-int"
       ]
     },
     {
@@ -943,7 +947,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-float"
+        "type-float",
+        "type-float-compare"
       ]
     },
     {
@@ -1015,7 +1020,8 @@
       "claimed": false,
       "verdict": "pass",
       "cases": [
-        "type-tuple"
+        "type-tuple",
+        "type-tuple-error"
       ]
     },
     {
