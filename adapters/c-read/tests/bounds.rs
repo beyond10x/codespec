@@ -82,6 +82,25 @@ fn sources_over_the_stated_size_are_refused() {
     );
 }
 
+/// Six `.c` files, each inside the per-file limit, whose JSON together is past the directory's:
+/// a 700 kB header of 70 000 declarations prints about 49 MB for each file that includes it, and
+/// every file's tree is held until the module is assembled.
+#[test]
+fn files_whose_json_together_is_over_the_stated_size_are_refused() {
+    let header: String = (0..70_000).map(|i| format!("int v{i};\n")).collect();
+    let mut files = vec![("big.h".to_string(), header)];
+    files.extend((0..6).map(|i| (format!("f{i}.c"), "#include \"big.h\"\n".to_string())));
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(n, t)| (n.as_str(), t.as_str()))
+        .collect();
+    let dir = source("together", &files);
+    assert_refused(
+        &run(&dir),
+        "clang's JSON ASTs of the .c files up to f5.c are over 268435456 bytes together, this reader's limit",
+    );
+}
+
 /// 300 operands nest 300 levels: deep for C, inside every limit.
 #[test]
 fn a_source_nested_deep_for_c_reads() {

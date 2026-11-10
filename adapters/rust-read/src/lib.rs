@@ -182,7 +182,7 @@
 //! | bound | limit |
 //! |---|---|
 //! | size | `Cargo.toml` and `src/lib.rs` up to [`MAX_SOURCE_BYTES`], 4 MiB each, read no further than one byte past it |
-//! | nesting | [`MAX_NESTING`], 256 levels, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item; a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
+//! | nesting | [`MAX_NESTING`], 256 levels, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item (an identifier other than `else` or `as`, an attribute or doc comment, a label or a literal follows it); a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
 //! | stack | parsing, lifting and dropping the syntax tree run on a thread with a 256 MiB stack |
 
 mod body;
@@ -223,7 +223,8 @@ pub fn read_crate(dir: &Path) -> Result<Module, String> {
 /// deeper than [`MAX_NESTING`] is refused before it is parsed; parsing and lifting run on a thread
 /// with a stack of [`STACK_BYTES`].
 pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> {
-    if let Some(line) = too_deep_source(src) {
+    let (depth, line) = nesting(src);
+    if depth > MAX_NESTING {
         return Err(format!(
             "{file}:{line}: nested deeper than {MAX_NESTING} levels, this reader's limit"
         ));
@@ -284,10 +285,12 @@ fn read_bounded(path: &Path) -> Result<String, String> {
         .map_err(|_| format!("{}: stream did not contain valid UTF-8", path.display()))
 }
 
-/// The line at which `src` nests deeper than [`MAX_NESTING`], if it does, counted on the tokens
-/// `syn` would parse: the text without a byte order mark, and without a first line `#!…` that is
-/// no inner attribute; both texts are counted, so the count never misses what `syn` parses.
-fn too_deep_source(src: &str) -> Option<usize> {
+/// How deep `src` nests as this reader counts it, and the line where it is deepest (0 and 0 for a
+/// source that does not tokenize, which `syn` refuses without recursing). It is counted on the
+/// tokens `syn` would parse: the text without a byte order mark, and without a first line `#!…`
+/// that is no inner attribute; both texts are counted, so the count never misses what `syn`
+/// parses. A source deeper than [`MAX_NESTING`] is refused.
+pub fn nesting(src: &str) -> (usize, usize) {
     let text = src.strip_prefix('\u{feff}').unwrap_or(src);
     let mut texts = vec![text];
     if text.starts_with("#!")
@@ -298,19 +301,22 @@ fn too_deep_source(src: &str) -> Option<usize> {
     texts
         .into_iter()
         .filter_map(|t| t.parse::<proc_macro2::TokenStream>().ok())
-        .find_map(too_deep)
+        .map(deepest)
+        .max()
+        .unwrap_or((0, 0))
 }
 
-/// The line at which `ts` nests deeper than [`MAX_NESTING`], if it does.
+/// The deepest level of `ts` and the line of the first token at it.
 ///
 /// A level is each delimited group (`(…)`, `[…]`, `{…}`), each keyword and each punctuation
 /// character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of the group,
-/// a `;`, a `=>`, or a block that ends a statement or an item (one an identifier other than `else`
-/// or `as` follows). A `,` goes back to the count at the last unclosed `<` or the last `|`, so
-/// generic arguments and closures nested in one another keep counting. An attribute's `#[…]` is no
-/// level. These are what `syn` and the reader recurse on, a few frames a level at most. The walk
-/// keeps its own stack: a source of any depth costs it no call stack.
-fn too_deep(ts: proc_macro2::TokenStream) -> Option<usize> {
+/// a `;`, a `=>`, or a block that ends a statement or an item: one an identifier other than `else`
+/// or `as`, a `#` (an attribute or a doc comment of the next item), a `'` (a label) or a literal
+/// follows, none of which goes on an expression. A `,` goes back to the count at the last unclosed
+/// `<` or the last `|`, so generic arguments and closures nested in one another keep counting. An
+/// attribute's `#[…]` is no level. These are what `syn` and the reader recurse on, a few frames a
+/// level at most. The walk keeps its own stack: a source of any depth costs it no call stack.
+fn deepest(ts: proc_macro2::TokenStream) -> (usize, usize) {
     use proc_macro2::{Delimiter, Spacing, TokenTree};
     struct Level {
         tokens: std::iter::Peekable<proc_macro2::token_stream::IntoIter>,
@@ -340,6 +346,7 @@ fn too_deep(ts: proc_macro2::TokenStream) -> Option<usize> {
             self.pipe = 0;
         }
     }
+    let mut deepest = (0, 0);
     let mut stack = vec![Level::new(ts, 0)];
     while let Some(level) = stack.last_mut() {
         let Some(tt) = level.tokens.next() else {
@@ -404,19 +411,24 @@ fn too_deep(ts: proc_macro2::TokenStream) -> Option<usize> {
         };
         level.run += usize::from(counts);
         let depth = level.base + level.run;
-        if depth > MAX_NESTING {
-            return Some(tt.span().start().line);
+        if depth > deepest.0 {
+            deepest = (depth, tt.span().start().line);
         }
         if let TokenTree::Group(g) = tt {
             let ends = g.delimiter() == Delimiter::Brace
-                && matches!(level.tokens.peek(), Some(TokenTree::Ident(i)) if i != "else" && i != "as");
+                && match level.tokens.peek() {
+                    Some(TokenTree::Ident(i)) => i != "else" && i != "as",
+                    Some(TokenTree::Punct(p)) => matches!(p.as_char(), '#' | '\''),
+                    Some(TokenTree::Literal(_)) => true,
+                    _ => false,
+                };
             if ends {
                 level.reset();
             }
             stack.push(Level::new(g.stream(), depth));
         }
     }
-    None
+    deepest
 }
 
 /// Rust's keywords, strict and reserved, of the 2018 edition and later: a raw identifier exists to

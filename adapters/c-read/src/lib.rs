@@ -255,8 +255,14 @@
 //! | bound | limit |
 //! |---|---|
 //! | sources | the `.c` and `.h` files of the directory up to [`MAX_SOURCE_BYTES`], 16 MiB together |
-//! | clang's JSON | up to [`MAX_JSON_BYTES`], 64 MiB per `.c` file, read from clang's stdout as a stream and refused, clang stopped, one byte past it (`clang's JSON AST of f.c is over 67108864 bytes, this reader's limit`). clang indents each level two more spaces, so the JSON of a deep expression grows with the square of its source: `a + a + … + a` of 1000 operands, 2 kB, prints about 150 MB |
+//! | clang's JSON | up to [`MAX_JSON_BYTES`], 64 MiB per `.c` file, and [`MAX_JSON_TOTAL_BYTES`], 256 MiB, for all `.c` files of the directory together; read from clang's stdout as a stream and refused, clang stopped, one byte past either (`clang's JSON AST of f.c is over 67108864 bytes, this reader's limit`, `clang's JSON ASTs of the .c files up to f.c are over 268435456 bytes together, this reader's limit`). clang indents each level two more spaces, so the JSON of a deep expression grows with the square of its source: `a + a + … + a` of 1000 operands, 2 kB, prints about 150 MB. A header counts once per `.c` file that includes it, as clang prints it for each |
 //! | depth | that JSON up to 4096 levels of arrays and objects, checked by a scan before it is read; it is read, and the reader's passes recurse, on a thread with a 256 MiB stack |
+//!
+//! Memory: every file's tree is held until the module is assembled, about 6.4 bytes per byte of
+//! JSON (measured: a file whose JSON is 42 MB peaks at 313 MiB resident, each further one adds
+//! 259 MiB), so the trees stay under about 1.7 GiB and the reader under about 2 GiB. Not bounded
+//! by the reader: clang's own memory and time while it parses and before it prints, and the
+//! module the reader builds beyond what the trees bound.
 //!
 //! The tree read from the JSON is linear in its size: each value and each string of it is one of
 //! the JSON's, but for the `file` and `line` completed into each location, and those share the
@@ -478,11 +484,19 @@ pub const MAX_SOURCE_BYTES: u64 = 16 << 20;
 /// and stops, refusing the file, one byte past this.
 pub const MAX_JSON_BYTES: u64 = 64 << 20;
 
+/// The most bytes of JSON AST the reader takes from clang for all `.c` files of the directory
+/// together. Every file's tree is held until the module is assembled, at about 6.4 bytes of
+/// memory per byte of JSON (measured: a file whose JSON is 42 MB peaks at 313 MiB resident, and
+/// each further such file adds 259 MiB), so this keeps the trees under about 1.7 GiB and the
+/// reader, with one file's JSON being read, under about 2 GiB.
+pub const MAX_JSON_TOTAL_BYTES: u64 = 256 << 20;
+
 /// What clang prints on stderr that the reader keeps for its message.
 const STDERR_KEPT: u64 = 64 << 10;
 
-/// `clang`'s JSON AST of `file`, run in `dir`, read up to [`MAX_JSON_BYTES`].
-fn clang(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
+/// `clang`'s JSON AST of `file`, run in `dir`, read up to `limit` bytes; `None` past it, clang
+/// stopped.
+fn clang(dir: &Path, file: &str, limit: u64) -> Result<Option<Vec<u8>>, String> {
     use std::io::Read;
     use std::process::Stdio;
     let mut child = Command::new("clang")
@@ -508,18 +522,16 @@ fn clang(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
             kept
         });
         let mut json = Vec::new();
-        let read = (&mut out).take(MAX_JSON_BYTES + 1).read_to_end(&mut json);
-        if read.is_err() || json.len() as u64 > MAX_JSON_BYTES {
+        let read = (&mut out).take(limit + 1).read_to_end(&mut json);
+        if read.is_err() || json.len() as u64 > limit {
             let _ = child.kill();
         }
         drop(out);
         (json, read, stderr.join().unwrap_or_default())
     });
     let status = child.wait().map_err(|e| format!("cannot run clang: {e}"))?;
-    if json.len() as u64 > MAX_JSON_BYTES {
-        return Err(format!(
-            "clang's JSON AST of {file} is over {MAX_JSON_BYTES} bytes, this reader's limit"
-        ));
+    if json.len() as u64 > limit {
+        return Ok(None);
     }
     read.map_err(|e| format!("clang's JSON AST of {file}: {e}"))?;
     if !status.success() {
@@ -528,7 +540,7 @@ fn clang(dir: &Path, file: &str) -> Result<Vec<u8>, String> {
             String::from_utf8_lossy(&stderr)
         ));
     }
-    Ok(json)
+    Ok(Some(json))
 }
 
 fn read(dir: &Path) -> Result<Module, String> {
@@ -561,9 +573,25 @@ fn read(dir: &Path) -> Result<Module, String> {
     if names.is_empty() {
         return Err(format!("{}: no .c file", dir.display()));
     }
+    // Every file's tree is held until the module is assembled: the JSON of all of them shares one
+    // budget, as well as each file having its own.
     let mut asts = Vec::new();
+    let mut json_left = MAX_JSON_TOTAL_BYTES;
     for f in &names {
-        asts.push(json::parse(&clang(dir, f)?)?);
+        let limit = MAX_JSON_BYTES.min(json_left);
+        let Some(json) = clang(dir, f, limit)? else {
+            return Err(if limit == MAX_JSON_BYTES {
+                format!(
+                    "clang's JSON AST of {f} is over {MAX_JSON_BYTES} bytes, this reader's limit"
+                )
+            } else {
+                format!(
+                    "clang's JSON ASTs of the .c files up to {f} are over {MAX_JSON_TOTAL_BYTES} bytes together, this reader's limit"
+                )
+            });
+        };
+        json_left -= json.len() as u64;
+        asts.push(json::parse(&json)?);
     }
     let src = Source { files };
     let module = dir

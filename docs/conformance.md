@@ -194,7 +194,7 @@ version against exactly that kit. `codespec conform --check <report>` re-runs an
   | reader | size | depth |
   |---|---|---|
   | `codespec-read-rust` | `Cargo.toml` and `src/lib.rs` up to 4 MiB each | 256 levels as the reader counts them, checked on the tokens before parsing; parsing and lifting run on a 256 MiB stack |
-  | `codespec-read-c` | the `.c` and `.h` files up to 16 MiB together; clang's JSON AST up to 64 MiB per `.c` file, read as a stream and refused once past | that JSON up to 4096 levels; read on a 256 MiB stack |
+  | `codespec-read-c` | the `.c` and `.h` files up to 16 MiB together; clang's JSON AST up to 64 MiB per `.c` file and 256 MiB for all of them together, read as a stream and refused once past | that JSON up to 4096 levels; read on a 256 MiB stack |
   | `codespec-read-go` | none of its own | `go/parser` refuses nesting past 100 000 levels, a chain of binary operators included; `encoding/json` refuses to write a module nested past 10 000 |
   | `codespec-read-java`, `codespec-read-groovy` | none of their own | neither javac nor Groovy's parser bounds it: they run on a 64 MiB stack, and a stack overflow is a refusal |
 

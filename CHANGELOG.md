@@ -231,9 +231,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
   message, not a crash. `codespec-read-rust` refuses a `Cargo.toml` or `src/lib.rs` over 4 MiB and
   a source nested past 256 levels, counted on its tokens before parsing, and parses and lifts on a
   256 MiB stack; nesting crashed it with a stack overflow. `codespec-read-c` reads clang's JSON AST
-  as a stream and refuses it past 64 MiB per file or 4096 levels, and refuses `.c` and `.h` files
-  over 16 MiB together; clang indents a level two spaces, so the JSON of a deep expression grows
-  with the square of the source, and the reader held all of it. A file name clang printed once is
+  as a stream and refuses it past 64 MiB per file, 256 MiB for the directory's files together or
+  4096 levels, and refuses `.c` and `.h` files over 16 MiB together; clang indents a level two
+  spaces, so the JSON of a deep expression grows with the square of the source, and the reader
+  held all of it, every file's tree until the module was assembled. A file name clang printed once is
   held once, not once per location. `codespec-read-java` and `codespec-read-groovy` run on a 64 MiB
   stack and refuse a source nested deeper than it holds; they crashed with a stack overflow.
   `codespec-read-go`'s libraries bound depth already. The limits are in each reader's crate doc or

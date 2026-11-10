@@ -277,7 +277,9 @@ mod tests {
             format!("#include \"{path}\"\nint f(int a) {{ return h1(a); }}\n"),
         )
         .expect("write m.c");
-        let bytes = crate::clang(&dir, "m.c").expect("clang's JSON");
+        let bytes = crate::clang(&dir, "m.c", crate::MAX_JSON_BYTES)
+            .expect("clang's JSON")
+            .expect("within the limit");
         let tree = parse(&bytes).expect("the JSON reads");
         let (mut nodes, mut text) = (0, BTreeSet::new());
         weight(&tree, &mut nodes, &mut text);

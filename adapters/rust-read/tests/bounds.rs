@@ -206,3 +206,103 @@ fn a_source_over_the_size_limit_is_refused_with_exit_1_and_the_message() {
         "src/lib.rs: over 4194304 bytes, this reader's limit",
     );
 }
+
+/// The source of the item numbered by the argument.
+type Item = fn(usize) -> String;
+
+/// A hundred items of one form after one another: the count goes back to zero where an item ends,
+/// whatever the next one starts with, so a long file of shallow items is never refused.
+#[test]
+fn a_long_sequence_of_shallow_items_reads_whatever_follows_each_item() {
+    let items: [(&str, Item); 12] = [
+        ("doc-comments", |i| {
+            format!("/// Adds {i}.\npub fn f{i}(x: i64) -> i64 {{\n    x + {i}\n}}\n")
+        }),
+        ("attributes", |i| {
+            format!("#[derive(Clone, Debug)]\npub struct S{i} {{\n    pub a: i64,\n}}\n")
+        }),
+        ("pub", |i| {
+            format!("pub fn f{i}(x: i64) -> i64 {{\n    x\n}}\n")
+        }),
+        ("impl", |i| {
+            format!(
+                "pub struct S{i} {{}}\nimpl S{i} {{\n    pub fn get(&self) -> i64 {{\n        {i}\n    }}\n}}\n"
+            )
+        }),
+        ("mod", |i| format!("mod m{i} {{\n    pub fn f() {{}}\n}}\n")),
+        ("inner-attributes", |i| {
+            format!("mod m{i} {{\n    #![allow(dead_code)]\n    fn f() {{}}\n}}\n")
+        }),
+        ("macro-calls", |i| format!("m! {{ {i} }}\n")),
+        ("comments", |i| format!("fn f{i}() {{}}\n// after f{i}\n")),
+        ("tuple-structs", |i| format!("pub struct T{i}(pub i64);\n")),
+        ("consts", |i| {
+            format!("pub const C{i}: [i64; 2] = [{i}, -{i}];\n")
+        }),
+        ("blocks-then-labels", |i| {
+            format!("fn f{i}() {{\n    {{}}\n    'a: loop {{\n        break 'a;\n    }}\n}}\n")
+        }),
+        ("statements-after-blocks", |i| {
+            format!(
+                "pub fn f{i}(x: i64) -> i64 {{\n{}    x\n}}\n",
+                "    if x > 0 {}\n    \"s\";\n    #[allow(unused)]\n    let _y = x;\n".repeat(40)
+            )
+        }),
+    ];
+    for (name, item) in items {
+        let mut lib =
+            String::from("#![allow(dead_code)]\nmacro_rules! m {\n    ($x:expr) => {};\n}\n");
+        lib.extend((0..100).map(item));
+        let (depth, line) = codespec_read_rust::nesting(&lib);
+        assert!(
+            depth <= 20,
+            "{name}: shallow items nest {depth} levels deep at line {line}"
+        );
+        let o = run(&crate_dir(&format!("items-{name}"), lib.as_bytes()));
+        assert!(
+            o.status.success(),
+            "{name}: exit 0, got {}:\n{}",
+            o.status,
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+}
+
+/// Every `.rs` file of this repository, the reader's own and the kit's case sources among them,
+/// nests well inside the limit as the reader counts it.
+#[test]
+fn no_rust_source_of_this_repository_nests_past_the_limit() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut dirs = vec![root];
+    let mut files = 0;
+    let mut deepest = (0, String::new());
+    while let Some(dir) = dirs.pop() {
+        for e in std::fs::read_dir(&dir).expect("read dir") {
+            let path = e.expect("dir entry").path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if path.is_dir() {
+                if !matches!(
+                    name.as_ref(),
+                    "target" | ".git" | "node_modules" | "build" | ".docusaurus"
+                ) {
+                    dirs.push(path);
+                }
+            } else if name.ends_with(".rs") {
+                let src = std::fs::read_to_string(&path).expect("read source");
+                let (depth, line) = codespec_read_rust::nesting(&src);
+                files += 1;
+                if depth > deepest.0 {
+                    deepest = (depth, format!("{}:{line}", path.display()));
+                }
+            }
+        }
+    }
+    eprintln!("{files} files, deepest {} at {}", deepest.0, deepest.1);
+    assert!(files > 100, "the walk finds the repository's sources");
+    assert!(
+        deepest.0 <= codespec_read_rust::MAX_NESTING / 2,
+        "{} nests {} levels deep, more than half the limit",
+        deepest.1,
+        deepest.0
+    );
+}
