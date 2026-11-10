@@ -259,14 +259,14 @@ every other GitHub write (pull request, release, re-run, dispatch) goes through 
 Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
 
-The repository is private since 2026-11-10 (operator's decision; set through `b10x-gates api
---policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`). It goes public again after the
-release that follows wave `query-and-evaluator` passes its gate (operator, 2026-11-10); before that
-flip, search the branch to be pushed for pattern, hunt and finding content: the pattern library,
-the hunts and the findings live in the private `beyond10x/codesec` and nothing of them is copied
-here. The Pages site
-`beyond10x.github.io/codespec` answers 404 since then. Not checked yet: whether
-`b10x-docs-site.yml` still deploys, and what installed codespec from the public URL.
+The repository is public (again since 2026-11-10, after one day private; visibility is set through
+`b10x-gates api --policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`, and Pages
+through `POST /repos/beyond10x/codespec/pages` with `build_type: workflow`). `b10x-gates api` and
+`b10x-gates gh` need `--policy`; `b10x-gates bot` does not. Before every push, search the branch
+for pattern, review-target and finding content: the pattern library, the reviews and the findings
+live in the private `beyond10x/codesec` and nothing of them is copied here. The public page about
+it is `website/docs/codesec.md`: classes of defect and the method only, no reviewed project, no
+count, no date, no pattern text.
 
 The site: `.github/workflows/pages.yml` ("Documentation validation") builds it on every push and
 pull request, runs `cargo test -p codespec-docs`, binds the build to its commit with

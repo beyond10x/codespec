@@ -8,9 +8,7 @@ relations:
 - decomposes: epic:analysis-questions
 revision: 3
 transitions:
-- {from: "draft", to: "archived", at: "2026-11-10T03:26:09Z", actor: "human:timo", revision: 3}
+- {from: "draft", to: "archived", at: "2026-11-10T09:37:03Z", actor: "human:timo", revision: 3}
 ---
-# Story: moved out of this repository
-
-Moved on 2026-11-10 to the planning store of another repository, by the operator's decision to
-keep the pattern library apart from the engine. Nothing of it is built here.
+This story moved out of this repository to the private pattern library.
+It is not planned here.

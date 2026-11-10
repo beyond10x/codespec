@@ -1,7 +1,7 @@
 # cq: a query language over `cir/1` — design (2026-11-09)
 
 Status: proposed. Inputs: a survey of 13 code query languages and an inventory of `cir/1`, its
-derived graphs and 36 query kinds from a defect hunt over a third-party Go library (2026-11-08).
+derived graphs and 36 query kinds written as scripts over `cir/1` documents (2026-11-08).
 Both are summarised in § 10. Related plan items: `story:cir-patterns`, `story:defect-patterns`,
 `story:taint-flows`, `story:unhandled-branches`, `story:builtin-defect-checks`.
 
@@ -9,8 +9,8 @@ Both are summarised in § 10. Related plan items: `story:cir-patterns`, `story:d
 
 A `codespec read` result is a set of `cir/1` documents with a type on every expression, plus the
 graphs `codespec effects`, `reach` and `trace` derive from them. Today a question about that set
-is either a built-in command or a throwaway script over the JSON. The 2026-11-08 hunt wrote 4 such
-scripts, 1,344 lines of Node, to ask 36 kinds of question. Three things went wrong in them:
+is either a built-in command or a throwaway script over the JSON. One review (2026-11-08) wrote 4
+such scripts, 1,344 lines of Node, to ask 36 kinds of question. Three things went wrong in them:
 
 | problem | count | cause |
 |---|---|---|
@@ -68,7 +68,7 @@ Rejected as the core:
   dependencies. Ascent compiles rules into Rust at build time, so it cannot run a user's query. cq
   has its own interpreter (§ 7).
 
-Why Datalog: every check from the hunt is a closure plus a negation. Examples are "no remove
+Why Datalog: every check among those 36 kinds is a closure plus a negation. Examples are "no remove
 reachable", "no Unlock on some path to exit" and "no range check dominating the conversion".
 Stratified negation over recursion is the native form of that shape. Aggregates cover the counting
 kinds (`repeated`, `timer-stop-coverage`). One self-reported evaluation had agents write correct
@@ -298,6 +298,5 @@ inter-procedural path sensitivity, and points-to analysis beyond codespec's disp
   - Cypher's manual warns of exponential all-paths matching.
   - Topl reports cost exponential in registers.
 - Inventory (2026-11-09) of `crates/model`, `schemas/cir-1.schema.json`, `crates/effects`,
-  `docs/design.md`, `docs/static-analysis.md`, the planned stories, and the hunt's query scripts
-  (kept outside this repository): 26 query kinds that detected a confirmed finding, 10 that did not,
-  each with the primitives it needs.
+  `docs/design.md`, `docs/static-analysis.md`, the planned stories, and the query scripts of § 1
+  (kept outside this repository): 36 query kinds, each with the primitives it needs.
