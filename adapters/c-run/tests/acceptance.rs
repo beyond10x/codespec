@@ -259,6 +259,100 @@ fn a_c_source_without_a_module_header_runs_with_its_lower_camel_names_and_c_stri
     }
 }
 
+/// C written by hand whose functions take and return what the C reader reads: a `typedef` of an
+/// integer type, floats, pointers, arrays and function pointers. The functions with external
+/// linkage that take or return them are read, and only the ones `calls.json` can call are called.
+const PLAIN_TYPES_C: &str = r#"#include <stdbool.h>
+
+typedef long Celsius;
+
+Celsius warm(long n) {
+    Celsius c = (Celsius)n;
+    return c + 1;
+}
+
+double half(double x) {
+    return x / 2.0;
+}
+
+float third(float x) {
+    return x / 3.0f;
+}
+
+bool halfOver(bool big) {
+    double x = 0.5;
+    if (big) {
+        x = 1e300;
+    }
+    return half(x) > 1.0 && third(3.0f) == 1.0f;
+}
+
+long *at(long *p) {
+    return p;
+}
+
+long sum3(long xs[3]) {
+    return xs[0] + xs[1] + xs[2];
+}
+
+long run(long (*f)(long), long n) {
+    return f(n);
+}
+
+static long twice(long n) {
+    return n * 2;
+}
+
+long through(long n) {
+    long a[3] = {0};
+    a[0] = n;
+    a[1] = *at(&n);
+    a[2] = run(twice, n);
+    return sum3(a);
+}
+"#;
+
+#[test]
+fn c_by_hand_with_a_newtype_floats_pointers_arrays_and_function_pointers_runs() {
+    let w = work("plain-types");
+    let src = w.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("case.c"), PLAIN_TYPES_C).unwrap();
+    let calls = w.join("calls.json");
+    write_calls(
+        &calls,
+        &[
+            ("Warm", &["20"]),
+            ("HalfOver", &["false"]),
+            ("HalfOver", &["true"]),
+            ("Through", &["5"]),
+        ],
+    );
+    let o = run_calls(&w.join("build"), &src, &calls);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert_eq!(
+        String::from_utf8_lossy(&o.stdout),
+        "ok 21\nok false\nok true\nok 20\n"
+    );
+
+    for (func, arg, ty) in [
+        ("Half", "1", "double"),
+        ("At", "1", "long *"),
+        ("Run", "1", "long (*)(long)"),
+    ] {
+        let calls = w.join(format!("{func}.json"));
+        let args: &[&str] = if func == "Run" { &[arg, arg] } else { &[arg] };
+        write_calls(&calls, &[(func, args)]);
+        let o = run_calls(&w.join("build"), &src, &calls);
+        let err = String::from_utf8_lossy(&o.stderr);
+        assert_eq!(o.status.code(), Some(2), "{func}: {err}");
+        assert!(
+            err.contains(&format!("a parameter of type `{ty}` cannot be passed")),
+            "{func}: {err}"
+        );
+    }
+}
+
 /// A call naming no function of the written module is refused, exit 2.
 #[test]
 fn a_call_of_no_written_function_is_refused() {

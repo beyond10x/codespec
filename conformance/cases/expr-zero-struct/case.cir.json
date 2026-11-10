@@ -1,0 +1,217 @@
+{
+  "format": "cir/1",
+  "name": "expr_zero_struct",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "doc": "Written by hand: the Go reader reads Point{} as a struct literal that sets no field. The C reader writes zero for a struct literal of zeros, (struct Point){0}.",
+  "types": [
+    {
+      "k": "struct",
+      "name": "Point",
+      "exported": true,
+      "fields": [
+        {
+          "name": "X",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        },
+        {
+          "name": "Y",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Point is a position.",
+      "pos": "case.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Sum",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "p"
+          ],
+          "rhs": [
+            {
+              "k": "struct",
+              "name": "Point",
+              "fields": [
+                {
+                  "name": "X",
+                  "value": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                {
+                  "name": "Y",
+                  "value": {
+                    "k": "var",
+                    "name": "n",
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Point"
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "binop",
+            "op": "<=",
+            "x": {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "y": {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "p",
+                  "t": {
+                    "k": "named",
+                    "name": "Point"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "zero",
+                  "t": {
+                    "k": "named",
+                    "name": "Point"
+                  }
+                }
+              ],
+              "pos": "case.go:17"
+            }
+          ],
+          "pos": "case.go:16"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "p",
+                  "t": {
+                    "k": "named",
+                    "name": "Point"
+                  }
+                },
+                "name": "X",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "p",
+                  "t": {
+                    "k": "named",
+                    "name": "Point"
+                  }
+                },
+                "name": "Y",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:19"
+        }
+      ],
+      "doc": "Sum gives the sum of the coordinates of the point (n, n), or of the zero point when n is not\npositive.",
+      "pos": "case.go:14"
+    }
+  ],
+  "layout": [
+    "type:Point",
+    "func:Sum"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

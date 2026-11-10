@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "SkipSum",
+      "args": [
+        "5",
+        "2"
+      ]
+    },
+    {
+      "func": "SkipSum",
+      "args": [
+        "5",
+        "9"
+      ]
+    }
+  ]
+}

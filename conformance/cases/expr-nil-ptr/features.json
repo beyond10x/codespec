@@ -1,0 +1,20 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.nil",
+    "expr.binop",
+    "expr.lit",
+    "expr.unop",
+    "expr.var",
+    "op.gt",
+    "op.ne",
+    "stmt.assign",
+    "stmt.if",
+    "stmt.return",
+    "stmt.var",
+    "type.bool",
+    "type.int",
+    "type.ptr",
+    "unop.ref"
+  ]
+}

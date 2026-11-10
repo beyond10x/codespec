@@ -1,8 +1,11 @@
 //! Statements and expressions of one function body, from clang's AST nodes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use codespec_model::{CallRef, Case, Expr, Extern, FieldInit, IntWidth, Refusal, Stmt, Type};
+use codespec_model::{
+    CallRef, Case, Expr, Extern, FieldInit, FloatBits, IntWidth, Refusal, Stmt, Type,
+    float_spelling,
+};
 
 use crate::json::J;
 use crate::types::{Tables, Unit};
@@ -32,6 +35,34 @@ pub struct Body<'a> {
     pub externs: Vec<Extern>,
     scopes: Vec<Vec<(String, String, Type)>>,
     breakable: Vec<Brk>,
+    /// The declaration ids of the variables a `for` declares: C has one such variable for all
+    /// iterations, Go (1.22 on) one per iteration, so their address is refused.
+    for_vars: BTreeSet<String>,
+}
+
+/// A floating-point constant: a literal, under unary `-`, `+`, a conversion or an operator on
+/// constants. Go evaluates an operator on constants exactly, not in binary floating point.
+fn float_constant(e: &Expr) -> bool {
+    match e {
+        Expr::Float { .. } => true,
+        Expr::Unop { op, x, .. } => matches!(op.as_str(), "-" | "+") && float_constant(x),
+        Expr::Conv { x, .. } => float_constant(x),
+        Expr::Binop { x, y, .. } => float_constant(x) && float_constant(y),
+        _ => false,
+    }
+}
+
+/// The variable a place is part of: `x` of `x`, `x.f`, `x[i]`, through parentheses and implicit
+/// conversions; `None` through a pointer.
+fn base_var(n: &J) -> Option<&J> {
+    let n = strip(n);
+    match n.kind() {
+        "DeclRefExpr" => Some(n),
+        "MemberExpr" if !n.is_true("isArrow") => base_var(&n.inner()[0]),
+        "ArraySubscriptExpr" => base_var(&n.inner()[0]),
+        "ImplicitCastExpr" if n.s("castKind") == "ArrayToPointerDecay" => base_var(&n.inner()[0]),
+        _ => None,
+    }
 }
 
 /// The `cir/1` operators of C's binary operators, comparisons and logic apart.
@@ -69,6 +100,41 @@ fn constant(n: &J) -> Option<i128> {
             }
         }
         _ => None,
+    }
+}
+
+/// A zero initializer: `0`, a null pointer constant, or a list of nothing but zeros (`{0}`, `{}`).
+/// clang prints the elements of an array's list under `array_filler`, a struct's under `inner`.
+fn zero_init(init: &J) -> bool {
+    let mut n = strip(init);
+    while matches!(n.kind(), "ImplicitCastExpr" | "CStyleCastExpr")
+        && n.s("castKind") == "NullToPointer"
+    {
+        n = strip(&n.inner()[0]);
+    }
+    if constant(n) == Some(0) {
+        return true;
+    }
+    if n.kind() != "InitListExpr" {
+        return false;
+    }
+    let filler = match n.get("array_filler") {
+        J::Arr(v) => v.as_slice(),
+        _ => &[],
+    };
+    n.inner()
+        .iter()
+        .chain(filler)
+        .all(|e| e.kind() == "ImplicitValueInitExpr" || zero_init(e))
+}
+
+/// Whether a value of type `t` is a number `op` applies to: an integer for every arithmetic
+/// operator, a float for `+ - * /`.
+fn arith(op: &str, t: &Type) -> bool {
+    match t {
+        Type::Int { .. } => true,
+        Type::Float { .. } => matches!(op, "+" | "-" | "*" | "/"),
+        _ => false,
     }
 }
 
@@ -134,6 +200,7 @@ impl<'a> Body<'a> {
             externs: Vec::new(),
             scopes: vec![params],
             breakable: Vec::new(),
+            for_vars: BTreeSet::new(),
         }
     }
 
@@ -375,6 +442,7 @@ impl<'a> Body<'a> {
                 let [d] = init.inner() else {
                     return Err("a for initializer declaring several variables".into());
                 };
+                self.for_vars.insert(d.s("id").into());
                 Some(Box::new(self.decl_let(d, &pos)?))
             }
             _ => match self.expr_stmt(init, pos.clone())? {
@@ -411,17 +479,7 @@ impl<'a> Body<'a> {
             return Err(format!("a local {}", d.kind()));
         }
         let t = self.ty(d)?;
-        let zero = match d.inner().first() {
-            None => true,
-            Some(init) => {
-                constant(init) == Some(0)
-                    || (strip(init).kind() == "InitListExpr"
-                        && strip(init)
-                            .inner()
-                            .iter()
-                            .all(|e| e.kind() == "ImplicitValueInitExpr" || constant(e) == Some(0)))
-            }
-        };
+        let zero = d.inner().first().is_none_or(zero_init);
         if zero && !matches!(t, Type::String) {
             if !d.s("storageClass").is_empty() {
                 return Err(format!("a {} local", d.s("storageClass")));
@@ -567,7 +625,7 @@ impl<'a> Body<'a> {
                     _ => (op.to_string(), self.value(&kids[1])?),
                 };
                 let lhs = self.place(&kids[0])?;
-                if !matches!(lhs.t(), Type::Int { .. })
+                if !arith(base, self.under(lhs.t()))
                     || (!matches!(base, "<<" | ">>") && lhs.t() != rhs.t())
                 {
                     return Err(format!("{op} on operands of other types"));
@@ -582,7 +640,7 @@ impl<'a> Body<'a> {
             ("UnaryOperator", "++" | "--") => {
                 self.pointer_operands(n)?;
                 let x = self.place(&kids[0])?;
-                if !matches!(x.t(), Type::Int { .. }) {
+                if !matches!(self.under(x.t()), Type::Int { .. }) {
                     return Err("++ or -- on a value other than an integer".into());
                 }
                 Ok(if n.s("opcode") == "++" {
@@ -619,12 +677,23 @@ impl<'a> Body<'a> {
         Ok(())
     }
 
-    /// An expression assigned to: a local, a global or a field of one.
+    /// An expression assigned to: a local, a global, a field, an array element or what a
+    /// pointer points to.
     fn place(&mut self, n: &J) -> R<Expr> {
         let n = strip(n);
-        match n.kind() {
-            "DeclRefExpr" | "MemberExpr" => self.value(n),
-            k => Err(format!("an assignment to a {k}")),
+        match (n.kind(), n.s("opcode")) {
+            ("DeclRefExpr" | "MemberExpr" | "ArraySubscriptExpr", _) | ("UnaryOperator", "*") => {
+                self.value(n)
+            }
+            (k, _) => Err(format!("an assignment to a {k}")),
+        }
+    }
+
+    /// The type a newtype of the module is defined over; any other type itself.
+    fn under<'t>(&'t self, t: &'t Type) -> &'t Type {
+        match t {
+            Type::Named { name, .. } => self.tables.newtypes.get(name).unwrap_or(t),
+            _ => t,
         }
     }
 
@@ -646,11 +715,27 @@ impl<'a> Body<'a> {
                 return self.cond(&kids[0]);
             }
             "BinaryOperator" if COMPARE.contains(&n.s("opcode")) => {
-                self.pointer_operands(&kids[0])?;
+                let equality = matches!(n.s("opcode"), "==" | "!=");
+                if !equality {
+                    self.pointer_operands(&kids[0])?;
+                }
                 let (x, y) = (self.value(&kids[0])?, self.value(&kids[1])?);
-                if x.t() != y.t() || !matches!(x.t(), Type::Int { .. } | Type::Named { .. }) {
+                if float_constant(&x) && float_constant(&y) {
                     return Err(format!(
-                        "{} on operands of other types or not integers",
+                        "{} on floating-point constants, which Go evaluates exactly, not in binary floating point",
+                        n.s("opcode")
+                    ));
+                }
+                let nil = matches!(x, Expr::Nil { .. }) || matches!(y, Expr::Nil { .. });
+                let comparable = match x.t() {
+                    Type::Int { .. } | Type::Named { .. } | Type::Float { .. } => true,
+                    Type::Ptr { .. } => equality,
+                    Type::Func { .. } => equality && nil,
+                    _ => false,
+                };
+                if x.t() != y.t() || !comparable {
+                    return Err(format!(
+                        "{} on operands of other types, or of a type it does not compare",
                         n.s("opcode")
                     ));
                 }
@@ -706,16 +791,32 @@ impl<'a> Body<'a> {
             "ImplicitCastExpr" => self.implicit(n),
             "CStyleCastExpr" => {
                 let t = self.ty(n)?;
+                if n.s("castKind") == "NullToPointer" && matches!(t, Type::Ptr { .. }) {
+                    return Ok(Expr::Nil { t });
+                }
                 if let Some(v) = constant(&kids[0])
-                    && fits(v, &t)
+                    && fits(v, self.under(&t))
                 {
                     return Ok(self.folded(v, t));
                 }
                 let x = self.value(&kids[0])?;
-                if *x.t() != t {
-                    return Err("a cast between types cir/1 does not convert".into());
+                if *x.t() == t {
+                    return Ok(x);
                 }
-                Ok(x)
+                // A cast to a newtype from the type it is defined over, or from another newtype
+                // over it, is Go's conversion `T(x)`.
+                if let Type::Named { name, .. } = &t
+                    && self.tables.newtypes.contains_key(name)
+                    && self.under(x.t()) == self.under(&t)
+                {
+                    let name = name.clone();
+                    return Ok(Expr::Conv {
+                        name,
+                        x: Box::new(x),
+                        t,
+                    });
+                }
+                Err("a cast between types cir/1 does not convert".into())
             }
             "IntegerLiteral" => {
                 let t = self.ty(n)?;
@@ -723,13 +824,13 @@ impl<'a> Body<'a> {
             }
             "StringLiteral" => Err("a string literal used as an array".into()),
             "CharacterLiteral" => Err("a character literal".into()),
-            "FloatingLiteral" => Err("a floating-point literal".into()),
+            "FloatingLiteral" => self.float_literal(n),
             "DeclRefExpr" => self.decl_ref(n),
             "MemberExpr" => {
-                if n.is_true("isArrow") {
-                    return Err("a field read through a pointer (->)".into());
-                }
                 let x = self.value(&kids[0])?;
+                if n.is_true("isArrow") && !matches!(x.t(), Type::Ptr { .. }) {
+                    return Err("a field read through a pointer (->) of no pointer type".into());
+                }
                 let t = self.ty(n)?;
                 Ok(Expr::Field {
                     x: Box::new(x),
@@ -737,16 +838,25 @@ impl<'a> Body<'a> {
                     t,
                 })
             }
+            "ArraySubscriptExpr" => self.index(n),
             "BinaryOperator" => self.binary(n),
             "UnaryOperator" => self.unary(n),
             "CallExpr" => self.call(n),
             "InitListExpr" => self.init_list(n),
-            "CompoundLiteralExpr" => self.value(&kids[0]),
+            "CompoundLiteralExpr" => {
+                let t = self.ty(n)?;
+                if zero_init(&kids[0])
+                    && let Type::Named { name, .. } = &t
+                    && self.tables.structs.contains_key(name)
+                {
+                    return Ok(Expr::Zero { t });
+                }
+                self.value(&kids[0])
+            }
             "ConditionalOperator" | "BinaryConditionalOperator" => {
                 Err("the conditional operator ?:".into())
             }
             "UnaryExprOrTypeTraitExpr" => Err(format!("the operator {}", n.s("name"))),
-            "ArraySubscriptExpr" => Err("indexing an array or a pointer".into()),
             "CompoundAssignOperator" => Err("an assignment inside an expression".into()),
             "StmtExpr" => Err("a statement expression".into()),
             k => Err(format!("a {k} expression")),
@@ -769,7 +879,51 @@ impl<'a> Body<'a> {
     fn implicit(&mut self, n: &J) -> R<Expr> {
         let inner = &n.inner()[0];
         match n.s("castKind") {
-            "LValueToRValue" | "NoOp" | "FunctionToPointerDecay" => self.value(inner),
+            "LValueToRValue" | "NoOp" => self.value(inner),
+            "FunctionToPointerDecay" => {
+                let f = strip(inner);
+                let d = f.get("referencedDecl");
+                if f.kind() != "DeclRefExpr" || d.s("kind") != "FunctionDecl" {
+                    return self.value(inner);
+                }
+                let name = d.s("name");
+                if !self.tables.funcs.contains(name) {
+                    return Err(format!(
+                        "the function {name}, which the module does not define, used as a value"
+                    ));
+                }
+                let t = self.ty(n)?;
+                if !matches!(t, Type::Func { .. }) {
+                    return Err(format!(
+                        "the function {name} used as a value of another type"
+                    ));
+                }
+                Ok(Expr::FuncRef {
+                    name: name.into(),
+                    recv: None,
+                    t,
+                })
+            }
+            "NullToPointer" => {
+                let t = self.ty(n)?;
+                if !matches!(t, Type::Ptr { .. } | Type::Func { .. }) {
+                    return Err("a null pointer of a type cir/1 has no nil for".into());
+                }
+                Ok(Expr::Nil { t })
+            }
+            // `NULL` spelled `((void *)0)`, converted to the pointer it is compared with.
+            "BitCast" => {
+                let s = strip(inner);
+                let t = self.ty(n)?;
+                if s.kind() == "CStyleCastExpr"
+                    && s.s("castKind") == "NullToPointer"
+                    && constant(&s.inner()[0]) == Some(0)
+                    && matches!(t, Type::Ptr { .. } | Type::Func { .. })
+                {
+                    return Ok(Expr::Nil { t });
+                }
+                Err("an implicit BitCast conversion".into())
+            }
             "ArrayToPointerDecay" => {
                 let s = strip(inner);
                 if s.kind() == "StringLiteral" {
@@ -781,7 +935,7 @@ impl<'a> Body<'a> {
             "IntegralCast" => {
                 let t = self.ty(n)?;
                 if let Some(v) = constant(inner) {
-                    if !fits(v, &t) {
+                    if !fits(v, self.under(&t)) {
                         return Err(format!("the constant {v}, which its type does not hold"));
                     }
                     return Ok(self.folded(v, t));
@@ -874,13 +1028,20 @@ impl<'a> Body<'a> {
             }
             _ => (op, self.value(&kids[1])?),
         };
+        if float_constant(&x) && float_constant(&y) {
+            return Err(format!(
+                "{op} on floating-point constants, which Go evaluates exactly, not in binary floating point"
+            ));
+        }
         let shift = matches!(op, "<<" | ">>");
-        if !matches!(t, Type::Int { .. })
+        if !arith(op, self.under(&t))
             || *x.t() != t
             || (!shift && *y.t() != t)
-            || !matches!(y.t(), Type::Int { .. })
+            || (shift && !matches!(self.under(y.t()), Type::Int { .. }))
         {
-            return Err(format!("{op} on operands of other types or not integers"));
+            return Err(format!(
+                "{op} on operands of other types, or of a type it does not apply to"
+            ));
         }
         Ok(Expr::Binop {
             op: op.into(),
@@ -898,12 +1059,65 @@ impl<'a> Body<'a> {
                 self.pointer_operands(n)?;
                 Err(format!("{op} inside an expression"))
             }
-            "&" => Err("taking an address, a pointer".into()),
-            "*" => Err("a pointer dereference".into()),
+            "&" => {
+                let operand = strip(&n.inner()[0]);
+                let addressable = match operand.kind() {
+                    "DeclRefExpr" => matches!(
+                        operand.get("referencedDecl").s("kind"),
+                        "VarDecl" | "ParmVarDecl"
+                    ),
+                    "MemberExpr" | "ArraySubscriptExpr" | "CompoundLiteralExpr" => true,
+                    _ => false,
+                };
+                if !addressable {
+                    return Err("taking the address of a value that is not a variable, a field, an element or a struct literal".into());
+                }
+                if let Some(v) = base_var(operand)
+                    && self.for_vars.contains(v.get("referencedDecl").s("id"))
+                {
+                    return Err(format!(
+                        "taking the address of {}, a variable declared by a for loop: C has one for all iterations, Go one per iteration",
+                        v.get("referencedDecl").s("name")
+                    ));
+                }
+                let x = if operand.kind() == "CompoundLiteralExpr" {
+                    // `&(struct T){…}` is Go's `&T{…}`: the literal, even of zeros only.
+                    self.init_list(strip(&operand.inner()[0]))?
+                } else {
+                    self.value(operand)?
+                };
+                let t = self.ty(n)?;
+                if t != (Type::Ptr {
+                    elem: Box::new(x.t().clone()),
+                }) {
+                    return Err("taking an address of a value of another type".into());
+                }
+                Ok(Expr::Unop {
+                    op: "&".into(),
+                    x: Box::new(x),
+                    t,
+                })
+            }
+            "*" => {
+                let x = self.value(&n.inner()[0])?;
+                let t = self.ty(n)?;
+                match x.t() {
+                    Type::Ptr { elem } if **elem == t => Ok(Expr::Unop {
+                        op: "*".into(),
+                        x: Box::new(x),
+                        t,
+                    }),
+                    _ => Err("a dereference of a value that is not a pointer to its type".into()),
+                }
+            }
             "-" | "+" | "~" => {
                 let t = self.ty(n)?;
                 let x = self.value(&n.inner()[0])?;
-                if *x.t() != t || !matches!(t, Type::Int { .. }) {
+                if op == "-" && float_constant(&x) {
+                    return Err("the negation of a floating-point literal, which Go evaluates as an exact constant: -0.0 is positive zero there".into());
+                }
+                let number = if op == "~" { "&" } else { "+" };
+                if *x.t() != t || !arith(number, self.under(&t)) {
                     return Err(format!("{op} on an operand of another type"));
                 }
                 Ok(Expr::Unop {
@@ -919,7 +1133,7 @@ impl<'a> Body<'a> {
     fn call(&mut self, n: &J) -> R<Expr> {
         let kids = n.inner();
         let Some((id, name)) = self.callee(&kids[0]) else {
-            return Err("a call through a function pointer".into());
+            return self.call_value(n);
         };
         let (id, name) = (id.to_string(), name.to_string());
         let t = self.ty(n)?;
@@ -972,6 +1186,87 @@ impl<'a> Body<'a> {
             name,
             targs: Vec::new(),
             args,
+            t,
+        })
+    }
+
+    /// A call through a function pointer, a local, a parameter, a global or a field of `func`
+    /// type: `call_value`.
+    fn call_value(&mut self, n: &J) -> R<Expr> {
+        let kids = n.inner();
+        let f = self.value(&kids[0])?;
+        let Type::Func { params, .. } = f.t().clone() else {
+            return Err("a call of a value that is not a function pointer".into());
+        };
+        if kids.len() - 1 != params.len() {
+            return Err(
+                "a call through a function pointer with another number of arguments".into(),
+            );
+        }
+        let t = self.ty(n)?;
+        let mut args = Vec::new();
+        for (a, p) in kids[1..].iter().zip(&params) {
+            let a = self.value(a)?;
+            if a.t() != p {
+                return Err(
+                    "a call through a function pointer with an argument of another type".into(),
+                );
+            }
+            args.push(a);
+        }
+        Ok(Expr::CallValue {
+            f: Box::new(f),
+            args,
+            t,
+        })
+    }
+
+    /// `a[i]` of an array `a`: `index`. Indexing a pointer is pointer arithmetic.
+    fn index(&mut self, n: &J) -> R<Expr> {
+        let kids = n.inner();
+        let base = strip(&kids[0]);
+        if base.kind() != "ImplicitCastExpr" || base.s("castKind") != "ArrayToPointerDecay" {
+            return Err("indexing a pointer, which is pointer arithmetic".into());
+        }
+        let x = self.value(&base.inner()[0])?;
+        let Type::Array { elem, .. } = x.t().clone() else {
+            return Err("indexing a value that is not an array".into());
+        };
+        let index = self.value(&kids[1])?;
+        if !matches!(self.under(index.t()), Type::Int { .. }) {
+            return Err("an index that is not an integer".into());
+        }
+        let t = self.ty(n)?;
+        if t != *elem {
+            return Err("an element of another type than its array's".into());
+        }
+        Ok(Expr::Index {
+            x: Box::new(x),
+            index: Box::new(index),
+            t,
+        })
+    }
+
+    /// A floating-point literal: clang's value, which reads back to the literal's number, in
+    /// `cir/1`'s spelling of it.
+    fn float_literal(&self, n: &J) -> R<Expr> {
+        let t = self.ty(n)?;
+        let Type::Float { bits } = t else {
+            return Err("a floating-point literal of a type cir/1 does not have".into());
+        };
+        let text = n.s("value");
+        let v = match bits {
+            FloatBits::W32 => text.parse::<f32>().map(f64::from),
+            FloatBits::W64 => text.parse::<f64>(),
+        }
+        .map_err(|_| format!("the floating-point literal {text}, which clang prints otherwise"))?;
+        if !v.is_finite() {
+            return Err(format!(
+                "the floating-point literal {text}, which is not finite"
+            ));
+        }
+        Ok(Expr::Float {
+            value: float_spelling(v, bits),
             t,
         })
     }

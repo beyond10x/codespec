@@ -1,0 +1,427 @@
+{
+  "format": "cir/1",
+  "name": "type_float_compare",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.6.1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Exact",
+      "exported": true,
+      "params": [
+        {
+          "name": "wide",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "wide",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "var",
+              "name": "x",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              },
+              "pos": "case.go:7"
+            },
+            {
+              "k": "var",
+              "name": "y",
+              "t": {
+                "k": "float",
+                "bits": "64"
+              },
+              "pos": "case.go:8"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "x",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "float",
+                  "value": "0.1",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "pos": "case.go:9"
+            },
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "y",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "float",
+                  "value": "0.2",
+                  "t": {
+                    "k": "float",
+                    "bits": "64"
+                  }
+                }
+              ],
+              "pos": "case.go:10"
+            },
+            {
+              "k": "return",
+              "results": [
+                {
+                  "k": "binop",
+                  "op": "==",
+                  "x": {
+                    "k": "binop",
+                    "op": "+",
+                    "x": {
+                      "k": "var",
+                      "name": "x",
+                      "t": {
+                        "k": "float",
+                        "bits": "64"
+                      }
+                    },
+                    "y": {
+                      "k": "var",
+                      "name": "y",
+                      "t": {
+                        "k": "float",
+                        "bits": "64"
+                      }
+                    },
+                    "t": {
+                      "k": "float",
+                      "bits": "64"
+                    }
+                  },
+                  "y": {
+                    "k": "float",
+                    "value": "0.3",
+                    "t": {
+                      "k": "float",
+                      "bits": "64"
+                    }
+                  },
+                  "t": {
+                    "k": "bool"
+                  }
+                }
+              ],
+              "pos": "case.go:11"
+            }
+          ],
+          "pos": "case.go:6"
+        },
+        {
+          "k": "var",
+          "name": "a",
+          "t": {
+            "k": "float",
+            "bits": "32"
+          },
+          "pos": "case.go:13"
+        },
+        {
+          "k": "var",
+          "name": "b",
+          "t": {
+            "k": "float",
+            "bits": "32"
+          },
+          "pos": "case.go:14"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "a",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.1",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:15"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "b",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "0.2",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:16"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "==",
+              "x": {
+                "k": "binop",
+                "op": "+",
+                "x": {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                },
+                "y": {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "y": {
+                "k": "float",
+                "value": "0.3",
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:17"
+        }
+      ],
+      "doc": "Exact tells whether a tenth plus two tenths is three tenths: in 64-bit floats it is not, in\n32-bit floats the sum rounds to three tenths.",
+      "pos": "case.go:5"
+    },
+    {
+      "name": "Third",
+      "exported": true,
+      "params": [
+        {
+          "name": "big",
+          "t": {
+            "k": "bool"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "y",
+          "t": {
+            "k": "float",
+            "bits": "32"
+          },
+          "pos": "case.go:22"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "var",
+              "name": "y",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "float",
+              "value": "1",
+              "t": {
+                "k": "float",
+                "bits": "32"
+              }
+            }
+          ],
+          "pos": "case.go:23"
+        },
+        {
+          "k": "if",
+          "cond": {
+            "k": "var",
+            "name": "big",
+            "t": {
+              "k": "bool"
+            }
+          },
+          "then": [
+            {
+              "k": "assign",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "y",
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "float",
+                  "value": "1e21",
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                }
+              ],
+              "pos": "case.go:25"
+            }
+          ],
+          "pos": "case.go:24"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "==",
+              "x": {
+                "k": "binop",
+                "op": "*",
+                "x": {
+                  "k": "binop",
+                  "op": "/",
+                  "x": {
+                    "k": "var",
+                    "name": "y",
+                    "t": {
+                      "k": "float",
+                      "bits": "32"
+                    }
+                  },
+                  "y": {
+                    "k": "float",
+                    "value": "3",
+                    "t": {
+                      "k": "float",
+                      "bits": "32"
+                    }
+                  },
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                },
+                "y": {
+                  "k": "float",
+                  "value": "3",
+                  "t": {
+                    "k": "float",
+                    "bits": "32"
+                  }
+                },
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "y": {
+                "k": "var",
+                "name": "y",
+                "t": {
+                  "k": "float",
+                  "bits": "32"
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "case.go:27"
+        }
+      ],
+      "doc": "Third tells whether a third of n, times three, is n again, in 32-bit floats.",
+      "pos": "case.go:21"
+    }
+  ],
+  "layout": [
+    "func:Exact",
+    "func:Third"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

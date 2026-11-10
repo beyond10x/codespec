@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "sha256": "c79c66b7e7c6dbd33031ffcd75c6e5ea5d9caf81e5e5ebcdb288dc42de882705"
   },
   "corpus": {
-    "sha256": "b5630117d4ead5bc03cb828754c290a1f56077b9c890d70747185799d28e3061"
+    "sha256": "6193fa4a31208b68afe4e5f3c8f0bdfbdb75de0e46d6ade3a5b7c6a1bf2f3a25"
   },
   "codespec": "0.6.1",
   "features": [
@@ -347,7 +347,8 @@
       "verdict": "pass",
       "cases": [
         "expr-nil",
-        "expr-nil-error"
+        "expr-nil-error",
+        "expr-nil-ptr"
       ]
     },
     {
@@ -404,7 +405,8 @@
       "verdict": "refused",
       "cases": [
         "expr-zero",
-        "expr-zero-error"
+        "expr-zero-error",
+        "expr-zero-struct"
       ],
       "case": "expr-zero",
       "step": 3,
@@ -903,7 +905,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-array-float"
+        "type-array-float",
+        "type-array-int"
       ]
     },
     {
@@ -943,7 +946,8 @@
       "claimed": true,
       "verdict": "pass",
       "cases": [
-        "type-float"
+        "type-float",
+        "type-float-compare"
       ]
     },
     {

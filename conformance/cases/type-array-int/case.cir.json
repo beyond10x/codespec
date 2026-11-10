@@ -1,0 +1,333 @@
+{
+  "format": "cir/1",
+  "name": "type_array_int",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.6.1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Pick",
+      "exported": true,
+      "params": [
+        {
+          "name": "i",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "a",
+          "t": {
+            "k": "array",
+            "len": 3,
+            "elem": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "case.go:7"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "10",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:8"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "*",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:9"
+        },
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "2",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "index",
+                "x": {
+                  "k": "var",
+                  "name": "a",
+                  "t": {
+                    "k": "array",
+                    "len": 3,
+                    "elem": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                },
+                "index": {
+                  "k": "lit",
+                  "value": "0",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                },
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:10"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "index",
+              "x": {
+                "k": "var",
+                "name": "a",
+                "t": {
+                  "k": "array",
+                  "len": 3,
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "var",
+                "name": "i",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:11"
+        }
+      ],
+      "doc": "Pick keeps three integers in a fixed-size array, each set from the ones before it, and gives\nthe one at i: a variant of type-array-float whose result is an integer, not floats formatted\nas a string.",
+      "pos": "case.go:6"
+    }
+  ],
+  "layout": [
+    "func:Pick"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "expr.zero",
+    "decl.struct",
+    "expr.binop",
+    "expr.field",
+    "expr.lit",
+    "expr.struct",
+    "expr.var",
+    "op.add",
+    "op.le",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.if",
+    "stmt.let",
+    "stmt.return",
+    "type.bool",
+    "type.int",
+    "type.named"
+  ]
+}

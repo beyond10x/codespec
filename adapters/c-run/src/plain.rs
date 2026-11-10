@@ -35,14 +35,15 @@ struct Fun {
     params: Vec<CTy>,
 }
 
-/// The functions and enum typedefs of the sources.
+/// The functions and the typedefs of the sources that name an integer or a `bool`.
 #[derive(Debug, Default)]
 struct Source {
     /// By the name a call gives: the C name with its first letter upper case.
     funcs: BTreeMap<String, Fun>,
-    /// Every `typedef enum … Name;`, as written.
+    /// Every `typedef enum … Name;` and `typedef <integer or bool type> Name;`, as written.
     typedefs: Vec<String>,
-    enums: Vec<String>,
+    /// The name each of those typedefs declares, and what it is to the runner.
+    names: BTreeMap<String, Kind>,
 }
 
 const SIGNED: &[&str] = &[
@@ -131,20 +132,30 @@ impl Source {
                 }
                 continue;
             }
+            if let Some(decl) = line
+                .strip_prefix("typedef ")
+                .and_then(|l| l.trim_end().strip_suffix(';'))
+            {
+                self.scalar_typedef(line, decl);
+                continue;
+            }
             if let Some(f) = definition(line) {
                 self.funcs.insert(exported(&f.name), f);
             }
         }
-        let enums = self.enums.clone();
+        let names = self.names.clone();
         for f in self.funcs.values_mut() {
             for t in std::iter::once(&mut f.ret).chain(f.params.iter_mut()) {
-                if t.kind == Kind::Other && enums.contains(&t.spelling) {
-                    t.kind = Kind::Int;
+                if t.kind == Kind::Other
+                    && let Some(k) = names.get(&t.spelling)
+                {
+                    t.kind = *k;
                 }
             }
         }
     }
 
+    /// A `typedef enum … Name;`: `Name` is an integer.
     fn typedef(&mut self, t: String) {
         let name = t
             .trim_end()
@@ -155,8 +166,24 @@ impl Source {
             .unwrap_or("")
             .to_string();
         if !name.is_empty() {
-            self.enums.push(name);
+            self.names.insert(name, Kind::Int);
             self.typedefs.push(t);
+        }
+    }
+
+    /// A one-line `typedef <type> Name;` of a signed integer type, `bool` or a name typedef'd so
+    /// before: `Name` is what that type is. Any other typedef is not read.
+    fn scalar_typedef(&mut self, line: &str, decl: &str) {
+        let Some((ty, name)) = split_decl(decl) else {
+            return;
+        };
+        let k = match kind(&ty) {
+            Kind::Other => self.names.get(&ty).copied().unwrap_or(Kind::Other),
+            k => k,
+        };
+        if matches!(k, Kind::Int | Kind::Bool) {
+            self.names.insert(name, k);
+            self.typedefs.push(line.trim_end().to_string());
         }
     }
 }
@@ -201,9 +228,8 @@ fn definition(line: &str) -> Option<Fun> {
     let inner = line[open + 1..close].trim();
     let mut params = Vec::new();
     if !(inner.is_empty() || inner == "void") {
-        for p in inner.split(',') {
-            let (ty, _) = split_decl(p)?;
-            params.push(cty(ty));
+        for p in split_params(inner) {
+            params.push(param(&p)?);
         }
     }
     Some(Fun {
@@ -211,6 +237,51 @@ fn definition(line: &str) -> Option<Fun> {
         ret: cty(ret),
         params,
     })
+}
+
+/// A parameter list split at its commas outside parentheses and brackets.
+fn split_params(list: &str) -> Vec<String> {
+    let (mut out, mut depth, mut cur) = (Vec::new(), 0i32, String::new());
+    for c in list.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut cur));
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    out.push(cur);
+    out
+}
+
+/// One parameter's type: `T name`; a function pointer `R (*name)(…)`, spelled `R (*)(…)`; an
+/// array `T name[N]`, spelled `T [N]`. Only the first is a type the runner may pass.
+fn param(p: &str) -> Option<CTy> {
+    let p = p.trim();
+    if let Some(open) = p.find("(*") {
+        let rest = &p[open + 2..];
+        let close = rest.find(')')?;
+        if !rest[..close].trim().chars().all(ident) {
+            return None;
+        }
+        return Some(CTy {
+            spelling: format!("{} (*){}", tokens(&p[..open]), rest[close + 1..].trim()),
+            kind: Kind::Other,
+        });
+    }
+    if let Some(open) = p.find('[') {
+        let (ty, _) = split_decl(&p[..open])?;
+        return Some(CTy {
+            spelling: format!("{ty} {}", p[open..].trim()),
+            kind: Kind::Other,
+        });
+    }
+    let (ty, _) = split_decl(p)?;
+    Some(cty(ty))
 }
 
 /// The C sources of `dir`, read.
@@ -406,5 +477,32 @@ mod tests {
         assert_eq!(s.funcs["Pick"].ret.kind, Kind::Int);
         assert!(s.funcs["Zero"].params.is_empty());
         assert_eq!(s.typedefs, ["typedef enum { Red = 0, Green = 1 } Color;"]);
+    }
+
+    #[test]
+    fn a_scalar_typedef_is_its_type_and_pointer_array_and_function_parameters_are_read() {
+        let s = Source::read(&[
+            "typedef long Celsius;\ntypedef Celsius Kelvin;\ntypedef struct Box Box;\nKelvin warm(Celsius c) {\nlong run(long (*f)(long, long), long xs[3], double *d) {\n"
+                .to_string(),
+        ]);
+        assert_eq!(
+            s.typedefs,
+            ["typedef long Celsius;", "typedef Celsius Kelvin;"]
+        );
+        assert_eq!(s.funcs["Warm"].ret.kind, Kind::Int);
+        assert_eq!(s.funcs["Warm"].params[0].kind, Kind::Int);
+        let spellings: Vec<(&str, Kind)> = s.funcs["Run"]
+            .params
+            .iter()
+            .map(|p| (p.spelling.as_str(), p.kind))
+            .collect();
+        assert_eq!(
+            spellings,
+            [
+                ("long (*)(long, long)", Kind::Other),
+                ("long [3]", Kind::Other),
+                ("double *", Kind::Other)
+            ]
+        );
     }
 }

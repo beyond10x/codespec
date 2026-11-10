@@ -48,17 +48,22 @@
 //! name with its first letter upper case is the `func` (`Less` calls `less`), as the Java runner
 //! does. The driver declares each called function itself and includes only `<stdbool.h>`,
 //! `<stdint.h>` and `<stdio.h>`, so a function named as one of `<stdlib.h>` (`div`) is the
-//! source's; every one-line or multi-line `typedef enum … Name;` of the sources is copied into
-//! it.
+//! source's; every one-line or multi-line `typedef enum … Name;` of the sources, and every
+//! one-line `typedef T Name;` of a `T` the table below reads as an integer or a `bool`, is copied
+//! into it.
 //!
 //! | C type | as |
 //! |---|---|
-//! | a signed integer type (`long`, `int`, `int64_t`, …) or a `typedef enum` name | an integer |
-//! | `bool`, `_Bool` | `bool` |
+//! | a signed integer type (`long`, `int`, `int64_t`, …), a `typedef enum` name or a `typedef` of an integer | an integer |
+//! | `bool`, `_Bool`, a `typedef` of one | `bool` |
 //! | `const char *`, `char *` | `string`: passed as a C string literal, printed as above; a null pointer is refused (exit 2) |
 //! | `void` result | no result: `ok` |
 //!
-//! Any other type is refused before anything is built.
+//! A function's parameters are split at the commas outside parentheses, so a function pointer
+//! parameter `R (*f)(P, Q)` is one parameter, spelled `R (*)(P, Q)`, and an array parameter
+//! `T xs[N]` is spelled `T [N]`. Floats, pointers, arrays, function pointers and every other type
+//! are what the functions `calls.json` calls use among themselves: a call of a function that takes
+//! or returns one is refused, naming the type, before anything is built.
 //!
 //! # The build
 //!

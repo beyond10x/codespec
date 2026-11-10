@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "c",
     "version": "0.6.1",
-    "manifest_sha256": "21c3bd0b2cb727e443ef0cf2906d3afb28702c3aac6f5f4c623229a2d6c144b2"
+    "manifest_sha256": "4f6bdbfeb6ffb57b6950d20d36440e4c930c9cc3c22c23d350223b9722106f22"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "f2a98445cc97786437a103e7924f9b2ba724c5f1686a4d0e92466f34072d5e63"
+    "sha256": "2cb028c847a6b7384b0201a7907a3ff63ab88381fa767f045b74123eb34e6bd8"
   },
   "corpus": {
-    "sha256": "54ab21632f38c2e673435c9a7fd539ce64c4290386c112139d3d7404cf7c7715"
+    "sha256": "5b7c5bf97f3a550c21c6945de6eb23b451d4076fe68be8fa22db06ee02fe9c97"
   },
   "codespec": "0.6.1",
   "features": [
@@ -125,9 +125,11 @@
     },
     {
       "id": "decl.newtype",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-newtype"
+      ]
     },
     {
       "id": "decl.struct",
@@ -179,9 +181,11 @@
     },
     {
       "id": "expr.call_value",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-call-value"
+      ]
     },
     {
       "id": "expr.const",
@@ -193,9 +197,11 @@
     },
     {
       "id": "expr.conv",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-conv"
+      ]
     },
     {
       "id": "expr.errvar",
@@ -225,15 +231,19 @@
     },
     {
       "id": "expr.float",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-float"
+      ]
     },
     {
       "id": "expr.func_ref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-func-value"
+      ]
     },
     {
       "id": "expr.global",
@@ -295,9 +305,11 @@
     },
     {
       "id": "expr.nil",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-nil-ptr"
+      ]
     },
     {
       "id": "expr.spread",
@@ -343,9 +355,11 @@
     },
     {
       "id": "expr.zero",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-zero-struct"
+      ]
     },
     {
       "id": "fact.comma_ok",
@@ -639,9 +653,11 @@
     },
     {
       "id": "stmt.continue",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-continue"
+      ]
     },
     {
       "id": "stmt.decr",
@@ -653,9 +669,11 @@
     },
     {
       "id": "stmt.expr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-expr-method"
+      ]
     },
     {
       "id": "stmt.for",
@@ -745,9 +763,11 @@
     },
     {
       "id": "type.array",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-array-int"
+      ]
     },
     {
       "id": "type.bool",
@@ -777,15 +797,19 @@
     },
     {
       "id": "type.float",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-float-compare"
+      ]
     },
     {
       "id": "type.func",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-func"
+      ]
     },
     {
       "id": "type.int",
@@ -803,9 +827,11 @@
     },
     {
       "id": "type.named",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-named"
+      ]
     },
     {
       "id": "type.param",
@@ -815,9 +841,11 @@
     },
     {
       "id": "type.ptr",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-ptr"
+      ]
     },
     {
       "id": "type.slice",
@@ -841,9 +869,11 @@
     },
     {
       "id": "type.unit",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-unit-method"
+      ]
     },
     {
       "id": "unop.complement",
@@ -855,9 +885,11 @@
     },
     {
       "id": "unop.deref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-deref"
+      ]
     },
     {
       "id": "unop.neg",
@@ -891,19 +923,21 @@
     },
     {
       "id": "unop.ref",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-ref"
+      ]
     }
   ],
   "boundary": [],
   "summary": {
-    "claimed": 59,
-    "pass": 59,
+    "claimed": 76,
+    "pass": 76,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 68,
+    "untested": 51,
     "boundary_fail": 0
   },
   "conforms": true
