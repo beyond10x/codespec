@@ -6,9 +6,9 @@ status: active
 title: Adversary pass 2 on the C reader's conventions unit
 relations:
 - reviews: story:reader-c-kit-conventions
-revision: 1
+revision: 2
 ---
-unit: `story:reader-c-kit-conventions`, HEAD `bf89e62` (base `e6c404b`) in `/home/timo/.local/state/worktree/trees/b10x/codespec/rd-c-conv`, plus one untracked test file
+unit: `story:reader-c-kit-conventions`, HEAD `bf89e62` (base `e6c404b`) in `~/.local/state/worktree/trees/b10x/codespec/rd-c-conv`, plus one untracked test file
 verdict: NEEDS-CHANGE
 cases: executed 120→148, red 9
 origin: introduced 8 / pre-existing 2 / undecided 0
@@ -19,7 +19,7 @@ needs-coordinator: none. I took no session lease and changed no git state.
 
 **1. Diff stat.** `git --no-pager diff --stat` is empty. The only change is the new untracked file `adapters/c-read/tests/adversary3.rs`. It is not committed.
 
-**2. Cases added** in `/home/timo/.local/state/worktree/trees/b10x/codespec/rd-c-conv/adapters/c-read/tests/adversary3.rs`: 28 tests, 9 red and 19 green.
+**2. Cases added** in `~/.local/state/worktree/trees/b10x/codespec/rd-c-conv/adapters/c-read/tests/adversary3.rs`: 28 tests, 9 red and 19 green.
 - **The 9 red cases.** Each was red the first time it ran alone (`cargo test -p codespec-read-c --test adversary3`). "C" is what `codespec-run-c` prints. "Go" is the read put through `codespec pass` and `write --lang go`, then run by `codespec-run-go`.
 - **The 19 green `kill_mNN_*` cases.** Each one is green at HEAD and goes red under its own mutant, and under no other mutant. I checked this in a scratch copy of the tree; the tree under attack was not touched.
 
@@ -77,7 +77,7 @@ Fixes, named and not applied:
 - Append capacity: an aliasing test of capacity gave 33 in both, since Go 1.25+ gives small appends a capacity of 4.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-adv2/`, 1.3 GB:
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-adv2/`, 1.3 GB:
   - `probe.sh`, `goenv`, `p/*` (probes), `base/` (an archive of the base `e6c404b` with the reader built in it)
   - `mut/tree`, `mut/tree2` (copies of HEAD with their own `target/`), `mut/mutate.py`, `mut/all.sh`, `mut/kill.sh`, `mut/*.log`, `mut/kill/`
   - `gocache/`, `gotmp/`, `*.log`

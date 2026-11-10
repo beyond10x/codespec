@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 2: story:eval-core'
 relations:
 - reviews: story:eval-core
-revision: 1
+revision: 2
 ---
 unit: story:eval-core, worktree `qe-eval-core` at d0523cc (`impl/eval-core`), plus my untracked test files
 verdict: NEEDS-CHANGE
@@ -159,7 +159,7 @@ I reasoned through, but did not build, three more:
 No lease was taken explicitly; host hooks may have taken one.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/eval-core/adv2/`: probe Go module, `gorun` Go program and binaries, `mut/` mutant workspace (`Cargo.toml`, `Cargo.lock`, copied crate, symlinks to the worktree's `conformance` and `adapters`), scripts, logs.
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/eval-core/adv2/`: probe Go module, `gorun` Go program and binaries, `mut/` mutant workspace (`Cargo.toml`, `Cargo.lock`, copied crate, symlinks to the worktree's `conformance` and `adapters`), scripts, logs.
 
 Inside the worktree's `target/` I added `tmp/eval-reader-adv2/` and the mutant copy's artifacts, built with stable rustc 1.99.1 instead of the pinned 1.97. No core dumps were stored.
 

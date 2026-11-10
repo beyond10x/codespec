@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:query-core
 kind: story
-status: active
+status: implemented
 title: 'cq core: a fact base, an interpreter and codespec query'
 relations:
 - decomposes: epic:codebase-transformations
@@ -10,10 +10,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/query
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":7}}}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:37Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":7}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:51:59Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":9}}}
 ---
 # Story: cq core: a fact base, an interpreter and `codespec query`
 

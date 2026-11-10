@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 2: story:query-core'
 relations:
 - reviews: story:query-core
-revision: 1
+revision: 2
 ---
 ```json
 [
@@ -38,5 +38,5 @@ I found 11 problems in commit `f11b77a`: one major, seven minor, three notes. 12
    - `int-from-text.cq` agrees on a copy of a copy, a field of a field and a copy into a field of a field.
    - Cache: separate files with and without `--summaries` or `--barrier`, and a changed summary file gives a new result.
 7. Regression: the pass-1 tests in `adversary1.rs` (digest vectors, node ids, byte-equal builds) still pass in the suite run.
-8. Outside the worktree I wrote only under `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/query-core/adv2/`: logs, probe documents and queries with their `.cq` caches, a Go probe module under `go/`, and the Python generators `gen.py`, `mk2.py` and `mkscc.py`. Inside the worktree, test runs left output under `target/tmp/cli-query-adversary2` and `target/tmp/adversary2-reader`. No core dumps.
+8. Outside the worktree I wrote only under `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/query-core/adv2/`: logs, probe documents and queries with their `.cq` caches, a Go probe module under `go/`, and the Python generators `gen.py`, `mk2.py` and `mkscc.py`. Inside the worktree, test runs left output under `target/tmp/cli-query-adversary2` and `target/tmp/adversary2-reader`. No core dumps.
 9. Disk had 38 to 40 GB free. Lease `adv2-query-core-2db1a4b7` was taken, renewed and released.

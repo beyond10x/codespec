@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-c-kit-plain
 kind: story
-status: active
+status: implemented
 title: The C reader claims the kit features C writes directly
 summary: 'codespec-read-c passes the kit features that have a direct C form: arrays, pointers, floats, globals, function pointers, unions, variadics, statements.'
 relations:
@@ -12,10 +12,11 @@ scope:
   path: adapters/c-read
 - confidence: inferred
   path: adapters/c-run
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:00Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":5}}}
 ---
 # Story: The C reader claims the kit features C writes directly
 

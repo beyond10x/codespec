@@ -6,14 +6,14 @@ status: active
 title: 'Adversary, pass 1: story:reader-java-quarkus-refusals'
 relations:
 - reviews: story:reader-java-quarkus-refusals
-revision: 1
+revision: 2
 ---
 ```
 unit: story:reader-java-quarkus-refusals, unit commit 3f37d68 (base 9dd7fd7); the findings cover 3f37d68 plus my untracked test files
 verdict: NEEDS-CHANGE
 cases: executed 79→95, red 8
 origin: introduced 11 / pre-existing 1 / undecided 0
-wrote-outside-worktree: 1 directory, /home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv1/
+wrote-outside-worktree: 1 directory, ~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv1/
 needs-coordinator: yes. The quickstart has 12 refusals and the acceptance allows at most 10; the unit changed cir/1 although the story's Scope forbids it; wiring Adversary2Test needs a Taskfile line
 ```
 
@@ -70,7 +70,7 @@ Quarkus getter of level = getLevel
 
 **3. Suite run, after the cases existed**
 
-The scratch script compiles the suites the way `adapters-check` does. `GOENV` turns off Go's VCS stamping: `/home/timo/.git` is an empty directory, so `go build` failed with exit status 128 in scratch build directories (an environment problem, not a finding).
+The scratch script compiles the suites the way `adapters-check` does. `GOENV` turns off Go's VCS stamping: `~/.git` is an empty directory, so `go build` failed with exit status 128 in scratch build directories (an environment problem, not a finding).
 ```
 ## javac          javac exit 0
 ## ReaderTest     71 passed, 0 failed    ReaderTest exit 0
@@ -143,7 +143,7 @@ I mutated copies of `Reader.java` in scratch, 14 mutants in all.
 
 **7. Written outside the worktree**
 
-`/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv1/`: probe projects `p1`–`p4`, `gomod`, `javacheck`, `base-src`, `base-classes`, `mutants`, `mutant-results`, the work and output directories, logs and scripts.
+`~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv1/`: probe projects `p1`–`p4`, `gomod`, `javacheck`, `base-src`, `base-classes`, `mutants`, `mutant-results`, the work and output directories, logs and scripts.
 
 Inside the worktree, `task java-quickstart` regenerated `target/java-quickstart`. That task also overwrote `target/java-classpath.txt`; I restored it and checked with `cmp` that it is byte-equal to before.
 

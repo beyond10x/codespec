@@ -6,7 +6,7 @@ status: active
 title: Adversary pass 1 on the evaluator's conformance runner and differential step
 relations:
 - reviews: story:eval-conformance-runner
-revision: 1
+revision: 2
 ---
 unit: story:eval-conformance-runner, adversary pass 1, unit commit d32521c (base 767110c) plus the untracked `crates/eval/tests/adversary3.rs`
 verdict: NEEDS-CHANGE
@@ -83,7 +83,7 @@ Each case was first run alone with `cargo test -p b10x-codespec-eval --test adve
 
 ## 6. Paths written outside the worktree
 
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/qe-eval-runner/adv1` (281 MB): logs, scripts, `ws/` (the mutation workspace and its `target/`), `eval-pristine/` and `kitrun/`.
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/qe-eval-runner/adv1` (281 MB): logs, scripts, `ws/` (the mutation workspace and its `target/`), `eval-pristine/` and `kitrun/`.
 
 Inside the worktree's build output (`target/`), not tracked by git:
 - `target/adv1-evaldiff1`, `target/adv1-evaldiff2`, `target/adv1-smoke`, `target/adv1-conform-cir`

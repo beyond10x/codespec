@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:readers-bound-untrusted-input
 kind: story
-status: active
+status: implemented
 title: Readers bound what an untrusted source can cost
 summary: Nesting depth and input size have limits in every reader; past a limit is a refusal, not a crash.
 relations:
@@ -15,10 +15,11 @@ scope:
   path: adapters/c-read
 - confidence: inferred
   path: adapters/rust-read
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T03:37:01Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-11-10T03:37:01Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:03Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: Readers bound what an untrusted source can cost
 

@@ -2,17 +2,18 @@
 format: aep.planning-md/3
 id: story:eval-core
 kind: story
-status: active
+status: implemented
 title: The core evaluator and the kit
 relations:
 - decomposes: epic:cir-evaluator
 scope:
 - confidence: inferred
   path: crates/eval
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:37Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":2}}}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:51:58Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":4}}}
 ---
 # Story: The core evaluator and the kit
 

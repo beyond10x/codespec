@@ -6,7 +6,7 @@ status: active
 title: 'Security review, pass 2: story:writers-validate-names'
 relations:
 - reviews: story:writers-validate-names
-revision: 1
+revision: 2
 ---
 unit: story:writers-validate-names, security review pass 2, tree at b2abea1 plus 4 untracked secreview2 test files
 verdict: NEEDS-CHANGE
@@ -113,7 +113,7 @@ All of pass 1's security fixes hold, including every C-comment variant you liste
 - Positions and extern names with Cf or C1 characters are refused.
 - No path traversal is possible. Following a symlink already in the output directory needs write access to that directory, not just a document.
 
-**6. Written outside the worktree.** Everything is under `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/secreview2/`:
+**6. Written outside the worktree.** Everything is under `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/secreview2/`:
 - the pass-1 records (`pass1-sec.txt`, `pass1-adv.txt`)
 - scripts: `cprobe.sh`, `cf.py`, `why.py`, `alone.sh`, `alone2.sh`, `gomut.sh`, `gomut2.sh`, `suite.sh`
 - directories: `cprobe/`, `why/`, `rsanity/`, and `gomut/` (symlinks plus a Go test target)

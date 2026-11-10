@@ -15,7 +15,7 @@ relations:
 - reviews: story:reach-at-positions
 - reviews: story:reach-registered-candidates
 - reviews: story:reach-framework-entries
-revision: 1
+revision: 2
 ---
 needs-revision
 
@@ -28,7 +28,7 @@ All four round-1 findings are resolved.
 - C `callback` is now emitted by the C reader (reader-indirect-call-sites.md:104-107).
 - `inferred_edges` is now stated for the report and for `--at` records (reach-registered-candidates.md:36-41).
 
-What I read: the epic, nine stories and `review-result:reach-scope-round-1` in full through `aep plan artifact show` (the two review/decomposition outputs were also in the persisted tool-result file), plus `/home/timo/.cache/scratch/cdab1af5-5768-4ebb-b33d-b77497bd35c1/reach-requirements.md`. I ran `aep plan artifact graph`, but only its first 80 lines were printed, so I did not check for older artifacts that claim part of the epic. I extracted 26 promises from R1 to R7 and the phasing; 24 trace to a story or to the epic's "What exists", and 2 trace partly, as the findings above say. I found no reach beyond the parent. Everything drafted is traceable, including `--list-entries`, `--spans`, `approximate`, the `kind:` entry lines and the ground-truth run gates.
+What I read: the epic, nine stories and `review-result:reach-scope-round-1` in full through `aep plan artifact show` (the two review/decomposition outputs were also in the persisted tool-result file), plus `~/.cache/scratch/cdab1af5-5768-4ebb-b33d-b77497bd35c1/reach-requirements.md`. I ran `aep plan artifact graph`, but only its first 80 lines were printed, so I did not check for older artifacts that claim part of the epic. I extracted 26 promises from R1 to R7 and the phasing; 24 trace to a story or to the epic's "What exists", and 2 trace partly, as the findings above say. I found no reach beyond the parent. Everything drafted is traceable, including `--list-entries`, `--spans`, `approximate`, the `kind:` entry lines and the ground-truth run gates.
 
 What I could not establish:
 - Out of my lane, for the design and parallel-safety critics:

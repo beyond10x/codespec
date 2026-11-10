@@ -6,9 +6,9 @@ status: active
 title: 'Adversary, pass 1: story:writers-validate-names'
 relations:
 - reviews: story:writers-validate-names
-revision: 1
+revision: 2
 ---
-Probed commit `58818b2`. The tracked tree is untouched: `git diff --stat` is empty. The only changes are 4 new, uncommitted test files of mine: `/home/timo/.local/state/worktree/trees/b10x/codespec/sec-writers/{crates/model/tests/adversary1.rs, adapters/c/tests/adversary1.rs, adapters/rust/tests/adversary1.rs, adapters/go/cmd/codespec-write-go/adversary1_test.go}`.
+Probed commit `58818b2`. The tracked tree is untouched: `git diff --stat` is empty. The only changes are 4 new, uncommitted test files of mine: `~/.local/state/worktree/trees/b10x/codespec/sec-writers/{crates/model/tests/adversary1.rs, adapters/c/tests/adversary1.rs, adapters/rust/tests/adversary1.rs, adapters/go/cmd/codespec-write-go/adversary1_test.go}`.
 
 ```json
 [
@@ -47,4 +47,4 @@ Probed commit `58818b2`. The tracked tree is untouched: `git diff --stat` is emp
   - Functions named `Self`, `Type`, `Crate`, `Super`, `Loop`, `Gen` and `Union` are written correctly.
   - Go `_` parameters and locals named `len`, `nil` or `true` come out as Go that passes `go vet`.
   - The C writer writes `_` parameters as `cs_pN`.
-- Written outside the worktree: only the assigned scratch folder `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/adv1/`. Inside the worktree: Cargo's target dir `target/adversary`, plus the existing Go tests' output under `target/go-writer-test/Test*`.
+- Written outside the worktree: only the assigned scratch folder `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/adv1/`. Inside the worktree: Cargo's target dir `target/adversary`, plus the existing Go tests' output under `target/go-writer-test/Test*`.

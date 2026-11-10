@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 1: story:reader-c-kit-plain'
 relations:
 - reviews: story:reader-c-kit-plain
-revision: 1
+revision: 2
 ---
 ```json
 [
@@ -26,4 +26,4 @@ expr-zero-struct and expr-nil-ptr `case.cir.json`: validate passes, and the Go, 
 The stated reason for leaving `expr.index` unclaimed is true: the C and Rust writers claim `expr.*` and list `type.array` as not claimed.
 Hostile input (unbalanced or odd types, pointer-to-array, function pointer returning function pointer, a file clang rejects) never panicked; a file clang rejects exits 1 with clang's message. Two refusal reasons are misleading: `long (*)[3]` is called "the function pointer type", and a self-referencing `struct S *next` is reported as "struct S, which the source directory does not declare".
 Runner: new types are only declared and never printed. A call that passes or returns a float, pointer or function pointer exits 2 naming the type, and a newtype over an integer prints as an integer.
-Written outside the worktree: only my scratch directory, `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-plain/adv1/` (probe scripts, `p1`–`p7`, logs). In the worktree I added build output under `target/adv1/` and `target/c-read-adversary1/`.
+Written outside the worktree: only my scratch directory, `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-plain/adv1/` (probe scripts, `p1`–`p7`, logs). In the worktree I added build output under `target/adv1/` and `target/c-read-adversary1/`.

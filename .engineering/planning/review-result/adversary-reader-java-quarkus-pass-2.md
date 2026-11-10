@@ -6,13 +6,13 @@ status: active
 title: Adversary pass 2 on the Quarkus project read
 relations:
 - reviews: story:reader-java-quarkus-refusals
-revision: 1
+revision: 2
 ---
-unit: story:reader-java-quarkus-refusals, adversary pass 2. Covers `c35dad2` plus my untracked test files in `/home/timo/.local/state/worktree/trees/b10x/codespec/rd-java-quarkus`. Origins were checked against `e6c404b`, the unit's parent `9dd7fd7` and `3f37d68`.
+unit: story:reader-java-quarkus-refusals, adversary pass 2. Covers `c35dad2` plus my untracked test files in `~/.local/state/worktree/trees/b10x/codespec/rd-java-quarkus`. Origins were checked against `e6c404b`, the unit's parent `9dd7fd7` and `3f37d68`.
 verdict: NEEDS-CHANGE
 cases: executed 98→114, red 9
 origin: introduced 6 / pre-existing 1 / undecided 0
-wrote-outside-worktree: 1 directory, `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv2/`
+wrote-outside-worktree: 1 directory, `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv2/`
 needs-coordinator: yes. F7: the quickstart now has 13 refusals against the acceptance limit of 10. To wire `Adversary3Test` into `adapters-check`, add a `Taskfile.yml` line after the `Adversary2Test` line with the same arguments, the work dir changed to `adversary3`.
 
 **1. Diff**
@@ -49,7 +49,7 @@ ok   adversary3_each_project_reads_twice_byte_equal
 
 **3. Suite run** (`adv2/suite.sh`, after the cases existed)
 
-`GOENV` points at a file that sets `GOFLAGS=-buildvcs=false`. Without it, `go build` fails on the empty `/home/timo/.git`, an environment problem.
+`GOENV` points at a file that sets `GOFLAGS=-buildvcs=false`. Without it, `go build` fails on the empty `~/.git`, an environment problem.
 ```
 javac exit 0
 ReaderTest exit 0      74 passed, 0 failed
@@ -126,7 +126,7 @@ Adversary3Test exit 1  7 passed, 9 failed   (the 9 above; the 7 mutant cases ok)
 
 **6. Written outside the worktree**
 
-`/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv2/` holds:
+`~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-quarkus/adv2/` holds:
 - probe projects `p1`–`p7` with their builds, `q/` (Quarkus enhancer harness and disassembly), `src-*` and `classes-*` for the base commits, `mutants/`, `twice/`, `link/`, the `suite*`/`test-classes` directories, logs and scripts.
 
 The Go build cache (`~/.cache/go-build`) was used as normal.

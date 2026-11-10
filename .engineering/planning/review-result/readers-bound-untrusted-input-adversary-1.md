@@ -6,7 +6,7 @@ status: active
 title: Adversary pass 1 on readers-bound-untrusted-input
 relations:
 - reviews: story:readers-bound-untrusted-input
-revision: 1
+revision: 2
 ---
 **Verdict:** I broke it in two places. The Rust reader now refuses ordinary, shallow sources: about 43 doc-commented functions in a row are enough. The C reader's memory still grows with the number of `.c` files, and 16 files of 19 bytes each made it abort.
 
@@ -76,7 +76,7 @@ The 9 `website/` changes were already in the tree's git status before I started;
 - **Not attempted:** C deep unary/ternary/`else if` near the JSON limit, the macro-expansion bomb, and the 16-file case without the memory cap.
 
 ### 6. Paths written outside the worktree
-In `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/bound/adv/`: `probe_rust.py`, `probe_c.py`, `probe_jvm.py`, `multiply16.log`, `jvm.log`, `rust-adv.log`, `c-adv.log`, `rust-suite.log`, `c-suite.log`. I removed the probe source directories.
+In `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/bound/adv/`: `probe_rust.py`, `probe_c.py`, `probe_jvm.py`, `multiply16.log`, `jvm.log`, `rust-adv.log`, `c-adv.log`, `rust-suite.log`, `c-suite.log`. I removed the probe source directories.
 
 Inside the tree, under `target/` (gitignored), the tests left `target/c-read-tests/adversary-bounds` (768K) and `target/rust-read-tests/adversary-bounds-*` (36K).
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:writers-validate-names
 kind: story
-status: active
+status: implemented
 title: Writers validate every name they emit
 summary: A cir/1 name that is not an identifier of the target language is refused by the Rust, C and Go writers; no writer panics on input.
 relations:
@@ -14,10 +14,11 @@ scope:
   path: adapters/go/cmd/codespec-write-go
 - confidence: inferred
   path: adapters/rust
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T03:37:01Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-10T03:37:01Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:04Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: Writers validate every name they emit
 

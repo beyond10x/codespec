@@ -340,49 +340,39 @@ hot(F, C, N) :- call{func: F, callee: C}, N = count{ call{func: F, callee: C} },
 /// every padding boundary of SHA-256.
 #[test]
 fn the_cache_digest_equals_sha256sum_across_the_padding_boundaries() {
-    assert_eq!(
-        env!("CARGO_PKG_VERSION"),
-        "0.6.1",
-        "vectors computed for 0.6.1"
-    );
-    let want = [
-        (
-            0,
-            "ebe532e560a104c198a7ca31a778d56aa0fda96c44a082f8bb51f0da92ec70d5",
-        ),
-        (
-            55,
-            "7b94f2bf7f005d46295ae050584734dc020876017f6d1cc9dd9a876306079cf6",
-        ),
-        (
-            56,
-            "65af19f57c423661ef1db6f982ba987c2d26a5731896070d46b59d2b1c8673d7",
-        ),
-        (
-            63,
-            "c2c08dcd6cf67565f884fbc748b354f10718766c16f205c4be66aab8d605bfc6",
-        ),
-        (
-            64,
-            "021e939e8bdfdd5a054da950e6b28de01c7bcedd30fe5d7e214ce63f09b089d7",
-        ),
-        (
-            65,
-            "4403088ee83a6f604d8bd8f103afbd56158cb2da88c5d6c61ce623b60da570b0",
-        ),
-        (
-            119,
-            "3ce299909c73ad4b28499c85fc9c1aac043923841c91aac038ff5657667d8552",
-        ),
-        (
-            1000,
-            "e4065315183c452812d3a1612092312032f48314c62626c4c192ae2ab6544810",
-        ),
-    ];
-    for (n, d) in want {
-        assert_eq!(codespec_query::digest(&[vec![b'a'; n]]), d, "{n} bytes");
+    // The key is rebuilt here from `sha256sum`, so the vectors follow the crate's version.
+    fn sha256sum(bytes: &[u8]) -> String {
+        use std::io::Write;
+        let mut c = Command::new("sha256sum")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("sha256sum runs");
+        c.stdin.take().unwrap().write_all(bytes).unwrap();
+        let out = c.wait_with_output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()[..64].to_string()
     }
-    let two = "d3842d87176f252a65859ee4d37aedcc1ecf9d1586fcc596366105f03d355b75";
+    fn want(documents: &[Vec<u8>]) -> String {
+        let mut each: Vec<String> = documents.iter().map(|d| sha256sum(d)).collect();
+        each.sort();
+        let mut key = format!("codespec-query-facts/1\n{}\n", env!("CARGO_PKG_VERSION"));
+        for e in each {
+            key += &e;
+            key.push('\n');
+        }
+        sha256sum(key.as_bytes())
+    }
+    // One fixed vector, of the SHA-256 the key is built from: 64 bytes of `a`.
+    assert_eq!(
+        sha256sum(&[b'a'; 64]),
+        "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"
+    );
+    for n in [0, 55, 56, 63, 64, 65, 119, 1000] {
+        let docs = [vec![b'a'; n]];
+        assert_eq!(codespec_query::digest(&docs), want(&docs), "{n} bytes");
+    }
+    let two = want(&[vec![b'a'; 55], vec![b'a'; 64]]);
     assert_eq!(
         codespec_query::digest(&[vec![b'a'; 55], vec![b'a'; 64]]),
         two

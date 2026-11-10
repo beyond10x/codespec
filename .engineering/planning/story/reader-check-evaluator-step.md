@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-check-evaluator-step
 kind: story
-status: active
+status: implemented
 title: The reader check runs what the Go writer refuses through the evaluator
 summary: Step 4 of the reader check falls back to the evaluator when codespec-write-go refuses, so decl.union can be judged.
 relations:
@@ -14,10 +14,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/conformance
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:40Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":2}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:40Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:01Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: The reader check runs what the Go writer refuses through the evaluator
 

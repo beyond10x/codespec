@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "cir",
-    "version": "0.6.1",
-    "manifest_sha256": "3c3852a03564830daed5dcb91f86f0fab36f142bcf25d984c9c1bf5472905126"
+    "version": "0.7.0",
+    "manifest_sha256": "281c5648ebeb507ea60d4ad6b711e52c68dbc881d34071535178be9e82d1e77d"
   },
   "kit": {
-    "version": "0.6.1",
-    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
+    "version": "0.7.0",
+    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
   },
-  "codespec": "0.6.1",
+  "codespec": "0.7.0",
   "features": [
     {
       "id": "assign.add",

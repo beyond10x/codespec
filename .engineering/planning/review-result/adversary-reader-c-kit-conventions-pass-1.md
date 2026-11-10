@@ -6,9 +6,9 @@ status: active
 title: Adversary pass 1 on the C reader's runtime-form read
 relations:
 - reviews: story:reader-c-kit-conventions
-revision: 1
+revision: 2
 ---
-unit: `story:reader-c-kit-conventions`, HEAD `44f8166` (base `e6c404b`), tree `/home/timo/.local/state/worktree/trees/b10x/codespec/rd-c-conv` plus one new untracked file
+unit: `story:reader-c-kit-conventions`, HEAD `44f8166` (base `e6c404b`), tree `~/.local/state/worktree/trees/b10x/codespec/rd-c-conv` plus one new untracked file
 verdict: NEEDS-CHANGE
 cases: executed 73→105, red 14
 origin: introduced 12 / pre-existing 1 / undecided 0
@@ -120,7 +120,7 @@ Mutants were compiled with `rustup run 1.97 rustc` against the tree's dependency
 - `codespec-run-c`: two sources with the same `static` name, or a source with `main`, fail to compile; neither runs silently.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-conv/adv1/` (467 MB): `probe.sh`, `twice.sh`, `goenv`, `p/*` (probes), `twice/`, `mut/*` (25 mutant source copies and binaries, `build.sh`, `run.sh`, `kill.sh`, `all.sh`, `mutate.py`, `all.log`), `red-alone*.log`, `alone3.log`, `alone4.log`, `suite.log`, `suite2.log`.
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/c-conv/adv1/` (467 MB): `probe.sh`, `twice.sh`, `goenv`, `p/*` (probes), `twice/`, `mut/*` (25 mutant source copies and binaries, `build.sh`, `run.sh`, `kill.sh`, `all.sh`, `mutate.py`, `all.log`), `red-alone*.log`, `alone3.log`, `alone4.log`, `suite.log`, `suite2.log`.
 - Inside the tree, untracked under `target/`: `target/c-read-adversary2/` (1.1 MB).
 
 `git status --short`:

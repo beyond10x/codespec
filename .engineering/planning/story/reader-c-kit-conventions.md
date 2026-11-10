@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-c-kit-conventions
 kind: story
-status: active
+status: implemented
 title: The C reader claims the kit features C writes by convention
 summary: codespec-read-c recognises documented C conventions for slices, maps, interfaces, errors, generics and closures, and claims their kit features.
 relations:
@@ -15,10 +15,11 @@ scope:
   path: adapters/c-run
 - confidence: inferred
   path: crates/conformance/src/conform.rs
-revision: 10
+revision: 11
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":7}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:40Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"review_outcome":7}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:00Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"test_result":1,"review_outcome":9}}}
 ---
 # Story: The C reader reads the runtime forms of strings, slices, maps and errors
 

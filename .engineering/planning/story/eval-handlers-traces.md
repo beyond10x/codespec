@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:eval-handlers-traces
 kind: story
-status: active
+status: implemented
 title: Effect handlers, sessions and traces
 relations:
 - decomposes: epic:cir-evaluator
@@ -10,10 +10,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/eval
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-11-10T17:51:59Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: Effect handlers, sessions and traces
 

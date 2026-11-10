@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-java-quarkus-refusals
 kind: story
-status: active
+status: implemented
 title: The Quarkus quickstart reads with at most ten refusals
 summary: Entities, constructors, nested classes and static fields of a Quarkus application are read instead of refused; jar throws stay refused.
 relations:
@@ -13,10 +13,11 @@ scope:
   path: adapters/java
 - confidence: inferred
   path: adapters/jvm
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:02Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":5}}}
 ---
 # Story: The Quarkus quickstart reads with at most ten refusals
 

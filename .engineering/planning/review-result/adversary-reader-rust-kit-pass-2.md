@@ -6,7 +6,7 @@ status: active
 title: Adversary pass 2 on the Rust reader's kit unit
 relations:
 - reviews: story:reader-rust-kit
-revision: 1
+revision: 2
 ---
 unit: story:reader-rust-kit, branch `impl/reader-rust-kit` at `acb92f7` (rd-rust-kit tree, plus one untracked test file)
 verdict: NEEDS-CHANGE
@@ -116,7 +116,7 @@ What reaches each finding:
 - **Strings:** comparison order is right. Widths without alignment are refused.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/rust-kit/adv2/` (5 MB after cleanup): probes, logs and the mutation scripts.
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/rust-kit/adv2/` (5 MB after cleanup): probes, logs and the mutation scripts.
 - I deleted its build outputs: `mut-target`, `base-target`, `base`, `build`, `mut/ws`.
 - Inside the tree, gitignored: `target/adversary2/` (348 KB), written by the new test file.
 

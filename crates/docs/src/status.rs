@@ -18,7 +18,7 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.6.1";
+pub const VERSION: &str = "0.7.0";
 
 /// The date the list below was last checked against the tree.
 const AS_OF: &str = "2026-11-08";
@@ -546,7 +546,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.6.1\""));
+        assert!(document.contains("\"version\": \"0.7.0\""));
     }
 
     #[test]

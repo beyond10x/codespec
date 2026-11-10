@@ -6,7 +6,7 @@ status: active
 title: Adversary pass 1 on eval-handlers-traces
 relations:
 - reviews: story:eval-handlers-traces
-revision: 1
+revision: 2
 ---
 unit: commit 567233f (handlers, stubs, sessions, traces), checked in the working tree of impl/eval-handlers-traces, which contains only my two untracked test paths
 verdict: NEEDS-CHANGE
@@ -52,7 +52,7 @@ Short verdict: I broke it 5 ways, all in sessions and stubs. The worst one: a se
    - `--calls` path: unchanged apart from the new handlers (by reading the code against d0093ce).
    - Stubbed lines go to stderr only; stdout stays the run's output.
 
-6. **Paths written outside the worktree** (all under `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evtraces/adv/`): `case.log`, `suite.sh`, `before.log`, `after.log`, `cli.log`, `suite.done`. The build also wrote `target/tmp/adv-handlers-reader/` inside the tree's `target/`. I took no worktree lease of my own; the coordinator's tree was used as handed over.
+6. **Paths written outside the worktree** (all under `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evtraces/adv/`): `case.log`, `suite.sh`, `before.log`, `after.log`, `cli.log`, `suite.done`. The build also wrote `target/tmp/adv-handlers-reader/` inside the tree's `target/`. I took no worktree lease of my own; the coordinator's tree was used as handed over.
 
 7. Findings block:
 

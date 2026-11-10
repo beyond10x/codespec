@@ -6,12 +6,12 @@ status: active
 title: Adversary pass 1 on reader-check-evaluator-step
 relations:
 - reviews: story:reader-check-evaluator-step
-revision: 1
+revision: 2
 ---
 The unit is red on 2 cases I wrote. Neither shows a wrong reader module passing through the evaluator step on the current kit.
 
 ```
-unit: impl/reader-check-evaluator-step, commit 72d071d, tree /home/timo/.local/state/worktree/trees/b10x/codespec/rd-evalstep
+unit: impl/reader-check-evaluator-step, commit 72d071d, tree ~/.local/state/worktree/trees/b10x/codespec/rd-evalstep
 verdict: NEEDS-CHANGE
 cases: executed 2→4, red 2
 origin: introduced 4 / pre-existing 0 / undecided 0
@@ -73,10 +73,10 @@ My only change is one new, uncommitted test file: `?? crates/conformance/tests/a
 - `stopped at ` in stderr cannot come from the program itself: the evaluator's handlers do not write to stderr.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/` (directory)
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/run1.log`
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/suite.sh`
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/suite.log`
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/` (directory)
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/run1.log`
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/suite.sh`
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/evalstep/adv/suite.log`
 
 Inside the worktree, the tests also wrote `target/conform-tests/adversary-evalstep-{stop-pass,adapters}/`.
 

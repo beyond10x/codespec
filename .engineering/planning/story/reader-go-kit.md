@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-go-kit
 kind: story
-status: active
+status: implemented
 title: The Go reader claims every feature Go source reaches
 summary: codespec-read-go claims type.tuple and documents the five features Go source does not reach.
 relations:
@@ -10,10 +10,11 @@ relations:
 scope:
 - confidence: inferred
   path: adapters/go/cmd/codespec-read-go
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:38Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":5}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:38Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:01Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":6}}}
 ---
 # Story: The Go reader claims every feature Go source reaches
 

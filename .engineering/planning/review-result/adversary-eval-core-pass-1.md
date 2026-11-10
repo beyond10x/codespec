@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 1: story:eval-core'
 relations:
 - reviews: story:eval-core
-revision: 1
+revision: 2
 ---
 I wrote 15 new test cases and all 15 fail: 4 major findings, 9 minor and 2 notes. One more scope finding (F16) has no test. The kit acceptance still holds: the existing 10 tests pass, including the 135-case kit check. Every finding is in new code (`crates/eval`), so all are marked introduced. The tracked-file diff is empty. The only additions are untracked test files, all uncommitted.
 
@@ -38,5 +38,5 @@ I wrote 15 new test cases and all 15 fail: 4 major findings, 9 minor and 2 notes
 6. Stopped with Go's message: nil dereference, index out of range, division by zero, write to a nil map; unbounded recursion stops after 1000 nested calls without crashing.
 7. Kit checks held: 135 cases match 135 directories, a case with no calls is refused, a case directory with a missing file is refused, and two runs are byte-equal. Basic conversions (`int32(x)` and the like) and variadic function literals are left foreign by the Go reader, so float-to-int conversion is reachable only from a hand-written document; not reported.
 8. Origin: `crates/eval` does not exist at base `d614aaf`, so every finding is introduced. F1's unfolded constants come from the existing Go reader; the wrong output is the evaluator's.
-9. Files outside the worktree: only `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/eval-core/adv1/` (probe Go module, scripts, logs, hostile documents). Worktree lease taken and released.
+9. Files outside the worktree: only `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/eval-core/adv1/` (probe Go module, scripts, logs, hostile documents). Worktree lease taken and released.
 10. Fixes I'd suggest: fold constant-only binops exactly (F1); convert the concrete side of an interface comparison, map key or append value (F2); count a step per loop iteration (F3); iterate a range over an int lazily (F4); check the module's references and type sizes before running (F10–F13).

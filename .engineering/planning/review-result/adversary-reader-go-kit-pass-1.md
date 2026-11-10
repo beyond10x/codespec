@@ -6,13 +6,13 @@ status: active
 title: 'Adversary, pass 1: story:reader-go-kit'
 relations:
 - reviews: story:reader-go-kit
-revision: 1
+revision: 2
 ---
-unit: story:reader-go-kit at commit 44ed324 (base fef8829), plus my uncommitted test files in /home/timo/.local/state/worktree/trees/b10x/codespec/rd-go-kit
+unit: story:reader-go-kit at commit 44ed324 (base fef8829), plus my uncommitted test files in ~/.local/state/worktree/trees/b10x/codespec/rd-go-kit
 verdict: CONFIRMED
 cases: executed 62→67, red 3
 origin: introduced 5 / pre-existing 1 / undecided 0
-wrote-outside-worktree: 1 directory, /home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/go-kit/adv1
+wrote-outside-worktree: 1 directory, ~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/go-kit/adv1
 needs-coordinator: none
 
 No blockers. The unit's own claims hold: the range refusal is right on every shape I tried, none of the listed type assertions could be made to panic, and the reader never prints any of the five unclaimed features. Three new cases are red: one existing defect in how tuples are passed as arguments, and two small range edge cases.
@@ -97,7 +97,7 @@ Only test files and fixtures (`testdata/adversary2/tuplearg/p.go`, `testdata/adv
 - **Other tuple shapes:** three results, named results (kept foreign), `return g()`, `return h()` through a function value, a generic tuple, `_, b := g()`, and a `:=` that redeclares a variable read correctly; the C writer gives the Go result 12. `c, _ = g()` is refused.
 - **The five unclaimed features:** the reader has no code path that prints `union`, `zero`, `sorted_keys`, `unit` or `lookup_else`. The `reader-go.json` summary is pass 115, fail 0, pass_unclaimed 0 (it was 114 and 1).
 
-**6. Written outside the worktree:** /home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/go-kit/adv1. It holds the probe packages (`rng`, `tup`, `tup2`, `tup3`, `sk`, `lab`, `pan/*`), the scripts (`mk.sh`, `mk2.sh`, `panics.sh`, `mutants.sh`, `sum.jq`), the binaries `reader` and `reader-base`, a base source tree `base/`, the mutant copies `mut/`, the symlink `conformance` pointing into the worktree, the writer outputs `out-*` and `o3-*`, and the `*.json` and `*.log` files.
+**6. Written outside the worktree:** ~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/go-kit/adv1. It holds the probe packages (`rng`, `tup`, `tup2`, `tup3`, `sk`, `lab`, `pan/*`), the scripts (`mk.sh`, `mk2.sh`, `panics.sh`, `mutants.sh`, `sum.jq`), the binaries `reader` and `reader-base`, a base source tree `base/`, the mutant copies `mut/`, the symlink `conformance` pointing into the worktree, the writer outputs `out-*` and `o3-*`, and the `*.json` and `*.log` files.
 
 **7.**
 ```findings

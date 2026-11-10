@@ -2,15 +2,16 @@
 format: aep.planning-md/3
 id: story:cir1-raise-out-of-entry
 kind: story
-status: active
+status: implemented
 title: cir/1 carries an exception raised out of an entry
 summary: A raise statement and an exception-mapper entry kind, so jar exceptions thrown in a Quarkus resource are read.
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T08:51:39Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T08:51:39Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-10T17:51:58Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: cir/1 carries an exception raised out of an entry
 

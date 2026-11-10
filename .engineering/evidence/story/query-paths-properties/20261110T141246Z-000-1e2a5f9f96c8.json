@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T14:12:46Z",
+  "actor": "human:timo",
+  "artifact": "story:query-paths-properties",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:query-paths-properties-adversary-1",
+    "reference": "25c872b",
+    "review": "review-result:query-paths-properties-adversary-1",
+    "outcome": "fixed"
+  }
+}

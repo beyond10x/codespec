@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 1: story:reader-java-kit'
 relations:
 - reviews: story:reader-java-kit
-revision: 1
+revision: 2
 ---
 ```json
 [
@@ -29,4 +29,4 @@ revision: 1
 - **Held (union, claims, hostile input):** `READ_UNIONS = false` holds: the union is put and removed over the same `decls` loop, so nothing emits one. All 103 kit modules use their subject. 30 hostile packages gave no stack trace; each was refused with a reason or read correctly.
 - **Held (runner, Groovy):** the runner's `Object` printing matches the Go reference for Long/Integer/Short/Byte/Boolean/String/enum/List. Double, Character, null and Map are refused (exit 2) on both sides. One mismatch: a `List<Object>` prints in Java but the Go runner refuses `[]any` (exit 2), so it fails loudly. Groovy reading is untouched: the only shared code that changed is `Runner.java`.
 - **Not done:** the quickstart comparison. There is no offline clone, so base vs head output could not be compared.
-- **Written outside the worktree:** `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-kit/adv1/` (probes, scripts, head/base class builds, logs). Build output went inside the worktree, in `target/adv1-work`, `target/adv1-test-work`, `target/adv1-test-work-base`, `target/adv1-reader-work` and `target/adv1-test-classes`. My lease is released.
+- **Written outside the worktree:** `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/java-kit/adv1/` (probes, scripts, head/base class builds, logs). Build output went inside the worktree, in `target/adv1-work`, `target/adv1-test-work`, `target/adv1-test-work-base`, `target/adv1-reader-work` and `target/adv1-test-classes`. My lease is released.

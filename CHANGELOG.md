@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.7.0
+
 ### Added
 
 - `cir/1` has `raise`, a statement that leaves a function and every caller up to the framework

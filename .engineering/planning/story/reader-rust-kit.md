@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-rust-kit
 kind: story
-status: active
+status: implemented
 title: The Rust reader claims the remaining kit features
 summary: codespec-read-rust goes from 89 to at least 105 of the 120 features a reader can claim.
 relations:
@@ -10,10 +10,11 @@ relations:
 scope:
 - confidence: inferred
   path: adapters/rust-read
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:38Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":5}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:38Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:02Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":7}}}
 ---
 # Story: The Rust reader claims the remaining kit features
 

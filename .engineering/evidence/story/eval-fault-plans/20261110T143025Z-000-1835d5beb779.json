@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-10T14:30:25Z",
+  "actor": "human:timo",
+  "artifact": "story:eval-fault-plans",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:eval-fault-plans-adversary-1",
+    "reference": "52226d5",
+    "review": "review-result:eval-fault-plans-adversary-1",
+    "outcome": "fixed"
+  }
+}

@@ -6,7 +6,7 @@ status: active
 title: 'Adversary, pass 1: story:query-core'
 relations:
 - reviews: story:query-core
-revision: 1
+revision: 2
 ---
 ```json
 [
@@ -33,5 +33,5 @@ What held, cache key and node ids: the cache digest equals `sha256sum` on docume
 What held, evaluation: negation over a function-value call, an interface call or a foreign statement without a call list gives `possible`. Negation or aggregation inside a recursion is refused, including through the internal `__not` helper rule, and so are unbound head or negated variables.
 What held, cache: the write is atomic (temp file, then rename), and a corrupt or other-version file is rejected and rebuilt. Two threads of one process share the temp file name, but a partial file fails to parse and gets rebuilt, so no wrong answer came from it. The cache always lands in the first document's own directory.
 Side effect: my first two CLI runs left 8 core dumps (`crates/cli/core.<pid>`, all my own processes). I removed them, and the CLI cases now run under `ulimit -c 0`.
-Wrote outside the worktree: only `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/query-core/adv1/` (run logs, `ranged.cir.json`, `p.cq`, `d*`/`k*` digest inputs, `.cq/` and `dup/` probe caches). Build output went only to `<worktree>/target`.
+Wrote outside the worktree: only `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/cs/query-core/adv1/` (run logs, `ranged.cir.json`, `p.cq`, `d*`/`k*` digest inputs, `.cq/` and `dup/` probe caches). Build output went only to `<worktree>/target`.
 F7's release-build behaviour is reasoned, not run. Disk had 54 GB free. Lease `adv1-query-core-2db1a4b7` acquired and released.

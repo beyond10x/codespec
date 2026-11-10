@@ -6,7 +6,7 @@ status: active
 title: 'Security review, pass 1: story:writers-validate-names'
 relations:
 - reviews: story:writers-validate-names
-revision: 1
+revision: 2
 ---
 I found three gaps. The worst is in the C writer: a doc comment can end its own C comment, so text from the document is compiled as C (blocker, existed before this unit). Two smaller ones are in the Go writer. The shared name check, the Rust writer's doc comments and the Go writer's names and literals held up. Findings cover commit `58818b2` plus my untracked test files; I committed nothing and changed no implementation file.
 
@@ -62,5 +62,5 @@ Strict reading is not the only guard: the Rust and C binaries call `Module::from
 Each file alone: C cases exit 101 (2 red); Go `go test -run TestSecreview1` exit 1; model exit 0; Rust exit 0. C at base 0a914ea, from a git archive in scratch: exit 101, same 2 red. Go at base: exit 1, same failures.
 Suite (`cargo test --no-fail-fast`, model + Rust writer + C writer, `--target-dir target/secreview`): executed 192 -> 197, exit 101 both times. Red: my 2 C cases plus 12 failures in the other reviewer's adversary1 files, which also fail with my cases skipped.
 `go test ./cmd/codespec-write-go/` (counting test and subtest runs): 90 -> 98, exit 0 without my cases, exit 1 with them.
-Written outside the worktree, all under /home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/secreview1/: logs (*.log), scripts (alone.sh, suite.sh, suite2.sh), base/ and base-full/ (exports of 0a914ea) and base-target/ (their build).
+Written outside the worktree, all under ~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/sec/writers/secreview1/: logs (*.log), scripts (alone.sh, suite.sh, suite2.sh), base/ and base-full/ (exports of 0a914ea) and base-target/ (their build).
 Nothing written by these tests was built or run. Disk: 37 GB free at the end.

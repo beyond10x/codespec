@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-10T17:51:56Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-java-quarkus-refusals",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on the 0.7.0 release tree: 133 suites, 986 passed, 0 failed"
+  }
+}

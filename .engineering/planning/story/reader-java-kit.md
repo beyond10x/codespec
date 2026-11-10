@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-java-kit
 kind: story
-status: active
+status: implemented
 title: The Java reader claims the remaining kit features
 summary: codespec-read-java goes from 77 to at least 100 of the 120 features a reader can claim.
 relations:
@@ -12,10 +12,11 @@ scope:
   path: adapters/java
 - confidence: inferred
   path: adapters/jvm
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":7}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:39Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":7}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:52:01Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1,"review_outcome":8}}}
 ---
 # Story: The Java reader claims the remaining kit features
 

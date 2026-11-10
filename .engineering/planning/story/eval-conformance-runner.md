@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:eval-conformance-runner
 kind: story
-status: active
+status: implemented
 title: The evaluator as a conformance runner, and differential runs
 relations:
 - decomposes: epic:cir-evaluator
@@ -10,10 +10,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/eval
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:38Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-11-10T17:51:58Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":2}}}
 ---
 # Story: The evaluator as a conformance runner, and differential runs
 

@@ -6,7 +6,7 @@ status: active
 title: Adversary pass 1 on the Rust reader's kit unit
 relations:
 - reviews: story:reader-rust-kit
-revision: 1
+revision: 2
 ---
 The adversary pass made the suite fail: 9 new cases fail on the unit's code, three of them silent wrong reads of `blocker` severity.
 
@@ -73,7 +73,7 @@ What reaches each one: F1, F2 and F3 are ordinary valid Rust. F4 needs a crate t
 - Determinism: every probe read twice was byte-equal.
 
 **6. Paths written outside the worktree**
-- `/home/timo/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/rust-kit/adv1/` (134 MB): probes, logs and the mutation workspace.
+- `~/.cache/scratch/2db1a4b7-2d2d-4a62-bab2-d71ac128826e/rd/rust-kit/adv1/` (134 MB): probes, logs and the mutation workspace.
 
 Inside the worktree, all gitignored under `target/`, I created these new paths, about 1 GB in total. Most of it is `target/adv1-mut-cases` (783 MB), which can be deleted:
 - `target/adv1-go`
