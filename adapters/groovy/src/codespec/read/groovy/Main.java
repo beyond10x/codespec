@@ -95,7 +95,12 @@ public final class Main {
         return b.toString();
     }
 
+    /** Runs the reader on the stack {@link codespec.jvm.Bounded} states; deeper is a refusal. */
     public static void main(String[] args) {
+        codespec.jvm.Bounded.run("codespec-read-groovy", () -> run(args));
+    }
+
+    private static void run(String[] args) {
         PrintStream stdout = new PrintStream(System.out, false, StandardCharsets.UTF_8);
         if (args.length == 1 && args[0].equals("--describe")) {
             stdout.print(describe());

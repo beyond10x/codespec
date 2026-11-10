@@ -1648,7 +1648,7 @@ impl<'a> Body<'a> {
                     ));
                 }
                 [t] => {
-                    let j = J::Obj(vec![("qualType".into(), J::Str(ret.clone()))]);
+                    let j = J::Obj(vec![("qualType".into(), J::Str(ret.as_str().into()))]);
                     self.agrees(&ret, &j, t)
                         .map_err(|e| format!("its result: {e}"))?;
                 }
@@ -1675,7 +1675,7 @@ impl<'a> Body<'a> {
                         ));
                     }
                     for (i, ((fname, fty), t)) in fields.iter().zip(many).enumerate() {
-                        let j = J::Obj(vec![("qualType".into(), J::Str(fty.clone()))]);
+                        let j = J::Obj(vec![("qualType".into(), J::Str(fty.as_str().into()))]);
                         if *fname != format!("r{i}") {
                             return Err(format!(
                                 "the struct {want}, whose fields are not r0 … r{}",

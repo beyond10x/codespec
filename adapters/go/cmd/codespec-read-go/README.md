@@ -13,6 +13,17 @@ codespec-read-go --describe
 conformance kit case it reads, `stmt.foreign` among them (a `defer` kept verbatim). Facts are
 computed by `codespec pass` and never claimed by a reader.
 
+## Limits
+
+The reader sets no limit of its own; its libraries bound depth, and a source past a bound is
+refused with exit 1, not a crash. `go/parser` refuses nesting past 100 000 levels
+(`maxNestLev`), the levels a chain of binary operators builds counted too
+(`codespec-read-go: <file>:<line>:<col>: exceeded max nesting depth`). `encoding/json` refuses
+to write a module nested past 10 000 levels (`maxNestingDepth`), which a chain of 99 000
+operators the parser takes builds (`codespec-read-go: exceeded max depth`). Below those, Go's
+stacks grow as the reader recurses, up to the runtime's 1 GB. Size is not limited.
+`bounds_test.go` holds both.
+
 ## Features left unclaimed
 
 The reader does not read the kit case of these five to its feature. For the first four the case is

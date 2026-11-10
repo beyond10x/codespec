@@ -213,6 +213,12 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   reader refuses a near miss of each runtime form it reads: `adapters/c-read/tests/runtime.rs`,
   `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`; what the C writer
   writes for the kit reads back with at least 100 modules free of refusals: `task c-round-trip`.
+- A reader refuses a source past its stated limits of size and nesting with exit 1 and a message,
+  never a crash (limits in each reader's crate doc or README and `docs/conformance.md`):
+  `adapters/rust-read/tests/bounds.rs`, `adapters/c-read/tests/bounds.rs`, the tree's budget
+  `adapters/c-read/src/json.rs::tests::a_header_at_a_long_path_costs_the_tree_no_more_than_clang_s_json`,
+  `adapters/go/cmd/codespec-read-go/bounds_test.go::TestASourceNestedPastTheLibrariesBoundsIsRefusedNotACrash`,
+  `adapters/jvm/test/codespec/jvm/BoundsTest.java` (`task adapters-check`).
 - Strict reading refuses an undeclared extern call:
   `crates/model/tests/model.rs::an_extern_call_naming_an_undeclared_extern_is_refused`; the Go
   writer's `expr-extern` output reads back to the same `cir/1`:
