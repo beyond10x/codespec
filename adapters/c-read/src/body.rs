@@ -159,6 +159,65 @@ pub(crate) fn fits(v: i128, t: &Type) -> bool {
     }
 }
 
+/// Whether `n`, under parentheses, is a call.
+fn bare_call(n: &J) -> bool {
+    strip(n).kind() == "CallExpr"
+}
+
+/// Whether `e` makes a call, as the C writer's `has_call` counts one.
+pub(crate) fn has_call(e: &Expr) -> bool {
+    let mut found = false;
+    codespec_model::walk::walk_expr(e, &mut |x| {
+        found |= matches!(
+            x,
+            Expr::Call { .. }
+                | Expr::Method { .. }
+                | Expr::Extern { .. }
+                | Expr::ExternMethod { .. }
+                | Expr::CallValue { .. }
+                | Expr::IfaceCall { .. }
+        ) || matches!(x, Expr::Unop { op, .. } if op == "<-")
+            || matches!(x, Expr::Intrinsic { name, .. } if name == "println");
+    });
+    found
+}
+
+/// Refuse statements holding an expression of which two operands make calls: C leaves the
+/// order of a call's arguments, of an operator's operands (but `&&`, `||`), of an initializer's
+/// values and of an assignment's sides unspecified, and `cir/1` evaluates left to right. The C
+/// writer refuses the same.
+pub(crate) fn ordered(stmts: &[Stmt]) -> R<()> {
+    let two = |es: &mut dyn Iterator<Item = &Expr>| es.filter(|e| has_call(e)).count() > 1;
+    let mut bad = false;
+    codespec_model::walk::walk_stmts(stmts, &mut |s| {
+        bad |= match s {
+            // Several targets are the runtime form's temporaries, each its own C statement.
+            Stmt::Assign { lhs, rhs, .. } if lhs.len() == 1 => two(&mut lhs.iter().chain(rhs)),
+            Stmt::Return { results, .. } => two(&mut results.iter()),
+            Stmt::Send { chan, x, .. } => two(&mut [chan, x].into_iter()),
+            Stmt::LookupElse { map, index, .. } => two(&mut [map, index].into_iter()),
+            _ => false,
+        };
+        codespec_model::walk::stmt_exprs(s, &mut |e| {
+            codespec_model::walk::walk_expr(e, &mut |x| {
+                if matches!(x, Expr::Binop { op, .. } if op == "&&" || op == "||") {
+                    return;
+                }
+                let mut kids = Vec::new();
+                codespec_model::walk::children(x, &mut |k| kids.push(k));
+                bad |= two(&mut kids.into_iter());
+            });
+        });
+    });
+    if bad {
+        return Err(
+            "two operands of one expression make calls, and C leaves their order unspecified"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 /// A C string literal in Go's spelling: printable ASCII and the escapes both languages share.
 pub(crate) fn string_literal(value: &str) -> R<String> {
     let inner = value
@@ -248,7 +307,13 @@ impl<'a> Body<'a> {
     pub(crate) fn stmts(&mut self, kids: &[J], out: &mut Vec<Stmt>) {
         let mut i = 0;
         while i < kids.len() {
-            match self.rt_run(&kids[i..]) {
+            let run = self.rt_run(&kids[i..]).map(|(n, r)| {
+                (
+                    n,
+                    r.and_then(|s| ordered(std::slice::from_ref(&s)).map(|()| s)),
+                )
+            });
+            match run {
                 Some((n, Ok(s))) => {
                     out.push(s);
                     i += n;
@@ -286,7 +351,8 @@ impl<'a> Body<'a> {
     /// Read one statement into `out`; one it cannot read is kept as `foreign` with a refusal.
     fn stmt(&mut self, n: &J, out: &mut Vec<Stmt>) {
         let mark = out.len();
-        if let Err(reason) = self.try_stmt(n, out) {
+        let r = self.try_stmt(n, out).and_then(|()| ordered(&out[mark..]));
+        if let Err(reason) = r {
             out.truncate(mark);
             self.foreign(n, reason, out);
         }
@@ -354,6 +420,24 @@ impl<'a> Body<'a> {
                     out.push(r?);
                     return Ok(());
                 }
+                if let Some(r) = self.rt_range_block(n, &pos) {
+                    out.push(r?);
+                    return Ok(());
+                }
+                // `{ T i = e; for (; c; post) { … } }`: the C writer's `for i := e; c; post`.
+                if let [d, f] = kids
+                    && d.kind() == "DeclStmt"
+                    && f.kind() == "ForStmt"
+                    && let [init, condvar, cond, inc, body] = f.inner()
+                    && init.kind().is_empty()
+                    && condvar.kind().is_empty()
+                {
+                    self.scopes.push(Vec::new());
+                    let r = self.for_stmt(d, cond, inc, body, pos);
+                    self.scopes.pop();
+                    out.push(r?);
+                    return Ok(());
+                }
                 if kids.iter().any(|k| k.kind() == "DeclStmt") {
                     return Err("a block with declarations of its own".into());
                 }
@@ -373,7 +457,16 @@ impl<'a> Body<'a> {
                 let results = match kids.first() {
                     Some(e) if self.results.len() > 1 => self.tuple_return(e)?,
                     Some(e) => match self.results.first().cloned() {
-                        Some(t) => vec![self.value_want(e, &t)?],
+                        Some(t) => {
+                            let v = self.value_want(e, &t)?;
+                            if *v.t() != t && t != Type::Any {
+                                return Err(
+                                    "a returned value of another type than its codespec: func line's result"
+                                        .into(),
+                                );
+                            }
+                            vec![v]
+                        }
                         None => vec![self.value(e)?],
                     },
                     None => Vec::new(),
@@ -553,11 +646,32 @@ impl<'a> Body<'a> {
         if !d.s("storageClass").is_empty() {
             return Err(format!("a {} local", d.s("storageClass")));
         }
-        let t = self.local_ty(d)?;
+        let mut t = self.local_ty(d)?;
         let Some(init) = d.inner().first() else {
             return Err("a declaration without an initializer".into());
         };
         let value = self.value_want(init, &t)?;
+        // In runtime form `int64_t` is `int` or `int64` and `uint64_t` `uint` or `uint64`: a
+        // local initialized with a value of the other one is of the value's type.
+        if self.tables.runtime
+            && let (
+                Type::Int {
+                    width: IntWidth::W64 | IntWidth::Platform,
+                    signed: a,
+                },
+                Type::Int {
+                    width: IntWidth::W64 | IntWidth::Platform,
+                    signed: b,
+                },
+            ) = (&t, value.t())
+            && a == b
+            && matches!(
+                d.get("type").s("qualType").trim(),
+                "int64_t" | "uint64_t" | "const int64_t" | "const uint64_t"
+            )
+        {
+            t = value.t().clone();
+        }
         if *value.t() != t {
             return Err("an initializer whose type is not the declared one".into());
         }
@@ -709,6 +823,13 @@ impl<'a> Body<'a> {
                     pos,
                 })
             }
+            // `(void)f(…);`: the call, its result dropped, as the C writer writes a call of a
+            // function whose result is unused.
+            ("CStyleCastExpr", _)
+                if n.get("type").s("qualType") == "void" && bare_call(&kids[0]) =>
+            {
+                self.expr_stmt(&kids[0], pos)
+            }
             ("", _) => Err("an empty statement".into()),
             (k, _) => Err(format!(
                 "a {k} as a statement: only an assignment, ++, -- or a call is read"
@@ -749,7 +870,7 @@ impl<'a> Body<'a> {
     }
 
     /// The type a newtype of the module is defined over; any other type itself.
-    fn under<'t>(&'t self, t: &'t Type) -> &'t Type {
+    pub(crate) fn under<'t>(&'t self, t: &'t Type) -> &'t Type {
         match t {
             Type::Named { name, .. } => self.tables.newtypes.get(name).unwrap_or(t),
             _ => t,
@@ -1215,8 +1336,32 @@ impl<'a> Body<'a> {
             _ => self.ty(n)?,
         };
         let mut args = Vec::new();
-        for a in &kids[1..] {
-            args.push(self.value(a)?);
+        let typed = self
+            .tables
+            .sigs
+            .get(&name)
+            .filter(|_| self.tables.funcs.contains(&name))
+            .map(|(ps, _)| ps.clone());
+        if let Some(ps) = &typed
+            && ps.len() != kids.len() - 1
+        {
+            return Err(format!(
+                "a call of {name} with another number of arguments than its codespec: func line"
+            ));
+        }
+        for (i, a) in kids[1..].iter().enumerate() {
+            match typed.as_ref().map(|ps| &ps[i]) {
+                Some(p) => {
+                    let v = self.value_want(a, p)?;
+                    if v.t() != p && *p != Type::Any {
+                        return Err(format!(
+                            "a call of {name} whose argument {i} is not of its parameter's type"
+                        ));
+                    }
+                    args.push(v);
+                }
+                None => args.push(self.value(a)?),
+            }
         }
         if self.tables.funcs.contains(&name) {
             return Ok(Expr::Call {

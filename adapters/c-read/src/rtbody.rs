@@ -2,9 +2,9 @@
 //! section "C in runtime form" lists, read to its `cir/1` construct; a use of the runtime outside
 //! them is refused by name.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use codespec_model::{Case, Expr, IntWidth, Stmt, Type};
+use codespec_model::{Case, ChanDir, Expr, IntWidth, Stmt, Type};
 
 use crate::body::{Body, R, constant, lit, string_literal, strip, zero_init};
 use crate::json::J;
@@ -91,7 +91,37 @@ impl<'a> Body<'a> {
             .get(id)
             .and_then(|d| crate::file_of(d.get("loc")))
             .unwrap_or_default();
+        if let Some((runtime, _)) = self.tables.helpers.get(name) {
+            return Some(runtime.clone());
+        }
         (name.starts_with("cs_") && file == RT_FILE).then(|| name.to_string())
+    }
+
+    /// The type of the value a C writer's helper takes, when `call` calls one.
+    fn helper_type(&self, call: &J) -> Option<R<Type>> {
+        let (_, name) = self.callee(&call.inner()[0])?;
+        let (_, t) = self.tables.helpers.get(name)?;
+        Some(self.spelled_type(t))
+    }
+
+    /// The `i`th argument of a runtime call, a value of type `t`: `&v` given to the runtime, `v`
+    /// given to a C writer's helper.
+    fn rt_arg(&mut self, call: &J, i: usize, t: &Type) -> R<Expr> {
+        let a = &call.inner()[i + 1];
+        match self.helper_type(call) {
+            Some(h) => {
+                if h? != *t {
+                    return Err("a C writer's helper of another type than its value's".into());
+                }
+                let v = self.value_want(a, t)?;
+                // A `cs_any` holds a value of any type: `cs_box` reads as the value it boxes.
+                if v.t() != t && *t != Type::Any {
+                    return Err("a value given to a helper of another type than it takes".into());
+                }
+                Ok(v)
+            }
+            None => self.copied(a, t),
+        }
     }
 
     /// The `cir/1` type of a C type spelled `s`, in the runtime form.
@@ -245,52 +275,87 @@ impl<'a> Body<'a> {
         {
             return None;
         }
+        // A signed integer type, or a newtype over one.
         let t = match self.tables.ty(self.unit, n.get("type")) {
-            Ok(t @ Type::Int { signed: true, .. }) => t,
+            Ok(t) if matches!(self.under(&t), Type::Int { signed: true, .. }) => t,
             _ => return None,
         };
-        let operand = |b: &mut Self, k: &J| -> R<Option<Expr>> {
+        // An operand: a value, or a constant typed once the operator's type is known.
+        let operand = |b: &mut Self, k: &J| -> R<Result<Expr, i128>> {
             let k = strip(k);
             if k.kind() != "CStyleCastExpr" || spelling(k) != "uint64_t" {
                 return Err("an operand of a wrapping operator not converted to uint64_t".into());
             }
             let x = &k.inner()[0];
             if let Some(v) = constant(x) {
-                return Ok(b.const_of(v, &t));
+                return Ok(Err(v));
             }
-            let e = b.value(x)?;
-            if *e.t() != t {
-                return Err(
-                    "an operand of a wrapping operator of another type than its result".into(),
-                );
-            }
-            Ok(Some(e))
+            Ok(Ok(b.value(x)?))
         };
         let op = inner.s("opcode").to_string();
         let kids = inner.inner();
         Some((|| {
-            if op == "-" && constant(&strip(&kids[0]).inner()[0]) == Some(0) {
-                let x = operand(self, &kids[1])?.ok_or("a negation of a constant")?;
+            let neg = op == "-" && constant(&strip(&kids[0]).inner()[0]) == Some(0);
+            let ops = if neg {
+                vec![operand(self, &kids[1])?]
+            } else {
+                vec![operand(self, &kids[0])?, operand(self, &kids[1])?]
+            };
+            // `int64_t` is `int` or `int64`: the operands' type says which.
+            let mut t = t.clone();
+            if let Some(Ok(e)) = ops.iter().find(|o| o.is_ok())
+                && matches!(
+                    (&t, e.t()),
+                    (
+                        Type::Int {
+                            width: IntWidth::Platform,
+                            signed: true
+                        },
+                        Type::Int {
+                            width: IntWidth::W64,
+                            signed: true
+                        }
+                    )
+                )
+            {
+                t = e.t().clone();
+            }
+            let mut out = Vec::new();
+            for o in ops {
+                let e = match o {
+                    Ok(e) => e,
+                    Err(v) => self
+                        .const_of(v, &t)
+                        .ok_or("a constant its type does not hold")?,
+                };
+                if *e.t() != t {
+                    return Err(
+                        "an operand of a wrapping operator of another type than its result".into(),
+                    );
+                }
+                out.push(e);
+            }
+            if neg {
                 return Ok(Expr::Unop {
                     op: "-".into(),
-                    x: Box::new(x),
-                    t: t.clone(),
+                    x: Box::new(out.remove(0)),
+                    t,
                 });
             }
-            let x = operand(self, &kids[0])?.ok_or("a constant its type does not hold")?;
-            let y = operand(self, &kids[1])?.ok_or("a constant its type does not hold")?;
+            let y = out.pop().expect("two operands");
+            let x = out.pop().expect("two operands");
             Ok(Expr::Binop {
                 op,
                 x: Box::new(x),
                 y: Box::new(y),
-                t: t.clone(),
+                t,
             })
         })())
     }
 
     /// The constant `v` as a literal of `t`, when `t` holds it.
     fn const_of(&self, v: i128, t: &Type) -> Option<Expr> {
-        crate::body::fits(v, t).then(|| {
+        crate::body::fits(v, self.under(t)).then(|| {
             if v < 0 {
                 Expr::Unop {
                     op: "-".into(),
@@ -345,7 +410,7 @@ impl<'a> Body<'a> {
                         "a map's value read as a type its map, cast or size does not name".into(),
                     );
                 }
-                let k = self.copied(&args[1], &key)?;
+                let k = self.rt_arg(call, 1, &key)?;
                 Ok(Expr::Index {
                     x: Box::new(m),
                     index: Box::new(k),
@@ -354,9 +419,12 @@ impl<'a> Body<'a> {
             }
             "cs_chan_recv" => {
                 let c = self.value(&args[0])?;
-                let Type::Chan { elem, .. } = c.t().clone() else {
+                let Type::Chan { elem, dir } = c.t().clone() else {
                     return Err("cs_chan_recv of a value that is not a channel".into());
                 };
+                if dir == ChanDir::Send {
+                    return Err("a receive from a send-only channel".into());
+                }
                 if *elem != t {
                     return Err("a receive cast to a type its channel does not hold".into());
                 }
@@ -386,8 +454,14 @@ impl<'a> Body<'a> {
             return None;
         }
         let call = bare(&cast.inner()[0]);
-        if self.rt_callee(call).as_deref() != Some("cs_map_put") {
-            return None;
+        match self.rt_callee(call).as_deref() {
+            Some("cs_map_put") => {}
+            Some("cs_slice_at") | None => return None,
+            Some(other) => {
+                return Some(Err(format!(
+                    "an assignment through {other}, whose value is no place of the map or channel: only cs_map_put's is"
+                )));
+            }
         }
         Some((|| {
             let args = &call.inner()[1..];
@@ -399,7 +473,7 @@ impl<'a> Body<'a> {
             if *elem != t {
                 return Err("a map's value assigned as a type its map does not hold".into());
             }
-            let k = self.copied(&args[1], &key)?;
+            let k = self.rt_arg(call, 1, &key)?;
             Ok(Expr::Index {
                 x: Box::new(m),
                 index: Box::new(k),
@@ -431,11 +505,10 @@ impl<'a> Body<'a> {
                     t,
                 })
             }
-            "cs_div_int64_t" | "cs_rem_int64_t" | "cs_div_int32_t" | "cs_rem_int32_t"
-            | "cs_div_int16_t" | "cs_rem_int16_t" | "cs_div_int8_t" | "cs_rem_int8_t" => {
-                let t = self.tables.ty(self.unit, n.get("type"))?;
+            s if int_op(s, &["cs_div_", "cs_rem_"]) => {
                 let (x, y) = two(self)?;
-                if *x.t() != t || *y.t() != t {
+                let t = x.t().clone();
+                if *y.t() != t || self.agrees(int_op_type(s), n.get("type"), &t).is_err() {
                     return Err(format!("{name} of operands of another type than its own"));
                 }
                 Ok(Expr::Binop {
@@ -492,8 +565,13 @@ impl<'a> Body<'a> {
             }
             "cs_append" => {
                 let s = self.value(&args[0])?;
-                let size = sizeof_of(&args[2]).ok_or("cs_append without sizeof")?;
-                let elem = self.spelled_type(&size)?;
+                let elem = match self.helper_type(n) {
+                    Some(t) => t?,
+                    None => {
+                        let size = sizeof_of(&args[2]).ok_or("cs_append without sizeof")?;
+                        self.spelled_type(&size)?
+                    }
+                };
                 if *s.t()
                     != (Type::Slice {
                         elem: Box::new(elem.clone()),
@@ -501,13 +579,29 @@ impl<'a> Body<'a> {
                 {
                     return Err("cs_append of a value its slice's element type is not".into());
                 }
-                let v = self.copied(&args[1], &elem)?;
+                let v = self.rt_arg(n, 1, &elem)?;
                 let t = s.t().clone();
                 Ok(Expr::Intrinsic {
                     name: "append".into(),
                     args: vec![s, v],
                     t,
                 })
+            }
+            "cs_box" if self.helper_type(n).is_some() => {
+                let t = self.helper_type(n).expect("a helper")?;
+                let (_, h) = self.callee(&n.inner()[0]).expect("a helper");
+                let suffix = h.rsplit_once("_cs_box_").map(|(_, s)| s).unwrap_or("");
+                let d = format!("{}cs_type_{suffix}", self.tables.prefix);
+                if !self.desc_holds(&d, &t) {
+                    return Err(format!(
+                        "a C writer's box helper whose cs_type {d} does not describe its value's type"
+                    ));
+                }
+                let v = self.value_want(&args[0], &t)?;
+                if *v.t() != t {
+                    return Err("a value given to a helper of another type than it takes".into());
+                }
+                Ok(v)
             }
             "cs_box" => {
                 let size = sizeof_of(&args[2]).ok_or("cs_box without sizeof")?;
@@ -518,15 +612,49 @@ impl<'a> Body<'a> {
                 } else {
                     ""
                 };
-                match self.tables.descs.get(d) {
-                    Some(kind) if Some(kind.as_str()) == any_kind(&t) => {}
-                    _ => {
-                        return Err(format!(
-                            "cs_box with a cs_type that does not describe its value's type {size}"
-                        ));
-                    }
+                if !self.desc_holds(d, &t) {
+                    return Err(format!(
+                        "cs_box with a cs_type that does not describe its value's type {size}"
+                    ));
                 }
                 self.copied(&args[1], &t)
+            }
+            s if int_op(s, &["cs_shl_", "cs_shr_"]) => {
+                let x = self.value(&args[0])?;
+                let t = x.t().clone();
+                if self.agrees(int_op_type(s), n.get("type"), &t).is_err() {
+                    return Err(format!("{s} of a value of another type than its own"));
+                }
+                let c = bare(&args[1]);
+                let count = if self.rt_callee(c).as_deref() == Some("cs_shift_count") {
+                    let v = self.value(&c.inner()[1])?;
+                    if !matches!(v.t(), Type::Int { signed: true, .. }) {
+                        return Err("cs_shift_count of a value that is not a signed integer".into());
+                    }
+                    v
+                } else {
+                    // `(uint64_t)u` of an unsigned `u`: Go shifts by `u` as by its value.
+                    let a = bare(&args[1]);
+                    let a = if a.kind() == "CStyleCastExpr" && spelling(a) == "uint64_t" {
+                        &a.inner()[0]
+                    } else {
+                        &args[1]
+                    };
+                    let v = self.value(a)?;
+                    if !matches!(v.t(), Type::Int { signed: false, .. }) {
+                        return Err(
+                            "a shift count neither unsigned nor through cs_shift_count, which panics on a negative one as Go does"
+                                .into(),
+                        );
+                    }
+                    v
+                };
+                Ok(Expr::Binop {
+                    op: if s.starts_with("cs_shl_") { "<<" } else { ">>" }.into(),
+                    x: Box::new(x),
+                    y: Box::new(count),
+                    t,
+                })
             }
             "cs_sb_string" | "cs_sb_error" | "cs_sb_println" => self.rt_format(name, &args[0]),
             "cs_slice_make" => Err(
@@ -669,6 +797,15 @@ impl<'a> Body<'a> {
             }
             return Ok(Expr::Make { t: want.clone() });
         }
+        // `(cs_string){0}`, `(cs_slice){0}`: the zero value of the type wanted, as the C writer
+        // writes `zero` of a runtime type.
+        if self.tables.runtime
+            && b.kind() == "CompoundLiteralExpr"
+            && zero_init(&b.inner()[0])
+            && c_form(want).is_some_and(|f| spelling(b).replace("struct ", "") == f)
+        {
+            return Ok(Expr::Zero { t: want.clone() });
+        }
         self.value(e)
     }
 
@@ -679,10 +816,13 @@ impl<'a> Body<'a> {
         Some(match name.as_str() {
             "cs_chan_send" => (|| {
                 let c = self.value(&args[0])?;
-                let Type::Chan { elem, .. } = c.t().clone() else {
+                let Type::Chan { elem, dir } = c.t().clone() else {
                     return Err("cs_chan_send on a value that is not a channel".into());
                 };
-                let x = self.copied(&args[1], &elem)?;
+                if dir == ChanDir::Recv {
+                    return Err("a send on a receive-only channel".into());
+                }
+                let x = self.rt_arg(n, 1, &elem)?;
                 Ok(Stmt::Send {
                     chan: c,
                     x,
@@ -751,7 +891,14 @@ impl<'a> Body<'a> {
         match n.kind() {
             "CallExpr" => {
                 if let Some(name) = self.rt_callee(n) {
-                    if matches!(name.as_str(), "cs_append" | "cs_slice_at")
+                    if name == "cs_append"
+                        && let Some(t) = self.helper_type(n)
+                    {
+                        pin(
+                            ref_id(&kids[1]),
+                            t.map(|e| Type::Slice { elem: Box::new(e) }),
+                        );
+                    } else if matches!(name.as_str(), "cs_append" | "cs_slice_at")
                         && let Some(size) = kids.get(3).and_then(sizeof_of)
                     {
                         pin(
@@ -893,6 +1040,31 @@ impl<'a> Body<'a> {
                 rhs.push(v);
                 lhs.push(l);
             }
+            if lhs.iter().any(crate::body::has_call) {
+                return Err(
+                    "an assignment of several values to a target that makes a call: C makes it after the values, Go before"
+                        .into(),
+                );
+            }
+            for (j, later) in lhs.iter().enumerate() {
+                let (mut vars, mut mem) = (BTreeSet::new(), false);
+                place_reads(later, &mut vars, &mut mem);
+                for earlier in &lhs[..j] {
+                    let hit = match earlier {
+                        Expr::Var { name, .. } => vars.contains(name.as_str()),
+                        Expr::Global { name, .. } => {
+                            vars.contains(format!("global {name}").as_str())
+                        }
+                        _ => mem,
+                    };
+                    if hit {
+                        return Err(
+                            "an assignment of several values whose later target reads what an earlier one assigns: C reads it after, Go before"
+                                .into(),
+                        );
+                    }
+                }
+            }
             if kids[2 * n..]
                 .iter()
                 .any(|k| temps.iter().any(|d| refers(k, d.s("id"))))
@@ -953,7 +1125,7 @@ impl<'a> Body<'a> {
             if self.tables.ty(self.unit, v.get("type"))? != *elem {
                 return Err("a map's value bound to a variable of another type".into());
             }
-            let index = self.copied(&args[1], &key)?;
+            let index = self.rt_arg(call, 1, &key)?;
             let then = self.block(&ik[1]);
             if !matches!(then.last(), Some(Stmt::Return { .. })) {
                 return Err("a missing key whose statements do not end in a return".into());
@@ -1090,11 +1262,16 @@ impl<'a> Body<'a> {
         }
         .to_string();
         let map = bound.kind() == "CallExpr";
-        Some((|| {
+        let r = (|| {
             let bad = |w: &str| {
                 format!("a loop over a {w} other than the form the reader reads as range")
             };
             let what = if map { "map" } else { "slice" };
+            if spelling(i) != "int64_t" {
+                return Err(format!(
+                    "a loop over a {what} whose counter is not an int64_t, which may wrap before the length"
+                ));
+            }
             if constant(i.inner().first().ok_or_else(|| bad(what))?) != Some(0) {
                 return Err(bad(what));
             }
@@ -1157,7 +1334,8 @@ impl<'a> Body<'a> {
                 taken += 1;
             }
             if taken == 0 {
-                return Err(bad(what));
+                // No element read first: the plain `for` reading takes the loop.
+                return Ok(None);
             }
             let rest = &stmts[taken..];
             if rest.iter().any(|s| refers(s, &i_id)) {
@@ -1180,9 +1358,181 @@ impl<'a> Body<'a> {
             }
             self.breakable.push(crate::body::Brk::Loop);
             let mut out = Vec::new();
+            let mark = self.refusals.len();
             self.stmts(rest, &mut out);
             self.breakable.pop();
             self.scopes.pop();
+            if map && !order_free(&out, &names) {
+                self.refusals.truncate(mark);
+                return Err(
+                    "a loop over a map whose body does more than accumulate into variables with + * & | ^: the runtime walks a map in insertion order, cir/1 in none, so only a body whose result no order changes is read"
+                        .into(),
+                );
+            }
+            Ok(Some(Stmt::ForRange {
+                key: names.0,
+                val: names.1,
+                over,
+                body: out,
+                pos: pos.into(),
+            }))
+        })();
+        r.transpose()
+    }
+
+    /// The C writer's range: a block `{ cs_slice cs_r = x; for (int64_t cs_i = 0, cs_n = cs_r.len;
+    /// cs_i < cs_n; cs_i++) { int64_t k = cs_i; T v = ((T *)cs_r.p)[cs_i]; … } }`, `{ cs_map *cs_r
+    /// = m; for (int64_t cs_i = 0; cs_i < cs_map_len(cs_r); cs_i++) { K k = *(K *)cs_map_key(cs_r,
+    /// cs_i); V v = *(V *)cs_map_val(cs_r, cs_i); … } }` or `{ T cs_r = n; for (T cs_i = 0; cs_i <
+    /// cs_r; cs_i++) { T k = cs_i; … } }`, each read of the key or value there only when named:
+    /// `for k, v := range x`. The slice and its length are copied before the loop, as Go evaluates
+    /// them once.
+    pub(crate) fn rt_range_block(&mut self, n: &J, pos: &str) -> Option<R<Stmt>> {
+        if !self.tables.runtime {
+            return None;
+        }
+        let [d, f] = n.inner() else {
+            return None;
+        };
+        let r = single_decl(d)?;
+        if !r.s("name").starts_with("cs_r") || f.kind() != "ForStmt" {
+            return None;
+        }
+        let [init, _, cond, inc, body] = f.inner() else {
+            return None;
+        };
+        if init.kind() != "DeclStmt" || body.kind() != "CompoundStmt" {
+            return None;
+        }
+        let r_id = r.s("id").to_string();
+        Some((|| {
+            let bad = || "a block of cs_r<n> other than the C writer's range".to_string();
+            let over = self.value(r.inner().first().ok_or_else(bad)?)?;
+            let (kind, key_t, val_t) = match over.t().clone() {
+                Type::Slice { elem } => ("slice", platform(), Some(*elem)),
+                Type::Map { key, elem } => ("map", *key, Some(*elem)),
+                t @ Type::Int { .. } => ("int", t, None),
+                _ => return Err(bad()),
+            };
+            let same = match c_form(over.t()) {
+                Some(form) => spelling(r).replace("struct ", "") == form,
+                None => self.tables.ty(self.unit, r.get("type")).ok().as_ref() == Some(over.t()),
+            };
+            if !same {
+                return Err(bad());
+            }
+            let decls = init.inner();
+            let i = decls.first().ok_or_else(bad)?;
+            let i_id = i.s("id").to_string();
+            if i.kind() != "VarDecl"
+                || constant(i.inner().first().ok_or_else(bad)?) != Some(0)
+                || self.tables.ty(self.unit, i.get("type")).ok() != Some(key_t.clone())
+                    && kind != "map"
+                || kind == "map" && spelling(i) != "int64_t"
+            {
+                return Err(bad());
+            }
+            let len_id = match (kind, decls) {
+                ("slice", [_, nd]) => {
+                    let m = bare(nd.inner().first().ok_or_else(bad)?);
+                    if m.kind() != "MemberExpr"
+                        || m.s("name") != "len"
+                        || ref_id(&m.inner()[0]) != Some(r_id.as_str())
+                        || spelling(nd) != "int64_t"
+                    {
+                        return Err(bad());
+                    }
+                    Some(nd.s("id").to_string())
+                }
+                ("slice", _) => return Err(bad()),
+                (_, [_]) => None,
+                _ => return Err(bad()),
+            };
+            let c = bare(cond);
+            let bound = c.inner().get(1).map(bare);
+            let bound_ok = match (kind, bound) {
+                ("slice", Some(b)) => ref_id(b) == len_id.as_deref(),
+                ("int", Some(b)) => ref_id(b) == Some(r_id.as_str()),
+                ("map", Some(b)) => {
+                    self.rt_callee(b).as_deref() == Some("cs_map_len")
+                        && ref_id(&b.inner()[1]) == Some(r_id.as_str())
+                }
+                _ => false,
+            };
+            let inc = strip(inc);
+            if c.kind() != "BinaryOperator"
+                || c.s("opcode") != "<"
+                || ref_id(&c.inner()[0]) != Some(i_id.as_str())
+                || !bound_ok
+                || inc.kind() != "UnaryOperator"
+                || inc.s("opcode") != "++"
+                || ref_id(&inc.inner()[0]) != Some(i_id.as_str())
+            {
+                return Err(bad());
+            }
+            // The key and value reads, first in the body.
+            let stmts = body.inner();
+            let mut key = None;
+            let mut val = None;
+            let mut taken = 0;
+            for s in stmts.iter().take(2) {
+                let Some(v) = single_decl(s) else { break };
+                let Some(e) = v.inner().first() else { break };
+                let vt = self.tables.ty(self.unit, v.get("type"))?;
+                let e = bare(e);
+                let bound = (v.s("id").to_string(), v.s("name").to_string());
+                let is_key = match kind {
+                    "map" => self.entry_read(e, "cs_map_key", &r_id, &i_id),
+                    _ => ref_id(e) == Some(i_id.as_str()),
+                };
+                if is_key && key.is_none() && val.is_none() && vt == key_t {
+                    key = Some(bound);
+                } else if val.is_none()
+                    && val_t.as_ref() == Some(&vt)
+                    && match kind {
+                        "map" => self.entry_read(e, "cs_map_val", &r_id, &i_id),
+                        _ => self.element_read(e, &vt, &r_id, &i_id),
+                    }
+                {
+                    val = Some(bound);
+                } else {
+                    break;
+                }
+                taken += 1;
+            }
+            let rest = &stmts[taken..];
+            let own = [Some(r_id.as_str()), Some(i_id.as_str()), len_id.as_deref()];
+            if rest
+                .iter()
+                .any(|s| own.iter().flatten().any(|id| refers(s, id)))
+            {
+                return Err(format!(
+                    "a range over a {kind} whose body uses the C writer's copies of it"
+                ));
+            }
+            self.scopes.push(Vec::new());
+            let mut names = (String::from("_"), String::from("_"));
+            if let Some((id, n)) = &key {
+                self.bind(id, n, key_t.clone());
+                names.0 = n.clone();
+            }
+            if let (Some((id, n)), Some(t)) = (&val, &val_t) {
+                self.bind(id, n, t.clone());
+                names.1 = n.clone();
+            }
+            self.breakable.push(crate::body::Brk::Loop);
+            let mut out = Vec::new();
+            let mark = self.refusals.len();
+            self.stmts(rest, &mut out);
+            self.breakable.pop();
+            self.scopes.pop();
+            if kind == "map" && !order_free(&out, &names) {
+                self.refusals.truncate(mark);
+                return Err(
+                    "a loop over a map whose body does more than accumulate into variables with + * & | ^: the runtime walks a map in insertion order, cir/1 in none, so only a body whose result no order changes is read"
+                        .into(),
+                );
+            }
             Ok(Stmt::ForRange {
                 key: names.0,
                 val: names.1,
@@ -1191,6 +1541,40 @@ impl<'a> Body<'a> {
                 pos: pos.into(),
             })
         })())
+    }
+
+    /// Whether `e` is `*(T *)<f>(cs_r, cs_i)`.
+    fn entry_read(&self, e: &J, f: &str, r_id: &str, i_id: &str) -> bool {
+        if e.kind() != "UnaryOperator" || e.s("opcode") != "*" {
+            return false;
+        }
+        let cast = strip(&e.inner()[0]);
+        let Some(call) = cast.inner().first().map(bare) else {
+            return false;
+        };
+        self.rt_callee(call).as_deref() == Some(f)
+            && ref_id(&call.inner()[1]) == Some(r_id)
+            && ref_id(&call.inner()[2]) == Some(i_id)
+    }
+
+    /// Whether `e` is `((T *)cs_r.p)[cs_i]` of the element type `t`.
+    fn element_read(&self, e: &J, t: &Type, r_id: &str, i_id: &str) -> bool {
+        if e.kind() != "ArraySubscriptExpr" {
+            return false;
+        }
+        let cast = bare(&e.inner()[0]);
+        if cast.kind() != "CStyleCastExpr" {
+            return false;
+        }
+        let p = bare(&cast.inner()[0]);
+        let elem = spelling(cast)
+            .strip_suffix('*')
+            .map(|s| self.spelled_type(s.trim()));
+        p.kind() == "MemberExpr"
+            && p.s("name") == "p"
+            && ref_id(&p.inner()[0]) == Some(r_id)
+            && ref_id(&e.inner()[1]) == Some(i_id)
+            && elem == Some(Ok(t.clone()))
     }
 
     /// The values of `return (F_result){a, b}` in a function of several results, or of `return
@@ -1202,7 +1586,9 @@ impl<'a> Body<'a> {
         {
             let init = strip(&b.inner()[0]);
             let kids = init.inner();
-            if kids.len() != results.len() {
+            if kids.len() != results.len()
+                || kids.iter().any(|k| k.kind() == "ImplicitValueInitExpr")
+            {
                 return Err("a return of a result struct with another number of values".into());
             }
             let mut out = Vec::new();
@@ -1302,10 +1688,43 @@ impl<'a> Body<'a> {
     }
 
     /// Whether the C type `c` (spelled, and as clang gives it) holds the `cir/1` type `t`.
+    /// Whether the `cs_type` `d` describes `t`: its kind and Go's name of `t` (`int` and `int64`
+    /// share `CS_K_INT64`, the name tells them apart), or for a newtype `CS_K_NAMED`, its name
+    /// and the `cs_type` of the type it is defined over.
+    fn desc_holds(&self, d: &str, t: &Type) -> bool {
+        let Some((kind, name, elem)) = self.tables.descs.get(d) else {
+            return false;
+        };
+        match (kind.as_str(), elem) {
+            ("CS_K_NAMED", Some(elem)) => match t {
+                Type::Named { name: n, targs } if targs.is_empty() => {
+                    *n == format!("{}{name}", self.tables.prefix)
+                        && self
+                            .tables
+                            .newtypes
+                            .get(n)
+                            .is_some_and(|u| self.desc_holds(elem, u))
+                }
+                _ => false,
+            },
+            (_, None) => {
+                Some(kind.as_str()) == any_kind(t) && go_name(t).as_deref() == Some(name.as_str())
+            }
+            _ => false,
+        }
+    }
+
     fn agrees(&self, c: &str, j: &J, t: &Type) -> R<()> {
         let c = c.trim();
         let c = c.strip_prefix("const ").unwrap_or(c);
         let ok = match c_form(t) {
+            // `int64_t` holds `int` and `int64`, `uint64_t` `uint` and `uint64`, as the C writer
+            // writes them: the line says which.
+            None if matches!(c, "int64_t" | "uint64_t") => matches!(
+                t,
+                Type::Int { width: IntWidth::W64 | IntWidth::Platform, signed }
+                    if *signed == (c == "int64_t")
+            ),
             Some(form) => {
                 let c = c.replace("struct ", "");
                 c == form || (form == "cs_map *" && c == "cs_map *")
@@ -1319,6 +1738,130 @@ impl<'a> Body<'a> {
         }
         Ok(())
     }
+}
+
+/// Go's name of a type an `any` holds by kind: `int`, `int64`, `uint8`, `bool`, `string`.
+fn go_name(t: &Type) -> Option<String> {
+    Some(match t {
+        Type::Int { width, signed } => {
+            let u = if *signed { "" } else { "u" };
+            match width {
+                IntWidth::Platform => format!("{u}int"),
+                IntWidth::W8 => format!("{u}int8"),
+                IntWidth::W16 => format!("{u}int16"),
+                IntWidth::W32 => format!("{u}int32"),
+                IntWidth::W64 => format!("{u}int64"),
+            }
+        }
+        Type::Bool => "bool".into(),
+        Type::String => "string".into(),
+        _ => return None,
+    })
+}
+
+/// The runtime's integer types, each with its `cs_div_`, `cs_rem_`, `cs_shl_` and `cs_shr_`.
+const INT_OPS: [&str; 8] = [
+    "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+];
+
+/// Whether `name` is one of the runtime's integer operations with one of `prefixes`.
+fn int_op(name: &str, prefixes: &[&str]) -> bool {
+    prefixes
+        .iter()
+        .any(|p| name.strip_prefix(p).is_some_and(|t| INT_OPS.contains(&t)))
+}
+
+/// The integer type an operation of the runtime's is named for: `cs_div_int64_t` → `int64_t`.
+fn int_op_type(name: &str) -> &str {
+    &name[7..]
+}
+
+/// Whether the body of a loop over a map gives the same result in any order of its entries:
+/// each statement accumulates into its own integer variable, declared before the loop, with a
+/// commutative and associative operator (`+ * & | ^`, or `++`, `--`), from a value that makes no
+/// call and reads no accumulator.
+fn order_free(body: &[Stmt], names: &(String, String)) -> bool {
+    let mut accs: Vec<&str> = Vec::new();
+    let mut parts: Vec<&Expr> = Vec::new();
+    let assoc = |op: &str| matches!(op, "+" | "*" | "&" | "|" | "^");
+    for s in body {
+        let (acc, part) = match s {
+            Stmt::Incr {
+                x: Expr::Var { name, t },
+                ..
+            }
+            | Stmt::Decr {
+                x: Expr::Var { name, t },
+                ..
+            } if matches!(t, Type::Int { .. }) => (name.as_str(), None),
+            Stmt::Assign { op, lhs, rhs, .. } if lhs.len() == 1 && rhs.len() == 1 => {
+                let Expr::Var { name, t } = &lhs[0] else {
+                    return false;
+                };
+                if !matches!(t, Type::Int { .. }) {
+                    return false;
+                }
+                let part = match (op.as_str(), &rhs[0]) {
+                    ("", Expr::Binop { op, x, y, .. }) if assoc(op) => {
+                        match (x.as_ref(), y.as_ref()) {
+                            (Expr::Var { name: a, .. }, other) if a == name => other,
+                            (other, Expr::Var { name: b, .. }) if b == name => other,
+                            _ => return false,
+                        }
+                    }
+                    (op, e) if op.strip_suffix('=').is_some_and(assoc) => e,
+                    _ => return false,
+                };
+                (name.as_str(), Some(part))
+            }
+            _ => return false,
+        };
+        if accs.contains(&acc) || acc == names.0 || acc == names.1 {
+            return false;
+        }
+        accs.push(acc);
+        parts.extend(part);
+    }
+    parts.iter().all(|p| {
+        let (mut vars, mut mem) = (BTreeSet::new(), false);
+        value_reads(p, &mut vars, &mut mem);
+        !crate::body::has_call(p) && !accs.iter().any(|a| vars.contains(*a))
+    })
+}
+
+/// What assigning to the place `e` reads before it writes: the variables (globals as `global
+/// <name>`), and `mem` when it reads memory through an index, a pointer or a field of one.
+fn place_reads(e: &Expr, vars: &mut BTreeSet<String>, mem: &mut bool) {
+    match e {
+        Expr::Var { .. } | Expr::Global { .. } => {}
+        Expr::Index { x, index, .. } => {
+            if matches!(x.t(), Type::Array { .. }) {
+                place_reads(x, vars, mem);
+            } else {
+                value_reads(x, vars, mem);
+            }
+            value_reads(index, vars, mem);
+        }
+        Expr::Field { x, .. } if !matches!(x.t(), Type::Ptr { .. }) => place_reads(x, vars, mem),
+        Expr::Field { x, .. } => value_reads(x, vars, mem),
+        Expr::Unop { op, x, .. } if op == "*" => value_reads(x, vars, mem),
+        other => value_reads(other, vars, mem),
+    }
+}
+
+/// What evaluating `e` reads: its variables, and `mem` when it reads memory.
+fn value_reads(e: &Expr, vars: &mut BTreeSet<String>, mem: &mut bool) {
+    codespec_model::walk::walk_expr(e, &mut |x| match x {
+        Expr::Var { name, .. } => {
+            vars.insert(name.clone());
+        }
+        Expr::Global { name, .. } => {
+            vars.insert(format!("global {name}"));
+        }
+        Expr::Index { .. } | Expr::Field { .. } => *mem = true,
+        Expr::Unop { op, .. } if op == "*" => *mem = true,
+        _ => {}
+    });
 }
 
 /// A null pointer constant: `0`, `NULL`, `(void *)0`.

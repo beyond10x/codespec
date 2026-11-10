@@ -434,6 +434,17 @@ fn cs_box_with_a_cs_type_of_another_kind_than_its_value_s_is_refused() {
 }
 
 #[test]
+fn cs_box_with_a_cs_type_naming_int64_for_an_int_is_refused() {
+    near_miss(
+        "rt_box_name",
+        ANYS,
+        "{CS_K_INT64, \"int\", NULL}",
+        "{CS_K_INT64, \"int64\", NULL}",
+        "cs_box with a cs_type that does not describe its value's type",
+    );
+}
+
+#[test]
 fn a_cs_type_whose_element_is_not_null_is_refused() {
     near_miss(
         "rt_type_elem",
@@ -743,5 +754,299 @@ fn a_continue_in_a_switch_inside_a_do_while_is_refused() {
         "if (cs_s1 == 3) {\n                break;",
         "if (cs_s1 == 3) {\n                continue;",
         "a continue in a do-while loop, which runs its condition",
+    );
+}
+
+#[test]
+fn cs_string_eq_and_cat_of_two_calls_are_refused() {
+    near_miss(
+        "rt_cat_calls",
+        STRINGS,
+        "cs_string_cat((cs_string){\"hi \", 3}, name)",
+        "cs_string_cat(Greet(name), Greet(name))",
+        "C leaves their order unspecified",
+    );
+    near_miss(
+        "rt_eq_calls",
+        STRINGS,
+        "cs_string_eq(s, (cs_string){\"hi x\", 4})",
+        "cs_string_eq(Greet(s), Greet(name))",
+        "C leaves their order unspecified",
+    );
+}
+
+const DIVS: &str = r#"#include "codespec_rt.h"
+
+/* codespec: func Div(int, int) int */
+int64_t Div(int64_t a, int64_t b) {
+    return cs_div_int64_t(a, b);
+}
+
+/* codespec: func Rem(int, int) int */
+int64_t Rem(int64_t a, int64_t b) {
+    return cs_rem_int64_t(a, b);
+}
+"#;
+
+#[test]
+fn cs_div_and_cs_rem_of_another_width_than_their_operands_are_refused() {
+    near_miss(
+        "rt_div_width",
+        DIVS,
+        "return cs_div_int64_t(a, b);",
+        "return cs_div_int32_t(a, b);",
+        "an implicit conversion between integer types",
+    );
+    near_miss(
+        "rt_rem_width",
+        DIVS,
+        "return cs_rem_int64_t(a, b);",
+        "return cs_rem_int32_t(a, b);",
+        "an implicit conversion between integer types",
+    );
+}
+
+#[test]
+fn a_field_of_cs_map_for_its_length_is_refused() {
+    near_miss(
+        "rt_map_len_field",
+        MAPS,
+        "for (int64_t j = 0; j < cs_map_len(m); j++) {\n        int64_t v = *(int64_t *)cs_map_val(m, j);\n        s = (int64_t)((uint64_t)s + (uint64_t)v);\n    }\n    return s;",
+        "return m->len;",
+        "the field len of the runtime's",
+    );
+}
+
+#[test]
+fn a_return_of_a_result_struct_with_fewer_values_than_its_results_is_refused() {
+    near_miss(
+        "rt_result_count",
+        TUPLES,
+        "return (Flip_result){x, y};",
+        "return (Flip_result){x};",
+        "a return of a result struct with another number of values",
+    );
+}
+
+// The C writer's layout: `<m>.h` holds the `codespec:` lines, every name is `<m>_<name>`, and
+// helpers wrap single runtime calls.
+
+const WRITER_H: &str = "#ifndef W_H\n#define W_H\n\n#include \"codespec_rt.h\"\n\n/* codespec: func Build(int) []int */\ncs_slice w_Build(int64_t n);\n\n/* codespec: func Sum([]int) int */\nint64_t w_Sum(cs_slice xs);\n\n/* codespec: func Tell(int) */\nvoid w_Tell(int64_t n);\n\n#endif\n";
+
+const WRITER_C: &str = "#include \"w.h\"\n\nstatic cs_slice w_cs_append_int(cs_slice s, int64_t v) {\n    return cs_append(s, &v, sizeof v);\n}\n\nvoid w_say(int64_t n);\n\nvoid w_say(int64_t n) {\n    cs_sb_println(cs_fmt_int(cs_sb_new(), n));\n}\n\ncs_slice w_Build(int64_t n) {\n    cs_slice xs = cs_slice_make();\n    {\n        int64_t i = 0;\n        for (; i < n; i = (int64_t)((uint64_t)i + (uint64_t)1)) {\n            xs = w_cs_append_int(xs, i);\n        }\n    }\n    return xs;\n}\n\nint64_t w_Sum(cs_slice xs) {\n    int64_t s = 0;\n    {\n        cs_slice cs_r1 = xs;\n        for (int64_t cs_i2 = 0, cs_n3 = cs_r1.len; cs_i2 < cs_n3; cs_i2++) {\n            int64_t x = ((int64_t *)cs_r1.p)[cs_i2];\n            s = (int64_t)((uint64_t)s + (uint64_t)x);\n        }\n    }\n    return s;\n}\n\nvoid w_Tell(int64_t n) {\n    (void)w_say(n);\n}\n";
+
+/// Read `c` as `w.c` beside `WRITER_H` as `w.h` and the kit's header.
+fn read_writer(name: &str, c: &str) -> Module {
+    read_writer_h(name, WRITER_H, c)
+}
+
+/// Read `c` as `w.c` beside `h` as `w.h` and the kit's header.
+fn read_writer_h(name: &str, h: &str, c: &str) -> Module {
+    let work = root().join("target/c-read-runtime").join(name);
+    if work.exists() {
+        std::fs::remove_dir_all(&work).expect("remove old work dir");
+    }
+    let dir = work.join("c");
+    std::fs::create_dir_all(&dir).expect("source dir");
+    std::fs::write(dir.join("w.h"), h).expect("write header");
+    std::fs::write(dir.join("w.c"), c).expect("write source");
+    std::fs::write(dir.join("codespec_rt.h"), header()).expect("write runtime");
+    let o = Command::new(READ_C)
+        .arg(&dir)
+        .output()
+        .expect("run codespec-read-c");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    Module::from_json(&o.stdout).expect("a strict cir/1 module")
+}
+
+#[test]
+fn the_c_writer_s_layout_reads_without_its_prefix_helpers_or_copies() {
+    let m = read_writer("writer_form", WRITER_C);
+    assert_eq!(refused(&m), Vec::<String>::new());
+    assert_eq!(m.name, "w");
+    let names: Vec<&str> = m.funcs.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, ["say", "Build", "Sum", "Tell"]);
+    let mut kinds = Vec::new();
+    walk::walk_stmts(&m.funcs[2].body, &mut |s| {
+        kinds.push(match s {
+            Stmt::ForRange { key, val, .. } => format!("range {key} {val}"),
+            Stmt::For { init: Some(_), .. } => "for with init".into(),
+            _ => String::new(),
+        })
+    });
+    assert!(kinds.contains(&"range _ x".to_string()), "{kinds:?}");
+    let mut appends = 0;
+    walk::body_exprs(&m.funcs[1].body, &mut |e| {
+        if matches!(e, codespec_model::Expr::Intrinsic { name, .. } if name == "append") {
+            appends += 1;
+        }
+    });
+    assert_eq!(appends, 1);
+}
+
+const WRITER_OPS: &str = "\nint64_t w_shift(int64_t a, int64_t b, uint32_t u) {\n    a = cs_shl_int64_t(a, cs_shift_count(b));\n    return cs_shr_int64_t(a, (uint64_t)u);\n}\n\nuint32_t w_half(uint32_t u) {\n    return cs_div_uint32_t(u, (uint32_t)2);\n}\n\ncs_string w_empty(void) {\n    return ((cs_string){0});\n}\n";
+
+#[test]
+fn the_c_writer_s_shifts_unsigned_division_and_zero_literals_read() {
+    let m = read_writer("writer_ops", &format!("{WRITER_C}{WRITER_OPS}"));
+    assert_eq!(refused(&m), Vec::<String>::new());
+    let mut ops = Vec::new();
+    for f in &m.funcs[4..] {
+        walk::body_exprs(&f.body, &mut |e| match e {
+            codespec_model::Expr::Binop { op, .. } => ops.push(op.clone()),
+            codespec_model::Expr::Zero { .. } => ops.push("zero".into()),
+            _ => {}
+        });
+    }
+    assert_eq!(ops, ["<<", ">>", "/", "zero"]);
+}
+
+/// A newtype of the C writer's, over `int64_t` or `uint64_t`, with its `codespec: type` line.
+fn newtype_header(line: &str, c: &str) -> String {
+    format!(
+        "#ifndef W_H\n#define W_H\n\n#include \"codespec_rt.h\"\n\n/* codespec: type ID {line} */\ntypedef {c} w_ID;\n\n/* codespec: func Next(ID) ID */\nw_ID w_Next(w_ID n);\n\n#endif\n"
+    )
+}
+
+const NEWTYPE_C: &str =
+    "#include \"w.h\"\n\nw_ID w_Next(w_ID n) {\n    return (w_ID)((uint64_t)n + (uint64_t)1);\n}\n";
+
+fn newtype_under(m: &Module) -> Vec<String> {
+    m.types
+        .iter()
+        .filter_map(|t| match t {
+            codespec_model::TypeDecl::Newtype { name, under, .. } => {
+                Some(format!("{name} {under:?}"))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_newtype_over_int64_t_takes_its_width_from_its_type_line() {
+    let int = read_writer_h(
+        "writer_newtype_int",
+        &newtype_header("int", "int64_t"),
+        NEWTYPE_C,
+    );
+    assert_eq!(refused(&int), Vec::<String>::new());
+    assert_eq!(newtype_under(&int).len(), 1);
+    assert!(
+        newtype_under(&int)[0].contains("Platform"),
+        "{:?}",
+        newtype_under(&int)
+    );
+    let w64 = read_writer_h(
+        "writer_newtype_int64",
+        &newtype_header("int64", "int64_t"),
+        NEWTYPE_C,
+    );
+    assert_eq!(refused(&w64), Vec::<String>::new());
+    assert!(
+        newtype_under(&w64)[0].contains("W64"),
+        "{:?}",
+        newtype_under(&w64)
+    );
+}
+
+const NAMED_BOX_H: &str = "#ifndef W_H\n#define W_H\n\n#include \"codespec_rt.h\"\n\n/* codespec: type ID int */\ntypedef int64_t w_ID;\n\n/* codespec: func Wrap(ID) any */\ncs_any w_Wrap(w_ID n);\n\n#endif\n";
+
+const NAMED_BOX_C: &str = "#include \"w.h\"\n\nstatic const cs_type w_cs_type_int = {CS_K_INT64, \"int\", NULL};\n\nstatic const cs_type w_cs_type_NID = {CS_K_NAMED, \"ID\", &w_cs_type_int};\n\nstatic cs_any w_cs_box_NID(w_ID v) {\n    return cs_box(&w_cs_type_NID, &v, sizeof v);\n}\n\ncs_any w_Wrap(w_ID n) {\n    return w_cs_box_NID(n);\n}\n";
+
+#[test]
+fn a_newtype_boxed_with_its_named_cs_type_reads() {
+    let m = read_writer_h("writer_named_box", NAMED_BOX_H, NAMED_BOX_C);
+    assert_eq!(refused(&m), Vec::<String>::new());
+}
+
+#[test]
+fn a_newtype_boxed_with_a_cs_type_of_another_name_is_refused() {
+    let m = read_writer_h(
+        "writer_named_box_name",
+        NAMED_BOX_H,
+        &NAMED_BOX_C.replace("CS_K_NAMED, \"ID\"", "CS_K_NAMED, \"Other\""),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.contains("does not describe its value's type")),
+        "{r:#?}"
+    );
+}
+
+#[test]
+fn a_newtype_over_uint_spelled_uint64_t_is_refused() {
+    let m = read_writer_h(
+        "writer_newtype_uint",
+        &newtype_header("uint", "uint64_t"),
+        NEWTYPE_C,
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter().any(|r| r.contains("a newtype over uint")),
+        "{r:#?}"
+    );
+}
+
+#[test]
+fn a_shift_by_a_signed_count_not_through_cs_shift_count_is_refused() {
+    let m = read_writer(
+        "writer_shift_count",
+        &format!("{WRITER_C}{WRITER_OPS}").replace("cs_shift_count(b)", "b"),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.starts_with("foreign a = cs_shl_int64_t(a, b);")),
+        "{r:#?}"
+    );
+}
+
+#[test]
+fn a_helper_whose_text_is_not_the_c_writer_s_is_not_read_as_one() {
+    let m = read_writer(
+        "writer_helper",
+        &WRITER_C.replace(
+            "return cs_append(s, &v, sizeof v);",
+            "return cs_append(s, &v, sizeof(int64_t));",
+        ),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.contains("parameter s is a cs_slice, whose element type")),
+        "{r:#?}"
+    );
+}
+
+#[test]
+fn an_exported_function_without_the_module_s_prefix_or_a_line_is_refused() {
+    let m = read_writer(
+        "writer_prefix",
+        &WRITER_C.replace("void w_Tell(int64_t n) {", "void X_Tell(int64_t n) {"),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.contains("without a codespec: func line")),
+        "{r:#?}"
+    );
+}
+
+#[test]
+fn a_range_of_the_c_writer_whose_body_uses_its_copies_is_refused() {
+    let m = read_writer(
+        "writer_range_copy",
+        &WRITER_C.replace(
+            "s = (int64_t)((uint64_t)s + (uint64_t)x);",
+            "s = (int64_t)((uint64_t)s + (uint64_t)cs_n3);",
+        ),
+    );
+    let r = refused(&m);
+    assert!(
+        r.iter()
+            .any(|r| r.contains("whose body uses the C writer's copies of it")),
+        "{r:#?}"
     );
 }

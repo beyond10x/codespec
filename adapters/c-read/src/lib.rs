@@ -147,7 +147,7 @@
 //! | `cs_map_len(m)`, `cs_map_sorted_keys(m)` | `len`, `sorted_keys` |
 //! | `cs_chan_send(ch, &v);` | `send` |
 //! | `*(T *)cs_chan_recv(ch)` | `unop` `<-` |
-//! | `cs_box(&desc, &v, sizeof(T))`, `desc` a `static const cs_type desc = {CS_K_…, "name", NULL};` of `T`'s kind | the value as `any` |
+//! | `cs_box(&desc, &v, sizeof(T))`, `desc` a `static const cs_type desc = {CS_K_…, "name", NULL};` of `T`'s kind and Go's name of `T` (`int`, `int64`), or for a newtype `{CS_K_NAMED, "Name", &<desc of the type it is over>}` | the value as `any` |
 //! | `static struct cs_error_s X_s = {{"…", n}, NULL, NULL};` and `cs_error const X = &X_s;` | `error_var` `X` |
 //! | a chain from `cs_sb_new()` of `cs_sb_bytes(b, "…", n)`, `cs_fmt_str`, `cs_fmt_int`, `cs_fmt_bool`, `cs_fmt_error`, ended by `cs_sb_string`, `cs_sb_error` or `cs_sb_println` | `sprintf`, `errorf` (`%s %d %t %v`), `println` (values separated by one space) |
 //! | `<Name>_result t = <Name>(…); T0 x0 = t.r0; …` (`t` used no further) | `let x0, … := <Name>(…)` |
@@ -164,6 +164,46 @@
 //! length or size, a cast another type than the container holds, `cs_map_put` read as a value, a
 //! printed line ending in a separator, a temporary used later) is refused with its reason,
 //! `tests/runtime.rs`.
+//!
+//! **Order.** C leaves the order of a call's arguments and an operator's operands unspecified (gcc
+//! goes right to left), Go goes left to right. A call, an operator, an assignment, a `return`, a
+//! `send` or a lookup with more than one operand that makes a call (`&&` and `||` aside, which
+//! C orders) is refused, as the C writer refuses to write one. So is a multiple assignment whose
+//! later target reads what an earlier one assigns (C reads it after, Go before), and an
+//! assignment or `++` through `*cs_map_get` or `*cs_chan_recv`, whose value is no place of the
+//! map or channel. A call of a module function whose `codespec: func` line types its parameters
+//! and results checks each argument and the returned value against it; a receive from a
+//! send-only channel and a send on a receive-only one are refused.
+//!
+//! **Maps.** The runtime walks a map in insertion order, `cir/1` in none. A loop over a map is read
+//! as `range` only when no order of its entries changes its result: each statement accumulates
+//! into its own integer variable, neither key nor value, with `+ * & | ^` (or `++`, `--`), from
+//! a value that makes no call and reads no accumulator. Any other loop over a map is refused,
+//! and so is a `cs_map_put` in it, through the map or another variable holding it.
+//!
+//! **Widths.** `int64_t` holds `int` and `int64`, `uint64_t` `uint` and `uint64`: the `codespec:
+//! func` line says which for a parameter or result, a local takes its initializer's, and a
+//! counter of a `range` is `int64_t`.
+//!
+//! **The C writer's layout.** The writer is the definition of runtime form; what it writes for
+//! the kit reads back (`task c-round-trip`). A directory with one header beside `codespec_rt.h`
+//! holding `codespec:` lines is the writer's module `<m>`: its functions are `<m>_<Name>`, read
+//! as `<Name>`, the module is named `<m>`, and a function without a line is unexported and typed
+//! by its C types (an exported one, with an upper-case first letter, needs its line). Besides the
+//! forms above it writes, and the reader reads:
+//!
+//! | the C writer | cir/1 |
+//! |---|---|
+//! | `static` helpers `<m>_cs_append_<T>`, `_send_`, `_put_`, `_get_`, `_find_`, `_box_`, each the writer's exact text around one runtime call taking `&v` | that runtime call, with `v` |
+//! | `{ cs_slice cs_rN = xs; for (int64_t cs_iN = 0, cs_nN = cs_rN.len; cs_iN < cs_nN; cs_iN++) { T v = ((T *)cs_rN.p)[cs_iN]; … } }`, likewise over `cs_map_len` with `cs_map_key`/`cs_map_val` and over an `int64_t` | `range`; a body using `cs_rN`, `cs_iN` or `cs_nN` is refused |
+//! | `{ T i = e; for (; c; post) { … } }` | `for` with `init` |
+//! | `(void)f(x);` | `expr` |
+//! | `cs_shl_T(x, cs_shift_count(n))`, `cs_shl_T(x, (uint64_t)u)`, `cs_shr_T` | `<<`, `>>`; a signed count not through `cs_shift_count` is refused |
+//! | `((cs_string){0})`, `((cs_slice){0})` where a type is wanted | `zero` of it |
+//! | `typedef int64_t <m>_ID;` under `/* codespec: type ID int */` (`int64`: over `int64`), and its wrapping arithmetic `(<m>_ID)((uint64_t)a + (uint64_t)b)` | `newtype` `ID` over `int`; `typedef uint64_t` under a line saying `uint` is refused |
+//!
+//! The C runner compiles each `.c` file as its own translation unit, as the reader reads it, so a
+//! macro of one file is never seen in another by either.
 //!
 //! # What the reader claims, and what it does not
 //!
@@ -248,6 +288,40 @@ pub(crate) fn in_dir(f: &str) -> bool {
         && !f.starts_with('<')
         && !f.contains("..")
         && f != runtime::RT_FILE
+}
+
+/// `m` with every name of its own declarations (types, constants, errors, variables, functions)
+/// that starts with the C writer's prefix `px` named without it, wherever it is used.
+fn unprefix(m: Module, px: &str) -> Module {
+    let mut names = BTreeSet::new();
+    names.extend(m.types.iter().map(|d| d.name().to_string()));
+    names.extend(m.consts.iter().map(|d| d.name.clone()));
+    names.extend(m.errors.iter().map(|d| d.name.clone()));
+    names.extend(m.vars.iter().map(|d| d.name.clone()));
+    names.extend(m.funcs.iter().map(|d| d.name.clone()));
+    names.extend(m.opaque.iter().map(|d| d.name.clone()));
+    names.retain(|n| n.len() > px.len() && n.starts_with(px));
+    fn walk(v: &mut serde_json::Value, px: &str, names: &BTreeSet<String>) {
+        match v {
+            serde_json::Value::String(s) => {
+                let (kind, n) = match s.split_once(':') {
+                    Some((k, n)) if names.contains(n) => (format!("{k}:"), n.to_string()),
+                    _ => (String::new(), s.clone()),
+                };
+                if names.contains(&n) {
+                    *s = format!("{kind}{}", &n[px.len()..]);
+                }
+            }
+            serde_json::Value::Array(a) => a.iter_mut().for_each(|x| walk(x, px, names)),
+            serde_json::Value::Object(o) => o.values_mut().for_each(|x| walk(x, px, names)),
+            _ => {}
+        }
+    }
+    let Ok(mut v) = serde_json::to_value(&m) else {
+        return m;
+    };
+    walk(&mut v, px, &names);
+    serde_json::from_value(v).unwrap_or(m)
 }
 
 /// A null pointer constant in an initializer: `NULL`, `0`, `(T *)0`, or a field left out.
@@ -409,6 +483,8 @@ struct Assembly<'s> {
     errors: Vec<ErrorVar>,
     /// The `codespec: func` lines, by function name.
     sig_lines: BTreeMap<String, runtime::SigLine>,
+    /// `/* codespec: type <Name> <type> */` of the C writer's header, by the C name.
+    type_lines: BTreeMap<String, String>,
     /// The message of each `static struct cs_error_s` of the runtime form, by name.
     error_structs: BTreeMap<String, String>,
 }
@@ -450,6 +526,7 @@ impl<'s> Assembly<'s> {
             typedef_at: BTreeMap::new(),
             errors: Vec::new(),
             sig_lines: BTreeMap::new(),
+            type_lines: BTreeMap::new(),
             error_structs: BTreeMap::new(),
         }
     }
@@ -478,19 +555,134 @@ impl<'s> Assembly<'s> {
             return;
         }
         self.tables.runtime = true;
+        // The C writer's layout: one header `<m>.h` beside the runtime holds the `codespec:`
+        // lines, and every name of the module is `<m>_<name>`.
+        let headers: Vec<&String> = self
+            .src
+            .files
+            .keys()
+            .filter(|f| f.ends_with(".h") && f.as_str() != runtime::RT_FILE)
+            .collect();
+        if let [h] = headers.as_slice()
+            && String::from_utf8_lossy(&self.src.files[*h]).contains("/* codespec: ")
+        {
+            self.tables.prefix = format!("{}_", h.trim_end_matches(".h"));
+        }
         for (name, text) in &self.src.files {
             if name.as_str() == runtime::RT_FILE {
                 continue;
             }
-            if let Err(e) = runtime::sig_lines(&String::from_utf8_lossy(text), &mut self.sig_lines)
-            {
+            let mut lines = BTreeMap::new();
+            if let Err(e) = runtime::sig_lines(&String::from_utf8_lossy(text), &mut lines) {
                 self.refusals.push(Refusal {
                     pos: format!("{name}:1"),
                     what: "codespec: func".into(),
                     reason: e,
                 });
             }
+            let px = if name.ends_with(".h") {
+                self.tables.prefix.clone()
+            } else {
+                String::new()
+            };
+            for l in String::from_utf8_lossy(text).lines() {
+                if let Some((t, go)) = l
+                    .trim()
+                    .strip_prefix("/* codespec: type ")
+                    .and_then(|r| r.strip_suffix("*/"))
+                    .and_then(|r| r.trim().split_once(' '))
+                {
+                    self.type_lines.insert(format!("{px}{t}"), go.trim().into());
+                }
+            }
+            for (f, l) in lines {
+                let key = format!("{px}{f}");
+                if self.sig_lines.insert(key.clone(), l).is_some() {
+                    self.refusals.push(Refusal {
+                        pos: format!("{name}:1"),
+                        what: "codespec: func".into(),
+                        reason: format!("a second codespec: func line of {key}"),
+                    });
+                }
+            }
         }
+    }
+
+    /// A helper the C writer writes around one runtime call, `static … <m>_cs_<op>_<type>(…)`,
+    /// its text exactly the writer's: the runtime function it calls, and the C type of the
+    /// value it takes. `None` for any other function.
+    fn helper(&self, n: &J) -> Option<(String, String)> {
+        let px = &self.tables.prefix;
+        let name = n.s("name");
+        let rest = name.strip_prefix(px.as_str())?.strip_prefix("cs_")?;
+        if px.is_empty() || n.s("storageClass") != "static" {
+            return None;
+        }
+        let (op, suffix) = rest.split_once('_')?;
+        let params: Vec<&J> = n
+            .inner()
+            .iter()
+            .filter(|p| p.kind() == "ParmVarDecl")
+            .collect();
+        let ty = |i: usize| {
+            params
+                .get(i)
+                .map(|p| p.get("type").s("qualType").to_string())
+        };
+        let (runtime, t, text) = match op {
+            "append" => {
+                let t = ty(1)?;
+                let text = format!(
+                    "static cs_slice {name}(cs_slice s, {t} v) {{ return cs_append(s, &v, sizeof v); }}"
+                );
+                ("cs_append", t, text)
+            }
+            "send" => {
+                let t = ty(1)?;
+                let text =
+                    format!("static void {name}(cs_chan *c, {t} v) {{ cs_chan_send(c, &v); }}");
+                ("cs_chan_send", t, text)
+            }
+            "put" => {
+                let t = ty(1)?;
+                let text = format!(
+                    "static void *{name}(cs_map *m, {t} k) {{ return cs_map_put(m, &k); }}"
+                );
+                ("cs_map_put", t, text)
+            }
+            "get" => {
+                let t = ty(1)?;
+                let text = format!(
+                    "static void *{name}(const cs_map *m, {t} k, size_t vsz) {{ return cs_map_get(m, &k, vsz); }}"
+                );
+                ("cs_map_get", t, text)
+            }
+            "find" => {
+                let t = ty(1)?;
+                let text = format!(
+                    "static void *{name}(const cs_map *m, {t} k) {{ return cs_map_find(m, &k); }}"
+                );
+                ("cs_map_find", t, text)
+            }
+            "box" => {
+                let t = ty(0)?;
+                let text = format!(
+                    "static cs_any {name}({t} v) {{ return cs_box(&{px}cs_type_{suffix}, &v, sizeof v); }}"
+                );
+                ("cs_box", t, text)
+            }
+            _ => return None,
+        };
+        let have = src_of(self.src, n);
+        let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+        (squash(&have) == squash(&text)).then(|| (runtime.to_string(), t))
+    }
+
+    /// A name of the module as `cir/1` names it: without the C writer's prefix.
+    fn bare_name<'n>(&self, c: &'n str) -> &'n str {
+        c.strip_prefix(self.tables.prefix.as_str())
+            .filter(|_| !self.tables.prefix.is_empty())
+            .unwrap_or(c)
     }
 
     /// The types of every `codespec: func` line, once the module's types are read.
@@ -566,7 +758,12 @@ impl<'s> Assembly<'s> {
         let read: BTreeSet<String> = self.funcs.iter().map(|f| f.name.clone()).collect();
         self.layout
             .retain(|l| l.strip_prefix("func:").is_none_or(|f| read.contains(f)));
-        Module {
+        let prefix = self.tables.prefix.clone();
+        let name = match prefix.strip_suffix('_') {
+            Some(m) => m.to_string(),
+            None => name,
+        };
+        let module = Module {
             format: codespec_model::FORMAT.into(),
             name,
             reader: Reader {
@@ -594,6 +791,11 @@ impl<'s> Assembly<'s> {
             beans: Vec::new(),
             injects: Vec::new(),
             transactional: Vec::new(),
+        };
+        if prefix.is_empty() {
+            module
+        } else {
+            unprefix(module, &prefix)
         }
     }
 
@@ -610,7 +812,23 @@ impl<'s> Assembly<'s> {
             match n.kind() {
                 "TypedefDecl" => {
                     let t = n.get("type");
+                    // In runtime form `int64_t` is `int` unless the type's `codespec: type` line
+                    // says `int64`; `uint64_t` is `uint64`, and a line saying `uint` is refused:
+                    // C has no spelling of `uint` apart from `uint64`.
+                    let line = self.type_lines.get(n.s("name")).cloned();
+                    let line = line.as_deref();
+                    let q = t.s("qualType").trim();
+                    if self.tables.runtime && q == "uint64_t" && line == Some("uint") {
+                        let name = n.s("name").to_string();
+                        let why = "a newtype over uint, which runtime form spells uint64_t as it does uint64".to_string();
+                        self.tables.bad_typedefs.insert(name.clone(), why.clone());
+                        self.refuse(n, format!("typedef {name}"), why);
+                        continue;
+                    }
                     let target = match t.s("desugaredQualType") {
+                        _ if self.tables.runtime && q == "int64_t" && line != Some("int64") => {
+                            "int64_t"
+                        }
                         "" => t.s("qualType"),
                         d => d,
                     };
@@ -636,6 +854,10 @@ impl<'s> Assembly<'s> {
                 "VarDecl" if ours => self.global(&mut unit, n),
                 "FunctionDecl" if ours && n.inner().iter().any(|k| k.kind() == "CompoundStmt") => {
                     let name = n.s("name");
+                    if let Some(h) = self.helper(n) {
+                        self.tables.helpers.insert(name.into(), h);
+                        continue;
+                    }
                     if !self.tables.funcs.insert(name.into()) {
                         self.refuse(
                             n,
@@ -999,11 +1221,39 @@ impl<'s> Assembly<'s> {
                     .first()
                     .map(|k| bare(k).get("referencedDecl").s("name").to_string())
                     .unwrap_or_default();
-                let elem_null = parts.get(2).is_some_and(null_constant);
-                if !kind.starts_with("CS_K_") || parts.len() != 3 || !elem_null {
-                    return Err("a cs_type other than {CS_K_…, \"name\", NULL}".into());
+                let bad = || {
+                    "a cs_type other than {CS_K_…, \"name\", NULL} or {CS_K_NAMED, \"Name\", &<cs_type of its type>}".to_string()
+                };
+                if !kind.starts_with("CS_K_") || parts.len() != 3 {
+                    return Err(bad());
                 }
-                self.tables.descs.insert(name.clone(), kind);
+                let tname = bare(&parts[1]);
+                let tname = (tname.kind() == "StringLiteral")
+                    .then(|| tname.s("value"))
+                    .and_then(|v| v.strip_prefix('"')?.strip_suffix('"'))
+                    .filter(|v| v.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                    .ok_or_else(bad)?
+                    .to_string();
+                // `CS_K_NAMED` carries the `cs_type` of the type it is defined over, every
+                // other kind none.
+                let elem = bare(&parts[2]);
+                let elem = if kind == "CS_K_NAMED" {
+                    let target = (elem.kind() == "UnaryOperator" && elem.s("opcode") == "&")
+                        .then(|| {
+                            bare(&elem.inner()[0])
+                                .get("referencedDecl")
+                                .s("name")
+                                .to_string()
+                        })
+                        .filter(|d| self.tables.descs.contains_key(d))
+                        .ok_or_else(bad)?;
+                    Some(target)
+                } else if null_constant(&parts[2]) {
+                    None
+                } else {
+                    return Err(bad());
+                };
+                self.tables.descs.insert(name.clone(), (kind, tname, elem));
                 Ok(())
             })()),
             _ => None,
@@ -1038,7 +1288,12 @@ impl<'s> Assembly<'s> {
                 sig_results = Some(rs);
             }
             Some(Err(e)) if why.is_none() => why = Some(format!("its codespec: func line: {e}")),
-            None if why.is_none() && self.tables.runtime => {
+            None if why.is_none()
+                && self.tables.runtime
+                && self
+                    .bare_name(&name)
+                    .starts_with(|c: char| c.is_ascii_uppercase()) =>
+            {
                 why = Some(
                     "a function in runtime form without a codespec: func line, which alone types it"
                         .into(),

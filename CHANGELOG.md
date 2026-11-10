@@ -19,6 +19,15 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `stmt.for_range`, `stmt.lookup_else`, `stmt.send`, `type.any`, `type.chan`, `type.error`,
   `type.map`, `type.slice`, `type.tuple`, `unop.recv`. A directory name that is no identifier
   (`zlib-1.3.1`) reads to one (`zlib_1_3_1`), and a parameter without a name reads as `_`.
+- `codespec-read-c` reads what the C writer writes: its `<m>_` prefix, its static helpers, its
+  range blocks, scoped `for`, `(void)` calls, shifts, zero literals and `int64_t` newtypes
+  (`task c-round-trip` re-reads the writer's output for every kit case). It refuses an operator
+  or call with two operands that make calls (C leaves their order unspecified), a multiple
+  assignment whose later target reads an earlier one, an assignment through `cs_map_get` or
+  `cs_chan_recv`, an argument or result of another type than the `codespec: func` line's, a
+  receive or send against a channel's direction, and a loop over a map whose result depends on
+  the order of its entries. `int64_t` and `uint64_t` take their width from the line.
+- `codespec-run-c` compiles each `.c` file as its own translation unit, as the reader reads it.
 - `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
   a call of a function without one is refused. The C row of the reader corpus holds
   `codespec_rt.h` beside each `case.c`.
