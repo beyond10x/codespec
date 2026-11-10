@@ -1,0 +1,6 @@
+# R-06 decision: Does the navbar's "Reference" open a Reference index page that lists the four reference pages, instead of the cir/1 reference?
+Finding: UXF-018 (the part R-05 left open). Target metric: `task-cir1-interfaces-generics` screen-only actions/looks/steps, now 2/3/3, expected 3/4/4 with yes (one more click), 2/3/3 with no.
+Yes: the sidebar's Reference group gets a generated index page (`website/sidebars.ts`, `link: {type: 'generated-index'}`), the navbar's "Reference" opens it, so "Reference" names a section as "Documentation" does; a page is added (`task ux-scenarios`), and the ratchet takes the cir/1 task's worse value only with a decision id. shot: none taken (the variant needs its own site build; not built while the answer is open)
+No:  the navbar's "Reference" keeps opening the cir/1 reference, the page most reference tasks need; search keeps "Reference › Reference" (the plugin writes the active navbar item, then the sidebar group), shot: shots/decision-no.png
+Default if unanswered by the next round: no, because yes costs a measured click on the cir/1 task and adds a page while the loop's goal is less content, and the doubled search path is cosmetic.
+Answer: no, 2026-11-10

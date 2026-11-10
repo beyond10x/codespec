@@ -212,6 +212,22 @@ Every change a user of `codespec` or of `cir/1` would notice.
   position from the document is named in the message of a construct it cannot write.
 - The Rust, C and Go writers refuse a module named like a Windows device (`con`, `prn`, `aux`,
   `nul`, `com0` to `com9`, `lpt0` to `lpt9`, in any case), which they would write as a file name.
+- The documentation site: the cir/1 reference lists its definitions before the first table, so
+  every entry is one click from the first screen. The sidebar's group names are 14 px in sentence
+  case. The home page, the overview and Readers, passes and writers name every reader and writer
+  (Go, Rust, Java, Groovy and C readers; Go, Rust and C writers), and Status lists the conformance
+  of the C reader and the C writer. Use cases links Getting started for the orders run instead of
+  repeating it, and the overview links pages by their sidebar names.
+- The documentation site: field names, types and commands in tables, and table headers, are 14 px,
+  headers in sentence case. The pipeline diagram is on Readers, passes and writers only, the orders
+  harness run on Getting started only, and pages whose header names the run no longer say it again
+  in their first paragraph.
+- The documentation site: Status says it describes this tree and points to Unreleased here for
+  what the tree adds to the last release, the C reader and writer among them. The home page's lede
+  names the C writer. Code in tables breaks inside long identifiers, so no Markdown table scrolls
+  sideways at 1280 px and wider. Feature ids and descriptions on Language support, and the headers
+  and status chips on Status, are 14 px. Add a reader or writer adapter links Getting started for
+  what a release archive holds.
 - The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
   other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
   does not compile.

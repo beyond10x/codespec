@@ -1,0 +1,44 @@
+diff --git a/crates/docs/src/main.rs b/crates/docs/src/main.rs
+index 8a847be..247b461 100644
+--- a/crates/docs/src/main.rs
++++ b/crates/docs/src/main.rs
+@@ -807,6 +807,39 @@ mod tests {
+         assert_eq!(twice, Vec::<String>::new());
+     }
+ 
++    /// UXF-019: a hand-written page prints no code block over 60 lines open; a longer one sits
++    /// in a `<details>` element, as the generated pages do since UXF-013.
++    #[test]
++    fn no_hand_written_page_prints_a_long_block_open() {
++        let mut open = Vec::new();
++        for (rel, text) in hand_written_pages() {
++            let (mut details, mut fence, mut start) = (0i32, String::new(), 0usize);
++            for (i, line) in text.lines().enumerate() {
++                if fence.is_empty() && line.starts_with("<details") {
++                    details += 1;
++                }
++                if fence.is_empty() && line.starts_with("</details") {
++                    details -= 1;
++                }
++                let ticks = line.len() - line.trim_start_matches('`').len();
++                if ticks < 3 {
++                    continue;
++                }
++                if fence.is_empty() {
++                    fence = "`".repeat(ticks);
++                    start = i;
++                } else if line.trim() == fence {
++                    let lines = i - start - 1;
++                    if lines > 60 && details == 0 {
++                        open.push(format!("{rel}:{} {lines} lines", start + 1));
++                    }
++                    fence.clear();
++                }
++            }
++        }
++        assert_eq!(open, Vec::<String>::new());
++    }
++
+     /// UXF-018: the overview links pages by the names the sidebar gives them, and has the header
+     /// card the other Start here pages have, so their count starts at 1.
+     #[test]

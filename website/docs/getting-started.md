@@ -8,9 +8,8 @@ source: .github/workflows/release-build.yml, crates/cli/src/lib.rs, examples/ord
 
 # Getting started
 
-Every command on this page was run with an installed `codespec`, in a clone of the repository, and
-its output is pasted from that run. Absolute paths in the output are shortened to `<install>` for
-the install directory and `<checkout>` for the clone.
+Output is pasted from the run the header names. Absolute paths in it are shortened to `<install>`
+for the install directory and `<checkout>` for the clone.
 
 ## Install
 

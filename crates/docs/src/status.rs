@@ -261,6 +261,14 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Conformance",
+        label: "C reader conforms to the kit",
+        detail: "codespec conform runs codespec-read-c over its corpus, one C source per claimed feature, through the same four steps as the Go reader; codespec-run-c runs each source to the case's expected output first.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-c.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
+    },
+    Capability {
+        area: "Conformance",
         label: "Go writer conforms to the kit",
         detail: "codespec conform writes every case of the kit with codespec-write-go, twice to the same bytes, and runs it with codespec-run-go: every claimed feature gives the expected output, every unclaimed one is refused or right, and the boundary cases pass.",
         status: "shipped",
@@ -290,6 +298,14 @@ pub const CAPABILITIES: &[Capability] = &[
         status: "shipped",
         evidence: Some("Taskfile.yml::eval-diff"),
         href: "/docs/concepts/harness",
+    },
+    Capability {
+        area: "Conformance",
+        label: "C writer conforms to the kit",
+        detail: "codespec conform writes every case of the kit with codespec-write-c and runs it with codespec-run-c, which compiles the C11 with cc, as for the Go writer.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-c.json::conforms"),
+        href: "/docs/guides/add-an-adapter",
     },
     Capability {
         area: "Analysis",
@@ -411,6 +427,98 @@ mod tests {
 
     fn root() -> &'static Path {
         Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+    }
+
+    /// UXF-016: every place that lists the languages codespec reads and writes names every reader
+    /// and writer the support matrix has, and Status lists each one's conformance.
+    #[test]
+    fn every_language_list_names_every_adapter() {
+        let site = root().join("website");
+        let read = |rel: &str| fs::read_to_string(site.join(rel)).unwrap();
+        let matrix: serde_json::Value =
+            serde_json::from_str(&read("data/support-matrix.json")).unwrap();
+        let (mut readers, mut writers) = (Vec::new(), Vec::new());
+        for lang in matrix["languages"].as_array().unwrap() {
+            let name = lang["name"].as_str().unwrap().to_owned();
+            let has = |role: &str| {
+                lang[role]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .any(|v| v.as_str() != Some("none"))
+            };
+            if has("read") {
+                readers.push(name.clone());
+            }
+            if has("write") {
+                writers.push(name);
+            }
+        }
+        let words = |text: &str| -> Vec<String> {
+            text.split(|c: char| !c.is_alphanumeric())
+                .map(str::to_owned)
+                .collect()
+        };
+        let mut missing = Vec::new();
+        let mut check = |place: &str, text: &str, names: &[String]| {
+            let have = words(text);
+            for n in names {
+                if !have.contains(n) {
+                    missing.push(format!("{place}: {n}"));
+                }
+            }
+        };
+        let product: serde_json::Value = serde_json::from_str(&read("product.json")).unwrap();
+        let meta = product["product"]["meta"].as_str().unwrap();
+        let part = |word: &str| meta.split('·').find(|p| p.contains(word)).unwrap_or("");
+        check("product.json meta readers", part("readers"), &readers);
+        check("product.json meta writers", part("writers"), &writers);
+        let written = |text: &str| -> String {
+            text.split_once(" write")
+                .and_then(|(_, rest)| rest.split_once(" from "))
+                .map(|(list, _)| list.to_owned())
+                .unwrap_or_default()
+        };
+        for key in ["lede", "description"] {
+            let text = product["product"][key].as_str().unwrap();
+            check(&format!("product.json {key} writers"), &written(text), &writers);
+        }
+        let steps = product["sections"][0]["steps"].as_array().unwrap();
+        let write_step = steps.iter().find(|s| s["label"] == "write").unwrap();
+        check(
+            "product.json write step",
+            write_step["description"].as_str().unwrap(),
+            &writers,
+        );
+        let index = read("docs/index.md");
+        let sentence = index
+            .split("This tree reads ")
+            .nth(1)
+            .and_then(|s| s.split(['.', '(']).next())
+            .unwrap_or("");
+        let (reads, writes) = sentence.split_once(" writes ").unwrap_or((sentence, ""));
+        check("docs/index.md reads", reads, &readers);
+        check("docs/index.md writes", writes, &writers);
+        let pipeline = read("docs/concepts/pipeline.md");
+        let labels: Vec<&str> = CAPABILITIES.iter().map(|c| c.label).collect();
+        for (role, noun, names) in [("read", "reader", &readers), ("write", "writer", &writers)] {
+            for n in names {
+                let program = format!("`codespec-{role}-{}`", n.to_lowercase());
+                for (place, text) in [
+                    ("docs/index.md", &index),
+                    ("docs/concepts/pipeline.md", &pipeline),
+                ] {
+                    if !text.contains(&program) {
+                        missing.push(format!("{place}: {program}"));
+                    }
+                }
+                let label = format!("{n} {noun} conforms to the kit");
+                if !labels.contains(&label.as_str()) {
+                    missing.push(format!("status: {label}"));
+                }
+            }
+        }
+        assert_eq!(missing, Vec::<String>::new());
     }
 
     fn capability(status: &'static str, evidence: Option<&'static str>) -> Capability {

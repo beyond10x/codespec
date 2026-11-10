@@ -51,6 +51,46 @@ html .table-of-contents {
   font-size: 0.875rem;
 }
 
+/* Only the open sidebar group shows its pages, so the group names are the reader's choices: 14 px
+   in sentence case, not 10.9 px uppercase kickers (UXF-020). */
+html .theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link,
+html .theme-doc-sidebar-item-category-level-1 > .menu__link--sublist {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* In tables the field names, types and commands are inline code, the data the reader came for; they
+   and the column headers are set at 14 px or more, not 88 % of a 14.4 px cell (UXF-024). */
+html .markdown table td code,
+html .markdown table th code {
+  font-size: 0.875rem;
+}
+
+/* At that size a long identifier may break anywhere, so the table fits its column instead of
+   scrolling sideways (UXF-029). */
+html .markdown table td code {
+  overflow-wrap: anywhere;
+}
+
+html .markdown table th {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Status: the group headers and the status chips at 14 px, as in the other tables (UXF-030). */
+html .b10x-status-table table th,
+html .b10x-status-table table .b10x-status-table__area th {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+html .b10x-status-table .b10x-status {
+  font-size: 0.875rem;
+}
+
 /* The home page copy starts at the top of the hero instead of centring on the code pair beside it,
    so the actions are in the first screen at 1366x768 and 1280x720 (UXF-007). */
 main .b10x-hero__copy {
