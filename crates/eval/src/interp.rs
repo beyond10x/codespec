@@ -12,7 +12,9 @@ use codespec_model::{
 use crate::builtins;
 use crate::gofmt;
 use crate::growth::{Layout, grow_cap};
+use crate::host::Host;
 use crate::id::{Node, func_id, module_path, node_id, var_node_id};
+use crate::trace::{J, line};
 use crate::value::{Closure, ErrorVal, HeapId, Place, Step, Value};
 use crate::{Stop, StopKind};
 
@@ -117,9 +119,11 @@ pub(crate) struct Interp<'m> {
     /// The address of the evaluator thread's first frame, for the stack margin.
     pub(crate) stack_base: usize,
     max_steps: u64,
+    /// The environment, stubs, host channels and trace (`host`).
+    pub(crate) host: Host<'m>,
 }
 
-fn int_bits(w: IntWidth) -> u32 {
+pub(crate) fn int_bits(w: IntWidth) -> u32 {
     match w {
         IntWidth::Platform | IntWidth::W64 => 64,
         IntWidth::W8 => 8,
@@ -173,11 +177,145 @@ impl<'m> Interp<'m> {
             nest: 0,
             stack_base: 0,
             max_steps,
+            host: Host::default(),
         }
     }
 
     pub(crate) fn take_out(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.out)
+    }
+
+    /// How many calls are running, for [`Self::unwind`].
+    pub(crate) fn depth(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// Drops the frames a call that ended in a stop left above `depth`.
+    pub(crate) fn unwind(&mut self, depth: usize) {
+        self.frames.truncate(depth);
+    }
+
+    /// The id and position of `node` in the running code.
+    fn site(&self, node: Node<'m>) -> (String, String) {
+        let s = self.halt(StopKind::Panic, node, "").stop(self.m);
+        (s.node, s.pos)
+    }
+
+    /// The value `v` points to, for a session's receiver of the method `f`.
+    pub(crate) fn deref_at(&self, v: &Value<'m>, f: &'m Func) -> R<'m, Value<'m>> {
+        match v {
+            Value::Ptr(p) => self.read(p).cloned().ok_or_else(|| Halt {
+                kind: StopKind::Unsupported,
+                reason: "a pointer outside its cell".into(),
+                at: At::Func(f),
+            }),
+            _ => Err(Halt {
+                kind: StopKind::Panic,
+                reason: "invalid memory address or nil pointer dereference".into(),
+                at: At::Func(f),
+            }),
+        }
+    }
+
+    /// `v` as the trace writes it (`session` module doc § The trace).
+    pub(crate) fn render(&mut self, v: &Value<'m>) -> String {
+        let mut through = Vec::new();
+        self.render_into(v, &mut through, 0)
+    }
+
+    fn render_into(&mut self, v: &Value<'m>, through: &mut Vec<HeapId>, depth: usize) -> String {
+        if depth > MAX_TYPE_DEPTH {
+            return "…".into();
+        }
+        let quote = |s: &[u8]| {
+            gofmt::quote(s).unwrap_or_else(|| {
+                serde_json::to_string(&String::from_utf8_lossy(s)).expect("a string serializes")
+            })
+        };
+        match v {
+            Value::Unit => "()".into(),
+            Value::Bool(b) => b.to_string(),
+            Value::Int(n) => n.to_string(),
+            Value::Float(f) => gofmt::float_v(*f, FloatBits::W64),
+            Value::Str(s) => quote(s),
+            Value::Nil => "nil".into(),
+            Value::Tuple(xs) => {
+                let parts: Vec<String> = xs
+                    .iter()
+                    .map(|x| self.render_into(x, through, depth + 1))
+                    .collect();
+                format!("({})", parts.join(", "))
+            }
+            Value::Struct(name, fs) => {
+                let decl: &'m [Field] = self.structs.get(name.as_ref()).map_or(&[], |&(_, d)| d);
+                let names: Vec<&'m str> = decl.iter().map(|f| f.name.as_str()).collect();
+                let parts: Vec<String> = fs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        let shown = self.render_into(x, through, depth + 1);
+                        match names.get(i) {
+                            Some(n) => format!("{n}: {shown}"),
+                            None => shown,
+                        }
+                    })
+                    .collect();
+                format!("{name}{{{}}}", parts.join(", "))
+            }
+            Value::Array(_) | Value::Slice { .. } => {
+                let xs = match v {
+                    Value::Array(xs) => xs.clone(),
+                    _ => self.elems(v).unwrap_or_default(),
+                };
+                let parts: Vec<String> = xs
+                    .iter()
+                    .map(|x| self.render_into(x, through, depth + 1))
+                    .collect();
+                format!("[{}]", parts.join(", "))
+            }
+            Value::Map(id) => {
+                let entries = self.map_entries(*id).to_vec();
+                let parts: Vec<String> = entries
+                    .iter()
+                    .map(|(k, x)| {
+                        let k = self.render_into(k, through, depth + 1);
+                        let x = self.render_into(x, through, depth + 1);
+                        format!("{k}: {x}")
+                    })
+                    .collect();
+                format!("map[{}]", parts.join(", "))
+            }
+            Value::Ptr(p) => {
+                if through.contains(&p.cell) {
+                    return "&…".into();
+                }
+                let Some(x) = self.read(p).cloned() else {
+                    return "&?".into();
+                };
+                through.push(p.cell);
+                let shown = self.render_into(&x, through, depth + 1);
+                through.pop();
+                format!("&{shown}")
+            }
+            Value::Chan(_) => "chan".into(),
+            Value::Func(_) => "func".into(),
+            Value::Error(e) => {
+                let e = Value::Error(e.clone());
+                let depth = self.depth();
+                // The `Error` method runs outside the trace: its effects are not the call's.
+                let trace = self.host.trace.take();
+                let msg = self.error_message(&e, Node::Expr(&NIL));
+                self.host.trace = trace;
+                self.unwind(depth);
+                match msg {
+                    Ok(m) => format!("error({})", quote(m.as_bytes())),
+                    Err(_) => "error(?)".into(),
+                }
+            }
+            Value::Iface(_, x) => self.render_into(x, through, depth + 1),
+            Value::Host(key, _) | Value::Opaque(key) => key.to_string(),
+            Value::MapData(_) | Value::ChanData(..) => "?".into(),
+        }
     }
 
     fn halt(&self, kind: StopKind, node: Node<'m>, reason: impl Into<String>) -> Halt<'m> {
@@ -336,7 +474,7 @@ impl<'m> Interp<'m> {
     }
 
     /// `t`, its type parameters replaced, through every newtype and enum to the type under it.
-    fn resolve(&self, t: &Type) -> Type {
+    pub(crate) fn resolve(&self, t: &Type) -> Type {
         let mut t = self.subst(t);
         for _ in 0..64 {
             let Type::Named { name, targs } = &t else {
@@ -381,11 +519,11 @@ impl<'m> Interp<'m> {
         }
     }
 
-    fn is_ptr(&self, t: &Type) -> bool {
+    pub(crate) fn is_ptr(&self, t: &Type) -> bool {
         matches!(self.resolve(t), Type::Ptr { .. })
     }
 
-    fn is_iface(&self, t: &Type) -> bool {
+    pub(crate) fn is_iface(&self, t: &Type) -> bool {
         match self.subst(t) {
             Type::Any | Type::Error => true,
             Type::Named { name, .. } => self.m.interface_decl("", &name).is_some(),
@@ -398,7 +536,7 @@ impl<'m> Interp<'m> {
     /// an interface and `from` is not, as Go converts it implicitly. The one place a concrete
     /// value becomes an interface value; every crossing the crate doc lists (§ Interfaces) calls
     /// it, a list of expressions through [`Self::eval_into`].
-    fn enter_slot(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
+    pub(crate) fn enter_slot(&self, v: Value<'m>, from: &Type, to: &Type) -> Value<'m> {
         if !self.is_iface(to) || self.is_iface(from) {
             return v;
         }
@@ -970,16 +1108,75 @@ impl<'m> Interp<'m> {
         args: Vec<Value<'m>>,
         node: Node<'m>,
     ) -> R<'m, Value<'m>> {
+        let tracing = self.host.trace.is_some();
+        let shown: Vec<String> = if tracing {
+            args.iter().map(|a| self.render(a)).collect()
+        } else {
+            Vec::new()
+        };
+        // A stub the user named for this site, or for every call of this extern, answers first.
+        if let Node::Expr(e) = node
+            && let Some(v) = self.host.stub_at(e)
+        {
+            if tracing {
+                self.trace_extern(key, "stub", &shown, &v, node);
+            }
+            return Ok(v);
+        }
         match builtins::call(self, key, recv, args) {
             None => Err(self.halt(
                 StopKind::NoHandler,
                 node,
                 format!("extern {key} has no handler"),
             )),
-            Some(Ok(v)) => Ok(v),
+            Some(Ok(v)) => {
+                if tracing {
+                    self.trace_extern(key, builtins::handler(key), &shown, &v, node);
+                }
+                Ok(v)
+            }
             Some(Err(builtins::Fail::Panic(msg))) => Err(self.panic(node, msg)),
             Some(Err(builtins::Fail::Unsupported(msg))) => Err(self.unsupported(node, msg)),
         }
+    }
+
+    /// The trace's `effect` of an extern call answered by `handler`.
+    fn trace_extern(
+        &mut self,
+        key: &str,
+        handler: &str,
+        args: &[String],
+        v: &Value<'m>,
+        node: Node<'m>,
+    ) {
+        let results: Vec<String> = match v {
+            Value::Unit => Vec::new(),
+            Value::Tuple(xs) => xs.iter().map(|x| self.render(x)).collect(),
+            v => vec![self.render(v)],
+        };
+        let (id, pos) = self.site(node);
+        self.host.emit(line(&[
+            ("event", J::Str("effect")),
+            ("node", J::Str(&id)),
+            ("pos", J::Str(&pos)),
+            ("effect", J::Str("extern")),
+            ("key", J::Str(key)),
+            ("handler", J::Str(handler)),
+            ("args", J::List(args)),
+            ("results", J::List(&results)),
+        ]));
+    }
+
+    /// The trace's `effect` of `node` with the field `what`, the value or text it put out.
+    fn trace_out(&mut self, effect: &str, what: (&str, &str), node: Node<'m>) {
+        let (id, pos) = self.site(node);
+        self.host.emit(line(&[
+            ("event", J::Str("effect")),
+            ("node", J::Str(&id)),
+            ("pos", J::Str(&pos)),
+            ("effect", J::Str(effect)),
+            (what.0, J::Str(what.1)),
+        ]));
     }
 
     // ---- statements ----
@@ -1441,6 +1638,12 @@ impl<'m> Interp<'m> {
                 "a send on a nil channel blocks forever",
             ));
         };
+        if self.host.chans.contains(&id) {
+            // A channel a session passed: the host takes the value, an effect.
+            let shown = self.render(&v);
+            self.trace_out("send", ("value", &shown), node);
+            return Ok(());
+        }
         match &mut self.heap[id] {
             Value::ChanData(_, _, true) => Err(self.panic(node, "send on closed channel")),
             Value::ChanData(q, cap, false) if q.len() < *cap => {
@@ -2321,6 +2524,10 @@ impl<'m> Interp<'m> {
                 }
                 line.push(b'\n');
                 let n = line.len();
+                if self.host.trace.is_some() {
+                    let text = String::from_utf8_lossy(&line).into_owned();
+                    self.trace_out("stdout", ("text", &text), node);
+                }
                 self.out.extend_from_slice(&line);
                 Ok(match t {
                     Type::Tuple { elems } if elems.len() == 2 => {

@@ -304,12 +304,31 @@ pub enum Cmd {
     /// nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a
     /// module calling an undeclared function, with a wrong argument count, naming an undeclared
     /// type or a type holding itself, or an argument outside its parameter's width, is refused.
+    ///
+    /// With --session instead of --calls, the calls of a codespec-session/1 file run in order,
+    /// reusing results earlier calls bound, and standard output is the run's trace,
+    /// codespec-eval-trace/1: one JSON object per call, return, effect, panic and stop. A panic
+    /// ends its call, not the session. Externs go to their handlers: os.Getenv reads only the
+    /// --env given; an extern without one stops the run unless a --stub answers for it, and
+    /// standard error names every site a stub answered at.
     Eval {
         /// The cir/1 module to run.
         module: PathBuf,
         /// The calls to make, a codespec-calls/1 document.
+        #[arg(long, required_unless_present = "session", conflicts_with = "session")]
+        calls: Option<PathBuf>,
+        /// The session to run, a codespec-session/1 document; prints its trace.
         #[arg(long)]
-        calls: PathBuf,
+        session: Option<PathBuf>,
+        /// A variable of the run's environment, KEY=VALUE; repeat for several. The run sees no
+        /// other.
+        #[arg(long, value_name = "KEY=VALUE")]
+        env: Vec<String>,
+        /// A stub answering in place of a handler: SITE=VALUES, SITE an extern's key (every call
+        /// of it) or a call's node id (that call), VALUES one JSON value per result, separated by
+        /// spaces (null for a nil error); repeat for several.
+        #[arg(long, value_name = "SITE=VALUES")]
+        stub: Vec<String>,
         /// The statements, calls and loop iterations the run may execute before it stops.
         #[arg(long, default_value_t = 10_000_000)]
         max_steps: u64,

@@ -1,6 +1,18 @@
 //! `b10x-codespec-eval`: a tree-walking interpreter over `cir/1` (`docs/evaluator.md` § 4, § 5).
 //! [`run_calls`] runs the calls of a `codespec-calls/1` file against one module and prints what
 //! the kit's native runners print for them; `codespec eval --calls` is its command line.
+//! [`run_session`] runs a `codespec-session/1` file, whose calls reuse earlier results, and gives
+//! its trace, `codespec-eval-trace/1` ([`session`]); `codespec eval --session`.
+//!
+//! # Handlers and stubs
+//!
+//! An extern call goes, in this order, to a [`Stub`] the user named for its node id, a stub for
+//! its key, then its built-in handler (`builtins`: pure library functions as Go's, and
+//! `os.Getenv` and `os.LookupEnv` reading [`Options::env`], empty unless given); with none of
+//! them the run stops (`no handler`, E4). [`Run::stubbed`] names each site a stub answered at and
+//! how often. A stub answers at `extern` and `extern_method` nodes; a method of an extern type
+//! called through an interface goes to its handler. A stub naming no extern call of the module,
+//! or values the call's results cannot hold, is refused before anything runs.
 //!
 //! # Output
 //!
@@ -18,12 +30,12 @@
 //! | kind | when |
 //! |---|---|
 //! | `foreign` | a `foreign` statement is executed, or a variable's initializer is foreign source; one the run does not reach does not stop it |
-//! | `no handler` | an extern with no built-in handler is called; the handlers are `path.Join`, `strconv.Itoa`, `strings.Repeat` and `strings.Builder`'s `WriteString`, `Len` and `String`, each as Go's |
+//! | `no handler` | an extern with no built-in handler and no stub is called; the handlers are `path.Join`, `strconv.Itoa`, `strings.Repeat`, `strings.ToUpper`, `ToLower` and `TrimSpace` and `strings.Builder`'s `WriteString`, `Len` and `String`, each as Go's, and `os.Getenv` and `os.LookupEnv` on the run's environment |
 //! | `no body` | a function the module declares without a body (`opaque`) is called |
 //! | `panic` | Go would panic: an index out of range, a nil dereference, a zero divisor, a send on a closed channel, a handler's panic (a write to a copied non-zero `strings.Builder`) |
 //! | `blocked` | a send on a full channel or a receive from an empty one, which only another goroutine could end |
 //! | `step budget` | the run took more than [`Options::max_steps`] steps (default 10,000,000; each statement, call and loop iteration is one; an element or field of a value with a place, an array's `len` and a range's next iteration are read in place, so a step copies no more than Go copies), calls nest deeper than 1000, statements and expressions nest deeper than 10,000 levels counting through calls, or the evaluator's 512 MiB stack has less than 64 MiB left |
-//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v` (and `%w` outside `errorf`), a string outside ASCII in a result, a value the kit's driver cannot print, an `append` growing a slice of an extern type, a zero value a generic type's arguments make over the limit below, an entry added to a map during a range over it |
+//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v` (and `%w` outside `errorf`), a string outside ASCII in a result, a value the kit's driver cannot print, an `append` growing a slice of an extern type, a zero value a generic type's arguments make over the limit below, an entry added to a map during a range over it, a string outside ASCII to `strings.ToUpper`, `ToLower` or `TrimSpace` |
 //!
 //! A panic inside a function literal a module variable holds names its node as
 //! `<module path>.<var>#init.…` ([`id`]).
@@ -107,27 +119,101 @@ mod check;
 pub mod diff;
 mod gofmt;
 mod growth;
+mod host;
 pub mod id;
 mod interp;
 pub mod kit;
 pub mod runner;
+pub mod session;
+mod trace;
 mod value;
+
+pub use session::{SESSION_FORMAT, Session, SessionCall, TRACE_FORMAT, run_session};
 
 use codespec_conformance::{Calls, calls_go};
 use codespec_model::Module;
 
-/// How a run is bounded.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// How a run is bounded, and what it is given from outside the module.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// The statements and calls a run may execute before it stops (`step budget`).
     pub max_steps: u64,
+    /// The environment `os.Getenv` and `os.LookupEnv` read, as `(key, value)`; the last of a
+    /// key counts. Empty by default: a run sees none of the host's.
+    pub env: Vec<(String, String)>,
+    /// The stubs that answer in place of a handler (crate doc § Handlers and stubs).
+    pub stubs: Vec<Stub>,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             max_steps: 10_000_000,
+            env: Vec::new(),
+            stubs: Vec::new(),
         }
+    }
+}
+
+/// A stub the user names (E3, E4): the results an extern call gives instead of its handler's,
+/// at every call of an extern (`site` its key, `os.Getpid`) or at one call (`site` the call's
+/// node id, `envcheck.Mode#0.rhs.0.args.0`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stub {
+    pub site: String,
+    /// One JSON value per result: an integer, a float, `true` or `false`, a string, or `null`
+    /// for a nil error, pointer, slice, map, channel, function or interface.
+    pub values: Vec<serde_json::Value>,
+}
+
+impl Stub {
+    /// Reads `<site>=<values>`, the values JSON separated by white space: `os.Getpid=42`,
+    /// `os.Hostname="h" null`, `log.Print=` for an extern without results.
+    pub fn parse(s: &str) -> Result<Stub, String> {
+        let (site, values) = s
+            .split_once('=')
+            .ok_or_else(|| format!("stub {s:?}: not <site>=<values>"))?;
+        if site.is_empty() {
+            return Err(format!("stub {s:?}: no site"));
+        }
+        let values = serde_json::Deserializer::from_str(values)
+            .into_iter::<serde_json::Value>()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("stub {s:?}: {e}"))?;
+        Ok(Stub {
+            site: site.to_string(),
+            values,
+        })
+    }
+
+    /// Whether the site is a node id rather than an extern's key.
+    pub fn is_node(&self) -> bool {
+        self.site.contains('#')
+    }
+}
+
+/// A call site a stub answered at, and how often (E4: the result says a stub answered).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stubbed {
+    /// The extern's key.
+    pub key: String,
+    /// The call's node id and its statement's `file:line`.
+    pub node: String,
+    pub pos: String,
+    pub calls: u64,
+}
+
+impl std::fmt::Display for Stubbed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "stubbed {} at {} ({}): {} call{}",
+            self.key,
+            self.node,
+            self.pos,
+            self.calls,
+            if self.calls == 1 { "" } else { "s" }
+        )
     }
 }
 
@@ -182,11 +268,13 @@ impl std::fmt::Display for Stop {
     }
 }
 
-/// What a run printed, and where it stopped if it did not make every call.
+/// What a run printed (a session's trace), where it stopped if it did not make every call, and
+/// the sites a stub answered at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Run {
     pub stdout: String,
     pub stop: Option<Stop>,
+    pub stubbed: Vec<Stubbed>,
 }
 
 /// The stack the evaluator runs on: room for [`interp::MAX_NEST`] levels of its own recursion
@@ -201,11 +289,16 @@ pub fn run_calls(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, Strin
     calls_go(m, calls)?;
     check::module(m)?;
     check::calls(m, calls)?;
+    on_eval_stack(|| run_on_this_thread(m, calls, opts))
+}
+
+/// `run` on a thread of its own with the evaluator's stack, [`EVAL_STACK`].
+pub(crate) fn on_eval_stack<T: Send>(run: impl FnOnce() -> T + Send) -> T {
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("cir1-eval".into())
             .stack_size(EVAL_STACK)
-            .spawn_scoped(s, || run_on_this_thread(m, calls, opts))
+            .spawn_scoped(s, run)
             .expect("a thread to evaluate on")
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
@@ -216,6 +309,7 @@ fn run_on_this_thread(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, 
     let mut it = interp::Interp::new(m, opts.max_steps);
     let base = 0u8;
     it.stack_base = &base as *const u8 as usize;
+    it.install(opts)?;
     let mut stop = it
         .init_globals()
         .and_then(|()| it.run_inits())
@@ -250,5 +344,9 @@ fn run_on_this_thread(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, 
             String::from_utf8(bytes).expect("valid up to here")
         }
     };
-    Ok(Run { stdout, stop })
+    Ok(Run {
+        stdout,
+        stop,
+        stubbed: std::mem::take(&mut it.host.stubbed),
+    })
 }

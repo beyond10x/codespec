@@ -72,7 +72,15 @@ fn calls(calls: &[(&str, &[&str])]) -> Calls {
 }
 
 fn run_with(m: &Module, c: &[(&str, &[&str])], max_steps: u64) -> Run {
-    run_calls(m, &calls(c), &Options { max_steps }).unwrap()
+    run_calls(
+        m,
+        &calls(c),
+        &Options {
+            max_steps,
+            ..Options::default()
+        },
+    )
+    .unwrap()
 }
 
 fn run(m: &Module, c: &[(&str, &[&str])]) -> Run {

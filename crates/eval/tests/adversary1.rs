@@ -243,7 +243,15 @@ fn adv_an_empty_infinite_loop_ends_at_the_step_budget() {
     const NAME: &str = "adv_an_empty_infinite_loop_ends_at_the_step_budget";
     if is_child(NAME) {
         let m = read("spin");
-        let r = run_calls(&m, &calls(&[("Spin", &[])]), &Options { max_steps: 1000 }).unwrap();
+        let r = run_calls(
+            &m,
+            &calls(&[("Spin", &[])]),
+            &Options {
+                max_steps: 1000,
+                ..Options::default()
+            },
+        )
+        .unwrap();
         report_child(&r);
         return;
     }
@@ -261,7 +269,15 @@ fn adv_a_range_over_a_large_int_ends_at_the_step_budget() {
     const NAME: &str = "adv_a_range_over_a_large_int_ends_at_the_step_budget";
     if is_child(NAME) {
         let m = read("bigrange");
-        let r = run_calls(&m, &calls(&[("Count", &[])]), &Options { max_steps: 1000 }).unwrap();
+        let r = run_calls(
+            &m,
+            &calls(&[("Count", &[])]),
+            &Options {
+                max_steps: 1000,
+                ..Options::default()
+            },
+        )
+        .unwrap();
         report_child(&r);
         return;
     }

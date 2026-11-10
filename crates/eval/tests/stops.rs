@@ -1,14 +1,15 @@
 //! Requirement E4 (`docs/evaluator.md` § 2): a run never goes past the unknown. On the fixtures
 //! under `tests/fixtures/`, read with `codespec-read-go`, a run that executes a `foreign`
 //! statement or calls an extern with no built-in handler stops with a reason naming the node, and
-//! a `foreign` statement the run does not execute does not stop it.
+//! a `foreign` statement the run does not execute does not stop it; a stub the user names answers
+//! in place of a handler, for an extern or one call site of it (E3), and the run says it did.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
 use codespec_conformance::{CALLS_FORMAT, Call, Calls};
-use codespec_eval::{Options, StopKind, run_calls};
+use codespec_eval::{Options, StopKind, Stub, Stubbed, run_calls};
 use codespec_model::Module;
 
 fn fixtures() -> PathBuf {
@@ -108,11 +109,96 @@ fn a_run_that_executes_a_foreign_statement_stops_naming_it() {
 #[test]
 fn a_call_of_an_extern_without_a_handler_stops_naming_it() {
     let m = read("nohandler");
-    let run = run_calls(&m, &calls(&[("Mode", &["\"dev\""])]), &Options::default()).unwrap();
+    let run = run_calls(&m, &calls(&[("Pid", &["7"])]), &Options::default()).unwrap();
     assert_eq!(run.stdout, "");
     let stop = run.stop.expect("the call stops");
     assert_eq!(stop.kind, StopKind::NoHandler);
-    assert_eq!(stop.node, "example.com/eval/nohandler.Mode#0.rhs.0");
+    assert_eq!(stop.node, "example.com/eval/nohandler.Pid#0.rhs.0");
     assert_eq!(stop.pos, "nohandler.go:9");
-    assert_eq!(stop.reason, "extern os.Getenv has no handler");
+    assert_eq!(stop.reason, "extern os.Getpid has no handler");
+    assert_eq!(run.stubbed, [], "no stub was named, none answered");
+}
+
+/// E4's other branch: a stub the user names for an extern without a handler answers in its
+/// place, and the run says it did, by extern, site and count.
+#[test]
+fn a_stub_named_for_an_extern_without_a_handler_answers_and_the_run_says_so() {
+    let m = read("nohandler");
+    let opts = Options {
+        stubs: vec![Stub::parse("os.Getpid=42").unwrap()],
+        ..Options::default()
+    };
+    let run = run_calls(&m, &calls(&[("Pid", &["7"]), ("Pid", &["7"])]), &opts).unwrap();
+    assert_eq!(run.stop, None);
+    assert_eq!(run.stdout, "ok 42\nok 42\n");
+    assert_eq!(
+        run.stubbed,
+        [Stubbed {
+            key: "os.Getpid".into(),
+            node: "example.com/eval/nohandler.Pid#0.rhs.0".into(),
+            pos: "nohandler.go:9".into(),
+            calls: 2,
+        }]
+    );
+    assert_eq!(
+        run.stubbed[0].to_string(),
+        "stubbed os.Getpid at example.com/eval/nohandler.Pid#0.rhs.0 (nohandler.go:9): 2 calls"
+    );
+}
+
+/// E3: a handler replaced for one call site by its node id answers there; the default handler,
+/// here the run's environment, answers at the other site of the same extern.
+#[test]
+fn a_handler_replaced_at_one_site_answers_there_and_the_default_at_the_other() {
+    let m = read("twosites");
+    let env = vec![("MODE".to_string(), "prod".to_string())];
+    let plain = Options {
+        env: env.clone(),
+        ..Options::default()
+    };
+    let run = run_calls(&m, &calls(&[("Pair", &[])]), &plain).unwrap();
+    assert_eq!(
+        (run.stdout.as_str(), run.stop),
+        ("ok \"prod/prod\"\n", None)
+    );
+
+    let second = "example.com/eval/twosites.Pair#1.rhs.0";
+    let replaced = Options {
+        env,
+        stubs: vec![Stub::parse(&format!("{second}=\"stub\"")).unwrap()],
+        ..Options::default()
+    };
+    let run = run_calls(&m, &calls(&[("Pair", &[])]), &replaced).unwrap();
+    assert_eq!(
+        (run.stdout.as_str(), run.stop),
+        ("ok \"prod/stub\"\n", None)
+    );
+    assert_eq!(
+        run.stubbed,
+        [Stubbed {
+            key: "os.Getenv".into(),
+            node: second.into(),
+            pos: "twosites.go:9".into(),
+            calls: 1,
+        }]
+    );
+}
+
+/// A stub naming a site that is no extern call of the module, or a value its result cannot
+/// hold, is refused before anything runs.
+#[test]
+fn a_stub_for_no_extern_call_or_of_the_wrong_type_is_refused() {
+    let m = read("twosites");
+    for (stub, why) in [
+        ("os.Getpid=1", "os.Getpid"),
+        ("example.com/eval/twosites.Pair#2=\"x\"", "Pair#2"),
+        ("os.Getenv=1", "os.Getenv"),
+    ] {
+        let opts = Options {
+            stubs: vec![Stub::parse(stub).unwrap()],
+            ..Options::default()
+        };
+        let e = run_calls(&m, &calls(&[("Pair", &[])]), &opts).unwrap_err();
+        assert!(e.contains(why), "{stub}: {e}");
+    }
 }

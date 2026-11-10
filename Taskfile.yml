@@ -460,6 +460,12 @@ tasks:
     cmds:
       - cargo test --locked -q -p b10x-codespec-eval --test kit -- --nocapture
 
+  eval-traces:
+    desc: Write examples/orders/orders.eval-trace.jsonl, the codespec-eval-trace/1 trace codespec eval gives for the session examples/orders/orders.session.json; crates/eval/tests/sessions.rs fails when it is not current.
+    cmds:
+      - cargo build --locked -q -p b10x-codespec-cli
+      - target/debug/codespec eval examples/orders/orders.cir.json --session examples/orders/orders.session.json > examples/orders/orders.eval-trace.jsonl
+
   eval-diff:
     desc: Per-function differential runs (codespec_eval::diff). Every exported function of examples/series and examples/inventory gets 200 seeded calls, a method through a generated probe that builds its receiver with drawn setup calls (one that would return an error skipped), and the probe module is written and run by each writer and runner pair, the evaluator's (codespec-write-cir, codespec-run-cir), Go's and Rust's; the Go and Rust outputs must equal the evaluator's byte for byte. Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function; a refusal not listed with --refused, a listed one the writer no longer makes, or a listing for an example not run, fails, as does a function fewer than half of whose seeds reach it. A correctness comparison, not a measurement; nothing is timed.
     deps: [build]
