@@ -764,6 +764,7 @@ mod tests {
                 "not a language model",
                 &["Not a language model", "No step is a language model"][..],
             ),
+            ("release archive contents", &["holds `codespec`,"][..]),
         ] {
             let holders: Vec<&str> = pages
                 .iter()
@@ -782,8 +783,27 @@ mod tests {
                 "orders harness run: getting-started.md",
                 "trace counts: ",
                 "not a language model: index.md",
+                "release archive contents: getting-started.md",
             ]
         );
+    }
+
+    /// UXF-027: Status lists what this tree holds, the C reader and writer among them, which
+    /// came after the last release; so it says it describes the tree, not the release.
+    #[test]
+    fn the_status_page_describes_the_tree() {
+        let page = fs::read_to_string(root().join("website/docs/status.mdx")).unwrap();
+        let flat = page.split_whitespace().collect::<Vec<_>>().join(" ");
+        let wrong: Vec<&str> = [
+            "This page describes release",
+            "code in the release",
+            "current codespec release implements",
+        ]
+        .into_iter()
+        .filter(|s| flat.contains(s))
+        .collect();
+        assert_eq!(wrong, Vec::<&str>::new());
+        assert!(flat.contains("This page describes this tree"));
     }
 
     /// UXF-023: a page whose header card says how its commands were run does not say it again

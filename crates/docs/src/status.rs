@@ -457,6 +457,23 @@ mod tests {
         let part = |word: &str| meta.split('·').find(|p| p.contains(word)).unwrap_or("");
         check("product.json meta readers", part("readers"), &readers);
         check("product.json meta writers", part("writers"), &writers);
+        let written = |text: &str| -> String {
+            text.split_once(" write")
+                .and_then(|(_, rest)| rest.split_once(" from "))
+                .map(|(list, _)| list.to_owned())
+                .unwrap_or_default()
+        };
+        for key in ["lede", "description"] {
+            let text = product["product"][key].as_str().unwrap();
+            check(&format!("product.json {key} writers"), &written(text), &writers);
+        }
+        let steps = product["sections"][0]["steps"].as_array().unwrap();
+        let write_step = steps.iter().find(|s| s["label"] == "write").unwrap();
+        check(
+            "product.json write step",
+            write_step["description"].as_str().unwrap(),
+            &writers,
+        );
         let index = read("docs/index.md");
         let sentence = index
             .split("This tree reads ")

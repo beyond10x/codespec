@@ -127,6 +127,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   headers in sentence case. The pipeline diagram is on Readers, passes and writers only, the orders
   harness run on Getting started only, and pages whose header names the run no longer say it again
   in their first paragraph.
+- The documentation site: Status says it describes this tree and points to Unreleased here for
+  what the tree adds to the last release, the C reader and writer among them. The home page's lede
+  names the C writer. Code in tables breaks inside long identifiers, so no Markdown table scrolls
+  sideways at 1280 px and wider. Feature ids and descriptions on Language support, and the headers
+  and status chips on Status, are 14 px. Add a reader or writer adapter links Getting started for
+  what a release archive holds.
 - The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
   other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
   does not compile.

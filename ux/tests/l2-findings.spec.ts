@@ -133,3 +133,39 @@ test('UXF-014 code blocks and the table of contents are at least 14 px', async (
   expect(sizes.toc, 'table of contents font size').toBeGreaterThanOrEqual(14);
   await page.context().close();
 });
+
+// UXF-029: at 14 px, code in table cells breaks where it must, so no Markdown table scrolls
+// sideways at a gating viewport on the pages whose tables hold long identifiers.
+for (const vp of gating) {
+  test(`UXF-029 no Markdown table scrolls sideways at ${vp.width}x${vp.height}`, async ({ browser }) => {
+    const wide: string[] = [];
+    for (const p of ['concepts/pipeline', 'reference/cli', 'reference/crates', 'concepts/static-analysis', 'examples/netcheck']) {
+      const page = await open(browser, `/codespec/docs/${p}`, vp.width, vp.height);
+      const w = await page.evaluate(() =>
+        [...document.querySelectorAll('.markdown .b10x-table-wrap')].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => `${e.scrollWidth} in ${e.clientWidth}`),
+      );
+      wide.push(...w.map((x) => `${p}: ${x}`));
+      await page.context().close();
+    }
+    expect(wide).toEqual([]);
+  });
+}
+
+// UXF-030: on the support matrix and Status, the data a reader looks up (the feature id, its
+// description and code, the Status group headers and chips) is 14 px or more.
+test('UXF-030 support matrix features and Status headers and chips are at least 14 px', async ({ browser }) => {
+  const small: string[] = [];
+  for (const [p, sels] of [
+    ['reference/support', ['a[class*="featureId"]', '[data-description]', '[data-description] code']],
+    ['status', ['.b10x-status-table th', '.b10x-status-table .b10x-status']],
+  ] as const) {
+    const page = await open(browser, `/codespec/docs/${p}`, 1366, 768);
+    const sizes = await page.evaluate(
+      (ss) => ss.map((s) => [s, Math.min(...[...document.querySelectorAll(s)].map((e) => parseFloat(getComputedStyle(e).fontSize)))] as const),
+      [...sels],
+    );
+    for (const [s, px] of sizes) if (!(px >= 14) || px === Infinity) small.push(`${p} ${s}: ${px}`);
+    await page.context().close();
+  }
+  expect(small).toEqual([]);
+});

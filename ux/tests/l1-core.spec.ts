@@ -10,6 +10,7 @@ import { compare, update, type Baseline } from '../core/ratchet.ts';
 import { runScreenOnly, score, wordMatches } from '../core/screen-only.ts';
 import { resolveFile } from '../core/site.ts';
 import { assetResults, specPattern } from '../core/specs.ts';
+import { scrollContainerPages, scrollContainerLines } from '../core/round.ts';
 import { FINDINGS, REPO, SITE_ROOT, UX } from './env.ts';
 
 test.describe('core', () => {
@@ -230,6 +231,42 @@ test.describe('round runs the regression assets', () => {
       { file: 'l2-findings.spec.ts', title: 'UXF-015 a', ok: true },
       { file: 'l2-findings.spec.ts', title: 'UXF-020 b', ok: false },
       { file: 'l1-core.spec.ts', title: 'core › c', ok: true },
+    ]);
+  });
+});
+
+// UXF-031 (T14): the round names the page of every scroll container at the gating viewports and
+// sets it against the last round, so a change set's side effect shows where it lands.
+test.describe('round names the pages of its scroll containers', () => {
+  const unit = (path: string, viewport: string, theme: string, widths: [number, number][]) => ({
+    path,
+    viewport,
+    theme,
+    overflow: { scrollContainers: widths.map(([scrollWidth, clientWidth]) => ({ desc: 'div.b10x-table-wrap', scrollWidth, clientWidth, allowed: false })) },
+  });
+  const units = [
+    unit('/codespec/docs/a', '1366x768', 'light', [[900, 768]]),
+    unit('/codespec/docs/a', '1280x720', 'light', [[900, 703]]),
+    unit('/codespec/docs/b', '1280x720', 'dark', [[754, 703]]),
+    unit('/codespec/docs/c', '1366x768', 'light', []),
+  ];
+
+  test('scrollContainerPages counts per page, keeps the widest, and reads the last round', () => {
+    expect(scrollContainerPages(units, [{ path: '/codespec/docs/a', count: 2 }, { path: '/codespec/docs/gone', count: 4 }])).toEqual([
+      { path: '/codespec/docs/a', count: 2, widest: '900 in 703 at 1280x720', last: 2 },
+      { path: '/codespec/docs/b', count: 1, widest: '754 in 703 at 1280x720', last: 0 },
+      { path: '/codespec/docs/gone', count: 0, widest: '', last: 4 },
+    ]);
+    expect(scrollContainerPages(units, null).map((p) => p.last)).toEqual([null, null]);
+  });
+
+  test('scrollContainerLines prints one row per page with this round and the last', () => {
+    const lines = scrollContainerLines(scrollContainerPages(units, [{ path: '/codespec/docs/a', count: 2 }]));
+    expect(lines).toEqual([
+      '| page | this round | last round | widest (content in box, px) |',
+      '|---|---|---|---|',
+      '| `/codespec/docs/a` | 2 | 2 | 900 in 703 at 1280x720 |',
+      '| `/codespec/docs/b` | 1 | 0 | 754 in 703 at 1280x720 |',
     ]);
   });
 });
