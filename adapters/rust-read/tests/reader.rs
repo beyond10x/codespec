@@ -1986,3 +1986,123 @@ fn a_raw_type_name_that_would_read_as_another_types_name_gets_an_underscore() {
     let params: Vec<&Type> = m.funcs[0].params.iter().map(|p| &p.t).collect();
     assert_eq!(params, [&named("Match", vec![]), &named("Match_", vec![])]);
 }
+
+// ----- adversary pass 1, fix round 1 ---------------------------------------------------------
+
+#[test]
+fn a_static_whose_initialiser_is_refused_is_not_declared_and_each_use_is_refused_naming_it() {
+    let m = read(&lines(&[
+        "static mut SLOTS: [i64; 3] = [0; 3];",
+        "pub fn set(i: usize, v: i64) -> i64 {",
+        "    unsafe {",
+        "        SLOTS[i] = v;",
+        "    }",
+        "    unsafe { SLOTS[i] }",
+        "}",
+    ]));
+    assert!(m.vars.is_empty(), "{:?}", m.vars);
+    let at1 = m
+        .refusals
+        .iter()
+        .find(|r| r.pos == "lib.rs:1")
+        .unwrap_or_else(|| panic!("{:?}", m.refusals));
+    assert!(
+        at1.reason.contains("static") && !at1.reason.contains("constant"),
+        "{at1:?}"
+    );
+    assert_foreign(&m, "Set", "lib.rs:3", "the static SLOTS");
+    assert_foreign(&m, "Set", "lib.rs:6", "the static SLOTS");
+    assert!(Module::from_json(m.to_json().as_bytes()).is_ok());
+}
+
+#[test]
+fn a_raw_type_name_beside_its_spelling_and_that_spelling_with_an_underscore_gets_two() {
+    let m = read(&lines(&[
+        "pub struct Match {",
+        "    pub n: i64,",
+        "}",
+        "pub struct Match_ {",
+        "    pub n: i64,",
+        "}",
+        "pub struct r#match {",
+        "    pub n: i64,",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let types: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(types, ["Match", "Match_", "Match__"]);
+}
+
+#[test]
+fn an_impl_of_a_generic_struct_with_bounds_other_than_the_structs_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub trait Tr {",
+        "    fn n(&self) -> i64;",
+        "}",
+        "pub struct S<T> {",
+        "    pub v: T,",
+        "}",
+        "impl<T: Tr> S<T> {",
+        "    pub fn get(&self) -> i64 {",
+        "        self.v.n()",
+        "    }",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:7", "bounds other than");
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}
+
+/// Not Rust (`T` is unused), but no input may panic the reader: the literal is refused.
+#[test]
+fn a_struct_literal_whose_fields_fix_no_type_argument_is_refused_not_a_panic() {
+    let m = read(&lines(&[
+        "pub struct E<T> {",
+        "    pub n: i64,",
+        "}",
+        "pub fn make() -> i64 {",
+        "    let e = E { n: 1 };",
+        "    e.n",
+        "}",
+    ]));
+    assert_foreign(
+        &m,
+        "Make",
+        "lib.rs:5",
+        "type arguments its fields do not fix",
+    );
+}
+
+#[test]
+fn a_comparison_of_function_values_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn same(a: fn(i64) -> i64, b: fn(i64) -> i64) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "Same", "lib.rs:2", "comparison of function values");
+}
+
+#[test]
+fn a_crate_trait_for_an_undeclared_type_or_a_reference_is_refused_at_the_impl() {
+    let m = read(&lines(&[
+        "pub trait Measured {",
+        "    fn size(&self) -> i64;",
+        "}",
+        "impl Measured for i64 {",
+        "    fn size(&self) -> i64 {",
+        "        *self",
+        "    }",
+        "}",
+        "pub struct Crate {",
+        "    pub n: i64,",
+        "}",
+        "impl Measured for &Crate {",
+        "    fn size(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:4", "declared");
+    assert_refused(&m, "lib.rs:12", "declared");
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}

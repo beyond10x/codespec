@@ -1831,7 +1831,17 @@ impl<'r> Fx<'r> {
     /// written in one, as Go reads and writes its module-level variable. Nothing else the reader
     /// maps needs `unsafe` (it maps no raw pointer, `unsafe fn`, union or foreign item).
     fn statics_only(&self, u: &syn::ExprUnsafe) -> R<()> {
-        if idents(&u.block)
+        let names = idents(&u.block);
+        if let Some(i) = names
+            .iter()
+            .find(|i| self.r.refused_statics.contains_key(*i) && self.find(i).is_none())
+        {
+            return Err(format!(
+                "the static {i}, which is not read: {}",
+                self.r.refused_statics[i]
+            ));
+        }
+        if names
             .iter()
             .any(|i| self.r.statics.contains_key(i) && self.find(i).is_none())
         {
@@ -2631,6 +2641,7 @@ impl<'r> Fx<'r> {
                     "{tn}, which does not implement {iface}, as a {iface}"
                 ));
             }
+            self.no_ref_impl(&tn, iface)?;
             if self.r.ptr_types.contains(&tn) {
                 return Err(format!(
                     "{tn} as a {iface}: its methods have pointer receivers in Go, so its value does not implement the interface"
@@ -2759,6 +2770,9 @@ impl<'r> Fx<'r> {
                         name: name.clone(),
                         t: t.clone(),
                     });
+                }
+                if let Some(why) = self.r.refused_statics.get(x) {
+                    return Err(format!("the static {x}, which is not read: {why}"));
                 }
                 // A function of the crate used as a value: Go's function value. Only a plain
                 // one: a `Result` or `Option` result has no `fn` type in the reader's subset.
@@ -3397,7 +3411,23 @@ impl<'r> Fx<'r> {
                 }
             }
             Type::Tuple { elems } => elems.iter().any(|e| self.shares_storage(e, seen)),
-            _ => false,
+            // A Go array is copied element by element, each element as Go copies it.
+            Type::Array { elem, .. } => self.shares_storage(elem, seen),
+            // A pointer (`Rc<RefCell<T>>`), a channel (`Rc` of its ends), `any` (`Rc<dyn Any>`)
+            // and a function value are shared by a Rust clone as by a Go copy; a string,
+            // number, bool, unit or error value holds no storage either copy could change.
+            Type::Ptr { .. }
+            | Type::Chan { .. }
+            | Type::Any
+            | Type::Func { .. }
+            | Type::Int { .. }
+            | Type::Float { .. }
+            | Type::Bool
+            | Type::String
+            | Type::Unit
+            | Type::Error => false,
+            // Not a type this reader gives a value.
+            Type::Extern { .. } => true,
         }
     }
 
@@ -3895,6 +3925,21 @@ impl<'r> Fx<'r> {
         Ok((targs, out, inst))
     }
 
+    /// Refused when the crate implements `tr` for `&name` too: the reader reads `&name` as `name`,
+    /// so it cannot tell which of the two impls Rust calls.
+    fn no_ref_impl(&self, name: &str, tr: &str) -> R<()> {
+        if self
+            .r
+            .ref_impls
+            .contains(&(name.to_string(), tr.to_string()))
+        {
+            return Err(format!(
+                "a {name} where {tr} is expected, and the crate implements {tr} for &{name} too: the reader reads `&{name}` as `{name}`, so it cannot tell which impl Rust uses"
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether the type argument `t` satisfies `constraint` in Go: `any`, or the interface of a
     /// crate trait `t` implements with value receivers, or a type parameter constrained by it.
     fn satisfies(&self, constraint: &Type, t: &Type) -> R<()> {
@@ -3908,6 +3953,7 @@ impl<'r> Fx<'r> {
             Type::Named { name, targs }
                 if targs.is_empty() && self.r.impls.contains(&(name.clone(), tr.clone())) =>
             {
+                self.no_ref_impl(name, tr)?;
                 if self.r.ptr_types.contains(name) {
                     return Err(format!(
                         "{name} as a type argument constrained by {tr}: its methods have pointer receivers in Go, so its value does not implement {tr}"
@@ -4415,14 +4461,15 @@ pub(crate) fn error_messages(
 }
 
 /// A constant's value: a literal (or a negated integer literal) of its type.
-pub(crate) fn const_value(r: &Reader, e: &syn::Expr, t: &Type) -> R<Expr> {
+/// The literal value of a `const` or `static` (`what`, the word its refusals use).
+pub(crate) fn const_value(r: &Reader, e: &syn::Expr, t: &Type, what: &str) -> R<Expr> {
     let fx = Fx::new(r, None, Vec::new(), Shape::Plain);
     match e {
         syn::Expr::Lit(l) => fx.lit(&l.lit, Some(t)).and_then(|x| {
             if x.t() == t {
                 Ok(x)
             } else {
-                Err("a constant whose literal is of another type".into())
+                Err(format!("a {what} whose literal is of another type"))
             }
         }),
         syn::Expr::Unary(u) if matches!(u.op, syn::UnOp::Neg(_)) => match &*u.expr {
@@ -4433,10 +4480,10 @@ pub(crate) fn const_value(r: &Reader, e: &syn::Expr, t: &Type) -> R<Expr> {
                         t,
                     })
                 }
-                _ => Err("a negated constant that is not a signed integer".into()),
+                _ => Err(format!("a negated {what} that is not a signed integer")),
             },
-            _ => Err("a constant whose value is not a literal".into()),
+            _ => Err(format!("a {what} whose value is not a literal")),
         },
-        _ => Err("a constant whose value is not a literal".into()),
+        _ => Err(format!("a {what} whose value is not a literal")),
     }
 }

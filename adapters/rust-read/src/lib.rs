@@ -26,15 +26,15 @@
 //! | `impl T { fn m(&mut self) }` | method with receiver `*T`; once one method of `T` takes `&mut self`, every `&self` method of `T` has `*T` too, otherwise `&self` and `self` are `T` |
 //! | `impl T { fn f(…) }` without `self` | function `F<T>` (`new` → `NewT`) |
 //! | `const X: T = <literal>` | `const` |
-//! | `static X: T = <literal>;`, `static mut X: T = <literal>;` | `var` (`X` → `X`, `HITS` unexported → `hits`); a zero literal is a `var` without a value |
+//! | `static X: T = <literal>;`, `static mut X: T = <literal>;` | `var` (`X` → `X`, `HITS` unexported → `hits`); a zero literal is a `var` without a value. A static whose initialiser is not a literal is refused at its line, not declared, and each use of it refused naming it |
 //! | `#[derive(Default)] struct T` whose every field's default is Go's zero value (an integer, float, `bool`, `String`, `Vec`, map, such a struct, an array of these) | `T::default()` is `zero` of `T`; another `T::default()` is `foreign` |
 //! | `trait Tr { fn m(&self, …) -> R; }` | `interface`, its methods sorted by name; a generic or `unsafe` trait, a supertrait, an item other than a method, a default body, a receiver other than `&self` or a result other than a plain value refuses the trait and every `dyn Tr` |
-//! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; a method an inherent impl of `T` also declares is refused |
+//! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; refused at the impl when an inherent impl of `T` or another crate trait's impl for `T` has a method of the same name (Go has one method per name), or when `T` is not a type the crate declares (`impl Tr for i64`, `impl Tr for &T`). A generic call or conversion to `dyn Tr` of a `T` the crate also implements `Tr` for `&T` is refused, as the reader reads `&T` as `T` |
 //! | `fn f<T, U: Tr>(…)`, `fn f<T>(…) where T: Tr` | a function with `tparams`: `T` constrained by `any`, `U` by the interface `Tr`, a trait of the crate |
 //! | `struct S<T> { … }` | a `struct` with `tparams`, its fields of type `param` |
 //! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
-//! | a raw identifier (`r#type`) | its name without `r#` everywhere, a Go keyword with `_` added; a type or trait the crate declares under one is named by its visibility (`pub struct r#match` → `Match`, `enum r#type` → `type_`) |
+//! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when a plain name of the file would read the same; a type or trait the crate declares under one is named by its visibility (`pub struct r#match` → `Match`, `enum r#type` → `type_`), `_` added while a plain name is spelled so |
 //! | `use` | nothing: names resolve by their last path segment |
 //!
 //! # Types
@@ -125,7 +125,7 @@
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
 //! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
 //! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
-//! | `x.clone()` of a value without a slice or map inside | `x` (Go copies) |
+//! | `x.clone()` of a value without a slice or map inside, an array's elements and a generic struct's type arguments included | `x` (Go copies) |
 //! | `*p`, `p` bound to `&mut x` | `*p` |
 //! | `&x`, `*x` of a non-pointer | `x` |
 //!
@@ -215,39 +215,58 @@ pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> 
         let at = e.span().start();
         format!("{file}:{}: {e}", at.line)
     })?;
-    Unraw::of(&ast).visit_file_mut(&mut ast);
+    Unraw::of(&ast, src).visit_file_mut(&mut ast);
     let mut r = Reader::new(file);
     r.scan(&ast);
     Ok(r.module(name, &ast))
 }
 
+/// Rust's keywords, strict and reserved, of the 2018 edition and later: a raw identifier exists to
+/// use one as a name.
+const RUST_KEYWORDS: &[&str] = &[
+    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "do", "dyn",
+    "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl", "in", "let",
+    "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref", "return",
+    "static", "struct", "trait", "true", "try", "type", "typeof", "unsafe", "unsized", "use",
+    "virtual", "where", "while", "yield",
+];
+
 /// Every raw identifier (`r#match`) renamed without its prefix before anything reads a name, so
-/// that every position of it (declaration, type, path, pattern, field, macro argument) agrees. A
-/// type or trait the crate declares under a raw name is named by its visibility as a function is
-/// (`pub struct r#match` → `Match`, `enum r#type` → `type_`); any other raw identifier is the
-/// bare word, a Go keyword with `_` added (`r#loop` → `loop`, `r#for` → `for_`), which the Go
-/// spelling of functions, fields and locals then starts from. Spans are kept: positions and
-/// kept source stay the source's.
+/// that every position of it (declaration, type, path, pattern, field, macro argument) agrees.
+///
+/// `r#x` with `x` not a keyword is the identifier `x` itself, in Rust as here. One with `x` a
+/// keyword is spelled `x_` (`r#type` → `type_`, `r#loop` → `loop_`), which is no keyword, so a
+/// macro's arguments still parse, and which the Go spelling of functions, fields and locals then
+/// starts from (`Type`, `type_`, `loop`). That spelling, and its Go spellings, must differ from
+/// every plain identifier of the file, in every scope: otherwise `r#type` and a plain `type_`
+/// would become one binding. Where one would not, `x_1`, `x_2`, … is taken instead.
+///
+/// A type or trait the crate declares under a raw name is named by its visibility as a function
+/// is (`pub struct r#match` → `Match`, `enum r#type` → `type_`), with `_` added until no plain
+/// identifier of the file is spelled so. Spans are kept: positions and kept source stay the
+/// source's.
 struct Unraw {
-    decls: BTreeMap<String, String>,
+    names: BTreeMap<String, String>,
 }
 
 impl Unraw {
-    fn of(f: &syn::File) -> Unraw {
-        // The names declared without `r#`: a raw name that would read as one of them (`struct
-        // r#match` beside `struct Match`) gets `_` added until it does not.
-        let taken: BTreeSet<String> = f
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                syn::Item::Struct(s) => Some(s.ident.to_string()),
-                syn::Item::Enum(e) => Some(e.ident.to_string()),
-                syn::Item::Trait(t) => Some(t.ident.to_string()),
-                _ => None,
-            })
-            .filter(|n| !n.starts_with("r#"))
-            .collect();
-        let mut decls = BTreeMap::new();
+    fn of(f: &syn::File, src: &str) -> Unraw {
+        let mut plain = BTreeSet::new();
+        if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
+            Unraw::plain_idents(ts, &mut plain);
+        }
+        let go_low: BTreeSet<String> = plain.iter().map(|p| names::unexported(p)).collect();
+        let go_up: BTreeSet<String> = plain.iter().map(|p| names::exported(p)).collect();
+        let clashes = |c: &str| {
+            plain.contains(c)
+                || go_low.contains(&names::unexported(c))
+                || go_up.contains(&names::exported(c))
+        };
+        let mut raw = BTreeSet::new();
+        if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
+            Unraw::raw_idents(ts, &mut raw);
+        }
+        let mut out = BTreeMap::new();
         for item in &f.items {
             let (ident, vis) = match item {
                 syn::Item::Struct(s) => (&s.ident, &s.vis),
@@ -261,22 +280,75 @@ impl Unraw {
                 } else {
                     names::unexported(bare)
                 };
-                while taken.contains(&go) {
+                while plain.contains(&go) {
                     go.push('_');
                 }
-                decls.insert(bare.to_string(), go);
+                out.insert(bare.to_string(), go);
             }
         }
-        Unraw { decls }
+        for bare in raw {
+            if out.contains_key(&bare) {
+                continue;
+            }
+            let spelled = if RUST_KEYWORDS.contains(&bare.as_str()) {
+                let mut c = format!("{bare}_");
+                let mut k = 1;
+                while clashes(&c) {
+                    c = format!("{bare}_{k}");
+                    k += 1;
+                }
+                c
+            } else {
+                bare.clone()
+            };
+            out.insert(bare, spelled);
+        }
+        Unraw { names: out }
+    }
+
+    /// Every name of `ts` written without `r#`, inside groups too: an identifier that is not a
+    /// keyword (a keyword written plainly is the keyword, never a name).
+    fn plain_idents(ts: proc_macro2::TokenStream, out: &mut BTreeSet<String>) {
+        for tt in ts {
+            match tt {
+                proc_macro2::TokenTree::Ident(i) => {
+                    let s = i.to_string();
+                    if !s.starts_with("r#")
+                        && !RUST_KEYWORDS.contains(&s.as_str())
+                        && !matches!(s.as_str(), "self" | "Self" | "crate" | "super")
+                    {
+                        out.insert(s);
+                    }
+                }
+                proc_macro2::TokenTree::Group(g) => Unraw::plain_idents(g.stream(), out),
+                _ => {}
+            }
+        }
+    }
+
+    /// The bare word of every raw identifier of `ts`.
+    fn raw_idents(ts: proc_macro2::TokenStream, out: &mut BTreeSet<String>) {
+        for tt in ts {
+            match tt {
+                proc_macro2::TokenTree::Ident(i) => {
+                    if let Some(b) = i.to_string().strip_prefix("r#") {
+                        out.insert(b.to_string());
+                    }
+                }
+                proc_macro2::TokenTree::Group(g) => Unraw::raw_idents(g.stream(), out),
+                _ => {}
+            }
+        }
     }
 
     fn name(&self, i: &proc_macro2::Ident) -> Option<proc_macro2::Ident> {
         let s = i.to_string();
         let bare = s.strip_prefix("r#")?;
-        let n = match self.decls.get(bare) {
-            Some(go) => go.clone(),
-            None => names::guard(bare.to_string()),
-        };
+        let n = self
+            .names
+            .get(bare)
+            .cloned()
+            .unwrap_or_else(|| format!("{bare}_"));
         Some(proc_macro2::Ident::new(&n, i.span()))
     }
 
@@ -385,8 +457,15 @@ pub(crate) struct Reader {
     pub defaults: BTreeSet<String>,
     /// The crate's traits by name, read as interfaces; `None` while only the name is known.
     pub traits: BTreeMap<String, Option<TraitInfo>>,
-    /// `(type, trait)` for each `impl Trait for Type` of a crate trait.
+    /// `(type, trait)` for each `impl Trait for Type` of a crate trait, `Type` a declared one.
     pub impls: BTreeSet<(String, String)>,
+    /// `(type, trait)` for each `impl Trait for &Type` of a crate trait.
+    pub ref_impls: BTreeSet<(String, String)>,
+    /// `(type, trait)` of the impls refused for a method name another crate trait's impl for the
+    /// type has too, with the reason.
+    pub trait_clashes: BTreeMap<(String, String), String>,
+    /// `static` items whose initialiser is refused, by Rust name, with the reason.
+    pub refused_statics: BTreeMap<String, String>,
     /// `static` and `static mut` items by Rust name: their Go name and type.
     pub statics: BTreeMap<String, (String, Type)>,
     /// The type parameters of each generic struct, by name.
@@ -605,6 +684,9 @@ impl Reader {
             defaults: BTreeSet::new(),
             traits: BTreeMap::new(),
             impls: BTreeSet::new(),
+            ref_impls: BTreeSet::new(),
+            trait_clashes: BTreeMap::new(),
+            refused_statics: BTreeMap::new(),
             statics: BTreeMap::new(),
             type_params: BTreeMap::new(),
             scope: RefCell::new(Scope::default()),
@@ -779,12 +861,18 @@ impl Reader {
         let (id, args) = last_seg(&im.self_ty).ok_or_else(not_declared)?;
         let name = id.to_string();
         let Some(tps) = self.type_params.get(&name) else {
+            let declared = self.decls.contains_key(&name)
+                || self.error_enum.as_ref().is_some_and(|(e, _)| *e == name)
+                || self.message_enums.contains(&name);
+            // `impl Tr for i64`, `impl Tr for Vec<T>`, `impl Tr for &T`: a type the module does
+            // not declare has no methods in Go.
+            if !declared || !matches!(&*im.self_ty, syn::Type::Path(_)) {
+                return Err(not_declared());
+            }
             if !args.is_empty() || !im.generics.params.is_empty() {
-                return Err(if self.decls.contains_key(&name) {
-                    format!("an impl with type parameters of {name}, which has none")
-                } else {
-                    not_declared()
-                });
+                return Err(format!(
+                    "an impl with type parameters of {name}, which has none"
+                ));
             }
             return Ok((name, Scope::default()));
         };
@@ -1628,10 +1716,50 @@ impl Reader {
                 && let Some((p, _)) = &im.trait_
                 && let Some(tr) = p.get_ident().map(|i| i.to_string())
                 && matches!(self.traits.get(&tr), Some(Some(_)))
-                && let Some(t) = plain_ident(&im.self_ty)
             {
-                self.impls.insert((t, tr));
+                match &*im.self_ty {
+                    // `impl Tr for &T`: kept apart, since the reader reads `&T` as `T`.
+                    syn::Type::Reference(r) => {
+                        if let Some(t) = plain_ident(&r.elem) {
+                            self.ref_impls.insert((t, tr));
+                        }
+                    }
+                    t => {
+                        if let Some(t) = plain_ident(t).filter(|t| self.decls.contains_key(t)) {
+                            self.impls.insert((t, tr));
+                        }
+                    }
+                }
             }
+        }
+        // Two crate traits implemented by one type with a method of one name: Go has one method
+        // per name, so neither impl reads.
+        let mut by_method: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+        for (t, tr) in &self.impls {
+            if let Some(Some(info)) = self.traits.get(tr) {
+                for m in info.methods.keys() {
+                    by_method
+                        .entry((t.clone(), m.clone()))
+                        .or_default()
+                        .push(tr.clone());
+                }
+            }
+        }
+        for ((t, m), trs) in by_method {
+            if trs.len() > 1 {
+                for tr in &trs {
+                    self.trait_clashes.insert(
+                        (t.clone(), tr.clone()),
+                        format!(
+                            "{t} implements {} with a method {m} each: Go has one method per name, so neither reads",
+                            trs.join(" and ")
+                        ),
+                    );
+                }
+            }
+        }
+        for key in self.trait_clashes.keys() {
+            self.impls.remove(key);
         }
         // Receivers: a type with any `&mut self` method has pointer receivers throughout.
         for item in &f.items {
@@ -1715,11 +1843,19 @@ impl Reader {
                 } else {
                     names::unexported(&screaming(&rust))
                 };
-                match self.ty(&s.ty, None) {
+                // A static whose type or initialiser is refused is not declared, and each use of
+                // it is refused naming it.
+                let read = self
+                    .ty(&s.ty, None)
+                    .and_then(|t| body::const_value(self, &s.expr, &t, "static").map(|_| t));
+                match read {
                     Ok(t) => {
                         self.statics.insert(rust, (go, t));
                     }
-                    Err(e) => deferred.push((s.span(), rust, e)),
+                    Err(e) => {
+                        self.refused_statics.insert(rust.clone(), e.clone());
+                        deferred.push((s.span(), format!("static {rust}"), e));
+                    }
                 }
             }
         }
@@ -1740,7 +1876,11 @@ impl Reader {
                     let public = match &im.trait_ {
                         None => None,
                         Some((p, _)) => {
-                            match p.get_ident().and_then(|i| self.traits.get(&i.to_string())) {
+                            let tr = p.get_ident().map(|i| i.to_string()).unwrap_or_default();
+                            if self.trait_clashes.contains_key(&(t.clone(), tr.clone())) {
+                                continue;
+                            }
+                            match self.traits.get(&tr) {
                                 Some(Some(info)) => Some(info.exported),
                                 _ => continue,
                             }
@@ -1967,6 +2107,16 @@ impl Reader {
                         matches!(self.traits.get(&n), Some(Some(_))).then_some(n)
                     });
                     if let Some(tr) = &crate_trait
+                        && let Some(reason) = self.trait_clashes.get(&(t.clone(), tr.clone()))
+                    {
+                        late_refusals.push(Refusal {
+                            pos: self.pos(im.span()),
+                            what: format!("impl {tr} for {t}"),
+                            reason: reason.clone(),
+                        });
+                        continue;
+                    }
+                    if let Some(tr) = &crate_trait
                         && let Some(clash) = im.items.iter().find_map(|ii| match ii {
                             syn::ImplItem::Fn(func) if inherent_method(f, &t, &func.sig.ident) => {
                                 Some(func.sig.ident.to_string())
@@ -2087,7 +2237,7 @@ impl Reader {
                     let Some((go, t)) = self.consts.get(&rust).cloned() else {
                         continue;
                     };
-                    match body::const_value(&self, &c.expr, &t) {
+                    match body::const_value(&self, &c.expr, &t, "constant") {
                         Ok(value) => {
                             layout.push(format!("const:{go}"));
                             consts.push(ConstDecl {
@@ -2109,7 +2259,7 @@ impl Reader {
                     let Some((go, t)) = self.statics.get(&rust).cloned() else {
                         continue;
                     };
-                    match body::const_value(&self, &s.expr, &t) {
+                    match body::const_value(&self, &s.expr, &t, "static") {
                         Ok(value) => {
                             layout.push(format!("var:{go}"));
                             let zero = matches!(&value, Expr::Lit { value, .. } if value == "0" || value == "false" || value == "\"\"")
