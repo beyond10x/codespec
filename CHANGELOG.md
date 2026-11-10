@@ -23,6 +23,26 @@ Every change a user of `codespec` or of `cir/1` would notice.
   their function and those printing a result; a function reached by fewer than half its seeds
   fails. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
   function. Nothing is timed.
+- `codespec-read-rust` claims 111 of the 120 features a reader can claim, up from 89. It reads
+  generics: a function or struct with type parameters, each unbounded (`any`) or bound by one
+  trait of the crate (its interface), a `where T: Trait` clause, an impl of a generic struct, and
+  an instantiation written with a turbofish or inferred from the arguments, written out. A bound
+  `cir/1` has no constraint for (`Clone`, `PartialEq`, two bounds), another `where` clause, a
+  lifetime or const parameter, an associated type, `impl Trait` as a parameter type and a method
+  with its own type parameters are refused at their line. It also reads
+  `f64` and `f32` with their literals, `[T; N]` with `[0; N]` and indexing, `static` and
+  `static mut` items as module-level variables (a `static mut` inside `unsafe` around it only),
+  `fn(A) -> R` with a function's name as a value and a call through a local, parameter or field,
+  a closure whose parameter and result types are written out as a function literal with its
+  captures (a `move` closure is refused), a trait of the crate whose methods take `&self` as an
+  interface with `&dyn Trait` and `Box<dyn Trait>` its type, an `impl Trait for T` as `T`'s
+  methods and the coercion to the trait object as `to_iface`, `Rc<dyn Any>` as `any`, the Rust
+  writer's channel with both ends (`Rc<(SyncSender<T>, Receiver<T>)>`, `try_send`, `try_recv`)
+  as `chan T`, `T::default()` of a `#[derive(Default)]` whose every field defaults to its zero as
+  `zero`, and map keys collected and sorted (`sort()` for integers, by `encode_utf16` for
+  strings) as `sorted_keys`. Kit cases gain the Rust sources that hold the 22 new claims. A raw
+  identifier (`r#type`, `struct r#match`, a raw trait or path segment) is named without its `r#`
+  in every position.
 
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with

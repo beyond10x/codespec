@@ -86,7 +86,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         area: "Readers",
         label: "Rust reader on syn",
-        detail: "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for three named exceptions.",
+        detail: "codespec-read-rust lifts a crate's src/lib.rs into cir/1 with syn and its own name and type resolution for the cir/1 subset; the Rust writer's orders output reads back to the passed document but for four named exceptions, one its loop over a BTreeMap of string keys, which it refuses.",
         status: "shipped",
         evidence: Some(
             "adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions",
