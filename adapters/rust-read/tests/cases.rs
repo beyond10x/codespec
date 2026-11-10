@@ -8,11 +8,12 @@
 //! 1. run as written by `codespec-run-rust` on the case's `calls.json`, prints its
 //!    `expected.txt`: the source does what the Go reference does before anything is read;
 //! 2. reads with no refusal, the same bytes twice, and uses the subject outside a `foreign`
-//!    statement;
+//!    statement; for `stmt.foreign`, keeps source as a `foreign` statement, each refusal at one;
 //! 3. passed by `codespec pass`, written by `codespec write --lang go` and run by
 //!    `codespec-run-go` on `calls.json`, prints `expected.txt`; for a subject the Go writer's
-//!    `--describe` does not claim (`decl.union`), once it refuses the module, `codespec eval` on
-//!    `calls.json` prints it, as the reader check's step 4 has the evaluator judge it.
+//!    `--describe` does not claim (`decl.union`) and for `stmt.foreign` (Rust source), once it
+//!    refuses the module, `codespec eval` on `calls.json` prints it, as the reader check's step 4
+//!    has the evaluator judge it: the calls never reach the `foreign` statement.
 //!
 //! A `rust/case.rs` exists for exactly the claimed subjects: one for an unclaimed subject would be a
 //! source nothing holds.
@@ -198,6 +199,42 @@ fn same(what: &str, expected: &str, got: &str) -> Result<(), String> {
     }
 }
 
+/// The `pos` of each `foreign` statement under `v`.
+fn foreign_positions(v: &Value, out: &mut BTreeSet<String>) {
+    match v {
+        Value::Object(o) => {
+            if o.get("k").and_then(Value::as_str) == Some("foreign")
+                && let Some(pos) = o.get("pos").and_then(Value::as_str)
+            {
+                out.insert(pos.to_string());
+            }
+            o.values().for_each(|x| foreign_positions(x, out));
+        }
+        Value::Array(a) => a.iter().for_each(|x| foreign_positions(x, out)),
+        _ => {}
+    }
+}
+
+/// For the subject `stmt.foreign`: the read keeps source as a `foreign` statement, and its every
+/// refusal is at one of them.
+fn kept_foreign(read: &str) -> Result<(), String> {
+    let v: Value = serde_json::from_str(read).map_err(|e| e.to_string())?;
+    let mut kept = BTreeSet::new();
+    foreign_positions(&v["funcs"], &mut kept);
+    let refused: BTreeSet<String> = v["refusals"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r["pos"].as_str().map(str::to_string))
+        .collect();
+    if kept.is_empty() || refused.is_empty() || !refused.is_subset(&kept) {
+        return Err(format!(
+            "stmt.foreign: foreign statements at {kept:?}, refusals at {refused:?}"
+        ));
+    }
+    Ok(())
+}
+
 /// Hold one case's `rust/case.rs` to the three steps of the crate doc.
 fn hold(case: &Case) -> Result<(), String> {
     let work = base().join(&case.name);
@@ -236,7 +273,10 @@ fn hold(case: &Case) -> Result<(), String> {
         return Err("two reads differ".into());
     }
     let m = Module::from_json(read.as_bytes()).map_err(|e| format!("the read module: {e}"))?;
-    if !m.refusals.is_empty() {
+    let foreign = case.subject == "stmt.foreign";
+    if foreign {
+        kept_foreign(&read)?;
+    } else if !m.refusals.is_empty() {
         return Err(format!("read with refusals: {:?}", m.refusals));
     }
     let used = features_used(&m)?;
@@ -272,8 +312,9 @@ fn hold(case: &Case) -> Result<(), String> {
             .arg(go_bin()),
         "codespec write --lang go",
     );
-    if wrote.is_err() && !go_writer_claims().contains(&case.subject) {
-        // As the reader check's step 4: what the Go writer has no form for, the evaluator runs.
+    if wrote.is_err() && (foreign || !go_writer_claims().contains(&case.subject)) {
+        // As the reader check's step 4: what the Go writer has no form for, Rust source kept as
+        // a `foreign` statement among it, the evaluator runs.
         let from_eval = run(
             Command::new(&codespec)
                 .arg("eval")
@@ -343,11 +384,11 @@ fn every_claimed_feature_is_read_from_its_cases_rust_source_and_runs_as_the_refe
 }
 
 #[test]
-fn the_reader_claims_no_fact_and_not_foreign() {
+fn the_reader_claims_no_fact() {
     let claimed = claimed();
     let wrong: Vec<&String> = claimed
         .iter()
-        .filter(|id| id.starts_with("fact.") || *id == "stmt.foreign")
+        .filter(|id| id.starts_with("fact."))
         .collect();
     assert!(wrong.is_empty(), "claimed: {wrong:?}");
 }

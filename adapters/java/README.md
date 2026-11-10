@@ -55,7 +55,7 @@ features left unclaimed, and why:
 | `expr-to-error` | `expr.to_error` | not mapped: the reader reads one checked-exception hierarchy whose leaves are sentinels or formats (`errorf`); an exception carrying fields would be a struct with an `Error` method, which that model does not hold |
 | `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
 | `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
-| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
+| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write, so the evaluator runs the module; it calls a function by its `cir/1` name, and this reader keeps Java's (`count`) where `calls.json` names Go's (`Count`), which only the Go writer derives, by its own rule for exported names |
 | `stmt-lookup-else` | `stmt.lookup_else` | the reader never produces it: `Map.get` of a value that is not a reference is refused (an absent key gives null), and `containsKey` is not read |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
 | `stmt-raise` | `stmt.raise` | read only in a project, in a function an entry names (Projects and Quarkus); a kit case is a package read with no entry, so its module is written by hand |

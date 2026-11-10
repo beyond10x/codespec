@@ -236,7 +236,7 @@
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | computed by `codespec pass`, never by a reader |
-//! | `stmt.foreign` | what a reader writes for what it cannot read; a corpus case of it would hold the construct the reader refuses, which `codespec conform` counts only for that subject |
+//! | `stmt.foreign` | the source this reader keeps as `foreign` (a `goto`, off the calls' path) is C, which the Go writer refuses, so the evaluator runs the module at step 4; it calls a function by its `cir/1` name, and this reader keeps C's (`count`) where `calls.json` names Go's (`Count`), which only the Go writer derives, by its own rule for exported names. Claiming it takes the evaluator calling a function by that rule |
 //! | `decl.variadic` | a variadic C definition reads its arguments through `va_list`, `va_start` and `va_arg` of `<stdarg.h>`, one at a time and with no count; `cir/1` has only a slice parameter for them, so reading one is a convention of its own, and the first case's subject is a slice |
 //! | `expr.spread` | it passes a slice to a variadic parameter, which no C definition the reader reads has |
 //! | `decl.interface`, `expr.iface_call`, `expr.to_iface` | C has no interface, and the runtime and the C writer no form of one |

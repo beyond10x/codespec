@@ -9,6 +9,20 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec-read-rust` claims `decl.union`, 112 of the 121 features a reader can claim, up from
   111. The kit case `decl-union` has a Rust source, an enum of struct variants, and the reader
   check runs its module through the evaluator, as the Go writer has no form for a union.
+- `codespec-read-rust` claims `stmt.foreign`, 113 of the 121 features a reader can claim. The
+  kit case `stmt-foreign` has a Rust source keeping a labelled loop as a `foreign` statement on
+  a path its calls do not take. `codespec-read-c` and `codespec-read-java` do not yet: the
+  evaluator calls a function by its `cir/1` name, and those readers keep their language's
+  (`count`) where the calls name Go's (`Count`), as their docs say.
+
+### Changed
+
+- The reader check of `codespec conform` judges a module holding a `raise` or a `foreign`
+  statement through the evaluator, which stops only when the run reaches one: a module that holds
+  one on a path the calls do not take passes when it prints `expected.txt`, and a stop reached is
+  still `refused` with the stop as the reason. Before, `codespec-write-cir` refused such a module
+  wherever the statement was. It writes one with the new flag `--stop-when-reached`, which the
+  reader check passes; without the flag it refuses as before.
 
 ## 0.7.0
 

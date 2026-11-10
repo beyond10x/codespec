@@ -45,7 +45,6 @@ fn manifest() -> AdapterManifest {
             "expr.extern",
             "expr.extern_method",
             "expr.spread",
-            "stmt.foreign",
             "stmt.raise",
             "type.extern",
             "unop.plus",

@@ -1193,7 +1193,7 @@
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
-        "stmt.foreign": "refused",
+        "stmt.foreign": "verified",
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
