@@ -113,16 +113,27 @@ fn extern_sites(m: &Module) -> Vec<(&Expr, String, String, String)> {
 impl<'m> Interp<'m> {
     /// Takes the environment and the stubs of `opts`: each stub's site resolved to the extern
     /// calls it names, a key every call of that extern, a node id one call, which wins over a key
-    /// at its site; its values read as the call's results. Refused: a stub naming no extern call
-    /// of the module, or values the call's results cannot hold.
+    /// at its site; its values read as the call's results. Refused: a site given twice, a stub
+    /// naming no extern call of the module, a key's stub every call of which a node id's stub
+    /// answers instead, so that it answers none, or values the call's results cannot hold.
     pub(crate) fn install(&mut self, opts: &Options) -> Result<(), String> {
         self.host.env = opts.env.clone();
         let m = self.m;
         let sites = extern_sites(m);
+        for (i, s) in opts.stubs.iter().enumerate() {
+            if opts.stubs[..i].iter().any(|t| t.site == s.site) {
+                return Err(format!(
+                    "stub {}: given twice; one site takes one stub",
+                    s.site
+                ));
+            }
+        }
         // Keys first, so a node id's stub replaces a key's at its site.
         let mut ordered: Vec<&crate::Stub> = opts.stubs.iter().filter(|s| !s.is_node()).collect();
         ordered.extend(opts.stubs.iter().filter(|s| s.is_node()));
-        for stub in ordered {
+        // The stub answering at each site, by node address: its index in `ordered`.
+        let mut owner: HashMap<usize, usize> = HashMap::new();
+        for (n, stub) in ordered.iter().enumerate() {
             let mut found = false;
             for (e, key, id, pos) in &sites {
                 let hit = if stub.is_node() {
@@ -137,8 +148,10 @@ impl<'m> Interp<'m> {
                 let value = self
                     .stub_value(&stub.values, e.t())
                     .map_err(|why| format!("stub {}: at {id}: {why}", stub.site))?;
+                let addr = *e as *const Expr as usize;
+                owner.insert(addr, n);
                 self.host.sites.insert(
-                    *e as *const Expr as usize,
+                    addr,
                     Site {
                         key: key.clone(),
                         node: id.clone(),
@@ -151,6 +164,14 @@ impl<'m> Interp<'m> {
                 return Err(format!(
                     "stub {}: no extern call of the module is {}",
                     stub.site, stub.site
+                ));
+            }
+        }
+        for (n, stub) in ordered.iter().enumerate() {
+            if !owner.values().any(|&o| o == n) {
+                return Err(format!(
+                    "stub {}: answers no call: a stub for its node id answers at every call of it",
+                    stub.site
                 ));
             }
         }

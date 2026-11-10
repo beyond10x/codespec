@@ -217,13 +217,15 @@ impl<'m> Interp<'m> {
         }
     }
 
-    /// `v` as the trace writes it (`session` module doc § The trace).
-    pub(crate) fn render(&mut self, v: &Value<'m>) -> String {
+    /// `v` as the trace writes it (`session` module doc § The trace). Reads the run's memory and
+    /// nothing else: it takes `&self`, so it cannot run the module's code, spend a step or answer
+    /// through a stub.
+    pub(crate) fn render(&self, v: &Value<'m>) -> String {
         let mut through = Vec::new();
         self.render_into(v, &mut through, 0)
     }
 
-    fn render_into(&mut self, v: &Value<'m>, through: &mut Vec<HeapId>, depth: usize) -> String {
+    fn render_into(&self, v: &Value<'m>, through: &mut Vec<HeapId>, depth: usize) -> String {
         if depth > MAX_TYPE_DEPTH {
             return "…".into();
         }
@@ -299,19 +301,20 @@ impl<'m> Interp<'m> {
             }
             Value::Chan(_) => "chan".into(),
             Value::Func(_) => "func".into(),
-            Value::Error(e) => {
-                let e = Value::Error(e.clone());
-                let depth = self.depth();
-                // The `Error` method runs outside the trace: its effects are not the call's.
-                let trace = self.host.trace.take();
-                let msg = self.error_message(&e, Node::Expr(&NIL));
-                self.host.trace = trace;
-                self.unwind(depth);
-                match msg {
-                    Ok(m) => format!("error({})", quote(m.as_bytes())),
-                    Err(_) => "error(?)".into(),
+            // An error by what it holds, never through its `Error` method.
+            Value::Error(e) => match e.as_ref() {
+                ErrorVal::Sentinel { message, .. } => {
+                    format!("error({})", quote(message.as_bytes()))
                 }
-            }
+                ErrorVal::Message(s) => format!("error({})", quote(s.as_bytes())),
+                ErrorVal::Value(t, x) => {
+                    let shown = self.render_into(x, through, depth + 1);
+                    match x {
+                        Value::Struct(..) | Value::Ptr(_) => format!("error({shown})"),
+                        _ => format!("error({}({shown}))", type_name(t)),
+                    }
+                }
+            },
             Value::Iface(_, x) => self.render_into(x, through, depth + 1),
             Value::Host(key, _) | Value::Opaque(key) => key.to_string(),
             Value::MapData(_) | Value::ChanData(..) => "?".into(),

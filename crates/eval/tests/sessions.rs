@@ -45,7 +45,7 @@ fn the_orders_session_gives_its_checked_in_trace_byte_equal_across_two_runs() {
         r#"{"event":"effect","node":"orders.Service.Place#4","pos":"orders.go:69","effect":"send","value":"OrderPlaced{ID: \"o-1\", Customer: \"ann\", Total: 30}"}"#,
         r#"{"event":"return","n":2,"bind":"id","results":["\"o-1\"","nil"]}"#,
         r#"{"event":"return","n":3,"results":["\"\"","error(\"total must be positive\")"]}"#,
-        r#"{"event":"return","n":5,"results":["error(\"order is paid\")"]}"#,
+        r#"{"event":"return","n":5,"results":["error(ErrWrongState{Status: \"paid\"})"]}"#,
     ] {
         assert!(
             one.stdout.lines().any(|l| l == event),

@@ -10,12 +10,12 @@
 {"event":"effect","node":"orders.Service.Pay#3","pos":"orders.go:82","effect":"send","value":"OrderPaid{ID: \"o-1\"}"}
 {"event":"return","n":4,"results":["nil"]}
 {"event":"call","n":5,"func":"Service.Pay","recv":"s","args":["\"o-1\""]}
-{"event":"return","n":5,"results":["error(\"order is paid\")"]}
+{"event":"return","n":5,"results":["error(ErrWrongState{Status: \"paid\"})"]}
 {"event":"call","n":6,"func":"Service.Ship","recv":"s","args":["\"o-1\"","\"TRK-1\""]}
 {"event":"effect","node":"orders.Service.Ship#4","pos":"orders.go:96","effect":"send","value":"OrderShipped{ID: \"o-1\", Tracking: \"TRK-1\"}"}
 {"event":"return","n":6,"results":["nil"]}
 {"event":"call","n":7,"func":"Service.Cancel","recv":"s","args":["\"o-1\""]}
-{"event":"return","n":7,"results":["error(\"order is shipped\")"]}
+{"event":"return","n":7,"results":["error(ErrWrongState{Status: \"shipped\"})"]}
 {"event":"call","n":8,"func":"Service.Place","recv":"s","args":["\"cy\"","12","true"]}
 {"event":"effect","node":"orders.Service.Place#4","pos":"orders.go:69","effect":"send","value":"OrderPlaced{ID: \"o-2\", Customer: \"cy\", Total: 12}"}
 {"event":"return","n":8,"bind":"gift","results":["\"o-2\"","nil"]}

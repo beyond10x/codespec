@@ -15,12 +15,16 @@
 //! `func` is a function's key: its name, or `<Type>.<name>` for a method, which `recv` names
 //! the bound receiver of. An argument is an integer, `true` or `false`, a string as a JSON string,
 //! `chan` for a channel the host owns, or `$<name>` for the first result of an earlier call that
-//! bound `<name>`. A channel the host owns takes every value sent on it, each an `effect` of the
-//! trace, and never holds one. Refused before anything runs: another format, an unknown field,
-//! a function the module does not declare, a method without `recv` or a function with one, a
-//! generic function, another number of arguments than it takes, an argument its parameter
-//! cannot hold, a name or receiver no earlier call binds, a bound value of another type than its
-//! parameter's.
+//! bound `<name>`. A bound value lives in a variable of its own, as `c := NewCounter()` in Go: a
+//! method with a pointer receiver gets its address and changes it, a value receiver and an
+//! argument get a copy. A call that does not return (it panics, or is skipped) unbinds its name.
+//! A channel the host owns takes every value sent on it, each an `effect` of the trace, and never
+//! holds one. Refused before anything runs: another format, an unknown field, a function the
+//! module does not declare, a method without `recv` or a function with one, a generic function,
+//! another number of arguments than it takes, an argument its parameter cannot hold, a name or
+//! receiver no earlier call binds, a bound value of another type than its parameter's, and for an
+//! interface parameter a bound value whose type lacks one of the interface's methods, or whose
+//! methods or interface the module does not declare, so cannot decide.
 //!
 //! # The trace
 //!
@@ -33,14 +37,17 @@
 //! | `effect` | `node`, `pos`, `effect`: `extern` with `key`, `handler` (`builtin`, `env` or `stub`), `args`, `results`; `send` with `value`; `stdout` with `text` | the run leaves the module's memory |
 //! | `return` | `n`, `bind` (if the call binds), `results` | the call returns |
 //! | `panic` | `n`, `node`, `pos`, `reason` | the call panics: it ends, the session goes on |
-//! | `skip` | `n`, `func`, `reason` | an argument names a result its call never gave, as it panicked |
+//! | `skip` | `n`, `func`, `reason` | an argument or the receiver names a result its call never gave: it panicked or was skipped |
 //! | `stop` | `n` (inside a call), `kind`, `node`, `pos`, `reason` | the run stops (crate doc § Stops); the last line |
 //!
 //! A value is written as Go source spells it, close enough to read: a string quoted, a struct
 //! `Name{Field: value, …}`, a pointer `&` and what it points to (`&…` for a value it already
-//! points through), a map `map[key: value, …]` in insertion order, a slice `[a, b]`, an error
-//! `error("message")` (its `Error` method run when it has one), `nil`, a channel `chan`, a
-//! function `func`.
+//! points through), a map `map[key: value, …]` in insertion order, a slice `[a, b]`, `nil`, a
+//! channel `chan`, a function `func`. An error is written by what it holds, never through its
+//! `Error` method: writing the trace runs none of the module's code. A sentinel or a message
+//! (`errorf`) is `error("message")`, a value of a type with an `Error` method is
+//! `error(Name{Field: value, …})` for a struct (`error(&Name{…})` through a pointer) and
+//! `error(Name(value))` for another type.
 
 use std::collections::HashMap;
 
@@ -50,7 +57,7 @@ use codespec_model::{ChanDir, Func, Module, Type, receiver_type_name};
 use crate::id::module_path;
 use crate::interp::Interp;
 use crate::trace::{J, line};
-use crate::value::{Place, Value};
+use crate::value::{HeapId, Place, Value};
 use crate::{Options, Run, StopKind};
 
 /// The format of a session file.
@@ -233,8 +240,11 @@ fn plan<'m>(it: &Interp<'m>, session: &Session) -> Result<Vec<Planned<'m>>, Stri
                 let t = bound
                     .get(name)
                     .ok_or_else(|| at(format!("{a} is bound by no earlier call")))?;
-                if **t != p.t && !it.is_iface(&p.t) {
-                    return Err(wrong());
+                if **t != p.t {
+                    if !it.is_iface(&p.t) {
+                        return Err(wrong());
+                    }
+                    implements(it, t, &p.t).map_err(|why| at(format!("{a}: {why}")))?;
                 }
                 args.push(Arg::Bound(name.to_string()));
                 continue;
@@ -271,6 +281,98 @@ fn plan<'m>(it: &Interp<'m>, session: &Session) -> Result<Vec<Planned<'m>>, Stri
     Ok(out)
 }
 
+/// A method by its name, parameter types and result types.
+type Method = (String, Vec<Type>, Vec<Type>);
+
+/// The methods an interface type requires, each with its parameter and result types; `None`
+/// for a type that is no interface the module declares.
+fn iface_methods(it: &Interp<'_>, t: &Type) -> Option<Vec<Method>> {
+    let decl = |path: &str, name: &str| {
+        it.m.interface_decl(path, name).map(|i| {
+            i.methods
+                .iter()
+                .map(|m| (m.name.clone(), m.params.clone(), m.results.clone()))
+                .collect()
+        })
+    };
+    match t {
+        Type::Any => Some(Vec::new()),
+        Type::Error => Some(vec![("Error".into(), Vec::new(), vec![Type::String])]),
+        Type::Named { name, .. } => decl("", name),
+        Type::Extern { path, name, .. } => decl(path, name),
+        _ => None,
+    }
+}
+
+/// Whether a value of the type `t` may enter a parameter of the interface type `iface`, as Go
+/// decides it: every method `iface` requires is in `t`'s method set with the same parameter and
+/// result types (a value type's set has its value-receiver methods, a pointer's all). Refused
+/// with the reason otherwise, and where the module does not say: a type of another module.
+fn implements(it: &Interp<'_>, t: &Type, iface: &Type) -> Result<(), String> {
+    let need = iface_methods(it, iface).ok_or_else(|| {
+        format!(
+            "the module does not declare the interface {}, so cannot decide what implements it",
+            crate::interp::type_name(iface)
+        )
+    })?;
+    let have: Vec<Method> = if it.is_iface(t) {
+        iface_methods(it, t).ok_or_else(|| {
+            format!(
+                "the module does not declare the interface {}",
+                crate::interp::type_name(t)
+            )
+        })?
+    } else {
+        let (base, ptr) = match t {
+            Type::Ptr { elem } => (elem.as_ref(), true),
+            t => (t, false),
+        };
+        match base {
+            Type::Named { name, .. } => {
+                it.m.funcs
+                    .iter()
+                    .filter(|f| {
+                        f.recv.as_ref().is_some_and(|r| {
+                            let (rt, rptr) = match &r.t {
+                                Type::Ptr { elem } => (elem.as_ref(), true),
+                                t => (t, false),
+                            };
+                            receiver_type_name(rt) == name && (ptr || !rptr)
+                        })
+                    })
+                    .map(|f| {
+                        (
+                            f.name.clone(),
+                            f.params.iter().map(|p| p.t.clone()).collect(),
+                            f.results.clone(),
+                        )
+                    })
+                    .collect()
+            }
+            Type::Extern { .. } => {
+                return Err(format!(
+                    "{} is a type of another module, whose methods the module does not say",
+                    crate::interp::type_name(t)
+                ));
+            }
+            _ => Vec::new(),
+        }
+    };
+    for (name, params, results) in &need {
+        if !have
+            .iter()
+            .any(|(n, p, r)| n == name && p == params && r == results)
+        {
+            return Err(format!(
+                "{} does not implement {}: no method {name} of its signature",
+                crate::interp::type_name(t),
+                crate::interp::type_name(iface)
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<Run, String> {
     let mut it = Interp::new(m, opts.max_steps);
     let base = 0u8;
@@ -287,7 +389,8 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
         it.host.emit(stop_line(None, &s));
         stop = Some(s);
     }
-    let mut bound: HashMap<&str, (Value<'_>, &Type)> = HashMap::new();
+    // Each bound name's value, in a cell of its own, so a method on it changes it, and its type.
+    let mut bound: HashMap<&str, (HeapId, &Type)> = HashMap::new();
     for (i, (c, p)) in session.calls.iter().zip(&planned).enumerate() {
         if stop.is_some() {
             break;
@@ -307,8 +410,12 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
                     it.host.chans.push(id);
                     Value::Chan(id)
                 }
+                // Passed by value, as Go passes it: a copy of what the cell holds.
                 Arg::Bound(name) => match bound.get(name.as_str()) {
-                    Some((v, t)) => it.enter_slot(v.clone(), t, &param.t),
+                    Some(&(id, t)) => {
+                        let v = it.cell(id);
+                        it.enter_slot(v, t, &param.t)
+                    }
                     None => {
                         missing = Some(name.clone());
                         break;
@@ -318,7 +425,7 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
         }
         let recv = match (&c.recv, missing.is_none()) {
             (Some(name), true) => match bound.get(name.as_str()) {
-                Some((v, t)) => Some((v.clone(), *t)),
+                Some(&(id, t)) => Some((id, t)),
                 None => {
                     missing = Some(name.clone());
                     None
@@ -327,6 +434,11 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
             _ => None,
         };
         if let Some(name) = missing {
+            // The call does not return, so it binds nothing: its name is unbound from here on,
+            // as after a panic, never left holding an earlier call's value of another type.
+            if let Some(b) = &c.bind {
+                bound.remove(b.as_str());
+            }
             it.host.emit(line(&[
                 ("event", J::Str("skip")),
                 ("n", J::Num(n)),
@@ -368,7 +480,8 @@ fn run_on_this_thread(m: &Module, session: &Session, opts: &Options) -> Result<R
                 if let (Some(b), Some(v), Some(t)) =
                     (&c.bind, vs.into_iter().next(), p.f.results.first())
                 {
-                    bound.insert(b.as_str(), (v, t));
+                    let id = it.alloc(v);
+                    bound.insert(b.as_str(), (id, t));
                 }
             }
             Err(h) => {
@@ -425,14 +538,21 @@ fn literal<'m>(it: &Interp<'m>, a: &str, t: &Type) -> Value<'m> {
 }
 
 impl<'m> Interp<'m> {
-    /// The receiver `f` takes, from the bound value `v` of type `t`: its address for a pointer
-    /// receiver on a value, the value pointed to for a value receiver on a pointer.
-    fn receiver(&mut self, f: &'m Func, v: Value<'m>, t: &Type) -> crate::interp::R<'m, Value<'m>> {
+    /// The receiver `f` takes, from the bound value of type `t` in the cell `id`: the cell's
+    /// address for a pointer receiver on a value, so the method changes the bound value as Go's
+    /// `c.Inc()` changes `c`; a copy of the value pointed to for a value receiver on a pointer;
+    /// a copy of the value otherwise (a pointer copied still points where it did).
+    fn receiver(&mut self, f: &'m Func, id: HeapId, t: &Type) -> crate::interp::R<'m, Value<'m>> {
         let wants_ptr = f.recv.as_ref().is_some_and(|r| self.is_ptr(&r.t));
         Ok(match (wants_ptr, self.is_ptr(t)) {
-            (true, false) => Value::Ptr(Place::cell(self.alloc(v))),
-            (false, true) => self.deref_at(&v, f)?,
-            _ => v,
+            (true, false) => Value::Ptr(Place::cell(id)),
+            (false, true) => self.deref_at(&self.cell(id), f)?,
+            _ => self.cell(id),
         })
+    }
+
+    /// A copy of what the cell `id` holds.
+    fn cell(&self, id: HeapId) -> Value<'m> {
+        self.read(&Place::cell(id)).cloned().unwrap_or(Value::Nil)
     }
 }

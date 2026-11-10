@@ -11,8 +11,9 @@
 //! `os.Getenv` and `os.LookupEnv` reading [`Options::env`], empty unless given); with none of
 //! them the run stops (`no handler`, E4). [`Run::stubbed`] names each site a stub answered at and
 //! how often. A stub answers at `extern` and `extern_method` nodes; a method of an extern type
-//! called through an interface goes to its handler. A stub naming no extern call of the module,
-//! or values the call's results cannot hold, is refused before anything runs.
+//! called through an interface goes to its handler. Refused before anything runs: a site given
+//! two stubs, a stub naming no extern call of the module, a key's stub that answers no call
+//! because a node id's stub answers at each of them, values the call's results cannot hold.
 //!
 //! # Output
 //!

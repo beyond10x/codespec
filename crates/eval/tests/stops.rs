@@ -202,3 +202,34 @@ fn a_stub_for_no_extern_call_or_of_the_wrong_type_is_refused() {
         assert!(e.contains(why), "{stub}: {e}");
     }
 }
+
+/// A key's stub answers at the calls no node id's stub takes; one that is left no call, as each
+/// call has a node id's stub, is refused, as is a site given twice.
+#[test]
+fn a_key_stub_answers_where_no_node_stub_does_and_one_left_no_call_is_refused() {
+    let m = read("twosites");
+    let first = "example.com/eval/twosites.Pair#0.rhs.0";
+    let second = "example.com/eval/twosites.Pair#1.rhs.0";
+    let with = |stubs: &[String]| Options {
+        stubs: stubs.iter().map(|s| Stub::parse(s).unwrap()).collect(),
+        ..Options::default()
+    };
+    let one = with(&["os.Getenv=\"key\"".into(), format!("{second}=\"node\"")]);
+    let run = run_calls(&m, &calls(&[("Pair", &[])]), &one).unwrap();
+    assert_eq!(run.stdout, "ok \"key/node\"\n");
+
+    let hidden = with(&[
+        "os.Getenv=\"key\"".into(),
+        format!("{first}=\"a\""),
+        format!("{second}=\"b\""),
+    ]);
+    let e = run_calls(&m, &calls(&[("Pair", &[])]), &hidden).unwrap_err();
+    assert!(
+        e.contains("os.Getenv") && e.contains("answers no call"),
+        "{e}"
+    );
+
+    let twice = with(&[format!("{first}=\"a\""), format!("{first}=\"b\"")]);
+    let e = run_calls(&m, &calls(&[("Pair", &[])]), &twice).unwrap_err();
+    assert!(e.contains("given twice"), "{e}");
+}
