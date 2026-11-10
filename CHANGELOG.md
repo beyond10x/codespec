@@ -10,9 +10,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   new evaluator, the crate `b10x-codespec-eval`, and prints what the conformance kit's native
   runners print. A run that executes a `foreign` statement, calls an extern with no built-in
   handler or would panic stops with exit 1, naming the node by its id
-  (`<module path>.<function key>#<index path>`), its position and the reason. The gate step
-  `eval-kit` runs every kit case twice and requires both runs equal to its `expected.txt`, or,
-  for a case listed in `crates/eval/tests/kit-stops.txt`, the stop listed there.
+  (`<module path>.<function key>#<index path>`), its position and the reason. A module that calls
+  an undeclared function, passes a wrong number of arguments, names an undeclared type or a type
+  holding itself, or needs a zero value over 4,194,304 cells, and an argument outside its
+  parameter's width, are refused with exit 2. The gate step `eval-kit` runs every kit case twice
+  and requires both runs equal to its `expected.txt`, or, for a case listed in
+  `crates/eval/tests/kit-stops.txt`, the stop listed there after a prefix of its `expected.txt`.
 
 ## 0.6.1
 

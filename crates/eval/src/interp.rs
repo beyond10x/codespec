@@ -5,21 +5,38 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use codespec_model::{
-    Expr, Field, FloatBits, Func, IntWidth, Module, Param, Stmt, Type, TypeDecl, receiver_type_name,
+    Expr, Field, FloatBits, Func, IntWidth, Module, Param, Stmt, Type, TypeDecl, VarDecl,
+    receiver_type_name, walk,
 };
 
 use crate::builtins;
 use crate::gofmt;
-use crate::id::{Node, func_id, module_path, node_id};
+use crate::growth::{Layout, grow_cap};
+use crate::id::{Node, func_id, module_path, node_id, var_node_id};
 use crate::value::{Closure, ErrorVal, HeapId, Place, Step, Value};
 use crate::{Stop, StopKind};
 
 /// How deep calls may nest before the run stops.
-const MAX_DEPTH: usize = 1000;
+pub(crate) const MAX_DEPTH: usize = 1000;
+
+/// How deep types may nest inside a value (struct fields, array elements) before the evaluator
+/// refuses the type.
+pub(crate) const MAX_TYPE_DEPTH: usize = 100;
+
+/// The most cells (scalars, references) one zero value may take; a larger one is refused.
+pub(crate) const MAX_VALUE_CELLS: u128 = 1 << 22;
+
+/// The tree the running code is in, for node ids: a function's body, or a module variable's
+/// initializer.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Home<'m> {
+    Func(&'m Func),
+    Var(&'m VarDecl),
+}
 
 /// Where a run stopped, before it is named by id.
 pub(crate) enum At<'m> {
-    Node(&'m Func, Node<'m>),
+    Node(Home<'m>, Node<'m>),
     Func(&'m Func),
     Id(String, String),
     Nowhere,
@@ -35,7 +52,11 @@ pub(crate) struct Halt<'m> {
 impl<'m> Halt<'m> {
     pub(crate) fn stop(self, m: &Module) -> Stop {
         let (node, pos) = match self.at {
-            At::Node(f, n) => node_id(m, f, n).unwrap_or_else(|| (func_id(m, f), f.pos.clone())),
+            At::Node(Home::Func(f), n) => {
+                node_id(m, f, n).unwrap_or_else(|| (func_id(m, f), f.pos.clone()))
+            }
+            At::Node(Home::Var(v), n) => var_node_id(m, v, n)
+                .unwrap_or_else(|| (format!("{}.{}", module_path(m), v.name), v.pos.clone())),
             At::Func(f) => (func_id(m, f), f.pos.clone()),
             At::Id(id, pos) => (id, pos),
             At::Nowhere => (module_path(m).to_string(), String::new()),
@@ -66,9 +87,8 @@ enum Target<'m> {
 }
 
 struct Frame<'m> {
-    /// The function whose tree the running code is in, for node ids; a lambda's is the
-    /// function it stands in.
-    home: Option<&'m Func>,
+    /// The tree the running code is in, for node ids; a lambda's is the tree it stands in.
+    home: Option<Home<'m>>,
     scopes: Vec<Vec<(&'m str, HeapId)>>,
     tbind: Vec<(String, Type)>,
     results: &'m [Type],
@@ -372,7 +392,140 @@ impl<'m> Interp<'m> {
         }
     }
 
+    /// How Go on amd64 lays out a value of `t`; `None` for an extern type, whose layout is
+    /// outside the module, or a type that holds itself.
+    fn layout(&self, t: &Type, depth: usize) -> Option<Layout> {
+        if depth > MAX_TYPE_DEPTH {
+            return None;
+        }
+        let bytes = |w: IntWidth| match w {
+            IntWidth::W8 => 1,
+            IntWidth::W16 => 2,
+            IntWidth::W32 => 4,
+            IntWidth::W64 | IntWidth::Platform => 8,
+        };
+        Some(match self.subst(t) {
+            Type::Int { width, .. } => Layout::scalar(bytes(width)),
+            Type::Float { bits } => Layout::scalar(match bits {
+                FloatBits::W32 => 4,
+                FloatBits::W64 => 8,
+            }),
+            Type::Bool => Layout::scalar(1),
+            Type::Unit => Layout::record(&[]),
+            Type::String | Type::Error | Type::Any => Layout::words(2),
+            Type::Slice { .. } => Layout::words(3),
+            Type::Ptr { .. } | Type::Map { .. } | Type::Chan { .. } | Type::Func { .. } => {
+                Layout::words(1)
+            }
+            Type::Array { len, elem } => Layout::array(len, self.layout(&elem, depth + 1)?),
+            Type::Named { name, targs } => {
+                if let Some((tparams, fields)) = self.structs.get(name.as_str()) {
+                    let b: Vec<(String, Type)> = tparams
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .zip(targs.iter().cloned())
+                        .collect();
+                    let mut fs = Vec::with_capacity(fields.len());
+                    for f in *fields {
+                        fs.push(self.layout(&subst(&f.t, &b), depth + 1)?);
+                    }
+                    Layout::record(&fs)
+                } else if self.m.interface_decl("", &name).is_some() {
+                    Layout::words(2)
+                } else {
+                    let under = self.resolve(&Type::Named { name, targs });
+                    if matches!(under, Type::Named { .. }) {
+                        return None;
+                    }
+                    self.layout(&under, depth + 1)?
+                }
+            }
+            Type::Extern { path, name, .. } if self.m.interface_decl(&path, &name).is_some() => {
+                Layout::words(2)
+            }
+            Type::Extern { .. } | Type::Tuple { .. } | Type::Param { .. } => return None,
+        })
+    }
+
+    /// A key `k` of static type `from` for the map of type `map`: converted to the key type when
+    /// that is an interface, as Go converts it.
+    fn map_key(&self, k: Value<'m>, from: &Type, map: &Type) -> Value<'m> {
+        match self.resolve(map) {
+            Type::Map { key, .. } => self.boxed(k, from, &key),
+            _ => k,
+        }
+    }
+
+    /// The cells a zero value of `t` takes: one per scalar and reference; `None` past
+    /// [`MAX_TYPE_DEPTH`] (a type that holds itself).
+    fn cells(&self, t: &Type, depth: usize) -> Option<u128> {
+        if depth > MAX_TYPE_DEPTH {
+            return None;
+        }
+        Some(match self.subst(t) {
+            Type::Array { len, elem } => {
+                (len as u128).saturating_mul(self.cells(&elem, depth + 1)?)
+            }
+            Type::Tuple { elems } => {
+                let mut n = 0u128;
+                for e in &elems {
+                    n = n.saturating_add(self.cells(e, depth + 1)?);
+                }
+                n
+            }
+            Type::Named { name, targs } => {
+                if let Some((tparams, fields)) = self.structs.get(name.as_str()) {
+                    let b: Vec<(String, Type)> = tparams
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .zip(targs.iter().cloned())
+                        .collect();
+                    let mut n = 1u128;
+                    for f in *fields {
+                        n = n.saturating_add(self.cells(&subst(&f.t, &b), depth + 1)?);
+                    }
+                    n
+                } else {
+                    match self.resolve(&Type::Named { name, targs }) {
+                        Type::Named { .. } => 1,
+                        under => self.cells(&under, depth + 1)?,
+                    }
+                }
+            }
+            _ => 1,
+        })
+    }
+
+    /// The zero value of `t`; an unsupported stop for one over [`MAX_VALUE_CELLS`] cells or of
+    /// a type that holds itself (the module check refuses both where the types are written out;
+    /// this holds for those type arguments make).
     fn zero(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
+        if matches!(
+            t,
+            Type::Array { .. } | Type::Named { .. } | Type::Param { .. }
+        ) {
+            match self.cells(t, 0) {
+                Some(n) if n <= MAX_VALUE_CELLS => {}
+                Some(n) => {
+                    return Err(self.unsupported(
+                        node,
+                        format!(
+                            "a zero value of {n} cells, over the evaluator's {MAX_VALUE_CELLS}"
+                        ),
+                    ));
+                }
+                None => {
+                    return Err(self.unsupported(
+                        node,
+                        format!("a type nested deeper than {MAX_TYPE_DEPTH}, or holding itself"),
+                    ));
+                }
+            }
+        }
+        self.zero_of(t, node)
+    }
+
+    fn zero_of(&self, t: &Type, node: Node<'m>) -> R<'m, Value<'m>> {
         Ok(match self.subst(t) {
             Type::Int { .. } => Value::Int(0),
             Type::Float { .. } => Value::Float(0.0),
@@ -389,11 +542,11 @@ impl<'m> Interp<'m> {
             Type::Tuple { elems } => Value::Tuple(
                 elems
                     .iter()
-                    .map(|e| self.zero(e, node))
+                    .map(|e| self.zero_of(e, node))
                     .collect::<R<'m, _>>()?,
             ),
             Type::Array { len, elem } => {
-                let z = self.zero(&elem, node)?;
+                let z = self.zero_of(&elem, node)?;
                 Value::Array(vec![z; len as usize])
             }
             Type::Named { name, targs } => {
@@ -405,7 +558,7 @@ impl<'m> Interp<'m> {
                         .collect();
                     let fs = fields
                         .iter()
-                        .map(|f| self.zero(&subst(&f.t, &b), node))
+                        .map(|f| self.zero_of(&subst(&f.t, &b), node))
                         .collect::<R<'m, _>>()?;
                     Value::Struct(Rc::from(name.as_str()), fs)
                 } else if self.m.interface_decl("", &name).is_some() {
@@ -421,7 +574,7 @@ impl<'m> Interp<'m> {
                             format!("the zero value of {name} is outside the evaluator"),
                         ));
                     }
-                    self.zero(&resolved, node)?
+                    self.zero_of(&resolved, node)?
                 }
             }
             Type::Extern { path, name, .. } => {
@@ -503,7 +656,7 @@ impl<'m> Interp<'m> {
         }
         self.enter(
             Frame {
-                home: Some(f),
+                home: Some(Home::Func(f)),
                 scopes: vec![scope],
                 tbind,
                 results: &f.results,
@@ -879,7 +1032,8 @@ impl<'m> Interp<'m> {
                 ..
             } => {
                 self.push_scope();
-                let flow = self.for_loop(init.as_deref(), cond.as_ref(), post.as_deref(), body);
+                let flow =
+                    self.for_loop(init.as_deref(), cond.as_ref(), post.as_deref(), body, node);
                 self.pop_scope();
                 return flow;
             }
@@ -890,10 +1044,13 @@ impl<'m> Interp<'m> {
                     Some(t) => self.eval(t)?,
                     None => Value::Bool(true),
                 };
+                let tag_t = tag.as_ref().map_or(&Type::Bool, |t| t.t());
                 for c in cases {
                     for v in &c.values {
                         let cv = self.eval(v)?;
-                        if equal(&tagv, &cv) {
+                        let cv = self.boxed(cv, v.t(), tag_t);
+                        let tv = self.boxed(tagv.clone(), tag_t, v.t());
+                        if equal(&tv, &cv) {
                             return self.exec_block(&c.body);
                         }
                     }
@@ -940,6 +1097,7 @@ impl<'m> Interp<'m> {
             } => {
                 let mv = self.eval(map)?;
                 let k = self.eval(index)?;
+                let k = self.map_key(k, index.t(), map.t());
                 match self.map_get(&mv, &k) {
                     Some(v) => self.bind(name, v),
                     None => {
@@ -982,6 +1140,7 @@ impl<'m> Interp<'m> {
         cond: Option<&'m Expr>,
         post: Option<&'m Stmt>,
         body: &'m [Stmt],
+        node: Node<'m>,
     ) -> R<'m, Flow<'m>> {
         if let Some(i) = init {
             self.exec(i)?;
@@ -991,6 +1150,8 @@ impl<'m> Interp<'m> {
             _ => &[],
         };
         loop {
+            // Every iteration is a step, so `for {}` ends at the budget.
+            self.step(Some(node))?;
             if let Some(c) = cond
                 && !self.cond(c)?
             {
@@ -1041,6 +1202,20 @@ impl<'m> Interp<'m> {
         node: Node<'m>,
     ) -> R<'m, Flow<'m>> {
         let v = self.eval(over)?;
+        if let Value::Int(n) = v {
+            // Counted as it goes: no list of the integers is built.
+            let mut i = 0i128;
+            while i < n {
+                self.step(Some(node))?;
+                match self.range_body(key, val, Value::Int(i), None, body)? {
+                    Flow::Break => break,
+                    Flow::Return(vs) => return Ok(Flow::Return(vs)),
+                    Flow::Next | Flow::Continue => {}
+                }
+                i += 1;
+            }
+            return Ok(Flow::Next);
+        }
         let items: Vec<(Value<'m>, Option<Value<'m>>)> = match &v {
             Value::Nil => Vec::new(),
             Value::Slice { arr, off, len, .. } => {
@@ -1076,11 +1251,11 @@ impl<'m> Interp<'m> {
                 .into_iter()
                 .map(|(i, r)| (Value::Int(i as i128), Some(Value::Int(r as i128))))
                 .collect(),
-            Value::Int(n) => (0..*n.max(&0)).map(|i| (Value::Int(i), None)).collect(),
             _ => return Err(self.unsupported(node, "a range over this value")),
         };
         let slice = matches!(v, Value::Slice { .. });
         for (k, e) in items {
+            self.step(Some(node))?;
             let e = match (slice, e) {
                 (true, Some(Value::Ptr(p))) => {
                     Some(self.read(&p).cloned().ok_or_else(|| {
@@ -1089,20 +1264,32 @@ impl<'m> Interp<'m> {
                 }
                 (_, e) => e,
             };
-            self.push_scope();
-            self.bind(key, k);
-            if let Some(e) = e {
-                self.bind(val, e);
-            }
-            let flow = self.exec_block(body);
-            self.pop_scope();
-            match flow? {
+            match self.range_body(key, val, k, e, body)? {
                 Flow::Break => break,
                 Flow::Return(vs) => return Ok(Flow::Return(vs)),
                 Flow::Next | Flow::Continue => {}
             }
         }
         Ok(Flow::Next)
+    }
+
+    /// One iteration of a `for range`: its key and value bound in a scope of their own.
+    fn range_body(
+        &mut self,
+        key: &'m str,
+        val: &'m str,
+        k: Value<'m>,
+        e: Option<Value<'m>>,
+        body: &'m [Stmt],
+    ) -> R<'m, Flow<'m>> {
+        self.push_scope();
+        self.bind(key, k);
+        if let Some(e) = e {
+            self.bind(val, e);
+        }
+        let flow = self.exec_block(body);
+        self.pop_scope();
+        flow
     }
 
     fn send(&mut self, c: Value<'m>, v: Value<'m>, node: Node<'m>) -> R<'m, ()> {
@@ -1162,6 +1349,7 @@ impl<'m> Interp<'m> {
             Expr::Index { x, index, .. } if matches!(self.resolve(x.t()), Type::Map { .. }) => {
                 let m = self.eval(x)?;
                 let k = self.eval(index)?;
+                let k = self.map_key(k, index.t(), x.t());
                 match m {
                     Value::Map(id) => Target::MapEntry(Some(id), k),
                     _ => Target::MapEntry(None, k),
@@ -1380,6 +1568,7 @@ impl<'m> Interp<'m> {
                 let iv = self.eval(index)?;
                 match self.resolve(x.t()) {
                     Type::Map { .. } => {
+                        let iv = self.map_key(iv, index.t(), x.t());
                         let found = self.map_get(&xv, &iv);
                         if let Type::Tuple { elems } = t
                             && elems.len() == 2
@@ -1501,8 +1690,12 @@ impl<'m> Interp<'m> {
                 "&&" => Ok(Value::Bool(self.cond(x)? && self.cond(y)?)),
                 "||" => Ok(Value::Bool(self.cond(x)? || self.cond(y)?)),
                 "==" | "!=" | "<" | "<=" | ">" | ">=" => {
+                    // An interface compared with a concrete value: Go converts the concrete one
+                    // to the interface type first.
                     let a = self.eval(x)?;
+                    let a = self.boxed(a, x.t(), y.t());
                     let b = self.eval(y)?;
+                    let b = self.boxed(b, y.t(), x.t());
                     self.compare(op, &a, &b, node).map(Value::Bool)
                 }
                 _ => {
@@ -1908,15 +2101,27 @@ impl<'m> Interp<'m> {
                             self.unsupported(node, "append of a spread that is not a slice")
                         })?
                     }
-                    _ => rest
-                        .iter()
-                        .map(|a| self.eval(a))
-                        .collect::<R<'m, Vec<_>>>()?,
+                    _ => {
+                        let elem = match self.resolve(first.t()) {
+                            Type::Slice { elem } => *elem,
+                            _ => Type::Unit,
+                        };
+                        let mut xs = Vec::with_capacity(rest.len());
+                        for a in rest {
+                            let v = self.eval(a)?;
+                            xs.push(self.boxed(v, a.t(), &elem));
+                        }
+                        xs
+                    }
                 };
-                self.append(base, extra, node)
+                let elem = match self.resolve(first.t()) {
+                    Type::Slice { elem } => *elem,
+                    _ => Type::Unit,
+                };
+                self.append(base, extra, &elem, node)
             }
             "sprintf" | "errorf" => {
-                let s = self.sprintf(args, node)?;
+                let s = self.sprintf(args, name == "errorf", node)?;
                 Ok(if name == "sprintf" {
                     Value::bytes(s)
                 } else {
@@ -1980,19 +2185,18 @@ impl<'m> Interp<'m> {
         }
     }
 
+    /// `append` to `base`, a slice of `elem`: in place while the capacity holds the new
+    /// elements, else into a new array whose capacity is the one Go's `runtime.growslice` gives.
     pub(crate) fn append(
         &mut self,
         base: Value<'m>,
         extra: Vec<Value<'m>>,
+        elem: &Type,
         node: Node<'m>,
     ) -> R<'m, Value<'m>> {
         let (arr, off, len, cap) = match base {
-            Value::Nil => {
-                if extra.is_empty() {
-                    return Ok(Value::Nil);
-                }
-                return Ok(self.new_slice(extra));
-            }
+            Value::Nil if extra.is_empty() => return Ok(Value::Nil),
+            Value::Nil => (self.alloc(Value::Array(Vec::new())), 0, 0, 0),
             Value::Slice { arr, off, len, cap } => (arr, off, len, cap),
             _ => return Err(self.unsupported(node, "append to a non-slice")),
         };
@@ -2016,12 +2220,17 @@ impl<'m> Interp<'m> {
                 cap,
             });
         }
-        let grown = if cap < 256 {
-            cap * 2
-        } else {
-            cap + (cap + 768) / 4
+        let Some(layout) = self.layout(elem, 0) else {
+            return Err(self.unsupported(
+                node,
+                format!(
+                    "an append that grows a slice of {}, whose size in Go the evaluator does \
+                     not know, so neither the new capacity",
+                    type_name(&self.resolve(elem))
+                ),
+            ));
         };
-        let new_cap = need.max(grown);
+        let new_cap = grow_cap(need, cap, layout.size, layout.pointers);
         let mut xs = match &self.heap[arr] {
             Value::Array(xs) => xs[off..off + len].to_vec(),
             _ => return Err(self.unsupported(node, "a slice without an array")),
@@ -2037,7 +2246,7 @@ impl<'m> Interp<'m> {
     }
 
     /// `sprintf`'s output for its format and arguments: the verbs `%d`, `%s`, `%v` and `%%`.
-    fn sprintf(&mut self, args: &'m [Expr], node: Node<'m>) -> R<'m, Vec<u8>> {
+    fn sprintf(&mut self, args: &'m [Expr], errorf: bool, node: Node<'m>) -> R<'m, Vec<u8>> {
         let Some((f, rest)) = args.split_first() else {
             return Err(self.unsupported(node, "sprintf without a format"));
         };
@@ -2097,6 +2306,13 @@ impl<'m> Interp<'m> {
                         }
                     },
                 },
+                b'w' if !errorf => {
+                    return Err(self.unsupported(
+                        node,
+                        "Sprintf %w, which only Errorf knows: Go prints %!w(<type>=<value>), \
+                         which the evaluator does not reproduce",
+                    ));
+                }
                 b'v' | b'w' => {
                     let s = self.format_v(&v, t, node)?;
                     out.extend_from_slice(&s);
@@ -2167,8 +2383,34 @@ impl<'m> Interp<'m> {
 
     /// `fmt`'s `%v` of `v`, of static type `t`.
     fn format_v(&mut self, v: &Value<'m>, t: &Type, node: Node<'m>) -> R<'m, Vec<u8>> {
-        if let Some(s) = self.method_text(v, t, node)? {
-            return Ok(s);
+        self.format_value(v, t, node, true)
+    }
+
+    /// `%v` of `v`, through its `Error` or `String` method when `methods`: `fmt` calls no
+    /// method of a value it reaches through an unexported struct field, nor of anything inside
+    /// one.
+    fn format_value(
+        &mut self,
+        v: &Value<'m>,
+        t: &Type,
+        node: Node<'m>,
+        methods: bool,
+    ) -> R<'m, Vec<u8>> {
+        if methods {
+            if let Some(s) = self.method_text(v, t, node)? {
+                return Ok(s);
+            }
+        } else if let Value::Error(ev) = v {
+            return match ev.as_ref() {
+                ErrorVal::Value(t, inner) => {
+                    let (t, inner) = (t.clone(), inner.clone());
+                    self.format_value(&inner, &t, node, false)
+                }
+                _ => Err(self.unsupported(
+                    node,
+                    "%v of an error in an unexported field, which fmt prints as its address",
+                )),
+            };
         }
         let (v, t) = match v {
             Value::Iface(t, inner) => ((**inner).clone(), (**t).clone()),
@@ -2197,24 +2439,28 @@ impl<'m> Interp<'m> {
                     if i > 0 {
                         out.push(b' ');
                     }
-                    out.extend(self.format_v(x, &elem, node)?);
+                    out.extend(self.format_value(x, &elem, node, methods)?);
                 }
                 out.push(b']');
                 out
             }
             Value::Struct(name, fs) => {
-                let types: Vec<Type> = self
+                let decl: Vec<(Type, bool)> = self
                     .structs
                     .get(name.as_ref())
-                    .map(|(_, decl)| decl.iter().map(|f| f.t.clone()).collect())
+                    .map(|(_, decl)| {
+                        decl.iter()
+                            .map(|f| (f.t.clone(), f.name.starts_with(char::is_uppercase)))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let mut out = b"{".to_vec();
                 for (i, x) in fs.iter().enumerate() {
                     if i > 0 {
                         out.push(b' ');
                     }
-                    let ft = types.get(i).cloned().unwrap_or(Type::Any);
-                    out.extend(self.format_v(x, &ft, node)?);
+                    let (ft, exported) = decl.get(i).cloned().unwrap_or((Type::Any, true));
+                    out.extend(self.format_value(x, &ft, node, methods && exported)?);
                 }
                 out.push(b'}');
                 out
@@ -2262,18 +2508,37 @@ impl<'m> Interp<'m> {
 
     // ---- the calls file ----
 
-    /// Initialise the module's variables in declaration order.
+    /// Initialise the module's variables in Go's order: repeatedly the first in declaration
+    /// order whose initializer reads no variable left to initialise, through the functions and
+    /// methods it refers to; declaration order for the rest.
     pub(crate) fn init_globals(&mut self) -> R<'m, ()> {
         let m = self.m;
         let path = module_path(m);
-        self.frames.push(Frame {
-            home: None,
-            scopes: vec![Vec::new()],
-            tbind: Vec::new(),
-            results: &[],
-        });
-        let at = |v: &codespec_model::VarDecl| At::Id(format!("{path}.{}", v.name), v.pos.clone());
-        for v in &m.vars {
+        let at = |v: &VarDecl| At::Id(format!("{path}.{}", v.name), v.pos.clone());
+        let deps = init_deps(m);
+        let mut done = vec![false; m.vars.len()];
+        for _ in 0..m.vars.len() {
+            let ready = |i: usize| {
+                !done[i]
+                    && deps[i].iter().all(|d| {
+                        m.vars
+                            .iter()
+                            .position(|w| w.name == *d)
+                            .is_none_or(|j| j == i || done[j])
+                    })
+            };
+            let i = (0..m.vars.len())
+                .find(|&i| ready(i))
+                .or_else(|| (0..m.vars.len()).find(|&i| !done[i]))
+                .expect("a variable left");
+            done[i] = true;
+            let v = &m.vars[i];
+            self.frames.push(Frame {
+                home: Some(Home::Var(v)),
+                scopes: vec![Vec::new()],
+                tbind: Vec::new(),
+                results: &[],
+            });
             let value = if let Some(f) = &v.foreign {
                 return Err(Halt {
                     kind: StopKind::Foreign,
@@ -2284,22 +2549,23 @@ impl<'m> Interp<'m> {
                     at: at(v),
                 });
             } else if let Some(init) = &v.init {
-                self.eval(init).map_err(|mut h| {
+                let value = self.eval(init).map_err(|mut h| {
                     if matches!(h.at, At::Nowhere) {
                         h.at = at(v);
                     }
                     h
-                })?
+                })?;
+                self.boxed(value, init.t(), &v.t)
             } else {
                 self.zero(&v.t, Node::Expr(&NIL)).map_err(|mut h| {
                     h.at = at(v);
                     h
                 })?
             };
+            self.frames.pop();
             let id = self.alloc(value);
             self.globals.push((&v.name, id));
         }
-        self.frames.pop();
         Ok(())
     }
 
@@ -2449,6 +2715,53 @@ impl<'m> Interp<'m> {
 }
 
 static NIL: Expr = Expr::Nil { t: Type::Unit };
+
+/// For each module variable, the variables its initializer reads, directly or through the
+/// functions and methods it refers to: Go's initialization dependencies (a method called
+/// through an interface is not a reference).
+fn init_deps(m: &Module) -> Vec<Vec<String>> {
+    let funcs: HashMap<String, &Func> = m.funcs.iter().map(|f| (f.key(), f)).collect();
+    fn one(x: &Expr, globals: &mut Vec<String>, called: &mut Vec<String>) {
+        match x {
+            Expr::Global { name, .. } => globals.push(name.clone()),
+            Expr::Call { name, .. }
+            | Expr::FuncRef {
+                name, recv: None, ..
+            } => called.push(name.clone()),
+            Expr::FuncRef {
+                name,
+                recv: Some(r),
+                ..
+            } => called.push(format!("{}.{name}", receiver_type_name(r.t()))),
+            Expr::Method { x, name, .. } => {
+                called.push(format!("{}.{name}", receiver_type_name(x.t())))
+            }
+            _ => {}
+        }
+    }
+    m.vars
+        .iter()
+        .map(|v| {
+            let mut globals = Vec::new();
+            let mut called = Vec::new();
+            if let Some(init) = &v.init {
+                walk::walk_expr(init, &mut |x| one(x, &mut globals, &mut called));
+            }
+            let mut seen = std::collections::HashSet::new();
+            while let Some(key) = called.pop() {
+                if !seen.insert(key.clone()) {
+                    continue;
+                }
+                if let Some(f) = funcs.get(&key) {
+                    let mut more = Vec::new();
+                    walk::body_exprs(&f.body, &mut |x| one(x, &mut globals, &mut more));
+                    called.extend(more);
+                }
+            }
+            globals
+        })
+        .collect()
+}
 
 /// Go's `==` on two values of one comparable type.
 pub(crate) fn equal(a: &Value<'_>, b: &Value<'_>) -> bool {

@@ -5,6 +5,8 @@ use std::rc::Rc;
 
 use codespec_model::{Expr, Func, Param, Stmt, Type};
 
+use crate::interp::Home;
+
 /// An index into the run's arena.
 pub type HeapId = usize;
 
@@ -54,7 +56,7 @@ pub enum Closure<'m> {
         params: &'m [Param],
         body: &'m [Stmt],
         captures: Vec<(&'m str, HeapId)>,
-        home: Option<&'m Func>,
+        home: Option<Home<'m>>,
         tbind: Vec<(String, Type)>,
         expr: &'m Expr,
     },

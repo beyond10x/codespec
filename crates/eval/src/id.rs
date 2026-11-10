@@ -4,11 +4,15 @@
 //! the function's `body` through the `cir/1` field names, `.` between steps: `#3` is statement 3
 //! of the body, `#3.then.1.x` field `x` of statement 1 of its `then` branch, `#0.results.0` the
 //! first result of a `return`, `#2.init.rhs.0` the first value of a `for`'s `init`,
-//! `#1.cases.0.values.1` a `switch` case's second value. A lambda's body continues the path of
-//! the `lambda` expression (`….body.0`). The module path is the module's `path`, or its `name`
-//! when it has none.
+//! `#1.cases.0.values.1` a `switch` case's second value, `#0.rhs.0.fields.2` the value of a
+//! struct literal's third field. A lambda's body continues the path of the `lambda` expression
+//! (`….body.0`). The module path is the module's `path`, or its `name` when it has none.
+//!
+//! A node of a module variable's initializer is `<module path>.<var>#init`, then the path
+//! inside it as above: `….div#init.body.0.results.0` is the result of the first statement of a
+//! function literal a variable holds.
 
-use codespec_model::{Case, Expr, Func, Module, Stmt};
+use codespec_model::{Case, Expr, Func, Module, Stmt, VarDecl};
 
 /// The module's part of an id: its import path, or its name when it has none.
 pub fn module_path(m: &Module) -> &str {
@@ -52,6 +56,20 @@ pub fn node_id(m: &Module, f: &Func, node: Node<'_>) -> Option<(String, String)>
         id.push_str(step);
     }
     Some((id, pos.unwrap_or_default().to_string()))
+}
+
+/// The id of `node`, a node of the initializer of the module variable `v`, and the position of
+/// the innermost statement holding it, the variable's own outside a function literal; `None` when
+/// `node` is not in it.
+pub fn var_node_id(m: &Module, v: &VarDecl, node: Node<'_>) -> Option<(String, String)> {
+    let init = v.init.as_ref()?;
+    let mut path = vec!["init".to_string()];
+    let mut pos = None;
+    if !expr(init, node, &mut path, &mut pos) {
+        return None;
+    }
+    let id = format!("{}.{}#{}", module_path(m), v.name, path.join("."));
+    Some((id, pos.unwrap_or(&v.pos).to_string()))
 }
 
 /// The position of a statement.
@@ -283,7 +301,7 @@ fn expr<'a>(e: &'a Expr, node: Node<'_>, path: &mut Path, pos: &mut Option<&'a s
             for (i, fi) in fields.iter().enumerate() {
                 path.push("fields".to_string());
                 path.push(i.to_string());
-                if field_expr("value", &fi.value, node, path, pos) {
+                if expr(&fi.value, node, path, pos) {
                     return true;
                 }
                 path.truncate(path.len() - 2);

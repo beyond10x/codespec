@@ -15,6 +15,8 @@
 //!
 //! - it is listed and stops with another line, or does not stop and prints something other than
 //!   its `expected.txt`;
+//! - it is listed and stops with its line, but what it printed before the stop does not begin
+//!   its `expected.txt`;
 //! - it is listed and prints its `expected.txt` after all: the entry is stale;
 //! - it is not listed and stops;
 //! - it is not listed and prints something other than its `expected.txt`;
@@ -157,6 +159,11 @@ fn judge(run: &Run, expected: &str, listed: Option<&str>) -> Result<Judged, Stri
         ),
         (Some(want), None) => Err(format!(
             "listed as stopping with {want:?}, but ran to the end and printed {:?}",
+            run.stdout
+        )),
+        (Some(want), Some(s)) if s == want && !expected.starts_with(&run.stdout) => Err(format!(
+            "stopped as listed, but printed {:?} before the stop, which does not begin \
+             expected.txt's {expected:?}",
             run.stdout
         )),
         (Some(want), Some(s)) if s == want => Ok(Judged::Stopped),

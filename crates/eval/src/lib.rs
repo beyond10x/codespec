@@ -22,8 +22,24 @@
 //! | `no body` | a function the module declares without a body (`opaque`) is called |
 //! | `panic` | Go would panic: an index out of range, a nil dereference, a zero divisor, a send on a closed channel, a handler's panic |
 //! | `blocked` | a send on a full channel or a receive from an empty one, which only another goroutine could end |
-//! | `step budget` | the run took more than [`Options::max_steps`] steps, or calls nest deeper than 1000 |
-//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v`, a string outside ASCII in a result, a value the kit's driver cannot print |
+//! | `step budget` | the run took more than [`Options::max_steps`] steps (default 10,000,000; each statement, call and loop iteration is one), or calls nest deeper than 1000 |
+//! | `unsupported` | a construct the evaluator does not reproduce exactly: a `sprintf` verb other than `%d`, `%s`, `%v` (and `%w` outside `errorf`), a string outside ASCII in a result, a value the kit's driver cannot print, an `append` growing a slice of an extern type, a zero value a generic type's arguments make over the limit below |
+//!
+//! A panic inside a function literal a module variable holds names its node as
+//! `<module path>.<var>#init.…` ([`id`]).
+//!
+//! # Refusals
+//!
+//! Besides calls the kit's driver cannot make, [`run_calls`] refuses before anything runs (exit 2
+//! of `codespec eval`):
+//!
+//! - a call of a function or method the module does not declare, or with another number of
+//!   arguments than it takes;
+//! - a type the module does not declare, a struct or newtype that holds itself, a type nested
+//!   deeper than 100 inside a value;
+//! - a type whose zero value takes more than 4,194,304 cells (one per scalar or reference);
+//! - an argument of the calls file its parameter cannot hold: an integer outside its width, a
+//!   bool other than `true` or `false`.
 //!
 //! # Semantics
 //!
@@ -33,11 +49,27 @@
 //! iteration has its own copy of the variables `init` declares, a multi-target `assign` reads
 //! every value before it stores any (`sem.multi_assign.order`) and a `break` leaves the innermost
 //! loop, through a `switch` (`sem.switch.break`). Structs and arrays are values; a slice shares
-//! its array with the slices `append` made from it while it has room, and grows to twice its
-//! capacity below 256 elements. `len` counts a string's bytes.
+//! its array with the slices `append` made from it while it has room, and grows to the capacity
+//! Go's runtime gives it (`runtime.growslice` with its size classes, on amd64). `len` counts a
+//! string's bytes. A concrete value compared with an interface, switched on against one, used as
+//! a key of a map with interface keys or appended to a slice of interfaces is converted to the
+//! interface type first. Module variables are initialised in Go's dependency order. `fmt` calls
+//! no `String` or `Error` method of a value it reaches through an unexported struct field.
+//!
+//! # Limits
+//!
+//! - Constant expressions are computed as `cir/1` writes them, operator by operator in their
+//!   type, where Go folds them exactly at compile time: `big * 4 / 8` with `big = 1 << 62`
+//!   overflows, `0.1 + 0.2` prints `0.30000000000000004`. The Go reader is to fold them.
+//! - Go's compiler may give a non-escaping slice of at most 32 bytes a backing store on the
+//!   stack, with a capacity its escape analysis decides; the evaluator gives every slice the
+//!   heap's capacity, so a program whose result depends on whether two such appends share an
+//!   array may print otherwise than Go.
 
 mod builtins;
+mod check;
 mod gofmt;
+mod growth;
 pub mod id;
 mod interp;
 pub mod kit;
@@ -124,9 +156,12 @@ const EVAL_STACK: usize = 512 << 20;
 
 /// Run `calls` against `m` and give what it prints. Refused (`Err`) before anything runs: calls
 /// that do not fit the module as the kit's driver requires (an exported top-level function,
-/// arguments of its parameters' kinds, results the driver can print).
+/// arguments of its parameters' kinds, results the driver can print), and the refusals of the
+/// crate doc § Refusals.
 pub fn run_calls(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, String> {
     calls_go(m, calls)?;
+    check::module(m)?;
+    check::calls(m, calls)?;
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("cir1-eval".into())
