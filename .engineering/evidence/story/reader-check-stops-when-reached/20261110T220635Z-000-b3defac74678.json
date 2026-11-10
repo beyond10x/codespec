@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T22:06:35Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-check-stops-when-reached",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task docs-generate; task docs-check on the merged tree: reader rust 113 claimed, 113 pass, 0 fail",
+    "reference": "4acf3303"
+  }
+}

@@ -268,12 +268,18 @@ with its output. Disk space is the `disk-doctor` round's job, never an agent's: 
 adversary or coordinator does not measure, watch or free disk space, and deletes build output only
 as `worktree finish --discard-cache` of its own merged tree or when `disk-doctor` asks it to.
 
+A wave over several languages or features follows `.claude/skills/language-wave/SKILL.md`: one
+tree, one commit per unit, generated files regenerated once, one review, one PR.
+
 ## Delivery
 
 All commits and pushes are `b10x-bot[bot]` through `b10x-gates bot --repository beyond10x/codespec`;
 every other GitHub write (pull request, release, re-run, dispatch) goes through `b10x-gates api`.
 Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
+
+`b10x-gates api --path` takes the full path, `/repos/beyond10x/codespec/...`; a path without that
+prefix answers 404.
 
 The repository is public (again since 2026-11-10, after one day private; visibility is set through
 `b10x-gates api --policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`, and Pages
