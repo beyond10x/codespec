@@ -56,6 +56,9 @@ pub(crate) struct Fx<'r> {
     /// The closures being read, innermost last: the index of the first scope of each, and the
     /// Go names of the bindings of enclosing scopes it reads or writes, its captures.
     lambdas: Vec<(usize, BTreeSet<String>)>,
+    /// The function's names bound only to a `BTreeMap` (`true`) or only to a `HashMap`
+    /// (`false`), by Rust name (`map_kinds`).
+    map_kinds: BTreeMap<String, bool>,
 }
 
 /// Whether `name` is one of the Rust writer's temporaries for `base`: `__base`, then as many `_`
@@ -240,6 +243,8 @@ fn value_block(stmts: &[syn::Stmt]) -> Option<Vec<(&syn::Expr, &syn::Expr)>> {
 enum Node<'a> {
     Expr(&'a syn::Expr),
     Pat(&'a syn::Pat),
+    /// A `let`, given before its pattern.
+    Local(&'a syn::Local),
 }
 
 /// Every expression and pattern in `stmts`, nested blocks, loops and closures included.
@@ -250,6 +255,7 @@ fn walk_stmts(stmts: &[syn::Stmt], f: &mut dyn FnMut(Node<'_>)) {
         match s {
             syn::Stmt::Macro(m) => walk_macro(&m.mac, f),
             syn::Stmt::Local(l) => {
+                f(Node::Local(l));
                 f(Node::Pat(&l.pat));
                 if let Some(i) = &l.init {
                     walk_expr(&i.expr, f);
@@ -473,17 +479,283 @@ fn root_effects(stmts: &[syn::Stmt], root: &str) -> (bool, Vec<(String, String)>
     (found, methods)
 }
 
+/// The std methods that run no code of the crate and change nothing, when no type or trait of
+/// the crate has a method of the name: their order beside other evaluation does not show.
+const QUIET: &[&str] = &[
+    "len",
+    "is_empty",
+    "clone",
+    "cloned",
+    "copied",
+    "get",
+    "contains_key",
+    "as_str",
+    "borrow",
+    "borrow_mut",
+    "abs",
+    "min",
+    "max",
+    "pow",
+    "wrapping_add",
+    "wrapping_sub",
+    "wrapping_mul",
+    "wrapping_div",
+    "wrapping_rem",
+    "wrapping_neg",
+];
+
+/// Whether evaluating the Rust expression `e` may run code of the crate or change a place: a
+/// call of a function of the crate or of a local (a closure), a method call other than a
+/// `QUIET` one, a macro, an assignment, or a block, loop, `if` or `match` (whose statements are
+/// not looked into). A call of a std function by path (`String::from`, `Rc::new`) or of a
+/// constructor (`Some(x)`, `Id(x)`) is quiet, its arguments looked into. Where `e` has no
+/// effect, the order it is evaluated in beside another expression does not show.
+fn effects(r: &Reader, e: &syn::Expr) -> bool {
+    let crate_method = |m: &str| {
+        r.sigs.keys().any(|(t, n)| t.is_some() && n == m)
+            || r.traits
+                .values()
+                .flatten()
+                .any(|info| info.methods.contains_key(m))
+    };
+    let crate_call = |f: &syn::Expr| {
+        let syn::Expr::Path(p) = f else { return true };
+        let segs: Vec<String> = p
+            .path
+            .segments
+            .iter()
+            .map(|s| s.ident.to_string())
+            .collect();
+        match segs.as_slice() {
+            [n] => {
+                r.sigs.contains_key(&(None, n.clone()))
+                    || !n.chars().next().is_some_and(char::is_uppercase)
+            }
+            [.., t, n] => {
+                r.sigs.contains_key(&(Some(t.clone()), n.clone())) || t == "Self" || t == "self"
+            }
+            [] => true,
+        }
+    };
+    let mut found = false;
+    walk_expr(e, &mut |n| {
+        if let Node::Expr(x) = n {
+            found |= match x {
+                syn::Expr::Call(c) => crate_call(&c.func),
+                syn::Expr::MethodCall(m) => {
+                    let name = m.method.to_string();
+                    !QUIET.contains(&name.as_str()) || crate_method(&name)
+                }
+                syn::Expr::Macro(_)
+                | syn::Expr::Assign(_)
+                | syn::Expr::Block(_)
+                | syn::Expr::Unsafe(_)
+                | syn::Expr::Loop(_)
+                | syn::Expr::While(_)
+                | syn::Expr::ForLoop(_)
+                | syn::Expr::If(_)
+                | syn::Expr::Match(_) => true,
+                syn::Expr::Binary(b) => compound_op(&b.op),
+                _ => false,
+            };
+        }
+    });
+    found
+}
+
+/// Which Rust map the type `t` is, seen through references: `Some(true)` a `BTreeMap`,
+/// `Some(false)` a `HashMap`, `None` another type.
+pub(crate) fn map_kind(t: &syn::Type) -> Option<bool> {
+    match t {
+        syn::Type::Reference(r) => map_kind(&r.elem),
+        syn::Type::Paren(p) => map_kind(&p.elem),
+        syn::Type::Path(p) if p.qself.is_none() => {
+            match p.path.segments.last()?.ident.to_string().as_str() {
+                "BTreeMap" => Some(true),
+                "HashMap" => Some(false),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The names of a function each binding of which is one kind of Rust map, from a parameter's
+/// or a `let`'s written type or a `let`'s `BTreeMap::new()` or `HashMap::new()`: `true` for a
+/// `BTreeMap`, `false` for a `HashMap`. A binding whose type neither shows (another pattern, a
+/// `let` of another value, a closure's or `for`'s pattern) leaves its name out.
+fn map_kinds(sig: &syn::Signature, block: &syn::Block) -> BTreeMap<String, bool> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum K {
+        Map(bool),
+        Other,
+        Unknown,
+    }
+    let of_type = |t: &syn::Type| map_kind(t).map_or(K::Other, K::Map);
+    let mut seen: BTreeMap<String, Vec<K>> = BTreeMap::new();
+    for a in &sig.inputs {
+        if let syn::FnArg::Typed(pt) = a {
+            let k = match &*pt.pat {
+                syn::Pat::Ident(_) => of_type(&pt.ty),
+                _ => K::Unknown,
+            };
+            for i in pat_names(&pt.pat) {
+                seen.entry(i).or_default().push(k);
+            }
+        }
+    }
+    let mut local_pat: Option<*const syn::Pat> = None;
+    walk_stmts(&block.stmts, &mut |n| match n {
+        Node::Local(l) => {
+            let (id, ty) = match &l.pat {
+                syn::Pat::Ident(i) if i.subpat.is_none() => (Some(i.ident.to_string()), None),
+                syn::Pat::Type(pt) => match &*pt.pat {
+                    syn::Pat::Ident(i) if i.subpat.is_none() => {
+                        (Some(i.ident.to_string()), Some(&*pt.ty))
+                    }
+                    _ => (None, None),
+                },
+                _ => (None, None),
+            };
+            if let Some(id) = id {
+                let k = match ty {
+                    Some(t) => of_type(t),
+                    None => match local_init(l) {
+                        Some(syn::Expr::Call(c)) => match &*c.func {
+                            syn::Expr::Path(p) if p.path.segments.len() >= 2 => {
+                                let s = &p.path.segments[p.path.segments.len() - 2];
+                                match s.ident.to_string().as_str() {
+                                    "BTreeMap" => K::Map(true),
+                                    "HashMap" => K::Map(false),
+                                    _ => K::Unknown,
+                                }
+                            }
+                            _ => K::Unknown,
+                        },
+                        _ => K::Unknown,
+                    },
+                };
+                seen.entry(id).or_default().push(k);
+                local_pat = Some(&l.pat as *const syn::Pat);
+            }
+        }
+        Node::Pat(p) => {
+            if local_pat.take() == Some(p as *const syn::Pat) {
+                return;
+            }
+            for i in pat_names(p) {
+                seen.entry(i).or_default().push(K::Unknown);
+            }
+        }
+        Node::Expr(_) => {}
+    });
+    seen.into_iter()
+        .filter_map(|(n, ks)| {
+            if ks.contains(&K::Unknown) {
+                return None;
+            }
+            let maps: BTreeSet<bool> = ks
+                .iter()
+                .filter_map(|k| match k {
+                    K::Map(b) => Some(*b),
+                    _ => None,
+                })
+                .collect();
+            match maps.into_iter().collect::<Vec<_>>().as_slice() {
+                [b] => Some((n, *b)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// Every name the pattern `p` binds, as the reader names it (raw names already renamed).
+fn pat_names(p: &syn::Pat) -> Vec<String> {
+    let mut out = Vec::new();
+    fn go(p: &syn::Pat, out: &mut Vec<String>) {
+        match p {
+            syn::Pat::Ident(i) => {
+                out.push(i.ident.to_string());
+                if let Some((_, s)) = &i.subpat {
+                    go(s, out);
+                }
+            }
+            syn::Pat::Or(o) => o.cases.iter().for_each(|c| go(c, out)),
+            syn::Pat::Paren(x) => go(&x.pat, out),
+            syn::Pat::Reference(x) => go(&x.pat, out),
+            syn::Pat::Slice(s) => s.elems.iter().for_each(|c| go(c, out)),
+            syn::Pat::Struct(s) => s.fields.iter().for_each(|f| go(&f.pat, out)),
+            syn::Pat::Tuple(t) => t.elems.iter().for_each(|c| go(c, out)),
+            syn::Pat::TupleStruct(t) => t.elems.iter().for_each(|c| go(c, out)),
+            syn::Pat::Type(t) => go(&t.pat, out),
+            _ => {}
+        }
+    }
+    go(p, &mut out);
+    out
+}
+
+/// Whether `e` is the same value wherever it is evaluated: a literal, constant or zero value.
+fn fixed(e: &Expr) -> bool {
+    matches!(
+        e,
+        Expr::Lit { .. }
+            | Expr::Float { .. }
+            | Expr::Nil { .. }
+            | Expr::Const { .. }
+            | Expr::Errvar { .. }
+            | Expr::Zero { .. }
+            | Expr::Make { .. }
+    )
+}
+
+/// Whether `op` is one of the compound assignments (`+=`, …).
+fn compound_op(op: &syn::BinOp) -> bool {
+    matches!(
+        op,
+        syn::BinOp::AddAssign(_)
+            | syn::BinOp::SubAssign(_)
+            | syn::BinOp::MulAssign(_)
+            | syn::BinOp::DivAssign(_)
+            | syn::BinOp::RemAssign(_)
+            | syn::BinOp::BitAndAssign(_)
+            | syn::BinOp::BitOrAssign(_)
+            | syn::BinOp::BitXorAssign(_)
+            | syn::BinOp::ShlAssign(_)
+            | syn::BinOp::ShrAssign(_)
+    )
+}
+
+/// Whether the Rust place `e` is rooted at a `static` of the crate or reached through a method
+/// call (`c.borrow_mut().f`): a place the value of a compound assignment can reach while Rust
+/// holds it borrowed.
+fn shared_place(r: &Reader, e: &syn::Expr) -> bool {
+    let mut found = false;
+    walk_expr(e, &mut |n| {
+        if let Node::Expr(x) = n {
+            found |= matches!(x, syn::Expr::MethodCall(_) | syn::Expr::Call(_))
+                || ident_of(x).is_some_and(|i| r.statics.contains_key(&i));
+        }
+    });
+    found
+}
+
 /// Whether any part of `e` calls a function or method.
 fn calls(e: &Expr) -> bool {
     let sub: Vec<&Expr> = match e {
         Expr::Call { .. }
         | Expr::Method { .. }
         | Expr::Extern { .. }
-        | Expr::ExternMethod { .. } => return true,
+        | Expr::ExternMethod { .. }
+        | Expr::IfaceCall { .. }
+        | Expr::CallValue { .. } => return true,
+        Expr::Unop { op, .. } if op == "<-" => return true,
         Expr::Field { x, .. }
         | Expr::Unop { x, .. }
         | Expr::Conv { x, .. }
-        | Expr::ToError { x, .. } => vec![x],
+        | Expr::ToError { x, .. }
+        | Expr::ToIface { x, .. }
+        | Expr::Spread { x, .. } => vec![x],
         Expr::Index { x, index, .. } => vec![x, index],
         Expr::Binop { x, y, .. } => vec![x, y],
         Expr::Struct { fields, .. } => fields.iter().map(|f| &f.value).collect(),
@@ -774,6 +1046,7 @@ impl<'r> Fx<'r> {
             hint: None,
             mut_refs: Vec::new(),
             lambdas: Vec::new(),
+            map_kinds: BTreeMap::new(),
         }
     }
 
@@ -1684,12 +1957,14 @@ impl<'r> Fx<'r> {
         let mut src = strip_ref(&f.expr);
         let mut part = "";
         let mut enumerate = false;
+        let mut cloned = false;
         loop {
             match src {
                 syn::Expr::MethodCall(mc) if mc.args.is_empty() => {
                     let m = mc.method.to_string();
                     match m.as_str() {
-                        "iter" | "clone" | "into_iter" => {}
+                        "clone" => cloned = true,
+                        "iter" | "into_iter" => {}
                         "keys" | "values" if part.is_empty() => {
                             part = if m == "keys" { "keys" } else { "values" }
                         }
@@ -1719,6 +1994,17 @@ impl<'r> Fx<'r> {
                 _ => Err("a `for` pattern that is not a pair".into()),
             }
         };
+        if let Type::Map { .. } = over.t()
+            && !enumerate
+            && self.ordered_map(src, &over)
+        {
+            let (key, val) = match part {
+                "" => pair(&f.pat)?,
+                "keys" => (name(&f.pat)?, "_".into()),
+                _ => ("_".into(), name(&f.pat)?),
+            };
+            return self.sorted_range(f, over, key, val, cloned, pos);
+        }
         let (key, val, kt, vt) = match (over.t().clone(), part, enumerate) {
             (Type::Map { key, elem }, "", false) => {
                 let (k, v) = pair(&f.pat)?;
@@ -1744,6 +2030,113 @@ impl<'r> Fx<'r> {
             key,
             val,
             over,
+            body,
+            pos,
+        })
+    }
+
+    /// Whether the `for` source `src`, read as the map `over`, may be a `BTreeMap`, which visits
+    /// its keys in order: a local or parameter, or a field, of that type; one whose type the
+    /// reader cannot tell when the crate names `BTreeMap` or `BTreeSet` at all. A `HashMap`
+    /// visits its keys in no order Rust specifies, as `cir/1` ranges over a map.
+    fn ordered_map(&self, src: &syn::Expr, over: &Expr) -> bool {
+        let known = match over {
+            Expr::Field { x, name, .. } => self
+                .r
+                .map_fields
+                .get(&(receiver_type_name(x.t()).to_string(), name.clone()))
+                .copied(),
+            _ => match src {
+                syn::Expr::Path(_) => ident_of(src).and_then(|n| self.map_kinds.get(&n).copied()),
+                _ => None,
+            },
+        };
+        known.unwrap_or(self.r.ordered_maps)
+    }
+
+    /// `for` over a `BTreeMap` with integer keys: a range over `sorted_keys` of the map, whose
+    /// order is the integers' as Rust's `Ord` is, the value of each key read from the map. Other
+    /// keys are refused: Rust orders `String` keys by byte, `sorted_keys` by UTF-16 code unit.
+    fn sorted_range(
+        &mut self,
+        f: &syn::ExprForLoop,
+        over: Expr,
+        key: String,
+        val: String,
+        cloned: bool,
+        pos: String,
+    ) -> R<Stmt> {
+        let Type::Map { key: kt, elem: vt } = over.t().clone() else {
+            unreachable!("an ordered range is over a map")
+        };
+        if !matches!(*kt, Type::Int { .. }) {
+            return Err(
+                "a `for` over a BTreeMap (or a map the reader cannot tell from one) whose keys are not integers: Rust visits them in `Ord` order, which `sorted_keys` gives for integers only"
+                    .into(),
+            );
+        }
+        if calls(&over) {
+            return Err("a `for` over a BTreeMap that a call gives".into());
+        }
+        // The body reads `name` only if its source names it; a binding it does not read is `_`.
+        let used = idents(&f.body);
+        let key = if key != "_" && used.contains(&key) {
+            key
+        } else {
+            "_".to_string()
+        };
+        let val = if val != "_" && used.contains(&val) {
+            val
+        } else {
+            "_".to_string()
+        };
+        if val != "_" && cloned {
+            return Err(
+                "a `for` over a clone of a BTreeMap that reads its values: the body may change the map the read looks them up in"
+                    .into(),
+            );
+        }
+        self.scopes.push(Vec::new());
+        let k = if key == "_" && val != "_" {
+            let k = self.fresh("key");
+            self.scopes.last_mut().expect("a loop scope").push((
+                "=".into(),
+                k.clone(),
+                (*kt).clone(),
+            ));
+            k
+        } else {
+            self.bind(&key, (*kt).clone())
+        };
+        let mut body = Vec::new();
+        if val != "_" {
+            let index = Expr::Index {
+                x: Box::new(over.clone()),
+                index: Box::new(Expr::Var {
+                    name: k.clone(),
+                    t: (*kt).clone(),
+                }),
+                t: (*vt).clone(),
+            };
+            let v = self.bind(&val, (*vt).clone());
+            body.push(Stmt::Let {
+                names: vec![v],
+                rhs: vec![index],
+                pos: pos.clone(),
+            });
+        }
+        self.loops.push(None);
+        body.extend(self.block(&f.body.stmts, false));
+        self.loops.pop();
+        self.scopes.pop();
+        Ok(Stmt::ForRange {
+            key: "_".into(),
+            val: k,
+            over: Expr::Intrinsic {
+                name: "sorted_keys".into(),
+                args: vec![over],
+                t: Type::Slice { elem: kt },
+            },
             body,
             pos,
         })
@@ -1834,17 +2227,14 @@ impl<'r> Fx<'r> {
         let names = idents(&u.block);
         if let Some(i) = names
             .iter()
-            .find(|i| self.r.refused_statics.contains_key(*i) && self.find(i).is_none())
+            .find(|i| self.r.refused_statics.contains_key(*i))
         {
             return Err(format!(
                 "the static {i}, which is not read: {}",
                 self.r.refused_statics[i]
             ));
         }
-        if names
-            .iter()
-            .any(|i| self.r.statics.contains_key(i) && self.find(i).is_none())
-        {
+        if names.iter().any(|i| self.r.statics.contains_key(i)) {
             Ok(())
         } else {
             Err("unsafe is outside cir/1 other than around a `static mut` of the crate".into())
@@ -2422,7 +2812,10 @@ impl<'r> Fx<'r> {
             return Ok(vec![self.assign_values(&pairs, pos)?]);
         }
         let l = self.place(&a.left)?;
+        // `x = x.wrapping_add(y)` as `x += y`: Rust loads `x`, then `y`, then stores, as `+=`
+        // does, when evaluating the place `x` runs nothing (else Rust runs it twice).
         if let syn::Expr::MethodCall(mc) = &*a.right
+            && !effects(self.r, &a.left)
             && no_ws(&src_of(&*mc.receiver)) == no_ws(&src_of(&*a.left))
             && mc.args.len() == 1
             && let Some(op) = match mc.method.to_string().as_str() {
@@ -2456,12 +2849,44 @@ impl<'r> Fx<'r> {
             }]);
         }
         let r = self.val(&a.right, Some(l.t()))?;
-        Ok(vec![Stmt::Assign {
+        // Rust evaluates the value, then the place's operands (`v[i()] = val()` calls `val`
+        // first); `cir/1` the place's operands first. Where either may run code, the value is
+        // held in a temporary first. A variable or static as the place has no operands.
+        let operands = !matches!(l, Expr::Var { .. } | Expr::Global { .. });
+        let mut out = Vec::new();
+        let r = if operands
+            && (effects(self.r, &a.right) || (effects(self.r, &a.left) && !fixed(&r)))
+        {
+            self.hold(r, pos, &mut out)
+        } else {
+            r
+        };
+        out.push(Stmt::Assign {
             op: String::new(),
             lhs: vec![l],
             rhs: vec![r],
             pos: pos.into(),
-        }])
+        });
+        Ok(out)
+    }
+
+    /// `x` bound to a new local by a statement pushed onto `out`, which the local then stands
+    /// for: `x` is evaluated there, before what follows.
+    fn hold(&mut self, x: Expr, pos: &str, out: &mut Vec<Stmt>) -> Expr {
+        let t = x.t().clone();
+        let name = self.fresh("value");
+        // Held in the block's scope under a name no Rust local has, so a later `let value` of
+        // the block is renamed as Go's `:=` needs.
+        self.scopes
+            .last_mut()
+            .expect("a block scope")
+            .push(("=".into(), name.clone(), t.clone()));
+        out.push(Stmt::Let {
+            names: vec![name.clone()],
+            rhs: vec![x],
+            pos: pos.into(),
+        });
+        Expr::Var { name, t }
     }
 
     fn compound(&mut self, b: &syn::ExprBinary, pos: &str) -> R<Vec<Stmt>> {
@@ -2482,26 +2907,48 @@ impl<'r> Fx<'r> {
         if matches!(l.t(), Type::Float { .. }) && !matches!(op, "+=" | "-=" | "*=" | "/=") {
             return Err(format!("`{op}` on floats, which Go has no operator for"));
         }
-        // `x &= !y` on integers: Go's `x &^= y`.
-        if op == "&="
-            && matches!(l.t(), Type::Int { .. })
-            && let Some(y) = complement_of(&b.right)
-        {
-            let r = self.val(strip_ref(y), Some(l.t()))?;
-            return Ok(vec![Stmt::Assign {
-                op: "&^=".into(),
-                lhs: vec![l],
-                rhs: vec![r],
-                pos: pos.into(),
-            }]);
+        // Rust evaluates `place op= value` on two primitive operands value first, then the
+        // place's operands, then loads the place; `cir/1` loads the place first. Where either may
+        // run code, the value is held in a temporary first. On a `String` (`s += &t`) Rust calls
+        // `AddAssign`, place first as `cir/1` does, and reads the place only inside the call; a
+        // value that runs code could reach that place only through a static or a `RefCell`
+        // borrowed in the place, so those are refused. Any other type's operator is an impl of
+        // the crate's, which the reader does not read.
+        let primitive = matches!(l.t(), Type::Int { .. } | Type::Float { .. } | Type::Bool);
+        if !primitive && l.t() != &Type::String {
+            return Err(format!(
+                "`{op}` on a value other than an integer, float, bool or String: Rust calls its operator trait's impl, which the reader does not read"
+            ));
         }
-        let r = self.val(&b.right, Some(l.t()))?;
-        Ok(vec![Stmt::Assign {
+        let hold = if primitive {
+            effects(self.r, &b.left) || effects(self.r, &b.right)
+        } else {
+            if effects(self.r, &b.right) && shared_place(self.r, &b.left) {
+                return Err(format!(
+                    "`{op}` on a String held through a static or a method call while its value runs code: Rust evaluates the value with the place borrowed"
+                ));
+            }
+            false
+        };
+        // `x &= !y` on integers: Go's `x &^= y`.
+        let (op, right) = match complement_of(&b.right) {
+            Some(y) if op == "&=" && matches!(l.t(), Type::Int { .. }) => ("&^=", strip_ref(y)),
+            _ => (op, &*b.right),
+        };
+        let r = self.val(right, Some(l.t()))?;
+        let mut out = Vec::new();
+        let r = if hold && !fixed(&r) {
+            self.hold(r, pos, &mut out)
+        } else {
+            r
+        };
+        out.push(Stmt::Assign {
             op: op.into(),
             lhs: vec![l],
             rhs: vec![r],
             pos: pos.into(),
-        }])
+        });
+        Ok(out)
     }
 
     fn method_stmt(&mut self, mc: &syn::ExprMethodCall, pos: &str) -> R<Vec<Stmt>> {
@@ -2535,6 +2982,22 @@ impl<'r> Fx<'r> {
         }
         match (m.as_str(), mc.args.len()) {
             ("insert", 2) | ("push", 1) | ("push_str", 1) => {
+                // `v.push(x)` reads as `v = append(v, x)`, which evaluates `v` twice.
+                if m == "push" && effects(self.r, &mc.receiver) {
+                    return Err(
+                        "a push to a place whose evaluation runs code: the read would run it twice"
+                            .into(),
+                    );
+                }
+                // Rust evaluates the arguments with the place borrowed, and the read loads the
+                // place before them; a value that runs code could reach it only through a static
+                // or a `RefCell` borrowed in the place.
+                if shared_place(self.r, &mc.receiver) && mc.args.iter().any(|a| effects(self.r, a))
+                {
+                    return Err(format!(
+                        "`.{m}()` on a place held through a static or a method call while an argument runs code: Rust evaluates the argument with the place borrowed"
+                    ));
+                }
                 let x = self.val(&mc.receiver, None)?;
                 match (m.as_str(), x.t().clone()) {
                     ("insert", Type::Map { key, elem }) => {
@@ -2773,6 +3236,9 @@ impl<'r> Fx<'r> {
                 }
                 if let Some(why) = self.r.refused_statics.get(x) {
                     return Err(format!("the static {x}, which is not read: {why}"));
+                }
+                if let Some(why) = self.r.refused_consts.get(x) {
+                    return Err(format!("the constant {x}, which is not read: {why}"));
                 }
                 // A function of the crate used as a value: Go's function value. Only a plain
                 // one: a `Result` or `Option` result has no `fn` type in the reader's subset.
@@ -3188,6 +3654,9 @@ impl<'r> Fx<'r> {
                         },
                     }));
                 }
+                if let Some(why) = self.r.name_clashes.get(&(None, n.clone())) {
+                    return Err(format!("a call of `{n}`, which is not read: {why}"));
+                }
                 Err(format!("a call of `{n}`, which the crate does not declare"))
             }
             [t, f] => {
@@ -3556,6 +4025,18 @@ impl<'r> Fx<'r> {
             && let Some(sig) = self.r.sigs.get(&(Some(tn.clone()), m.clone())).cloned()
             && sig.recv.is_some()
         {
+            // A method of a crate trait the crate implements for `&T` or `&mut T` too: which impl
+            // Rust calls depends on the receiver's reference depth, which the read drops.
+            for (rt, tr) in &self.r.ref_impls {
+                if *rt == tn
+                    && let Some(Some(info)) = self.r.traits.get(tr)
+                    && info.methods.contains_key(&m)
+                {
+                    return Err(format!(
+                        "a call of {m} on a {tn}, and the crate implements {tr} for a reference to {tn} too: which impl Rust calls depends on the receiver's references, which the reader drops"
+                    ));
+                }
+            }
             // A method of a generic struct: its receiver's type parameters stand for the
             // value's type arguments.
             let map: BTreeMap<String, Type> = sig
@@ -3934,7 +4415,7 @@ impl<'r> Fx<'r> {
             .contains(&(name.to_string(), tr.to_string()))
         {
             return Err(format!(
-                "a {name} where {tr} is expected, and the crate implements {tr} for &{name} too: the reader reads `&{name}` as `{name}`, so it cannot tell which impl Rust uses"
+                "a {name} where {tr} is expected, and the crate implements {tr} for a reference to {name} too: the reader reads `&{name}` as `{name}`, so it cannot tell which impl Rust uses"
             ));
         }
         Ok(())
@@ -4029,6 +4510,13 @@ impl<'r> Fx<'r> {
                         })?;
                         Expr::Var { name: go, t }
                     };
+                    if let Type::Named { name, .. } = v.t()
+                        && let Some(why) = self.r.refused_displays.get(name)
+                    {
+                        return Err(format!(
+                            "a format of {name}, whose Display is not read: {why}"
+                        ));
+                    }
                     let verb = match v.t() {
                         Type::Int { .. } => 'd',
                         Type::Bool => 't',
@@ -4211,7 +4699,7 @@ pub(crate) fn func(
         }
         _ => None,
     };
-    let _ = ssig;
+    fx.map_kinds = map_kinds(ssig, block);
     let body = fx.block(&block.stmts, true);
     (
         Func {

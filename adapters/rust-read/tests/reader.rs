@@ -115,13 +115,70 @@ fn without_audit(v: &mut Value) {
     v.as_object_mut().unwrap().remove("refusals");
 }
 
+/// Exception `ordered-string-loop-refused`: the writer writes Go's unordered `range` over the
+/// orders map (`PendingOrders`) as a loop over a `BTreeMap` keyed by `OrderID`, a `String`
+/// newtype, which visits its keys in byte order; `sorted_keys` orders strings by UTF-16 code unit
+/// and a `cir/1` map range in no order, so neither reads it and the loop is refused, kept as one
+/// `foreign` statement where the `range` was. That range was one of the `unordered_iteration`
+/// facts, and `codespec pass` no longer finds `PendingOrders` `read_only`, since a `foreign`
+/// statement may do anything.
+fn ordered_string_loop_refused(got: &mut Value, want: &mut Value) {
+    want["facts"]["read_only"]
+        .as_array_mut()
+        .expect("read_only")
+        .retain(|f| f != "Service.PendingOrders");
+    let refusals = got
+        .as_object_mut()
+        .unwrap()
+        .remove("refusals")
+        .expect("the refusal");
+    assert_eq!(refusals.as_array().map(Vec::len), Some(1), "{refusals}");
+    let body = |v: &Value| -> Vec<Value> {
+        v["funcs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == "PendingOrders")
+            .expect("PendingOrders")["body"]
+            .as_array()
+            .unwrap()
+            .clone()
+    };
+    let (g, w) = (body(got), body(want));
+    let i = w
+        .iter()
+        .position(|s| s["k"] == "for_range")
+        .expect("the range");
+    assert_eq!(g[i]["k"], "foreign", "{}", g[i]);
+    assert!(
+        g[i]["src"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("for (_, o) in self.orders.clone()"))
+            && g[i]["reason"]
+                .as_str()
+                .is_some_and(|r| r.contains("BTreeMap")),
+        "{}",
+        g[i]
+    );
+    let funcs = want["funcs"].as_array_mut().unwrap();
+    let f = funcs
+        .iter_mut()
+        .find(|f| f["name"] == "PendingOrders")
+        .unwrap();
+    f["body"][i] = g[i].clone();
+}
+
 #[test]
 fn orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions() {
     let read = codespec_read_rust::read_crate(&root().join("examples/orders/out/rust"))
         .expect("the reader accepts the orders output");
     assert_eq!(read.reader.language, "rust");
     assert_eq!(read.reader.name, "codespec-read-rust");
-    assert!(read.refusals.is_empty(), "refusals: {:?}", read.refusals);
+    assert!(
+        matches!(read.refusals.as_slice(), [r] if r.pos == "lib.rs:196"),
+        "refusals: {:?}",
+        read.refusals
+    );
     let passed = codespec_passes::run(&read);
     let mut got: Value = serde_json::from_str(&passed.to_json()).unwrap();
     let mut want: Value = serde_json::from_slice(
@@ -136,14 +193,24 @@ fn orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions
     platform_int_reads_as_64(&mut want);
     new_returns_the_value(&mut want, "Service");
     errors_at_the_error_enum(&mut want);
-    // `unordered_iteration` lists positions, which differ by file; its length must not.
-    let n = |v: &Value| v["facts"]["unordered_iteration"].as_array().map(Vec::len);
-    assert_eq!(n(&got), n(&want));
+    ordered_string_loop_refused(&mut got, &mut want);
+    // `unordered_iteration` lists positions, which differ by file; its length must not, but for
+    // the refused range.
+    let n = |v: &Value| {
+        v.get("facts")
+            .and_then(|f| f.get("unordered_iteration"))
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len)
+    };
+    assert_eq!(n(&got) + 1, n(&want));
     for v in [&mut got, &mut want] {
-        v["facts"]
-            .as_object_mut()
-            .unwrap()
-            .remove("unordered_iteration");
+        let o = v.as_object_mut().unwrap();
+        if let Some(Value::Object(facts)) = o.get_mut("facts") {
+            facts.remove("unordered_iteration");
+            if facts.is_empty() {
+                o.remove("facts");
+            }
+        }
     }
     if let Some(d) = first_difference(&want, &got, "$") {
         panic!("round trip differs at {d}");
@@ -2105,4 +2172,312 @@ fn a_crate_trait_for_an_undeclared_type_or_a_reference_is_refused_at_the_impl() 
     assert_refused(&m, "lib.rs:4", "declared");
     assert_refused(&m, "lib.rs:12", "declared");
     assert!(m.funcs.is_empty(), "{:?}", m.funcs);
+}
+
+#[test]
+fn a_raw_type_name_that_is_no_keyword_is_that_name_raw_or_plain() {
+    let m = read(&lines(&[
+        "/// A box.",
+        "pub struct r#Crate {",
+        "    pub n: i64,",
+        "}",
+        "/// Both spellings of one type.",
+        "pub fn get(a: r#Crate, b: Crate) -> i64 {",
+        "    a.n + b.n",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert!(
+        matches!(m.types.as_slice(), [TypeDecl::Struct { name, .. }] if name == "Crate"),
+        "{:?}",
+        m.types
+    );
+}
+
+#[test]
+fn a_constant_whose_type_is_refused_is_refused_at_each_use_naming_it() {
+    let m = read(&lines(&[
+        "const C: Option<i64> = None;",
+        "/// A use.",
+        "pub fn get() -> bool {",
+        "    C.is_none()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:1", "Option");
+    assert_refused(&m, "lib.rs:4", "the constant C");
+    assert!(m.consts.is_empty(), "{:?}", m.consts);
+}
+
+#[test]
+fn to_string_of_a_type_whose_display_is_refused_is_refused() {
+    let m = read(&lines(&[
+        "use std::fmt;",
+        "/// A label.",
+        "pub struct Label {",
+        "    pub n: i64,",
+        "}",
+        "impl fmt::Display for Label {",
+        "    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {",
+        "        write!(f, \"L{}\", self.n)",
+        "    }",
+        "}",
+        "impl Label {",
+        "    pub fn string(&self) -> String {",
+        "        String::from(\"plain\")",
+        "    }",
+        "}",
+        "/// A rendering.",
+        "pub fn get(x: i64) -> String {",
+        "    let l = Label { n: x };",
+        "    l.to_string()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:6", "a method String of its own");
+    assert!(
+        m.refusals.iter().any(|r| r.pos == "lib.rs:19"),
+        "{:?}",
+        m.refusals
+    );
+}
+
+#[test]
+fn two_methods_constants_statics_or_associated_functions_of_one_go_name_are_refused() {
+    let m = read(&lines(&[
+        "/// A box.",
+        "pub struct Bx {",
+        "    pub n: i64,",
+        "}",
+        "impl Bx {",
+        "    fn value_2(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "    fn value2(&self) -> i64 {",
+        "        self.n + 1",
+        "    }",
+        "    fn new() -> Bx {",
+        "        Bx { n: 1 }",
+        "    }",
+        "}",
+        "fn new_bx() -> Bx {",
+        "    Bx { n: 2 }",
+        "}",
+        "const MAX_2: i64 = 1;",
+        "const MAX2: i64 = 2;",
+        "static mut HITS_2: i64 = 0;",
+        "static mut HITS2: i64 = 0;",
+        "/// Uses each.",
+        "pub fn get() -> i64 {",
+        "    let b = Bx::new();",
+        "    let c = new_bx();",
+        "    b.value_2() + c.value2() + MAX_2 + MAX2",
+        "}",
+    ]));
+    for at in [
+        "lib.rs:6",
+        "lib.rs:9",
+        "lib.rs:12",
+        "lib.rs:16",
+        "lib.rs:19",
+        "lib.rs:20",
+        "lib.rs:21",
+        "lib.rs:22",
+    ] {
+        assert_refused(&m, at, "in cir/1 and Go");
+    }
+    for at in ["lib.rs:25", "lib.rs:26", "lib.rs:27"] {
+        assert!(
+            m.refusals.iter().any(|r| r.pos == at),
+            "no refusal at {at}: {:?}",
+            m.refusals
+        );
+    }
+    assert!(m.consts.is_empty() && m.vars.is_empty(), "{:?}", m.consts);
+}
+
+#[test]
+fn two_parameters_fields_or_trait_methods_of_one_go_name_are_refused() {
+    let m = read(&lines(&[
+        "fn add(value_2: i64, value2: i64) -> i64 {",
+        "    value_2 + value2",
+        "}",
+        "/// Two fields.",
+        "pub struct Two {",
+        "    pub n_2: i64,",
+        "    pub n2: i64,",
+        "}",
+        "/// Two methods.",
+        "pub trait Both {",
+        "    fn size_2(&self) -> i64;",
+        "    fn size2(&self) -> i64;",
+        "}",
+    ]));
+    assert_refused(
+        &m,
+        "lib.rs:1",
+        "the parameters value_2 and value2 are both value2",
+    );
+    assert_refused(&m, "lib.rs:4", "the fields n_2 and n2 are both N2");
+    assert_refused(
+        &m,
+        "lib.rs:9",
+        "the trait methods size_2 and size2 are both Size2",
+    );
+    assert!(
+        m.types.is_empty() && m.interfaces.is_empty(),
+        "{:?}",
+        m.types
+    );
+}
+
+#[test]
+fn a_direct_call_of_a_trait_method_the_crate_also_implements_for_a_reference_is_refused() {
+    let m = read(&lines(&[
+        "/// A score.",
+        "pub trait Score {",
+        "    fn score(&self) -> i64;",
+        "}",
+        "/// A count.",
+        "pub struct Count {",
+        "    pub n: i64,",
+        "}",
+        "impl Score for Count {",
+        "    fn score(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+        "impl Score for &mut Count {",
+        "    fn score(&self) -> i64 {",
+        "        self.n * 100",
+        "    }",
+        "}",
+        "/// A call on a value.",
+        "pub fn get(x: i64) -> i64 {",
+        "    let c = Count { n: x };",
+        "    c.score()",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:14", "declared");
+    assert_refused(&m, "lib.rs:22", "for a reference to Count too");
+}
+
+#[test]
+fn a_loop_over_a_hashmap_stays_a_range_over_the_map_beside_a_btreemap() {
+    let m = read(&lines(&[
+        "use std::collections::{BTreeMap, HashMap};",
+        "/// A HashMap loop in a crate that names BTreeMap.",
+        "pub fn get(m: HashMap<String, i64>, n: BTreeMap<i64, i64>) -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    s + n.len() as i64",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ranged = all_stmts(&m.funcs[0].body)
+        .into_iter()
+        .find_map(|s| match s {
+            Stmt::ForRange { over, .. } => Some(over.clone()),
+            _ => None,
+        })
+        .expect("a range");
+    assert!(matches!(ranged, Expr::Var { .. }), "{ranged:?}");
+}
+
+#[test]
+fn a_loop_over_a_btreemap_with_string_keys_or_an_untold_map_beside_one_is_refused() {
+    let m = read(&lines(&[
+        "use std::collections::{BTreeMap, HashMap};",
+        "fn make() -> HashMap<String, i64> {",
+        "    HashMap::new()",
+        "}",
+        "/// Loops.",
+        "pub fn get(m: BTreeMap<String, i64>) -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    for v in make().values() {",
+        "        s += v;",
+        "    }",
+        "    s",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:8", "BTreeMap");
+    assert_refused(&m, "lib.rs:11", "BTreeMap");
+}
+
+#[test]
+fn a_loop_over_an_untold_map_in_a_crate_without_btreemap_is_a_range() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "fn make() -> HashMap<String, i64> {",
+        "    HashMap::new()",
+        "}",
+        "/// A loop over a map a call gives.",
+        "pub fn get() -> i64 {",
+        "    let mut s: i64 = 0;",
+        "    let m = make();",
+        "    for (_, v) in &m {",
+        "        s += v;",
+        "    }",
+        "    s",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+}
+
+#[test]
+fn a_compound_assignment_through_an_operator_impl_or_a_borrowed_string_is_refused() {
+    let m = read(&lines(&[
+        "use std::cell::RefCell;",
+        "use std::rc::Rc;",
+        "/// A note.",
+        "pub struct Note {",
+        "    pub s: String,",
+        "}",
+        "fn tail(n: &Rc<RefCell<Note>>) -> String {",
+        "    n.borrow().s.clone()",
+        "}",
+        "/// A string grown by a call while its place is borrowed.",
+        "pub fn grow(n: Rc<RefCell<Note>>) {",
+        "    n.borrow_mut().s += &tail(&n);",
+        "}",
+        "/// A pushed vector whose place calls.",
+        "pub fn push(t: &Rc<RefCell<Note>>) -> i64 {",
+        "    let mut v: Vec<Vec<i64>> = Vec::new();",
+        "    v.push(Vec::new());",
+        "    v[tail(t).len()].push(1);",
+        "    v.len() as i64",
+        "}",
+    ]));
+    assert_refused(&m, "lib.rs:12", "borrowed");
+    assert_refused(&m, "lib.rs:18", "twice");
+}
+
+#[test]
+fn a_compound_assignment_of_integers_whose_value_calls_holds_the_value_first() {
+    let m = read(&lines(&[
+        "fn one() -> i64 {",
+        "    1",
+        "}",
+        "/// A compound assignment whose value calls.",
+        "pub fn get(x: i64) -> i64 {",
+        "    let mut n: i64 = x;",
+        "    n += one();",
+        "    n",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let body = &m.funcs.iter().find(|f| f.name == "Get").expect("Get").body;
+    assert!(
+        matches!(
+            &body[1..3],
+            [Stmt::Let { rhs, .. }, Stmt::Assign { op, rhs: r2, .. }]
+                if matches!(rhs.as_slice(), [Expr::Call { .. }])
+                    && op == "+="
+                    && matches!(r2.as_slice(), [Expr::Var { .. }])
+        ),
+        "{body:?}"
+    );
 }

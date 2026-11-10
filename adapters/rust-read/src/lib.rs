@@ -20,21 +20,21 @@
 //! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, … |
 //! | `enum Error` of unit variants, `V(S)` (`S` a struct) and `Msg(String)`, with a `Display` impl | sentinel errors `Err<V>` (message from its `Display` arm); `S` an error struct whose `Display` is its `Error()`; `Msg` `errorf` |
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
-//! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype |
+//! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
 //! | `impl std::error::Error for …` (empty) | absorbed |
-//! | `pub fn f`, `fn f` | `F`, `f` (Go spelling, golint's initialisms) |
+//! | `pub fn f`, `fn f` | `F`, `f` (Go spelling, golint's initialisms). Two functions (associated ones among them), two methods of one type, two constants or two statics of one Go spelling (`value_2`, `value2`) are each refused at their line and each use of them refused (a crate trait's impl with such a method is refused whole); so are two fields of a struct (refusing it), two parameters of a function (refusing it) and two methods of a trait (refusing it). Items of different kinds are apart in `cir/1` and keep their names; locals are renamed apart |
 //! | `impl T { fn m(&mut self) }` | method with receiver `*T`; once one method of `T` takes `&mut self`, every `&self` method of `T` has `*T` too, otherwise `&self` and `self` are `T` |
 //! | `impl T { fn f(…) }` without `self` | function `F<T>` (`new` → `NewT`) |
-//! | `const X: T = <literal>` | `const` |
+//! | `const X: T = <literal>` | `const`; one whose type or value is refused is refused at its line, not declared, and each use of it refused naming it |
 //! | `static X: T = <literal>;`, `static mut X: T = <literal>;` | `var` (`X` → `X`, `HITS` unexported → `hits`); a zero literal is a `var` without a value. A static whose initialiser is not a literal is refused at its line, not declared, and each use of it refused naming it |
 //! | `#[derive(Default)] struct T` whose every field's default is Go's zero value (an integer, float, `bool`, `String`, `Vec`, map, such a struct, an array of these) | `T::default()` is `zero` of `T`; another `T::default()` is `foreign` |
 //! | `trait Tr { fn m(&self, …) -> R; }` | `interface`, its methods sorted by name; a generic or `unsafe` trait, a supertrait, an item other than a method, a default body, a receiver other than `&self` or a result other than a plain value refuses the trait and every `dyn Tr` |
-//! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; refused at the impl when an inherent impl of `T` or another crate trait's impl for `T` has a method of the same name (Go has one method per name), or when `T` is not a type the crate declares (`impl Tr for i64`, `impl Tr for &T`). A generic call or conversion to `dyn Tr` of a `T` the crate also implements `Tr` for `&T` is refused, as the reader reads `&T` as `T` |
+//! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; refused at the impl when an inherent impl of `T` or another crate trait's impl for `T` has a method of the same name (Go has one method per name), or when `T` is not a type the crate declares (`impl Tr for i64`, `impl Tr for &T`). A generic call, a conversion to `dyn Tr` or a call of a method of `Tr` on a `T` the crate also implements `Tr` for `&T` or `&mut T` is refused, as the reader reads `&T` as `T` |
 //! | `fn f<T, U: Tr>(…)`, `fn f<T>(…) where T: Tr` | a function with `tparams`: `T` constrained by `any`, `U` by the interface `Tr`, a trait of the crate |
 //! | `struct S<T> { … }` | a `struct` with `tparams`, its fields of type `param` |
 //! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
-//! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when a plain name of the file would read the same; a type or trait the crate declares under one is named by its visibility (`pub struct r#match` → `Match`, `enum r#type` → `type_`), `_` added while a plain name is spelled so |
+//! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
 //! | `use` | nothing: names resolve by their last path segment |
 //!
 //! # Types
@@ -73,15 +73,15 @@
 //! | `let Some(x) = m.get(&k)[.cloned()/.copied()] else { …; return … };` | `lookup_else` |
 //! | `let Some(x) = f(…) else { … };`, `f` returning `Option` | `x, ok := f(…)`, `if !ok { … }` |
 //! | `let p = &mut x;`, `x` a local | `p := &x`; `*p` is then `*p`, read and assigned through |
-//! | `x = e;`, `x op= e;` | `assign`, `op` kept; `x &= !y` on integers is `x &^= y` |
+//! | `x = e;`, `x op= e;` | `assign`, `op` kept; `x &= !y` on integers is `x &^= y`. Rust evaluates `e` before the place's operands (`v[i()] = f()` calls `f` first), and for `op=` on integers, floats and `bool` before it loads the place; `cir/1` the place first. Where either side runs code (a call of the crate's or a closure's, a method outside a fixed std set, a macro, a block), `e` is bound to a new local first and the assignment takes that local; a place that is a variable or a static needs none for `=`. `op=` on a `String` (`AddAssign`, place first, as `cir/1`) whose place goes through a static or a method call while `e` runs code is refused, and so is `op=` on any other type (an operator impl the reader does not read) |
 //! | `(a, b) = (x, y);` | one `assign` of every value to every target (Rust evaluates the values first, as Go does), under the conditions of the Rust writer's value block |
 //! | `x = x.wrapping_add(1)`, `x = x.wrapping_sub(1)` | `incr`, `decr` |
 //! | `x = x.wrapping_<op>(e)` | `assign` with `<op>=` |
-//! | `m.insert(k, v);`, `v.push(x);`, `s.push_str(t);` | `m[k] = v`, `v = append(v, x)`, `s += t` |
+//! | `m.insert(k, v);`, `v.push(x);`, `s.push_str(t);` | `m[k] = v`, `v = append(v, x)`, `s += t`; a `push` whose place runs code (it would run twice), and any of them whose place goes through a static or a method call while an argument runs code, are refused |
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
 //! | `ch.0.try_send(x).expect(…)` / `.unwrap()`, `ch` a channel of both ends | `send` (a full channel panics, where Go would block) |
 //! | `if`, `else if`, `else` | `if` |
-//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice |
+//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
 //! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
 //! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
@@ -145,7 +145,7 @@
 //! | `HashMap`, `BTreeMap` | `insert(k, v)` (statement) | `m[k] = v` |
 //! | `HashMap`, `BTreeMap` | `get(&k)` in `let Some(x) = … else` | `lookup_else` |
 //! | `HashMap`, `BTreeMap` | `get(&k).cloned()` / `.copied()` then `.unwrap_or(<zero>)` / `.unwrap_or_default()` | `m[k]` |
-//! | `HashMap`, `BTreeMap`, `Vec` | `iter()`, `keys()`, `values()`, `clone()` as a `for` source | the map or slice |
+//! | `HashMap`, `BTreeMap`, `Vec` | `iter()`, `keys()`, `values()`, `clone()` as a `for` source | the map or slice (a `BTreeMap` in key order, see Statements) |
 //! | `Option` (from `get`) | `cloned()`, `copied()` | the same lookup |
 //! | `Rc<RefCell<T>>` | `borrow()`, `borrow_mut()` | the `T` behind the pointer: its fields are the pointer's, `.clone()` of it is `*p` |
 //! | `Rc<RefCell<T>>` | `clone()`, `Rc::clone(&p)` | the pointer |
@@ -217,6 +217,11 @@ pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> 
     })?;
     Unraw::of(&ast, src).visit_file_mut(&mut ast);
     let mut r = Reader::new(file);
+    r.ordered_maps = src.parse::<proc_macro2::TokenStream>().is_ok_and(|ts| {
+        let mut names = Taken::default();
+        Unraw::plain_idents(ts, &mut names);
+        names.names.contains("BTreeMap") || names.names.contains("BTreeSet")
+    });
     r.scan(&ast);
     Ok(r.module(name, &ast))
 }
@@ -238,33 +243,54 @@ const RUST_KEYWORDS: &[&str] = &[
 /// keyword is spelled `x_` (`r#type` → `type_`, `r#loop` → `loop_`), which is no keyword, so a
 /// macro's arguments still parse, and which the Go spelling of functions, fields and locals then
 /// starts from (`Type`, `type_`, `loop`). That spelling, and its Go spellings, must differ from
-/// every plain identifier of the file, in every scope: otherwise `r#type` and a plain `type_`
-/// would become one binding. Where one would not, `x_1`, `x_2`, … is taken instead.
+/// every other identifier of the file, in every scope (a raw `r#type_` is the name `type_` and
+/// counts as one): otherwise `r#type` and `type_` would become one binding. Where one would not,
+/// `x_1`, `x_2`, … is taken instead.
 ///
-/// A type or trait the crate declares under a raw name is named by its visibility as a function
-/// is (`pub struct r#match` → `Match`, `enum r#type` → `type_`), with `_` added until no plain
-/// identifier of the file is spelled so. Spans are kept: positions and kept source stay the
-/// source's.
+/// A type or trait the crate declares under a raw keyword is named by its visibility as a
+/// function is (`pub struct r#match` → `Match`, `struct r#match` → `match_`), with `_` added while that is
+/// a Rust keyword (a name inside macro arguments must parse) or another identifier of the file.
+/// Spans are kept: positions and kept source stay the source's.
 struct Unraw {
     names: BTreeMap<String, String>,
 }
 
+/// The names a raw identifier's spelling must differ from: every name of the file, with its Go
+/// spellings.
+#[derive(Default)]
+struct Taken {
+    names: BTreeSet<String>,
+    low: BTreeSet<String>,
+    up: BTreeSet<String>,
+}
+
+impl Taken {
+    fn insert(&mut self, n: &str) {
+        self.names.insert(n.to_string());
+        self.low.insert(names::unexported(n));
+        self.up.insert(names::exported(n));
+    }
+
+    fn clashes(&self, c: &str) -> bool {
+        self.names.contains(c)
+            || self.low.contains(&names::unexported(c))
+            || self.up.contains(&names::exported(c))
+    }
+}
+
 impl Unraw {
     fn of(f: &syn::File, src: &str) -> Unraw {
-        let mut plain = BTreeSet::new();
-        if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
-            Unraw::plain_idents(ts, &mut plain);
-        }
-        let go_low: BTreeSet<String> = plain.iter().map(|p| names::unexported(p)).collect();
-        let go_up: BTreeSet<String> = plain.iter().map(|p| names::exported(p)).collect();
-        let clashes = |c: &str| {
-            plain.contains(c)
-                || go_low.contains(&names::unexported(c))
-                || go_up.contains(&names::exported(c))
-        };
+        let mut taken = Taken::default();
         let mut raw = BTreeSet::new();
         if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
+            Unraw::plain_idents(ts.clone(), &mut taken);
             Unraw::raw_idents(ts, &mut raw);
+        }
+        // `r#type_` is the plain name `type_`: it is taken as a plain one is.
+        for bare in &raw {
+            if !RUST_KEYWORDS.contains(&bare.as_str()) {
+                taken.insert(bare);
+            }
         }
         let mut out = BTreeMap::new();
         for item in &f.items {
@@ -274,15 +300,19 @@ impl Unraw {
                 syn::Item::Trait(t) => (&t.ident, &t.vis),
                 _ => continue,
             };
-            if let Some(bare) = ident.to_string().strip_prefix("r#") {
+            // `r#Foo` is the type `Foo`, as a plain `Foo` names it too.
+            if let Some(bare) = ident.to_string().strip_prefix("r#")
+                && RUST_KEYWORDS.contains(&bare)
+            {
                 let mut go = if is_pub(vis) {
                     names::exported(bare)
                 } else {
                     names::unexported(bare)
                 };
-                while plain.contains(&go) {
+                while RUST_KEYWORDS.contains(&go.as_str()) || taken.names.contains(&go) {
                     go.push('_');
                 }
+                taken.insert(&go);
                 out.insert(bare.to_string(), go);
             }
         }
@@ -293,10 +323,11 @@ impl Unraw {
             let spelled = if RUST_KEYWORDS.contains(&bare.as_str()) {
                 let mut c = format!("{bare}_");
                 let mut k = 1;
-                while clashes(&c) {
+                while taken.clashes(&c) {
                     c = format!("{bare}_{k}");
                     k += 1;
                 }
+                taken.insert(&c);
                 c
             } else {
                 bare.clone()
@@ -308,7 +339,7 @@ impl Unraw {
 
     /// Every name of `ts` written without `r#`, inside groups too: an identifier that is not a
     /// keyword (a keyword written plainly is the keyword, never a name).
-    fn plain_idents(ts: proc_macro2::TokenStream, out: &mut BTreeSet<String>) {
+    fn plain_idents(ts: proc_macro2::TokenStream, out: &mut Taken) {
         for tt in ts {
             match tt {
                 proc_macro2::TokenTree::Ident(i) => {
@@ -317,7 +348,7 @@ impl Unraw {
                         && !RUST_KEYWORDS.contains(&s.as_str())
                         && !matches!(s.as_str(), "self" | "Self" | "crate" | "super")
                     {
-                        out.insert(s);
+                        out.insert(&s);
                     }
                 }
                 proc_macro2::TokenTree::Group(g) => Unraw::plain_idents(g.stream(), out),
@@ -466,6 +497,18 @@ pub(crate) struct Reader {
     pub trait_clashes: BTreeMap<(String, String), String>,
     /// `static` items whose initialiser is refused, by Rust name, with the reason.
     pub refused_statics: BTreeMap<String, String>,
+    /// Functions and methods (keyed as `sigs`) not declared because another item has their Go
+    /// name, with the reason.
+    pub name_clashes: BTreeMap<(Option<String>, String), String>,
+    /// Whether the crate names `BTreeMap` or `BTreeSet` anywhere: a map whose Rust type the
+    /// reader cannot tell may then be one that visits its keys in order.
+    pub ordered_maps: bool,
+    /// The fields of a `BTreeMap` (`true`) or `HashMap` (`false`) type, by struct and Go name.
+    pub map_fields: BTreeMap<(String, String), bool>,
+    /// Types whose `Display` impl is refused, with the reason.
+    pub refused_displays: BTreeMap<String, String>,
+    /// `const` items whose type or value is refused, by Rust name, with the reason.
+    pub refused_consts: BTreeMap<String, String>,
     /// `static` and `static mut` items by Rust name: their Go name and type.
     pub statics: BTreeMap<String, (String, Type)>,
     /// The type parameters of each generic struct, by name.
@@ -687,6 +730,11 @@ impl Reader {
             ref_impls: BTreeSet::new(),
             trait_clashes: BTreeMap::new(),
             refused_statics: BTreeMap::new(),
+            refused_consts: BTreeMap::new(),
+            refused_displays: BTreeMap::new(),
+            name_clashes: BTreeMap::new(),
+            ordered_maps: false,
+            map_fields: BTreeMap::new(),
             statics: BTreeMap::new(),
             type_params: BTreeMap::new(),
             scope: RefCell::new(Scope::default()),
@@ -864,9 +912,9 @@ impl Reader {
             let declared = self.decls.contains_key(&name)
                 || self.error_enum.as_ref().is_some_and(|(e, _)| *e == name)
                 || self.message_enums.contains(&name);
-            // `impl Tr for i64`, `impl Tr for Vec<T>`, `impl Tr for &T`: a type the module does
-            // not declare has no methods in Go.
-            if !declared || !matches!(&*im.self_ty, syn::Type::Path(_)) {
+            // `impl Tr for i64`, `impl Tr for Vec<T>`: a type the module does not declare has no
+            // methods in Go (`impl Tr for &T` has no path, so `last_seg` refused it above).
+            if !declared {
                 return Err(not_declared());
             }
             if !args.is_empty() || !im.generics.params.is_empty() {
@@ -1313,6 +1361,11 @@ impl Reader {
             } else {
                 names::unexported(&rust)
             };
+            if let Some((other, _)) = methods.iter().find(|(_, (g, _, _))| *g == go) {
+                return Err(format!(
+                    "the trait methods {other} and {rust} are both {go} in Go"
+                ));
+            }
             methods.insert(rust, (go, params, results));
         }
         Ok(TraitInfo { exported, methods })
@@ -1399,7 +1452,15 @@ impl Reader {
                         syn::Pat::Wild(_) => "_".into(),
                         _ => return Err("a parameter pattern other than a name".into()),
                     };
-                    params.push((rust.clone(), names::unexported(&rust), t));
+                    let go = names::unexported(&rust);
+                    if let Some((other, _, _)) =
+                        params.iter().find(|(r, g, _)| *g == go && *r != "_")
+                    {
+                        return Err(format!(
+                            "the parameters {other} and {rust} are both {go} in Go"
+                        ));
+                    }
+                    params.push((rust.clone(), go, t));
                 }
             }
         }
@@ -1423,6 +1484,109 @@ impl Reader {
             results,
             shape,
         })
+    }
+
+    /// Two items of one kind that `cir/1` would name alike (`value_2` and `value2` are both
+    /// `value2`): two functions (associated ones among them), two methods of one type, two
+    /// constants or two statics. `cir/1` keeps one declaration per name of each kind, so each of
+    /// them is not declared and refused at its line, and each use of it refused; a method of a
+    /// crate trait's impl refuses that whole impl. Items of different kinds (a type `Limit` and a
+    /// function `limit`, a field and a method) are apart in `cir/1`; the Go writer spells them
+    /// apart. Two fields refuse their struct and two parameters their function where they are
+    /// read; locals are renamed apart as they are bound.
+    fn go_name_clashes(
+        &mut self,
+        f: &syn::File,
+        from_trait: &BTreeMap<(Option<String>, String), String>,
+        deferred: &mut Vec<(proc_macro2::Span, String, String)>,
+    ) {
+        enum Item {
+            Func((Option<String>, String)),
+            Const(String),
+            Static(String),
+        }
+        let what = |i: &Item| match i {
+            Item::Func((None, n)) => format!("fn {n}"),
+            Item::Func((Some(t), n)) => format!("fn {t}::{n}"),
+            Item::Const(n) => format!("const {n}"),
+            Item::Static(n) => format!("static {n}"),
+        };
+        // By kind (`fn`, `const`, `static`, or the type whose methods they are) and Go name.
+        let mut groups: BTreeMap<(String, String), Vec<Item>> = BTreeMap::new();
+        for (k, s) in &self.sigs {
+            let kind = match (&k.0, &s.recv) {
+                (Some(t), Some(_)) => format!("method of {t}"),
+                _ => "fn".to_string(),
+            };
+            groups
+                .entry((kind, s.go.clone()))
+                .or_default()
+                .push(Item::Func(k.clone()));
+        }
+        for (n, (go, _)) in &self.consts {
+            groups
+                .entry(("const".into(), go.clone()))
+                .or_default()
+                .push(Item::Const(n.clone()));
+        }
+        for (n, (go, _)) in &self.statics {
+            groups
+                .entry(("static".into(), go.clone()))
+                .or_default()
+                .push(Item::Static(n.clone()));
+        }
+        let span_of = |n: &str| {
+            f.items.iter().find_map(|item| match item {
+                syn::Item::Const(c) if c.ident == n => Some(c.span()),
+                syn::Item::Static(s) if s.ident == n => Some(s.span()),
+                _ => None,
+            })
+        };
+        for ((_, go), items) in groups {
+            if items.len() < 2 {
+                continue;
+            }
+            let all: Vec<String> = items.iter().map(what).collect();
+            let reason = format!(
+                "{} are {} {go} in cir/1 and Go, which keep one of a kind per name",
+                all.join(" and "),
+                if all.len() == 2 { "both" } else { "all" }
+            );
+            for it in &items {
+                match it {
+                    Item::Func(k) => match (&k.0, from_trait.get(k)) {
+                        (Some(t), Some(tr)) => {
+                            self.trait_clashes
+                                .insert((t.clone(), tr.clone()), reason.clone());
+                            self.impls.remove(&(t.clone(), tr.clone()));
+                            for (k2, tr2) in from_trait {
+                                if k2.0 == k.0 && tr2 == tr {
+                                    self.sigs.remove(k2);
+                                }
+                            }
+                        }
+                        _ => {
+                            self.sigs.remove(k);
+                            self.name_clashes.insert(k.clone(), reason.clone());
+                        }
+                    },
+                    Item::Const(n) => {
+                        self.consts.remove(n);
+                        self.refused_consts.insert(n.clone(), reason.clone());
+                        if let Some(sp) = span_of(n) {
+                            deferred.push((sp, format!("const {n}"), reason.clone()));
+                        }
+                    }
+                    Item::Static(n) => {
+                        self.statics.remove(n);
+                        self.refused_statics.insert(n.clone(), reason.clone());
+                        if let Some(sp) = span_of(n) {
+                            deferred.push((sp, format!("static {n}"), reason.clone()));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Everything the bodies need before any is read: types, the error and message enums,
@@ -1664,17 +1828,28 @@ impl Reader {
                     for fl in &n.named {
                         let rust = fl.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
                         match self.in_scope(scope.clone(), || self.ty(&fl.ty, Some(&name))) {
-                            Ok(t) => fields.push(FieldInfo {
-                                go: if is_pub(&fl.vis) {
+                            Ok(t) => {
+                                let go = if is_pub(&fl.vis) {
                                     names::exported(&rust)
                                 } else {
                                     names::unexported(&rust)
-                                },
-                                rust,
-                                t,
-                            }),
+                                };
+                                if let Some(k) = body::map_kind(&fl.ty) {
+                                    self.map_fields.insert((name.clone(), go.clone()), k);
+                                }
+                                fields.push(FieldInfo { go, rust, t })
+                            }
                             Err(e) => bad = Some(format!("field {rust}: {e}")),
                         }
+                    }
+                }
+                // Two fields one Go name (`value_2`, `value2`) would be one Go field.
+                for (i, a) in fields.iter().enumerate() {
+                    if let Some(b) = fields[..i].iter().find(|b| b.go == a.go) {
+                        bad = Some(format!(
+                            "the fields {} and {} are both {} in Go",
+                            b.rust, a.rust, a.go
+                        ));
                     }
                 }
                 match bad {
@@ -1825,11 +2000,19 @@ impl Reader {
                 } else {
                     names::unexported(&screaming(&rust))
                 };
-                match self.ty(&c.ty, None) {
+                // A constant whose type or value is refused is not declared, and each use of it
+                // is refused naming it.
+                let read = self
+                    .ty(&c.ty, None)
+                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|_| t));
+                match read {
                     Ok(t) => {
                         self.consts.insert(rust, (go, t));
                     }
-                    Err(e) => deferred.push((c.span(), rust, e)),
+                    Err(e) => {
+                        self.refused_consts.insert(rust.clone(), e.clone());
+                        deferred.push((c.span(), format!("const {rust}"), e));
+                    }
                 }
             }
         }
@@ -1859,7 +2042,8 @@ impl Reader {
                 }
             }
         }
-        // Signatures.
+        // Signatures; the methods of a crate trait's impl by the trait.
+        let mut from_trait: BTreeMap<(Option<String>, String), String> = BTreeMap::new();
         for item in &f.items {
             match item {
                 syn::Item::Fn(func) => {
@@ -1897,12 +2081,52 @@ impl Reader {
                                 )
                             })
                         {
-                            self.sigs
-                                .insert((Some(t.clone()), func.sig.ident.to_string()), s);
+                            let key = (Some(t.clone()), func.sig.ident.to_string());
+                            if let Some((p, _)) = &im.trait_ {
+                                from_trait.insert(
+                                    key.clone(),
+                                    p.get_ident().map(|i| i.to_string()).unwrap_or_default(),
+                                );
+                            }
+                            self.sigs.insert(key, s);
                         }
                     }
                 }
                 _ => {}
+            }
+        }
+        self.go_name_clashes(f, &from_trait, &mut deferred);
+        // A type whose `Display` impl is refused does not render: each `{}` and `to_string()` of
+        // it is refused at its line. One impl's rendering may format another type, so this runs
+        // until no more are refused.
+        loop {
+            let refused: Vec<(String, String)> = f
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    syn::Item::Impl(im)
+                        if im.trait_.as_ref().is_some_and(|(p, _)| {
+                            p.segments.last().is_some_and(|s| s.ident == "Display")
+                        }) =>
+                    {
+                        let t = plain_ident(&im.self_ty)?;
+                        if !self.displays.contains(&t)
+                            || self.error_enum.as_ref().is_some_and(|(e, _)| *e == t)
+                            || self.message_enums.contains(&t)
+                        {
+                            return None;
+                        }
+                        body::display(self, &t, im).err().map(|why| (t, why))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if refused.is_empty() {
+                break;
+            }
+            for (t, why) in refused {
+                self.displays.remove(&t);
+                self.refused_displays.insert(t, why);
             }
         }
         deferred.sort_by_key(|(span, _, _)| span.start().line);
@@ -2078,10 +2302,13 @@ impl Reader {
                             funcs.push(fu);
                         }
                         None => {
-                            let reason = self
-                                .sig(&func.sig, is_pub(&func.vis), None)
-                                .err()
-                                .unwrap_or_default();
+                            let reason = match self.name_clashes.get(&key) {
+                                Some(why) => why.clone(),
+                                None => self
+                                    .sig(&func.sig, is_pub(&func.vis), None)
+                                    .err()
+                                    .unwrap_or_default(),
+                            };
                             late_refusals.push(Refusal {
                                 pos: self.pos(func.sig.ident.span()),
                                 what: format!("fn {}", func.sig.ident),
@@ -2176,12 +2403,15 @@ impl Reader {
                                         funcs.push(fu);
                                     }
                                     None => {
-                                        let reason = self
-                                            .in_scope(scope.clone(), || {
-                                                self.sig(&func.sig, is_pub(&func.vis), Some(&t))
-                                            })
-                                            .err()
-                                            .unwrap_or_default();
+                                        let reason = match self.name_clashes.get(&key) {
+                                            Some(why) => why.clone(),
+                                            None => self
+                                                .in_scope(scope.clone(), || {
+                                                    self.sig(&func.sig, is_pub(&func.vis), Some(&t))
+                                                })
+                                                .err()
+                                                .unwrap_or_default(),
+                                        };
                                         late_refusals.push(Refusal {
                                             pos: self.pos(func.sig.ident.span()),
                                             what: format!("fn {t}::{}", func.sig.ident),
