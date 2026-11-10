@@ -117,6 +117,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   position from the document is named in the message of a construct it cannot write.
 - The Rust, C and Go writers refuse a module named like a Windows device (`con`, `prn`, `aux`,
   `nul`, `com0` to `com9`, `lpt0` to `lpt9`, in any case), which they would write as a file name.
+- The documentation site: the cir/1 reference lists its definitions before the first table, so
+  every entry is one click from the first screen. The sidebar's group names are 14 px in sentence
+  case. The home page, the overview and Readers, passes and writers name every reader and writer
+  (Go, Rust, Java, Groovy and C readers; Go, Rust and C writers), and Status lists the conformance
+  of the C reader and the C writer. Use cases links Getting started for the orders run instead of
+  repeating it, and the overview links pages by their sidebar names.
 - The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
   other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
   does not compile.

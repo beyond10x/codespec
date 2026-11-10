@@ -72,6 +72,37 @@ for (const path of ['/codespec/docs/reference/cli', '/codespec/docs/reference/su
   }
 }
 
+// UXF-015: the cir/1 reference links Interface and TypeParam from its first screen.
+for (const vp of gating) {
+  test(`UXF-015 the cir/1 reference links Interface and TypeParam in its first screen at ${vp.width}x${vp.height}`, async ({ browser }) => {
+    const page = await open(browser, '/codespec/docs/reference/cir-1', vp.width, vp.height);
+    const where = await page.evaluate(() =>
+      ['interface', 'typeparam'].map((id) => {
+        const inView = [...document.querySelectorAll(`main a[href$="#${id}"]`)].some((a) => {
+          const r = a.getBoundingClientRect();
+          return r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight;
+        });
+        return `${id}: ${inView ? 'in view' : 'not in view'}`;
+      }),
+    );
+    expect(where).toEqual(['interface: in view', 'typeparam: in view']);
+    await page.context().close();
+  });
+}
+
+// UXF-020: the sidebar's group names, the reader's main choice since only one group is open, are 14 px or more.
+test('UXF-020 sidebar group names are at least 14 px', async ({ browser }) => {
+  const page = await open(browser, '/codespec/docs/guides/add-an-adapter', 1366, 768);
+  const sizes = await page.evaluate(() =>
+    [...document.querySelectorAll('.theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link')].map(
+      (e) => `${(e.textContent ?? '').trim()} ${parseFloat(getComputedStyle(e).fontSize)}`,
+    ),
+  );
+  expect(sizes.length, 'sidebar groups').toBeGreaterThan(0);
+  expect(sizes.filter((s) => Number(s.split(' ').pop()) < 14), 'groups under 14 px').toEqual([]);
+  await page.context().close();
+});
+
 // UXF-014: commands and the page outline are set at 14 px or more.
 test('UXF-014 code blocks and the table of contents are at least 14 px', async ({ browser }) => {
   const page = await open(browser, '/codespec/docs/getting-started', 1366, 768);

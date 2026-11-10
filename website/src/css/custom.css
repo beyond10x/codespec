@@ -51,6 +51,15 @@ html .table-of-contents {
   font-size: 0.875rem;
 }
 
+/* Only the open sidebar group shows its pages, so the group names are the reader's choices: 14 px
+   in sentence case, not 10.9 px uppercase kickers (UXF-020). */
+html .theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link,
+html .theme-doc-sidebar-item-category-level-1 > .menu__link--sublist {
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 /* The home page copy starts at the top of the hero instead of centring on the code pair beside it,
    so the actions are in the first screen at 1366x768 and 1280x720 (UXF-007). */
 main .b10x-hero__copy {

@@ -674,6 +674,69 @@ mod tests {
         assert_eq!(pages, ["guides/map-a-repository-to-syscalls.md"]);
     }
 
+    /// UXF-017: each claim of the Start here pages is on one page and linked from the others. The
+    /// orders run is pasted on Getting started only, the trace counts are stated where the harness
+    /// runs, and the ESS direction is on the overview only.
+    #[test]
+    fn each_start_here_claim_is_on_one_page() {
+        let site = root().join("website");
+        let read = |rel: &str| fs::read_to_string(site.join(rel)).unwrap();
+        let mut found = Vec::new();
+        for (claim, needle, pages, home) in [
+            (
+                "orders run",
+                "codespec write --lang rust try/orders.cir.json",
+                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                false,
+            ),
+            (
+                "trace counts",
+                "300 commands",
+                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                true,
+            ),
+            (
+                "ESS oracle",
+                "equivalence oracle",
+                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                true,
+            ),
+        ] {
+            let mut holders: Vec<&str> = pages
+                .into_iter()
+                .filter(|p| read(p).contains(needle))
+                .collect();
+            if home && read("product.json").contains(needle) {
+                holders.push("product.json");
+            }
+            found.push(format!("{claim}: {}", holders.join(", ")));
+        }
+        assert_eq!(
+            found,
+            [
+                "orders run: docs/getting-started.md",
+                "trace counts: docs/getting-started.md",
+                "ESS oracle: docs/index.md",
+            ]
+        );
+    }
+
+    /// UXF-018: the overview links pages by the names the sidebar gives them, and has the header
+    /// card the other Start here pages have, so their count starts at 1.
+    #[test]
+    fn the_overview_names_pages_as_the_sidebar_does() {
+        let index = fs::read_to_string(root().join("website/docs/index.md")).unwrap();
+        let mut wrong: Vec<&str> = ["[CLI reference]", "[Showcase]"]
+            .into_iter()
+            .filter(|old| index.contains(old))
+            .collect();
+        let front = index.split("\n---").next().unwrap();
+        if !front.contains("\nlede: ") {
+            wrong.push("no lede: no header card");
+        }
+        assert_eq!(wrong, Vec::<&str>::new());
+    }
+
     /// UXF-011: a page has one name. Its `title`, its `sidebar_label` when it has one, and its H1
     /// when it has one are the same text, so the sidebar, the tab, the search result and the page
     /// agree.

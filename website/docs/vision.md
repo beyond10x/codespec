@@ -82,8 +82,5 @@ Decided on 2026-11-06.
 
 ## Later
 
-- [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)): a
-  specification could supply a service's skeleton, and `cir/1` bodies fill what it leaves to the
-  implementation. The ESS conformance suite would be an equivalence oracle beside the harness.
-  This item is a direction, not a plan: codespec does not use ESS today.
+- ESS: a direction, not a plan; the [overview](/docs/#neighbours) says what it would add.
 - More target languages through the same adapter boundary.

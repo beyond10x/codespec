@@ -18,30 +18,12 @@ from that run.
 right, but nothing shows that it behaves the same.
 
 codespec reads the Go into `cir/1`, computes facts and writes Rust. The harness runs the original
-and the outputs on the same generated inputs.
-
-```shell-session
-$ mkdir -p try
-$ codespec read --lang go examples/orders/source --out try/orders.read.cir.json
-$ codespec pass try/orders.read.cir.json --out try/orders.cir.json
-$ codespec write --lang rust try/orders.cir.json --out try/rust
-$ cat try/rust/refusals.json
-[
-  {
-    "name": "Service.Audit",
-    "pos": "orders.go:132",
-    "reason": "foreign go statement: goroutine: concurrency is outside cir/1"
-  }
-]
-$ diff -r try/rust examples/orders/out/rust
-$ codespec harness examples/orders --seeds 200 --commands 300 --build-dir try/harness
-harness: 200 seeds x 300 commands, 3 implementations (original, go, rust), 79990 output lines each, byte-equal
-```
+and the outputs on the same generated inputs. [Getting started](/docs/getting-started) runs the
+commands on `examples/orders`, with their output.
 
 **What you get.** Rust for every function but `Service.Audit`, which starts a goroutine. The writer
 lists it with its line and reason. The crate equals `examples/orders/out/rust`, which the harness
-runs. The original Go, the Go output and the Rust output print the same bytes on 200 traces of 300
-commands.
+runs. The original Go, the Go output and the Rust output print the same bytes.
 
 ## 2. Know what a dependency can do
 

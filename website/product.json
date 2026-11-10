@@ -29,7 +29,7 @@
         "href": "/docs/status"
       }
     ],
-    "meta": "Go, Rust, Java and Groovy readers · Go and Rust writers · cir/1 JSON Schema · Apache-2.0",
+    "meta": "Go, Rust, Java, Groovy and C readers · Go, Rust and C writers · cir/1 JSON Schema · Apache-2.0",
     "art": {
       "kind": "code-pair",
       "data": "data/greeter-code-pair.json",
@@ -61,7 +61,7 @@
         {
           "label": "harness",
           "title": "Prove it behaves the same",
-          "description": "The original, the Go output and the Rust output run on 200 seeded traces of 300 commands; any differing byte fails the run."
+          "description": "The original, the Go output and the Rust output run on the same seeded traces; any differing byte fails the run."
         }
       ]
     },
