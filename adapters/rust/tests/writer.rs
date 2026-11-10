@@ -153,6 +153,97 @@ fn a_module_without_facts_is_refused_naming_the_pass() {
     assert!(!out.exists(), "nothing is written for a refused module");
 }
 
+/// The writer's run on `doc` exits 1 with a message holding `want`, panics nowhere, and leaves
+/// no file: in particular no `Cargo.toml`, whose `build` key cargo would run.
+fn refused_naming(doc: &[u8], name: &str, want: &str) {
+    let out = scratch(name);
+    let o = write(doc, &out);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(!err.contains("panicked"), "{err}");
+    assert!(
+        err.contains(want),
+        "the refusal does not name {want}: {err}"
+    );
+    assert!(!out.join("Cargo.toml").exists(), "a Cargo.toml was written");
+    assert!(!out.exists(), "nothing is written for a refused module");
+}
+
+#[test]
+fn a_module_name_that_is_not_a_package_name_is_refused_and_no_cargo_toml_is_written() {
+    for (i, bad) in ["orders\"\nbuild = \"payload.rs", "1orders", "fn"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut doc = orders();
+        doc["name"] = Value::String(bad.into());
+        refused_naming(
+            doc.to_string().as_bytes(),
+            &format!("bad-package-{i}"),
+            &format!("{bad:?}"),
+        );
+    }
+}
+
+#[test]
+fn a_name_that_is_not_a_rust_identifier_is_refused_with_exit_1_not_a_panic() {
+    let text = std::fs::read_to_string(example("orders.cir.json")).unwrap();
+    for (i, (from, to, want)) in [
+        (
+            "\"PendingOrders\"",
+            "\"Pending Orders\"",
+            "\"Pending Orders\"",
+        ),
+        (
+            "\"PendingOrders\"",
+            "\"1PendingOrders\"",
+            "1_pending_orders",
+        ),
+        ("OrderPaid", "_1", "\"1\""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let doc = text.replace(from, to);
+        assert_ne!(doc, text);
+        refused_naming(doc.as_bytes(), &format!("bad-ident-{i}"), want);
+    }
+}
+
+fn op_add() -> Value {
+    serde_json::from_slice(
+        &std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../conformance/cases/op-add/case.cir.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// `codespec-read-rust` keeps a raw identifier's `r#`; written back it is the same identifier.
+#[test]
+fn a_raw_rust_name_is_written_back_as_the_raw_identifier() {
+    let text = op_add().to_string().replace("\"a\"", "\"r#match\"");
+    assert!(text.contains("r#match"));
+    let (_, lib) = write_ok(&serde_json::from_str(&text).unwrap(), "raw-ident");
+    assert!(squash(&lib).contains("r#match:i64"), "{lib}");
+    assert!(squash(&lib).contains("r#match.wrapping_add"), "{lib}");
+}
+
+/// The Go reader writes an unnamed parameter as `_`.
+#[test]
+fn a_parameter_named_underscore_is_written() {
+    let mut doc = op_add();
+    let int = doc["funcs"][0]["params"][0]["t"].clone();
+    doc["funcs"][0]["params"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"name": "_", "t": int}));
+    let (_, lib) = write_ok(&doc, "underscore-param");
+    assert!(squash(&lib).contains("b:i64,__:i64)"), "{lib}");
+}
+
 #[test]
 fn the_written_crate_builds_without_warnings() {
     let (out, _) = write_ok(&orders(), "build");

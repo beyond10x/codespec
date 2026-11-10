@@ -61,6 +61,128 @@ fn refused(v: &serde_json::Value) -> String {
     }
 }
 
+/// A writer puts names into source text; one holding a quote, a newline, a `;` or a path
+/// separator would be code or a path there, so strict reading refuses it and names the value.
+#[test]
+fn a_name_holding_other_than_letters_digits_and_underscores_is_refused_naming_it() {
+    let evil = "orders\"\nbuild = \"evil.rs";
+    let cases: [(&[&str], &str); 9] = [
+        (&["name"], evil),
+        (&["types", "0", "name"], "Order ID"),
+        (&["types", "2", "fields", "1", "name"], "Customer;"),
+        (&["funcs", "1", "name"], "New()"),
+        (
+            &["funcs", "2", "params", "0", "name"],
+            "b; } int x(void) { return 42; } int y(int b",
+        ),
+        (&["funcs", "2", "recv", "name"], ""),
+        (&["funcs", "2", "body", "2", "names", "0"], "../o"),
+        (
+            &[
+                "funcs", "0", "body", "0", "results", "0", "args", "1", "x", "name",
+            ],
+            "e\\x",
+        ),
+        (
+            &[
+                "funcs", "0", "body", "0", "results", "0", "args", "1", "name",
+            ],
+            "Status.x",
+        ),
+    ];
+    for (path, bad) in cases {
+        let mut v = orders();
+        let mut at = &mut v;
+        for p in path {
+            at = match p.parse::<usize>() {
+                Ok(i) => &mut at[i],
+                Err(_) => &mut at[*p],
+            };
+        }
+        assert!(
+            at.is_string(),
+            "{path:?} is not a name in orders.read.cir.json"
+        );
+        *at = serde_json::json!(bad);
+        let err = refused(&v);
+        assert!(err.contains(&format!("{bad:?}")), "{path:?}: {err}");
+    }
+}
+
+#[test]
+fn a_name_of_letters_in_any_script_and_digits_is_admitted() {
+    let mut v = orders();
+    v["name"] = serde_json::json!("größe_2");
+    Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+}
+
+/// Names real readers write: a Java `$`, a Rust raw identifier, a Go unnamed parameter as `_`.
+#[test]
+fn a_dollar_a_raw_rust_prefix_and_a_parameter_named_underscore_are_admitted() {
+    let cases: [(&[&str], &str); 5] = [
+        (&["name"], "Outer$Inner"),
+        (&["types", "2", "fields", "1", "name"], "$customer"),
+        (&["funcs", "2", "body", "2", "names", "0"], "r#type"),
+        (&["funcs", "2", "params", "0", "name"], "_"),
+        (&["funcs", "1", "params", "0", "name"], "_"),
+    ];
+    for (path, good) in cases {
+        let mut v = orders();
+        let mut at = &mut v;
+        for p in path {
+            at = match p.parse::<usize>() {
+                Ok(i) => &mut at[i],
+                Err(_) => &mut at[*p],
+            };
+        }
+        *at = serde_json::json!(good);
+        if let Err(e) = Module::from_json(&serde_json::to_vec(&v).expect("json")) {
+            panic!("{good:?} at {path:?} refused: {e}");
+        }
+    }
+    for bad in ["r#", "R#type", "x#y", "r#r#x", "a$b c"] {
+        let mut v = orders();
+        v["name"] = serde_json::json!(bad);
+        assert!(refused(&v).contains(&format!("{bad:?}")), "{bad:?}");
+    }
+}
+
+#[test]
+fn a_module_path_is_segments_of_letters_digits_and_dot_dash_tilde_underscore() {
+    for good in [
+        "example.com/shop/orders",
+        "github.com/x/go-y",
+        "example.com/~user/pkg_v2",
+        "org.acme",
+        "net/http",
+    ] {
+        let mut v = orders();
+        v["path"] = serde_json::json!(good);
+        if let Err(e) = Module::from_json(&serde_json::to_vec(&v).expect("json")) {
+            panic!("{good:?} refused: {e}");
+        }
+    }
+    for bad in [
+        "/abs/path",
+        "a//b",
+        "a/",
+        "a/./b",
+        "a/../b",
+        ".",
+        "..",
+        "a\\b",
+        "a b",
+        "a\tb",
+        "example.com/shop\"\n/orders",
+        "a'b",
+        "a\u{7}b",
+    ] {
+        let mut v = orders();
+        v["path"] = serde_json::json!(bad);
+        assert!(refused(&v).contains(&format!("{bad:?}")), "{bad:?}");
+    }
+}
+
 #[test]
 fn an_unknown_top_level_field_is_refused() {
     let mut v = orders();

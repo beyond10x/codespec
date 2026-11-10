@@ -2,6 +2,21 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Changed
+
+- The Rust, C and Go writers refuse a document holding a name that is not an identifier of their
+  language: exit 1, a message naming it, nothing written. Before, a module name holding a quote
+  and a newline added keys to the `Cargo.toml` the Rust writer wrote (a `build` script cargo
+  runs), a name could add C or Go code, and the Go writer took a module name like `../x` as a path.
+  The Rust writer no longer panics on such a name. The Go writer also refuses a literal that is
+  not exactly one Go literal, and a document missing a part, where it crashed.
+- Strict reading of `cir/1` refuses a module, declaration, field, parameter or local name that is
+  empty or holds a character other than a letter, a digit, `_` or `$`, after an optional `r#` (a
+  Rust raw identifier, which the Rust writer writes back as one). A module `path` is segments of
+  letters, digits, `_`, `-`, `.` and `~` joined by `/`, none empty, `.` or `..`.
+
 ## 0.6.1
 
 ### Changed

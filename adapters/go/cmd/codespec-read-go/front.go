@@ -526,7 +526,13 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := sig.Params().At(i)
-		fn.Params = append(fn.Params, Param{Name: p.Name(), T: f.typ(p.Type()), Variadic: sig.Variadic() && i == sig.Params().Len()-1})
+		// Strict reading refuses an empty name; an unnamed parameter is `_`, as for a receiver
+		// and a function literal's parameter.
+		name := p.Name()
+		if name == "" {
+			name = "_"
+		}
+		fn.Params = append(fn.Params, Param{Name: name, T: f.typ(p.Type()), Variadic: sig.Variadic() && i == sig.Params().Len()-1})
 	}
 	for i := 0; i < sig.Results().Len(); i++ {
 		fn.Results = append(fn.Results, f.typ(sig.Results().At(i).Type()))

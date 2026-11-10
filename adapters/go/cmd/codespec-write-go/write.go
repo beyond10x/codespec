@@ -8,6 +8,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"go/types"
 	"reflect"
@@ -66,7 +67,18 @@ var stdPackages = map[string]string{
 	"sync": "sync", "time": "time",
 }
 
-func write(m *Module) ([]byte, error) {
+func write(m *Module) (src []byte, err error) {
+	// The document is read here without the strict reader's checks, so a part it lacks reaches
+	// the writer as a nil pointer: that is a refusal like any other, never a panic.
+	defer func() {
+		if r := recover(); r != nil {
+			src, err = nil, fmt.Errorf("the document cannot be written: %v", r)
+		}
+	}()
+	// The name is the package clause and the file name: an identifier, never a path.
+	if !token.IsIdentifier(m.Name) || m.Name == "_" {
+		return nil, fmt.Errorf("module name %q is not a Go package name", m.Name)
+	}
 	w := &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
 	for i := range m.Types {
 		w.types[m.Types[i].Name] = &m.Types[i]
@@ -173,6 +185,11 @@ func (w *writer) render(pieces []piece) ([]byte, error) {
 		}
 		pieces = append([]piece{{node: imp}}, pieces...)
 	}
+	for _, p := range pieces {
+		if err := checkNode(p.node); err != nil {
+			return nil, err
+		}
+	}
 	fset := token.NewFileSet()
 	for _, p := range pieces {
 		if p.doc != "" {
@@ -266,6 +283,58 @@ func (w *writer) decls() ([]piece, error) {
 }
 
 func ident(name string) *ast.Ident { return ast.NewIdent(name) }
+
+// checkNode refuses a tree holding an identifier that is not a Go identifier or a literal that is
+// not exactly one Go literal token. go/printer prints both verbatim, so a name or literal of the
+// document that is anything else would be code in the written file. Every tree the writer builds
+// passes through here before it is printed (render, typeSrc).
+func checkNode(n ast.Node) error {
+	var err error
+	ast.Inspect(n, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.Ident:
+			if err == nil && !token.IsIdentifier(x.Name) {
+				err = fmt.Errorf("name %q is not a Go identifier", x.Name)
+			}
+		case *ast.BasicLit:
+			if err == nil && !oneLiteral(x) {
+				err = fmt.Errorf("literal %q is not one Go literal", x.Value)
+			}
+		}
+		return err == nil
+	})
+	return err
+}
+
+// oneLiteral reports whether l's text scans as exactly one token of l's kind, comments counted.
+func oneLiteral(l *ast.BasicLit) bool {
+	var s scanner.Scanner
+	bad := false
+	s.Init(token.NewFileSet().AddFile("", -1, len(l.Value)), []byte(l.Value), func(token.Position, string) { bad = true }, scanner.ScanComments)
+	if _, tok, _ := s.Scan(); tok != l.Kind {
+		return false
+	}
+	_, tok, lit := s.Scan()
+	if tok == token.SEMICOLON && lit == "\n" {
+		_, tok, _ = s.Scan()
+	}
+	return tok == token.EOF && !bad
+}
+
+// literal reports whether x, parsed from a cir/1 `lit`, is one literal: a basic literal, perhaps
+// signed, or true or false. Any other expression would be code the document never declared.
+func literal(x ast.Expr) bool {
+	if u, ok := x.(*ast.UnaryExpr); ok && (u.Op == token.SUB || u.Op == token.ADD) {
+		x = u.X
+	}
+	switch x := x.(type) {
+	case *ast.BasicLit:
+		return true
+	case *ast.Ident:
+		return x.Name == "true" || x.Name == "false"
+	}
+	return false
+}
 
 func (w *writer) typ(t Type) ast.Expr {
 	switch t.K {
@@ -992,6 +1061,10 @@ func (w *writer) expr(e Expr) ast.Expr {
 		x, err := parser.ParseExpr(e.Value)
 		if err != nil {
 			w.refuse("literal %q is not Go: %v", e.Value, err)
+			return ident("nil")
+		}
+		if !literal(x) {
+			w.refuse("literal %q is not one Go literal", e.Value)
 			return ident("nil")
 		}
 		stripPositions(x)

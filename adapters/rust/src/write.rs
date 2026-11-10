@@ -59,6 +59,14 @@
 //! method such as `clone`) gets a suffix. Bindings the writer introduces start with `__` and are
 //! lengthened until no local holds them.
 //!
+//! The document is untrusted input. Every name reaches `lib.rs` as an identifier token (a raw
+//! identifier's `r#`, which `codespec-read-rust` keeps, is dropped and a keyword made raw again):
+//! a Rust spelling that is not one (a leading digit, a `$`, `_1` camel-cased to `1`) refuses the module whole,
+//! naming it, as does a module name that is not an identifier or is a keyword, since it is the
+//! package name of `Cargo.toml`. String literals are written as escaped Rust string tokens,
+//! integers as parsed numbers, each doc line as its own doc attribute; `foreign` statements are
+//! refused, never written.
+//!
 //! The crate starts with `#![allow(dead_code, unused_assignments, unused_mut)]`: Go compiles an
 //! unexported function nobody calls (or whose only caller is refused), a `var` assigned on every
 //! path before it is read, and a name rebound in an inner block without a warning, and the
@@ -102,6 +110,28 @@ const NAMES_TAKEN: &[&str] = &[
 
 /// Write `m` as a crate, or say why it cannot be written at all.
 pub fn write(m: &Module) -> Result<Written, String> {
+    NOT_AN_IDENT.with(|b| b.borrow_mut().take());
+    let written = write_crate(m)?;
+    match NOT_AN_IDENT.with(|b| b.borrow_mut().take()) {
+        Some(s) => Err(format!(
+            "the name {s:?}, the Rust spelling of a cir/1 name, is not a Rust identifier"
+        )),
+        None => Ok(written),
+    }
+}
+
+fn write_crate(m: &Module) -> Result<Written, String> {
+    // The name is the package name of the written Cargo.toml, inside a TOML string.
+    if !is_rust_ident(&m.name)
+        || m.name == "_"
+        || KEYWORDS.contains(&m.name.as_str())
+        || ["self", "Self", "super", "crate"].contains(&m.name.as_str())
+    {
+        return Err(format!(
+            "module name {:?} is not a Rust package name: an identifier, not a keyword",
+            m.name
+        ));
+    }
     let Some(facts) = &m.facts else {
         return Err(format!(
             "module {} has no facts: the `facts` pass has not run; run `codespec pass` over it first",
@@ -454,7 +484,7 @@ const KEYWORDS: &[&str] = &[
 
 /// `OrderID` → `order_id`, `PendingOrders` → `pending_orders`, `HTTPServer` → `http_server`.
 fn snake(name: &str) -> String {
-    let chars: Vec<char> = name.chars().collect();
+    let chars: Vec<char> = unraw(name).chars().collect();
     let mut out = String::new();
     for (i, &c) in chars.iter().enumerate() {
         if c.is_uppercase() {
@@ -477,6 +507,7 @@ fn snake(name: &str) -> String {
 }
 
 fn upper_camel(name: &str) -> String {
+    let name = unraw(name);
     if !name.contains('_') && name.chars().next().is_some_and(|c| c.is_uppercase()) {
         return name.to_string();
     }
@@ -492,12 +523,48 @@ fn upper_camel(name: &str) -> String {
         .collect()
 }
 
+/// `name` without the `r#` a raw identifier keeps from the source: [`ident`] makes a keyword raw
+/// again, so `r#match` is written back as `r#match` and `r#foo` as `foo`, the same identifier.
+fn unraw(name: &str) -> &str {
+    name.strip_prefix("r#").unwrap_or(name)
+}
+
 fn ident(name: &str) -> Ident {
+    let name = unraw(name);
     match name {
-        "self" | "Self" | "super" | "crate" => Ident::new(&format!("{name}_"), Span::call_site()),
+        "self" | "Self" | "super" | "crate" => checked_ident(&format!("{name}_")),
         _ if KEYWORDS.contains(&name) => Ident::new_raw(name, Span::call_site()),
-        _ => Ident::new(name, Span::call_site()),
+        _ => checked_ident(name),
     }
+}
+
+/// Whether `s` is a Rust identifier, raw ones aside: exactly what `Ident::new` accepts, read with
+/// the same lexer.
+fn is_rust_ident(s: &str) -> bool {
+    s == "_"
+        || !s.contains('#')
+            && matches!(
+                s.parse::<TokenStream>().map(|ts| ts.into_iter().collect::<Vec<_>>()).as_deref(),
+                Ok([TokenTree::Ident(i)]) if *i == s
+            )
+}
+
+thread_local! {
+    /// The first spelling [`checked_ident`] found not to be a Rust identifier during a [`write`].
+    static NOT_AN_IDENT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `Ident::new`, which panics on a spelling that is not an identifier, made total: such a
+/// spelling (a name with a leading digit, `_1` camel-cased to `1`) is recorded, which refuses the
+/// module in [`write`], and a placeholder stands in for it meanwhile.
+fn checked_ident(s: &str) -> Ident {
+    if is_rust_ident(s) {
+        return Ident::new(s, Span::call_site());
+    }
+    NOT_AN_IDENT.with(|b| {
+        b.borrow_mut().get_or_insert_with(|| s.to_string());
+    });
+    Ident::new("__not_an_identifier", Span::call_site())
 }
 
 /// A function, method, field, parameter or local.
@@ -1594,7 +1661,7 @@ impl<'a> Writer<'a> {
         for p in &f.params {
             let t = self.ty(&p.t).map_err(at)?;
             let n = if p.name == "_" || !used.contains(&p.name) {
-                Ident::new(&format!("_{}", snake(&p.name)), Span::call_site())
+                checked_ident(&format!("_{}", snake(&p.name)))
             } else {
                 self.names.local(&p.name)
             };
@@ -2494,7 +2561,7 @@ impl Fx<'_, '_> {
         while self.locals.contains(&s) {
             s.push('_');
         }
-        Ident::new(&s, Span::call_site())
+        checked_ident(&s)
     }
 
     /// Whether the receiver is a value (Go `func (c Color)`), which `self` borrows.

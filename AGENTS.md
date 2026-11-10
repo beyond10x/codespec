@@ -146,6 +146,12 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 
 - The schema is what the model generates:
   `crates/model/tests/model.rs::the_checked_in_schema_is_the_one_the_model_generates`.
+- Reading refuses a name that is empty or holds other than letters, digits, `_` and `$` (after an optional `r#`):
+  `crates/model/tests/model.rs::a_name_holding_other_than_letters_digits_and_underscores_is_refused_naming_it`;
+  each writer refuses a name that is not an identifier of its language and writes nothing:
+  `adapters/rust/tests/writer.rs::a_module_name_that_is_not_a_package_name_is_refused_and_no_cargo_toml_is_written`,
+  `adapters/c/tests/writer.rs::a_name_that_is_not_a_c_identifier_is_refused_naming_it`,
+  `adapters/go/cmd/codespec-write-go/names_test.go::TestANameThatIsNotAGoIdentifierIsRefusedAndNothingIsWritten`.
 - Reading refuses unknown fields and kinds, untyped expressions and other formats:
   `crates/model/tests/model.rs::an_unknown_field_inside_a_statement_is_refused`,
   `crates/model/tests/model.rs::an_unknown_statement_kind_is_refused`,

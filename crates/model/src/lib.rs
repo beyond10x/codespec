@@ -252,6 +252,266 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// Whether `name` is a name strict reading admits for a module, a declaration, a field, a
+/// parameter or a local: one or more letters of any script, digits, `_` and `$` (Java), after an
+/// optional `r#` (a Rust raw identifier, as `codespec-read-rust` keeps it). A writer puts names
+/// into source text and file names, where any other character could end the name and begin code
+/// or a path; each writer applies its own language's stricter rule on top.
+pub fn is_name(name: &str) -> bool {
+    let name = name.strip_prefix("r#").unwrap_or(name);
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+}
+
+/// Whether `path` is a module path strict reading admits: empty, or `/`-separated segments, none
+/// empty, `.` or `..`, each of letters, digits, `_`, `-`, `.` and `~` (`github.com/x/go-y`).
+pub fn is_module_path(path: &str) -> bool {
+    path.is_empty()
+        || path.split('/').all(|s| {
+            !s.is_empty()
+                && s != "."
+                && s != ".."
+                && s.chars()
+                    .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | '~'))
+        })
+}
+
+type NameFn<'f, 'a> = &'f mut dyn FnMut(&'static str, &'a str);
+
+fn tparam_names<'a>(tparams: &'a [TypeParam], f: NameFn<'_, 'a>) {
+    for p in tparams {
+        f("type parameter", &p.name);
+        type_names(&p.constraint, f);
+    }
+}
+
+fn field_names<'a>(fields: &'a [Field], f: NameFn<'_, 'a>) {
+    for fl in fields {
+        f("field", &fl.name);
+        type_names(&fl.t, f);
+    }
+}
+
+fn param_names<'a>(params: &'a [Param], f: NameFn<'_, 'a>) {
+    for p in params {
+        f("parameter", &p.name);
+        type_names(&p.t, f);
+    }
+}
+
+fn type_names<'a>(t: &'a Type, f: NameFn<'_, 'a>) {
+    match t {
+        Type::Int { .. }
+        | Type::Float { .. }
+        | Type::Bool
+        | Type::String
+        | Type::Error
+        | Type::Any
+        | Type::Unit => {}
+        Type::Named { name, targs } => {
+            f("type", name);
+            targs.iter().for_each(|t| type_names(t, f));
+        }
+        Type::Ptr { elem }
+        | Type::Slice { elem }
+        | Type::Array { elem, .. }
+        | Type::Chan { elem, .. } => type_names(elem, f),
+        Type::Map { key, elem } => {
+            type_names(key, f);
+            type_names(elem, f);
+        }
+        Type::Tuple { elems } => elems.iter().for_each(|t| type_names(t, f)),
+        Type::Extern { targs, .. } => targs.iter().for_each(|t| type_names(t, f)),
+        Type::Func { params, results } => {
+            params.iter().chain(results).for_each(|t| type_names(t, f))
+        }
+        Type::Param { name } => f("type parameter", name),
+    }
+}
+
+fn stmt_names<'a>(body: &'a [Stmt], f: NameFn<'_, 'a>) {
+    for s in body {
+        match s {
+            Stmt::Let { names, rhs, .. } => {
+                names.iter().for_each(|n| f("local", n));
+                rhs.iter().for_each(|e| expr_names(e, f));
+            }
+            Stmt::Var { name, t, .. } => {
+                f("local", name);
+                type_names(t, f);
+            }
+            Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).for_each(|e| expr_names(e, f)),
+            Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => expr_names(x, f),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                expr_names(cond, f);
+                stmt_names(then, f);
+                stmt_names(otherwise, f);
+            }
+            Stmt::ForRange {
+                key,
+                val,
+                over,
+                body,
+                ..
+            } => {
+                f("local", key);
+                f("local", val);
+                expr_names(over, f);
+                stmt_names(body, f);
+            }
+            Stmt::For {
+                init,
+                cond,
+                post,
+                body,
+                ..
+            } => {
+                init.iter()
+                    .for_each(|s| stmt_names(std::slice::from_ref(&**s), f));
+                cond.iter().for_each(|e| expr_names(e, f));
+                post.iter()
+                    .for_each(|s| stmt_names(std::slice::from_ref(&**s), f));
+                stmt_names(body, f);
+            }
+            Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Foreign { .. } => {}
+            Stmt::Switch { tag, cases, .. } => {
+                tag.iter().for_each(|e| expr_names(e, f));
+                for c in cases {
+                    c.values.iter().for_each(|e| expr_names(e, f));
+                    stmt_names(&c.body, f);
+                }
+            }
+            Stmt::Return { results, .. } => results.iter().for_each(|e| expr_names(e, f)),
+            Stmt::Send { chan, x, .. } => {
+                expr_names(chan, f);
+                expr_names(x, f);
+            }
+            Stmt::LookupElse {
+                name,
+                map,
+                index,
+                then,
+                ..
+            } => {
+                f("local", name);
+                expr_names(map, f);
+                expr_names(index, f);
+                stmt_names(then, f);
+            }
+        }
+    }
+}
+
+fn expr_names<'a>(e: &'a Expr, f: NameFn<'_, 'a>) {
+    type_names(e.t(), f);
+    match e {
+        Expr::Lit { .. }
+        | Expr::Float { .. }
+        | Expr::Nil { .. }
+        | Expr::Make { .. }
+        | Expr::Zero { .. } => {}
+        Expr::Var { name, .. } => f("local", name),
+        Expr::Const { name, .. } => f("constant", name),
+        Expr::Errvar { name, .. } => f("error", name),
+        Expr::Global { name, .. } => f("variable", name),
+        Expr::Field { x, name, .. } => {
+            expr_names(x, f);
+            f("field", name);
+        }
+        Expr::Index { x, index, .. } => {
+            expr_names(x, f);
+            expr_names(index, f);
+        }
+        Expr::Call {
+            name, targs, args, ..
+        } => {
+            f("function", name);
+            targs.iter().for_each(|t| type_names(t, f));
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Method { x, name, args, .. } => {
+            expr_names(x, f);
+            f("method", name);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Extern { targs, args, .. } => {
+            targs.iter().for_each(|t| type_names(t, f));
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::ExternMethod {
+            targs, recv, args, ..
+        } => {
+            targs.iter().for_each(|t| type_names(t, f));
+            expr_names(recv, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::Binop { x, y, .. } => {
+            expr_names(x, f);
+            expr_names(y, f);
+        }
+        Expr::Unop { x, .. }
+        | Expr::ToError { x, .. }
+        | Expr::Spread { x, .. }
+        | Expr::ToIface { x, .. } => expr_names(x, f),
+        Expr::Struct { name, fields, .. } => {
+            f("type", name);
+            for fi in fields {
+                f("field", &fi.name);
+                expr_names(&fi.value, f);
+            }
+        }
+        Expr::Conv { name, x, .. } => {
+            f("type", name);
+            expr_names(x, f);
+        }
+        Expr::Intrinsic { args, .. } => args.iter().for_each(|a| expr_names(a, f)),
+        Expr::FuncRef { name, recv, .. } => {
+            f("function", name);
+            recv.iter().for_each(|r| expr_names(r, f));
+        }
+        Expr::Lambda {
+            params,
+            results,
+            captures,
+            body,
+            ..
+        } => {
+            param_names(params, f);
+            results.iter().for_each(|t| type_names(t, f));
+            captures.iter().for_each(|c| f("local", c));
+            stmt_names(body, f);
+        }
+        Expr::CallValue {
+            f: callee, args, ..
+        } => {
+            expr_names(callee, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+        Expr::IfaceCall {
+            path,
+            iface,
+            name,
+            recv,
+            args,
+            ..
+        } => {
+            if path.is_empty() {
+                f("interface", iface);
+                f("method", name);
+            }
+            expr_names(recv, f);
+            args.iter().for_each(|a| expr_names(a, f));
+        }
+    }
+}
+
 impl Opaque {
     /// `name`, or `<receiver type>.<name>` for a method, as [`Func::key`] gives it.
     pub fn key(&self) -> String {
@@ -1201,6 +1461,7 @@ impl Module {
             return Err(ReadError::Format(format.to_string()));
         }
         let m: Module = serde_json::from_value(probe).map_err(ReadError::Json)?;
+        m.check_names().map_err(ReadError::Invalid)?;
         m.check_variadic().map_err(ReadError::Invalid)?;
         m.check_externs().map_err(ReadError::Invalid)?;
         m.check_vars().map_err(ReadError::Invalid)?;
@@ -1211,6 +1472,93 @@ impl Module {
         m.check_generics().map_err(ReadError::Invalid)?;
         m.check_framework().map_err(ReadError::Invalid)?;
         Ok(m)
+    }
+
+    /// Every name the module gives one of its own declarations, where it declares it and where
+    /// it uses it, with what it names: `module`, `type`, `type parameter`, `field`, `variant`,
+    /// `interface`, `method`, `constant`, `error`, `variable`, `function`, `receiver`,
+    /// `parameter` or `local`. Writers put these into source text. Names another module gives
+    /// (externs, another module's interfaces, the calls listed for `foreign` and `opaque` code),
+    /// the declarations `opaque` lists and the module `path` are not visited.
+    pub fn each_name<'a>(&'a self, f: &mut dyn FnMut(&'static str, &'a str)) {
+        f("module", &self.name);
+        for d in &self.types {
+            f("type", d.name());
+            tparam_names(d.tparams(), f);
+            match d {
+                TypeDecl::Struct { fields, .. } => field_names(fields, f),
+                TypeDecl::Newtype { under, .. } => type_names(under, f),
+                TypeDecl::Enum {
+                    under, variants, ..
+                } => {
+                    type_names(under, f);
+                    for v in variants {
+                        f("variant", &v.name);
+                        expr_names(&v.value, f);
+                    }
+                }
+                TypeDecl::Union { variants, .. } => {
+                    for v in variants {
+                        f("variant", &v.name);
+                        field_names(&v.fields, f);
+                    }
+                }
+            }
+        }
+        for i in self.interfaces.iter().filter(|i| i.path.is_empty()) {
+            f("interface", &i.name);
+            for m in &i.methods {
+                f("method", &m.name);
+                m.params
+                    .iter()
+                    .chain(&m.results)
+                    .for_each(|t| type_names(t, f));
+            }
+        }
+        for c in &self.consts {
+            f("constant", &c.name);
+            type_names(&c.t, f);
+            expr_names(&c.value, f);
+        }
+        for e in &self.errors {
+            f("error", &e.name);
+        }
+        for v in &self.vars {
+            f("variable", &v.name);
+            type_names(&v.t, f);
+            v.init.iter().for_each(|e| expr_names(e, f));
+        }
+        for func in &self.funcs {
+            f("function", &func.name);
+            tparam_names(&func.tparams, f);
+            if let Some(r) = &func.recv {
+                f("receiver", &r.name);
+                type_names(&r.t, f);
+            }
+            param_names(&func.params, f);
+            func.results.iter().for_each(|t| type_names(t, f));
+            stmt_names(&func.body, f);
+        }
+    }
+
+    /// Every name of [`Module::each_name`] is a [`is_name`], and the module `path` an
+    /// [`is_module_path`].
+    fn check_names(&self) -> Result<(), String> {
+        if !is_module_path(&self.path) {
+            return Err(format!(
+                "the module path {:?} is not segments of letters, digits, `_`, `-`, `.` and `~` joined by `/`, none empty, `.` or `..`",
+                self.path
+            ));
+        }
+        let mut bad = None;
+        self.each_name(&mut |what, name| {
+            if bad.is_none() && !is_name(name) {
+                bad = Some(format!(
+                    "the {what} name {name:?} is empty or holds a character other than a letter, a digit, `_` or `$` (after an optional `r#`)"
+                ));
+            }
+        });
+        bad.map_or(Ok(()), Err)
     }
 
     /// Every expression of the module at any depth, lambda bodies included: enum variant
