@@ -262,6 +262,8 @@ to `main` only.
   writer.
 - Never commit Python or any other running code outside Rust, the adapters' own languages, the
   site build and the TypeScript UX harness in `ux/`.
+- Never run a benchmark, a load test or a timing comparison on the shared workstation: remotely
+  or not at all (operator, 2026-11-10). A change records its cost as "not measured".
 - Never push, tag or write to GitHub as a person: the bot only.
 - Never put private names, home paths or planning ids in a crate `description`, a page or
   `product.json`: they are public.
