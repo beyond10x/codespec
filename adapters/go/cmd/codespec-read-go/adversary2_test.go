@@ -66,10 +66,10 @@ func TestAdversary2ALabelledRangeThatAssignsAnOuterVariableIsRefusedForThatReaso
 	}
 }
 
-// The manifest, not the claimNot variable, leaves each of the five unclaimed: the unit's test
+// The manifest, not the claimNot variable, leaves each of the six unclaimed: the unit's test
 // compares claimNot with a literal, which stays green when describe() stops passing it on.
-func TestAdversary2TheManifestLeavesEachOfTheFiveUnclaimed(t *testing.T) {
-	for _, id := range []string{"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.unit"} {
+func TestAdversary2TheManifestLeavesEachOfTheSixUnclaimed(t *testing.T) {
+	for _, id := range []string{"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "stmt.raise", "type.unit"} {
 		if claimed(t, id) {
 			t.Errorf("the manifest claims %s", id)
 		}

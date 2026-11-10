@@ -624,3 +624,25 @@ fn makes_holds_the_types_a_made_struct_holds_by_value() {
             .collect::<String>()
     );
 }
+
+/// The kit case stmt-raise: `Check` lists `java.lang.IllegalArgumentException` in `raises`, and
+/// its `raise` statement ends a path like a `return`.
+#[test]
+fn raises_holds_what_a_function_lists_and_a_raise_is_an_exit() {
+    let m = module(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases/stmt-raise/case.cir.json"),
+    );
+    let out = answer(
+        "r(F, T) :- raises{func: F, t: T}.\n?- r(F, T).",
+        std::slice::from_ref(&m),
+    );
+    assert!(out.contains("stmt_raise.Check"), "{out}");
+    assert!(out.contains("IllegalArgumentException"), "{out}");
+    let exits = answer(
+        "x(N, K) :- exit{node: N}, stmt{id: N, kind: K}.\n?- x(N, K).",
+        &[m],
+    );
+    assert!(exits.contains("raise"), "{exits}");
+    assert!(exits.contains("return"), "{exits}");
+}

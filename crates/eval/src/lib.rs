@@ -18,6 +18,7 @@
 //! | kind | when |
 //! |---|---|
 //! | `foreign` | a `foreign` statement is executed, or a variable's initializer is foreign source; one the run does not reach does not stop it |
+//! | `raise` | a `raise` statement is reached, before its value is made: it leaves every caller up to the framework, which the evaluator does not run; one the run does not reach does not stop it |
 //! | `no handler` | an extern with no built-in handler is called; the handlers are `path.Join`, `strconv.Itoa`, `strings.Repeat` and `strings.Builder`'s `WriteString`, `Len` and `String`, each as Go's |
 //! | `no body` | a function the module declares without a body (`opaque`) is called |
 //! | `panic` | Go would panic: an index out of range, a nil dereference, a zero divisor, a send on a closed channel, a handler's panic (a write to a copied non-zero `strings.Builder`) |
@@ -124,6 +125,7 @@ impl Default for Options {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopKind {
     Foreign,
+    Raise,
     NoHandler,
     NoBody,
     Panic,
@@ -136,6 +138,7 @@ impl StopKind {
     pub fn name(self) -> &'static str {
         match self {
             StopKind::Foreign => "foreign",
+            StopKind::Raise => "raise",
             StopKind::NoHandler => "no handler",
             StopKind::NoBody => "no body",
             StopKind::Panic => "panic",

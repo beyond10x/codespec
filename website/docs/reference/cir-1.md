@@ -105,15 +105,15 @@ The argument at `index` (from 0) of a call is the integer constant `value`, in d
 
 ## Entry
 
-A function a framework starts, not the program: a reader recognised it from the framework's annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).
+A function a framework starts, not the program: a reader recognised it from the framework's annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider` class implementing `ExceptionMapper`).
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `consumes` | list of `string` | no | `http`: the media types the method accepts, as written; empty when it declares none. |
 | `func` | `string` | yes | The key of the function in `funcs`: `F` or `T.m`. |
-| `kind` | `string` | yes | One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer) or `incoming` (a message consumer). |
+| `kind` | `string` | yes | One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer), `incoming` (a message consumer) or `exception-mapper` (a function the framework calls with what an entry raised, when it is of the type `on` names; it takes that one value). |
 | `method` | `string` | no | The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only. |
-| `on` | `string` | yes | `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`: `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name. |
+| `on` | `string` | yes | `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`: `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name. `exception-mapper`: the extern type the function takes, `<path>.<name>` (the Java reader's `java.lang.Exception.Exception`, a jar class's path being its qualified name). |
 | `produces` | list of `string` | no | `http`: the media types the method produces, as written; empty when it declares none. |
 
 ## ErrorVar
@@ -231,6 +231,7 @@ A function or, with `recv`, a method.
 | `name` | `string` | yes |  |
 | `params` | list of [`Param`](#param) | yes |  |
 | `pos` | `string` | yes |  |
+| `raises` | list of [`Type`](#type) | no | The extern types the function can raise, outside its results: those of its own `raise` statements and those every function of the module it calls lists, sorted by `path`, then `name`, each once. Strict reading computes them from the bodies and refuses any other list; a function that lists any is one an entry names, or one only such functions call. |
 | `recv` | [`Param`](#param) or null | no |  |
 | `results` | list of [`Type`](#type) | yes |  |
 | `tparams` | list of [`TypeParam`](#typeparam) | no | The function's own type parameters; a call gives as many type arguments. A method of a generic type has none of its own: its receiver's type binds the type's parameters by naming them as `param` type arguments (Go `func (p Pair[T]) First() T`). |
@@ -362,7 +363,7 @@ One persistence mark: an annotation of a type or of a field of it that tells an 
 
 A statement.
 
-A tagged union: the field `k` names the kind. 16 kinds.
+A tagged union: the field `k` names the kind. 17 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
@@ -378,6 +379,7 @@ A tagged union: the field `k` names the kind. 16 kinds.
 | `continue` | `pos`\*: `string` | Ends the current iteration of the innermost enclosing `for` or `for_range`. |
 | `switch` | `cases`\*: list of [`Case`](#case); `pos`\*: `string`; `tag`: [`Expr`](#expr) or null | A `switch` on `tag`, or on `true` when `tag` is absent. |
 | `return` | `pos`\*: `string`; `results`\*: list of [`Expr`](#expr) |  |
+| `raise` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) | Leaves the function, and every caller up to the framework that started it, with `x`, a value of an extern type (Java: `throw` of a jar's unchecked exception): no result is returned. The function lists the type in `raises`. |
 | `expr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
 | `send` | `chan`\*: [`Expr`](#expr); `pos`\*: `string`; `x`\*: [`Expr`](#expr) | `chan <- x`. |
 | `lookup_else` | `index`\*: [`Expr`](#expr); `map`\*: [`Expr`](#expr); `name`\*: `string`; `pos`\*: `string`; `then`\*: list of [`Stmt`](#stmt) | `name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`. |

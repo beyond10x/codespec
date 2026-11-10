@@ -44,8 +44,11 @@
 //! | `funcs` | array | one entry per function, module by module in the order given, each module's `funcs` then its `opaque` functions |
 //! | `notes` | array of string, omitted when empty | a function both a summary and a document of the set define: the document is analysed |
 //!
-//! An entry is `{path, name, pos, effects, unknown, syscalls, effect_sites, dispatch,
-//! unknown_roots}`; `path` (the module's import path) and the last four are omitted when empty.
+//! An entry is `{path, name, pos, effects, raises, unknown, syscalls, effect_sites, dispatch,
+//! unknown_roots}`; `path` (the module's import path), `raises` and the last four are omitted when
+//! empty. `raises` is the sorted set of extern types, `path.name`, the function can raise outside
+//! its results: its own `raises` (which holds those of its module's functions it calls) and the
+//! `raises` of every function of another module of the set it calls, to a fixed point.
 //! `name` is the function's key (`F` or `T.m`). `effects` is the sorted union of the effects of
 //! every extern it calls (per its summary), of `println` (`stdout`), of every syscall it reaches
 //! (per the barrier) and of every function it calls, to a fixed point over the call graph of the
@@ -374,6 +377,10 @@ pub struct FuncEffects {
     pub name: String,
     pub pos: Pos,
     pub effects: Vec<String>,
+    /// The extern types, `path.name`, the function can raise: its own `raises` and those of
+    /// every function of the set it calls, to a fixed point.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<String>,
     pub unknown: Vec<Unknown>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub syscalls: Vec<Site>,

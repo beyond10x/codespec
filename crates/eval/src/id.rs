@@ -87,6 +87,7 @@ pub fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
@@ -189,9 +190,10 @@ fn stmt<'a>(s: &'a Stmt, node: Node<'_>, path: &mut Path, pos: &mut Option<&'a s
         Stmt::Assign { lhs, rhs, .. } => {
             field_exprs("lhs", lhs, node, path, pos) || field_exprs("rhs", rhs, node, path, pos)
         }
-        Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => {
-            field_expr("x", x, node, path, pos)
-        }
+        Stmt::Incr { x, .. }
+        | Stmt::Decr { x, .. }
+        | Stmt::Expr { x, .. }
+        | Stmt::Raise { x, .. } => field_expr("x", x, node, path, pos),
         Stmt::If {
             cond,
             then,

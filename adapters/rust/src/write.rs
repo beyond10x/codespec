@@ -2111,7 +2111,12 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
     match s {
         Stmt::Let { rhs, .. } => rhs.iter().collect(),
         Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).collect(),
-        Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => vec![x],
+        Stmt::Incr { x, .. }
+        | Stmt::Decr { x, .. }
+        | Stmt::Expr { x, .. }
+        | Stmt::Raise { x, .. } => {
+            vec![x]
+        }
         Stmt::If { cond, .. } => vec![cond],
         Stmt::ForRange { over, .. } => vec![over],
         Stmt::Switch { tag, cases, .. } => tag
@@ -2897,6 +2902,12 @@ impl Fx<'_, '_> {
             } => Err(Refuse {
                 pos: pos.clone(),
                 reason: format!("foreign {lang} statement: {reason}"),
+            }),
+            Stmt::Raise { pos, .. } => Err(Refuse {
+                pos: pos.clone(),
+                reason:
+                    "raise: the Rust writer has no mapping for leaving a function by a raised value"
+                        .to_string(),
             }),
         }
     }
@@ -4266,6 +4277,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }

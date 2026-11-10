@@ -867,3 +867,29 @@ fn a_generic_function_and_a_call_with_type_arguments_are_refused_naming_the_feat
         "{stderr}"
     );
 }
+
+/// The kit case stmt-raise: `Check` holds a `raise`, which the writer has no mapping for, so the
+/// function is left out and listed by name at the raise's position.
+#[test]
+fn a_function_holding_raise_is_refused_by_name_at_the_raise() {
+    let doc = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases/stmt-raise/case.cir.json"),
+    )
+    .unwrap();
+    let out = scratch("stmt-raise");
+    let o = write(&doc, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    let entries = refusals.as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{refusals}");
+    assert_eq!(entries[0]["name"], "Check");
+    assert_eq!(entries[0]["pos"], "case.go:12");
+    assert!(
+        entries[0]["reason"].as_str().unwrap().starts_with("raise"),
+        "{refusals}"
+    );
+    let lib = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
+    assert!(!lib.contains("fn check"), "{lib}");
+}

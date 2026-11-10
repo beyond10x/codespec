@@ -107,6 +107,12 @@ pub const RELATIONS: &[Relation] = &[
         group: Group::Documents,
     },
     Relation {
+        name: "raises",
+        fields: &[("func", N), ("t", T)],
+        about: "every extern type a function lists in raises: what its raise statements and the functions it calls raise, outside its results",
+        group: Group::Documents,
+    },
+    Relation {
         name: "stmt",
         fields: &[
             ("id", N),
@@ -258,7 +264,7 @@ pub const RELATIONS: &[Relation] = &[
     Relation {
         name: "exit",
         fields: &[("func", N), ("node", N)],
-        about: "every return of a body and every statement that falls off its end",
+        about: "every return or raise of a body and every statement that falls off its end",
         group: Group::Bodies,
     },
     Relation {
@@ -485,6 +491,7 @@ fn stmt_kind(s: &Stmt) -> &'static str {
         Stmt::Continue { .. } => "continue",
         Stmt::Switch { .. } => "switch",
         Stmt::Return { .. } => "return",
+        Stmt::Raise { .. } => "raise",
         Stmt::Expr { .. } => "expr",
         Stmt::Send { .. } => "send",
         Stmt::LookupElse { .. } => "lookup_else",
@@ -506,6 +513,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
@@ -1185,7 +1193,7 @@ impl Flow {
                     self.edge(me, next);
                 }
             }
-            Stmt::Return { .. } => self.edge(me, Next::End),
+            Stmt::Return { .. } | Stmt::Raise { .. } => self.edge(me, Next::End),
             Stmt::Break { .. } => self.edge(me, brk.unwrap_or(Next::End)),
             Stmt::Continue { .. } => self.edge(me, cont.unwrap_or(Next::End)),
             Stmt::LookupElse { then, .. } => {
@@ -1575,7 +1583,7 @@ impl Walker<'_> {
                     self.def(name, &id);
                 }
             }
-            Stmt::Expr { x, .. } => e(self, x, "x", None),
+            Stmt::Expr { x, .. } | Stmt::Raise { x, .. } => e(self, x, "x", None),
             Stmt::If {
                 cond,
                 then,
@@ -2255,6 +2263,10 @@ impl FactBase {
                     positions: HashMap::new(),
                 };
                 w.params(&id, f.recv.as_ref(), &f.params, &f.results);
+                for t in &f.raises {
+                    let t = w.b.ty(m, t);
+                    w.b.add("raises", vec![s(&id), s(t)]);
+                }
                 w.body(&id, &f.body, "", &id);
                 if f.body
                     .iter()
@@ -2286,7 +2298,9 @@ impl FactBase {
                     b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
                 }
                 let site = b.unknown(&id, &id, at(m, &o.pos), format!("{OPAQUE}{}", o.reason));
-                for rel in ["stmt", "expr", "param", "result", "entry", "exit", "makes"] {
+                for rel in [
+                    "stmt", "expr", "param", "result", "raises", "entry", "exit", "makes",
+                ] {
                     b.add_wild(rel, &[("func", s(&id))], site);
                 }
                 b.add_wild("contains", &[("outer", s(&id))], site);

@@ -65,9 +65,9 @@ func TestADeferIsKeptForeignVerbatimAndTheReaderClaimsStmtForeign(t *testing.T) 
 }
 
 // The type-tuple case reads to a function of two results with no foreign statement, so the
-// manifest describe() prints claims type.tuple; its `not` list is exactly the five features this
+// manifest describe() prints claims type.tuple; its `not` list is exactly the six features this
 // reader does not read (README.md § Features left unclaimed).
-func TestTheReaderClaimsTypeTupleAndLeavesOnlyTheFiveUnreadFeaturesUnclaimed(t *testing.T) {
+func TestTheReaderClaimsTypeTupleAndLeavesOnlyTheSixUnreadFeaturesUnclaimed(t *testing.T) {
 	m := loadCase(t, "type-tuple")
 	if len(m.Refusals) > 0 {
 		t.Fatalf("type-tuple: refusals %v", m.Refusals)
@@ -81,7 +81,7 @@ func TestTheReaderClaimsTypeTupleAndLeavesOnlyTheFiveUnreadFeaturesUnclaimed(t *
 	if err := json.Unmarshal([]byte(describe()), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.unit"}
+	want := []string{"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "stmt.raise", "type.unit"}
 	if strings.Join(manifest.Not, " ") != strings.Join(want, " ") {
 		t.Fatalf("the manifest's not list is %v, want %v", manifest.Not, want)
 	}

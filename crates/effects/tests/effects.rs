@@ -1007,3 +1007,90 @@ fn a_call_with_type_arguments_reaches_the_generic_functions_effects() {
     assert_eq!(entry(&r, "a").effects, ["env"]);
     assert!(entry(&r, "a").unknown.is_empty());
 }
+
+/// `b.F`, an HTTP entry, raises `jakarta.ws.rs.WebApplicationException` when `s` is empty and calls
+/// `b.check`, which raises `java.lang.IllegalStateException`; `a.Caller` calls `b.F` as an extern.
+fn raising_pair() -> (Module, Module) {
+    let exc = |path: &str, name: &str| json!({"k": "extern", "path": path, "name": name});
+    let raise = |path: &str, name: &str, line: u32| {
+        json!({"k": "raise", "pos": format!("m.go:{line}"), "x": {
+            "k": "extern", "path": format!("{path}.{name}"), "name": "New", "args": [], "t": exc(path, name)
+        }})
+    };
+    let mut f = func(
+        "F",
+        1,
+        vec![
+            json!({"k": "if", "cond": {"k": "binop", "op": "==", "x": var("s"), "y": {"k": "lit", "value": "\"\"", "t": s()}, "t": {"k": "bool"}},
+                   "then": [raise("jakarta.ws.rs", "WebApplicationException", 3)], "pos": "m.go:2"}),
+            ret(call("check"), 4),
+        ],
+    );
+    f["exported"] = json!(true);
+    f["raises"] = json!([
+        exc("jakarta.ws.rs", "WebApplicationException"),
+        exc("java.lang", "IllegalStateException")
+    ]);
+    let mut check = func(
+        "check",
+        6,
+        vec![
+            raise("java.lang", "IllegalStateException", 7),
+            ret(var("s"), 8),
+        ],
+    );
+    check["raises"] = json!([exc("java.lang", "IllegalStateException")]);
+    let b = doc(
+        "b",
+        "example.com/b",
+        vec![f, check],
+        json!({
+            "externs": [
+                {"path": "jakarta.ws.rs.WebApplicationException", "name": "New", "params": [], "results": [exc("jakarta.ws.rs", "WebApplicationException")]},
+                {"path": "java.lang.IllegalStateException", "name": "New", "params": [], "results": [exc("java.lang", "IllegalStateException")]}
+            ],
+            "entries": [{"kind": "http", "func": "F", "method": "GET", "on": "/f"}]
+        }),
+    );
+    let a = doc(
+        "a",
+        "example.com/a",
+        vec![func("Caller", 1, vec![ret(ext("example.com/b", "F"), 2)])],
+        json!({"externs": [decl("example.com/b", "F")]}),
+    );
+    (a, b)
+}
+
+#[test]
+fn a_caller_sees_what_its_callees_raise_across_the_set() {
+    let (a, b) = raising_pair();
+    let r = analyze_set(&[a, b.clone()], &[], &Options::default());
+    let named = |path: &str, name: &str| {
+        r.funcs
+            .iter()
+            .find(|f| f.path == path && f.name == name)
+            .unwrap()
+            .clone()
+    };
+    let both = [
+        "jakarta.ws.rs.WebApplicationException",
+        "java.lang.IllegalStateException",
+    ];
+    assert_eq!(named("example.com/b", "F").raises, both);
+    assert_eq!(
+        named("example.com/b", "check").raises,
+        ["java.lang.IllegalStateException"]
+    );
+    assert_eq!(
+        named("example.com/a", "Caller").raises,
+        both,
+        "a.Caller calls b.F"
+    );
+    let alone = analyze(&b, &[]);
+    assert_eq!(entry(&alone, "F").raises, both);
+    let text = serde_json::to_string(&analyze(&linked_pair().1, &[std_summary()])).unwrap();
+    assert!(
+        !text.contains("raises"),
+        "a report without raises writes no field: {text}"
+    );
+}

@@ -626,6 +626,12 @@
       "id": "stmt.lookup_else"
     },
     {
+      "case": "stmt-raise",
+      "description": "Leaves the function, and every caller up to the framework that started it, with `x`, a value of an extern type (Java: `throw` of a jar's unchecked exception): no result is returned. The function lists the type in `raises`.",
+      "family": "statement",
+      "id": "stmt.raise"
+    },
+    {
       "case": "stmt-return",
       "description": "the `return` statement",
       "family": "statement",
@@ -917,6 +923,10 @@
           "note": "Case stmt-lookup-else: its module does not use the feature.",
           "state": "refused"
         },
+        "stmt.raise": {
+          "note": "Case stmt-raise: its module does not use the feature.",
+          "state": "refused"
+        },
         "stmt.return": "verified",
         "stmt.send": "verified",
         "stmt.switch": "verified",
@@ -1052,6 +1062,10 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "verified",
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: codespec-write-go: case.go:12: function Check: raise has no Go mapping: the writer does not write leaving a function, and every caller up to the framework, by a raised value.",
+          "state": "refused"
+        },
         "stmt.return": "verified",
         "stmt.send": "verified",
         "stmt.switch": "verified",
@@ -1184,6 +1198,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "verified",
+        "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "verified",
         "stmt.switch": "verified",
@@ -1364,6 +1379,10 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "verified",
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: Check (case.go:12): raise: the Rust writer has no mapping for leaving a function by a raised value.",
+          "state": "refused"
+        },
         "stmt.return": "verified",
         "stmt.send": "verified",
         "stmt.switch": "verified",
@@ -1514,6 +1533,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
         "stmt.switch": "verified",
@@ -1643,6 +1663,7 @@
         "stmt.incr": "none",
         "stmt.let": "none",
         "stmt.lookup_else": "none",
+        "stmt.raise": "none",
         "stmt.return": "none",
         "stmt.send": "none",
         "stmt.switch": "none",
@@ -1850,6 +1871,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
         "stmt.switch": "verified",
@@ -1997,6 +2019,7 @@
         "stmt.incr": "none",
         "stmt.let": "none",
         "stmt.lookup_else": "none",
+        "stmt.raise": "none",
         "stmt.return": "none",
         "stmt.send": "none",
         "stmt.switch": "none",
@@ -2129,6 +2152,7 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
         "stmt.switch": "verified",
@@ -2300,6 +2324,10 @@
         "stmt.incr": "verified",
         "stmt.let": "verified",
         "stmt.lookup_else": "verified",
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: codespec-write-c: refused Check (case.go:12): raise: the C writer has no mapping for leaving a function by a raised value.",
+          "state": "refused"
+        },
         "stmt.return": "verified",
         "stmt.send": "verified",
         "stmt.switch": "verified",

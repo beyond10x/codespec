@@ -6,6 +6,23 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `cir/1` has `raise`, a statement that leaves a function and every caller up to the framework
+  with a value of an extern type, and `raises` on a function, the extern types it can raise, its
+  own and its callees', outside its results. The entry kind `exception-mapper` names the
+  function the framework hands them to, `on` the extern type it takes. Additive: a document
+  without them reads and writes byte for byte as before. Strict reading admits `raise` only in a
+  function an entry names or one only callers listing what it raises reach, and refuses a
+  `raises` that differs from what the bodies raise. `codespec effects` lists a function's
+  `raises` with its callees', `codespec check` (`lock-without-unlock`) finds a lock held at a
+  `raise` or at a call of a function that raises, `codespec query` has the relation `raises`
+  and counts a `raise` as an exit, and `codespec eval` stops at a `raise` by name with its node
+  id. `codespec-write-go` and `codespec-write-c` refuse a function holding `raise` by name with
+  exit 1, `codespec-write-rust` lists it in `refusals.json`; no reader or writer claims
+  `stmt.raise`. The kit case `stmt-raise` is written by hand.
+- `codespec-read-java` reads, in a project, a `throw new X(…)` of a jar's unchecked exception in a
+  method an entry names as `raise`, a `@Provider` `ExceptionMapper` as an `exception-mapper` entry,
+  and prints a path parameter only the framework passes. The Quarkus quickstart reads with 8
+  refusals, down from 13 (`adapters/java/README.md`).
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
   `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a

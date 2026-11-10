@@ -61,6 +61,7 @@ fn manifest() -> AdapterManifest {
             "expr.zero",
             "intrinsic.sorted_keys",
             "stmt.foreign",
+            "stmt.raise",
             "type.any",
             "type.array",
             "type.extern",

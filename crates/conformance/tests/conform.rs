@@ -123,12 +123,12 @@ fn feature<'a>(r: &'a Report, id: &str) -> &'a codespec_conformance::conform::Fe
 }
 
 #[test]
-fn a_family_wildcard_less_one_id_expands_to_the_other_fifteen_statement_ids() {
+fn a_family_wildcard_less_one_id_expands_to_the_other_sixteen_statement_ids() {
     let kit = read_kit(&kit()).unwrap();
     let bytes = br#"{"format":"codespec-adapter/1","role":"writer","lang":"x","version":"1",
         "cir":"cir/1","features":["stmt.*"],"not":["stmt.send"]}"#;
     let (_, claimed) = claim(bytes, &kit).unwrap();
-    assert_eq!(claimed.len(), 15, "{claimed:?}");
+    assert_eq!(claimed.len(), 16, "{claimed:?}");
     assert!(claimed.iter().all(|id| id.starts_with("stmt.")));
     assert!(!claimed.contains("stmt.send"));
     let all_statements = kit
@@ -136,7 +136,7 @@ fn a_family_wildcard_less_one_id_expands_to_the_other_fifteen_statement_ids() {
         .iter()
         .filter(|f| f.id.starts_with("stmt."))
         .count();
-    assert_eq!(all_statements, 16);
+    assert_eq!(all_statements, 17);
 }
 
 /// The Go writer and runner, built once with `go build`.

@@ -296,8 +296,9 @@ pub enum Cmd {
     Query(query::Args),
     /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
     /// print one line per call, as the conformance kit's runners print them. Exit 0 when every
-    /// call is made, 1 when the run stops (a foreign statement executed, an extern without a
-    /// built-in handler, a panic, the step budget), naming the node by its id on standard error,
+    /// call is made, 1 when the run stops (a foreign statement executed, a raise reached, an
+    /// extern without a built-in handler, a panic, the step budget), naming the node by its id on
+    /// standard error,
     /// 2 when the module or the calls are refused. Limits: calls nest at most 1000 deep, and
     /// statements and expressions at most 10,000 levels counted through calls; a type
     /// nests at most 100 deep inside a value; a zero value takes at most 4,194,304 cells; a

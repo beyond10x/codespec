@@ -21,12 +21,15 @@ import "strings"
 //   - stmt.lookup_else: this reader writes a comma-ok `let` and an `if`; only the lookup-guard
 //     pass makes them a `lookup_else`, and a reader's claim covers only what the reader prints
 //     (docs/conformance.md § 5).
+//   - stmt.raise: Go has no statement that leaves a function with a value of another package's
+//     type to the framework that started it; the kit case is written by hand from the Java
+//     reader's output.
 var (
 	claimFeatures = []string{
 		"assign.*", "decl.*", "expr.*", "intrinsic.*", "op.*", "sem.*", "stmt.*", "type.*", "unop.*",
 	}
 	claimNot = []string{
-		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "type.unit",
+		"decl.union", "expr.zero", "intrinsic.sorted_keys", "stmt.lookup_else", "stmt.raise", "type.unit",
 	}
 )
 

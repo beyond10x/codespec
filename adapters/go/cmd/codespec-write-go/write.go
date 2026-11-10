@@ -994,6 +994,9 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 		return []ast.Stmt{get, &ast.IfStmt{Cond: &ast.UnaryExpr{Op: token.NOT, X: ident(ok)}, Body: &ast.BlockStmt{List: then}}}
 	case "foreign":
 		return w.foreign(s)
+	case "raise":
+		w.refuse("function %s: raise has no Go mapping: the writer does not write leaving a function, and every caller up to the framework, by a raised value", printable(w.fn.key()))
+		return nil
 	}
 	w.refuse("statement %q has no Go form", s.K)
 	return nil
