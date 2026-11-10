@@ -131,6 +131,8 @@ will read Rust, Java and Groovy documents too. They will be tested on Go only.
 
 **What you get.** One set of checks for every language codespec reads.
 
+For security review, [codesec](/docs/codesec) is a private pattern library run on the same engine.
+
 ## Neighbours
 
 [Capslock](https://github.com/google/capslock) from Google answers use 2 for Go packages. Its

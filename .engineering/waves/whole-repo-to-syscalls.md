@@ -40,5 +40,4 @@ syscall-barrier ran as one unit (`impl/syscall-path`).
 | 3 | story:library-syscall-map | impl/library-syscall-map (7332deb), merge 584f4fa, regenerated 5639c01 | implemented; batch gate on 626c526, exit 0 |
 | 4 | story:call-trace-view | impl/call-trace-view, merge 5dcc2fb | implemented; batch gate on 5dcc2fb, exit 0 on the second run |
 
-Outside the plan, same branch: `docs/static-analysis` (public docs, merged 62351d8) and
-`hunt/library-issues` (35 issues in the measured library found from cir/1 only, findings kept outside the repository, merged).
+Outside the plan, same branch: `docs/static-analysis` (public docs, merged 62351d8).
