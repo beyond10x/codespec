@@ -1,0 +1,7 @@
+stratum 1
+  reached_from_main(G) :- func{id: F, name: "main"}, reaches(F, G).
+  calls_log(F) :- call{func: F, callee: "example.com/shop.log"}.
+stratum 2
+  quiet(F) :- reached_from_main(F), !calls_log(F).
+query
+  ?- quiet(F), N = count{call{func: F, site: S}}.

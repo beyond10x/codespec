@@ -1,0 +1,20 @@
+[package]
+name = "b10x-codespec-query"
+description = "cq, a typed Datalog over a fact base derived from cir/1 documents: the fact base, its cache and the interpreter codespec query runs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_query"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-passes = { path = "../passes" }
+b10x-codespec-effects = { path = "../effects" }
+serde_json.workspace = true
+
+[dev-dependencies]
+b10x-codespec-check = { path = "../check" }

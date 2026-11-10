@@ -1,0 +1,6 @@
+{
+  "lock-without-unlock": {
+    "waits_for": ["§ 5.3", "§ 8"],
+    "why": "it follows each Lock along every path of its body to a return and matches the Unlock, deferred or not, to the Lock's receiver: a property over cfg_next (§ 5.3) and the defer statement with its receiver in cir/1 (§ 8)"
+  }
+}

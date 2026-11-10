@@ -1,0 +1,1 @@
+example.com/plugin.main	possible: example.com/plugin.hook at example.com/plugin/plugin.go:12 (opaque function: declared without a body)

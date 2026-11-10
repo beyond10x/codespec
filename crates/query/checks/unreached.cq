@@ -1,0 +1,12 @@
+// unreached: every function codespec reach (rta) does not reach from every main.main and init,
+// in a module some function of which other than its init is reached, and not in a file whose
+// name marks generated code.
+
+in_program(M) :- reached{func: F}, func{id: F, module: M, kind: K}, K != "init".
+
+unreached(Pos, F) :- func{id: F, module: M, pos: Pos, kind: K}, K != "lambda", in_program(M),
+                     !reached{func: F},
+                     !(Pos ~ "(\.pb\.go|\.pb\.gw\.go|_gen\.go|\.gen\.go|_generated\.go):[0-9]+$"),
+                     !(Pos ~ "(^|/)zz_generated[^/]*:[0-9]+$").
+
+?- unreached(Pos, F).

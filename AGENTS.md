@@ -15,6 +15,7 @@ the site.
 | `crates/passes` (`b10x-codespec-passes`) | the passes: `lookup-guard` and the facts writers read; rules in its crate doc |
 | `crates/effects` (`b10x-codespec-effects`) | the effect summary format `codespec-effects/1`, the closed effect vocabulary and the effects report `codespec-effects-report/1` that `codespec effects` prints; defined in its crate doc, design in `docs/static-analysis.md` |
 | `crates/check` (`b10x-codespec-check`) | the built-in defect checks `codespec check` runs over a set of `cir/1` documents and the report `codespec-check-report/1`; what each check matches is its crate doc, its run on google/capslock `docs/checks-capslock.md` |
+| `crates/query` (`b10x-codespec-query`) | cq, the typed Datalog `codespec query` runs: the fact base (`--schema`), its cache `.cq/<digest>.facts`, the interpreter; language and rules in its crate doc, design in `docs/query-language.md`; the checks re-expressed in cq in `checks/`, those that wait for a design section in `checks/waiting.json` |
 | `summaries/` | checked-in `codespec-effects/1` summaries of standard libraries: `go-std.effects.json` |
 | `crates/harness` (`b10x-codespec-harness`) | the comparison harness: trace format, generator and byte-for-byte comparison, defined in its crate doc |
 | `crates/cli` (`b10x-codespec-cli`, library `codespec_cli`, binary `codespec`) | `validate`, `schema`, `features`, `read`, `pass`, `write`, `conform`, `harness`; runs adapters and validates what crosses to and from them. The clap `Cli` is in `src/lib.rs` so `codespec-docs` can walk it |

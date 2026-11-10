@@ -1,0 +1,84 @@
+// dropped-error: in a read body, a call whose last result is error used as a statement, or bound
+// by a let or an assign whose last name is _; not one ignore names, and not a method call on a
+// value of a never-fail type or on a parameter every caller fills with one.
+
+names ignore = ["fmt.Print", "fmt.Printf", "fmt.Println", "fmt.Fprint", "fmt.Fprintf", "fmt.Fprintln"].
+names never-fail = ["strings.Builder", "bytes.Buffer", "hash.Hash", "hash.Hash32", "hash.Hash64"].
+
+ends_in_error(T, 1) :- type{id: T, kind: "error"}.
+ends_in_error(T, N) :- type{id: T, kind: "tuple", fields: N}, type_elem{type: T, last: true, t: E},
+                       type{id: E, kind: "error"}.
+
+dropped(S, X) :- stmt{id: S, kind: "expr"}, expr{parent: S, slot: "x", id: X, t: T},
+                 ends_in_error(T, _).
+dropped(S, X) :- stmt{id: S, kind: "let"}, let_name{stmt: S, last: true, name: "_"},
+                 expr{parent: S, slot: "rhs", index: 0, id: X, t: T},
+                 R = count{ expr{parent: S, slot: "rhs"} }, R == 1,
+                 ends_in_error(T, N), N = count{ let_name{stmt: S} }.
+dropped(S, X) :- stmt{id: S, kind: "assign", op: ""},
+                 expr{parent: S, slot: "lhs", index: J, kind: "var", name: "_"},
+                 N = count{ expr{parent: S, slot: "lhs"} }, J == N - 1,
+                 expr{parent: S, slot: "rhs", index: 0, id: X, t: T},
+                 R = count{ expr{parent: S, slot: "rhs"} }, R == 1, ends_in_error(T, N).
+
+// The names a call goes by, as codespec check matches a list entry against it: its name,
+// <path>.<name>, <type>.<name> and its callee.
+call_name(S, Nm) :- call{site: S, name: Nm}, Nm != "".
+call_name(S, C) :- call{site: S, callee: C, name: Nm}, Nm != "".
+call_name(S, PN) :- call{site: S, path: P, name: Nm}, Nm != "", concat(P, ".", Q), concat(Q, Nm, PN).
+call_name(S, RN) :- call{site: S, path: P, type: T, name: Nm}, Nm != "", T != "",
+                    concat(P, ".", Q), replace(T, Q, "", R), concat(R, ".", R2), concat(R2, Nm, RN).
+ignored(S) :- call_name(S, N), N in @names.ignore.
+
+// A value without the conversions to an interface, & and * around it, from the arguments of
+// calls of the set and the receivers of method calls.
+peelable(Y) :- expr{id: Y, kind: "to_iface"}.
+peelable(Y) :- expr{id: Y, kind: "unop", op: ~"^[&*]$"}.
+recv_of(X, R) :- expr{id: X, kind: ~"^(method|extern_method|iface_call)$", x: R}.
+start(A) :- recv_of(_, A).
+start(A) :- site(_, X, _), expr{parent: X, slot: "args", id: A}.
+peel(A, A) :- start(A).
+peel(A, B) :- peel(A, Y), expr{id: Y, kind: "to_iface", x: B}.
+peel(A, B) :- peel(A, Y), expr{id: Y, kind: "unop", op: ~"^[&*]$", x: B}.
+bare(A, B) :- peel(A, B), !peelable(B).
+
+type_name(T, N) :- type{id: T, kind: ~"^(extern|named)$", path: P, name: Nm}, concat(P, ".", Q),
+                   concat(Q, Nm, N).
+type_name(T, N) :- type{id: T, kind: "ptr", elem: E}, type_name(E, N).
+typed(B) :- expr{id: B, t: T}, type_name(T, N), N in @names.never-fail.
+
+// B is the parameter at P of the declared function I (the first of that name).
+param_at(B, I, P) :- expr{id: B, kind: "var", name: Nm, func: I}, param{func: I, index: P, name: Nm},
+                     P >= 0, P = min{ Q : param{func: I, index: Q, name: Nm}, Q >= 0 }.
+
+// The calls of read bodies: one of a function or method of the set linked to G, or one through
+// an interface, which counts for every method of its name.
+site(G, X, I) :- expr{id: X, kind: ~"^(call|method)$", func: I}, calls{site: X, target: G}.
+site(G, X, I) :- expr{id: X, kind: "iface_call", name: N, func: I}, func{id: G, name: N, recv: R},
+                 R != "".
+// A function used as a value, or listed by an opaque function or a foreign statement as a
+// reference, may be called with anything.
+anything(G) :- call{site: S, kind: "ref"}, calls{site: S, target: G}.
+
+candidate(G, P) :- site(G, _, _), !anything(G), func{id: G, kind: ~"^(func|method|init)$"},
+                   param{func: G, index: P}, P >= 0.
+
+// The greatest fixed point of codespec check, as its complement: a parameter some call fills
+// with a value that is neither of a never-fail type nor such a parameter of its caller.
+filled_otherwise(G, P) :- candidate(G, P), site(G, X, _), !expr{parent: X, slot: "args", index: P}.
+filled_otherwise(G, P) :- candidate(G, P), site(G, X, I), expr{parent: X, slot: "args", index: P, id: A},
+                          bare(A, B), !typed(B), !param_at(B, I, _).
+filled_otherwise(G, P) :- candidate(G, P), site(G, X, I), expr{parent: X, slot: "args", index: P, id: A},
+                          bare(A, B), !typed(B), param_at(B, I, Q), !candidate(I, Q).
+filled_otherwise(G, P) :- candidate(G, P), site(G, X, I), expr{parent: X, slot: "args", index: P, id: A},
+                          bare(A, B), !typed(B), param_at(B, I, Q), filled_otherwise(I, Q).
+never_fail_param(G, P) :- candidate(G, P), !filled_otherwise(G, P).
+
+never_fails(X) :- recv_of(X, R), bare(R, B), typed(B).
+never_fails(X) :- recv_of(X, R), bare(R, B), expr{id: X, func: I}, param_at(B, I, P),
+                  never_fail_param(I, P).
+
+reported(Pos, F) :- dropped(S, X), call{site: X, kind: K}, K != "ref", !ignored(X),
+                    !never_fails(X), stmt{id: S, func: F, pos: Pos}.
+
+?- reported(Pos, F).

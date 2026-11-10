@@ -1,0 +1,20 @@
+// insecure-random: a call into a random package from a function reached, by the static call
+// graph, from a function one of whose words is a token word (the function itself included).
+// Calls inside the random packages themselves are not reported.
+
+names random = ["math/rand", "math/rand/v2"].
+names token = [
+  "token", "key", "nonce", "id", "uuid", "secret", "salt", "session", "password", "cookie",
+  "otp", "csrf", "mask", "challenge"
+].
+
+token_word(W) :- E in @names.token, word(E, _, W).
+root(F) :- func{id: F, name: N}, word(N, _, W), token_word(W).
+
+from_root(F) :- root(F).
+from_root(G) :- from_root(F), call{func: F, site: S}, calls{site: S, target: G}.
+
+random_call(Pos, F) :- call{func: F, kind: K, path: P, pos: Pos}, K != "ref", P in @names.random,
+                       func{id: F, module: M}, !(M in @names.random), from_root(F).
+
+?- random_call(Pos, F).

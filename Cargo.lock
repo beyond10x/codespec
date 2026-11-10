@@ -73,6 +73,7 @@ dependencies = [
  "b10x-codespec-harness",
  "b10x-codespec-model",
  "b10x-codespec-passes",
+ "b10x-codespec-query",
  "clap",
  "serde",
  "serde_json",
@@ -122,6 +123,17 @@ name = "b10x-codespec-passes"
 version = "0.6.1"
 dependencies = [
  "b10x-codespec-model",
+]
+
+[[package]]
+name = "b10x-codespec-query"
+version = "0.6.1"
+dependencies = [
+ "b10x-codespec-check",
+ "b10x-codespec-effects",
+ "b10x-codespec-model",
+ "b10x-codespec-passes",
+ "serde_json",
 ]
 
 [[package]]

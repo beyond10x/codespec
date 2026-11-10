@@ -30,6 +30,15 @@ fn main() -> ExitCode {
             }
         };
     }
+    if let Cmd::Query(args) = &command {
+        return match codespec_cli::query::run(args) {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("codespec: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
     match run(command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -316,6 +325,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
             Ok(())
         }
         Cmd::Check { .. } => check(cmd).map(|_| ()),
+        Cmd::Query(args) => codespec_cli::query::run(&args).map(|_| ()),
         Cmd::Harness {
             example,
             seeds,
