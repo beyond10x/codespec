@@ -36,6 +36,7 @@ tasks:
       - task: harness
       - task: conformance-cases
       - task: eval-kit
+      - task: eval-diff
       - task: conformance-kit
       - task: groovy-fixture-check
       - task: docs-check
@@ -47,7 +48,7 @@ tasks:
       - cargo run --locked -q -p codespec-docs -- generate
 
   docs-check:
-    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers and the evaluator's cir writer, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
@@ -128,8 +129,8 @@ tasks:
     cmds:
       - mkdir -p {{.ADAPTERS}}
       - cd adapters/go && go build -o {{.ADAPTERS}}/ ./cmd/...
-      - cargo build --locked -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p codespec-read-c
-      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust target/debug/codespec-run-rust target/debug/codespec-write-c target/debug/codespec-run-c target/debug/codespec-read-c {{.ADAPTERS}}/
+      - cargo build --locked -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p codespec-read-c -p b10x-codespec-eval
+      - cp target/debug/codespec-write-rust target/debug/codespec-read-rust target/debug/codespec-run-rust target/debug/codespec-write-c target/debug/codespec-run-c target/debug/codespec-read-c target/debug/codespec-write-cir target/debug/codespec-run-cir {{.ADAPTERS}}/
       - rm -rf target/java/classes
       - mkdir -p target/java/classes
       - '{{.JDK}}/bin/javac --release 17 -Xlint:all -Werror -d target/java/classes $(find adapters/java/src adapters/jvm/src -name "*.java" | sort)'
@@ -425,6 +426,13 @@ tasks:
     desc: Run every conformance kit case twice with the evaluator on its calls.json (crates/eval/tests/kit.rs, rules in codespec_eval::kit) and fail when the two runs differ, a case does not print its expected.txt, a case listed in crates/eval/tests/kit-stops.txt does not stop with its listed line or prints its expected.txt after all, or an unlisted case stops. Needs Rust only.
     cmds:
       - cargo test --locked -q -p b10x-codespec-eval --test kit -- --nocapture
+
+  eval-diff:
+    desc: Per-function differential runs (codespec_eval::diff). Every exported function of examples/series and examples/inventory gets 200 seeded calls, a method through a generated probe that builds its receiver with drawn setup calls (one that would return an error skipped), and the probe module is written and run by each writer and runner pair, the evaluator's (codespec-write-cir, codespec-run-cir), Go's and Rust's; the Go and Rust outputs must equal the evaluator's byte for byte. Inventory.Find is not run as Rust, whose writer refuses every call of a comma-ok function; a refusal not listed with --refused, a listed one the writer no longer makes, or a listing for an example not run, fails, as does a function fewer than half of whose seeds reach it. A correctness comparison, not a measurement; nothing is timed.
+    deps: [build]
+    cmds:
+      - cargo build --locked -q -p b10x-codespec-eval --bin codespec-eval-diff
+      - target/debug/codespec-eval-diff --adapters {{.ADAPTERS}} --build-dir target/eval-diff --refused inventory:rust:Inventory.Find examples/series examples/inventory
 
   conformance-kit:
     desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
