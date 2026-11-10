@@ -151,10 +151,10 @@
 //! | `*(T *)cs_chan_recv(ch)` | `unop` `<-` |
 //! | `cs_box(&desc, &v, sizeof(T))`, `desc` a `static const cs_type desc = {CS_K_…, "name", NULL};` of `T`'s kind and Go's name of `T` (`int`, `int64`), or for a newtype `{CS_K_NAMED, "Name", &<desc of the type it is over>}` | the value as `any` |
 //! | `static struct cs_error_s X_s = {{"…", n}, NULL, NULL};` and `cs_error const X = &X_s;` | `error_var` `X` |
-//! | a message function `static cs_string m(const void *self) { return T_Error(*(const T *)self); }`, the C writer's text, `T` a struct or newtype of the module and `cs_string T_Error(T e) { … }` defined in its file | `T_Error` is the method `Error` of `T` with receiver `e`, typed by its C types and needing no line; `m` is no function. A call of `T_Error` or `m`, or either as a value, is refused: a method call is not read |
+//! | a message function `static cs_string m(const void *self) { return T_Error(*(const T *)self); }`, the C writer's text, `T` a struct without a field `Error` or a newtype of the module and `cs_string T_Error(T e) { … }` defined in its file | `T_Error` is the method `Error` of `T` with receiver `e`, typed by its C types and needing no line; `m` is no function. A call of `T_Error` or `m`, or either as a value, is refused: a method call is not read |
 //! | `cs_error_of(m, cs_dup(&v, sizeof v))` (or `sizeof(T)`), `m` a message function of `T`, `v` a value of `T` | `to_error` of `v` |
-//! | `R f(…, int64_t cs_n, ...)` under `/* codespec: func f(…, ...T) R */`, its body beginning `cs_slice xs = {0}; va_list cs_ap; va_start(cs_ap, cs_n); for (int64_t cs_i = 0; cs_i < cs_n; cs_i++) { T cs_v = va_arg(cs_ap, T); xs = cs_append(xs, &cs_v, sizeof(T)); } va_end(cs_ap);`, `T` the C type of the element type, `cs_n` and `cs_ap` used no further | a variadic parameter `xs ...T`; the body is what follows. An element type C promotes through `...` (an integer narrower than `int`, `_Bool`, `float`) is refused, as `va_arg` cannot read it |
-//! | `f(…, n, a1, …, an)` of such an `f`, `n` the constant number of the arguments after it, each of the element's C type as it is passed | `call` of `f` with `a1, …, an` as its variadic arguments |
+//! | `R f(…, int64_t cs_n, ...)` under `/* codespec: func f(…, ...T) R */`, its body beginning `cs_slice xs = {0}; va_list cs_ap; va_start(cs_ap, cs_n); for (int64_t cs_i = 0; cs_i < cs_n; cs_i++) { T cs_v = va_arg(cs_ap, T); xs = cs_append(xs, &cs_v, sizeof(T)); } va_end(cs_ap);`, `T` the C type of the element type, `cs_n` and `cs_ap` used no further; the text and, statement by statement, clang's tree of it (so a macro of the module that changes the prologue or hides a call in it is refused) | a variadic parameter `xs ...T`; the body is what follows. An element type C promotes through `...` (an integer narrower than `int`, `_Bool`, `float`) is refused, as `va_arg` cannot read it |
+//! | `f(…, n, a1, …, an)` of such an `f` through a prototype ending in `int64_t cs_n, ...`, `n` the constant number of the arguments after it, each of the element's C type as it is passed | `call` of `f` with `a1, …, an` as its variadic arguments |
 //! | a chain from `cs_sb_new()` of `cs_sb_bytes(b, "…", n)`, `cs_fmt_str`, `cs_fmt_int`, `cs_fmt_bool`, `cs_fmt_error`, ended by `cs_sb_string`, `cs_sb_error` or `cs_sb_println` | `sprintf`, `errorf` (`%s %d %t %v`), `println` (values separated by one space) |
 //! | `<Name>_result t = <Name>(…); T0 x0 = t.r0; …` (`t` used no further) | `let x0, … := <Name>(…)` |
 //! | `return (<Name>_result){e0, e1, …};` | `return e0, e1, …` |
@@ -214,7 +214,7 @@
 //!
 //! | the C writer | cir/1 |
 //! |---|---|
-//! | `static` helpers `<m>_cs_append_<T>`, `_send_`, `_put_`, `_get_`, `_find_`, `_box_`, each the writer's exact text around one runtime call taking `&v` | that runtime call, with `v` |
+//! | `static` helpers `<m>_cs_append_<T>`, `_send_`, `_put_`, `_get_`, `_find_`, `_box_`, each the writer's exact text around one runtime call taking `&v`, and that call in clang's tree (so a macro of the module that changes it is no helper) | that runtime call, with `v` |
 //! | `{ cs_slice cs_rN = xs; for (int64_t cs_iN = 0, cs_nN = cs_rN.len; cs_iN < cs_nN; cs_iN++) { T v = ((T *)cs_rN.p)[cs_iN]; … } }`, likewise over `cs_map_len` with `cs_map_key`/`cs_map_val` and over an `int64_t` | `range`; a body using `cs_rN`, `cs_iN` or `cs_nN` is refused |
 //! | `{ T i = e; for (; c; post) { … } }` | `for` with `init` |
 //! | `(void)f(x);` | `expr` |
@@ -394,29 +394,44 @@ fn unprefix(m: Module, px: &str) -> Module {
         }
         free
     });
+    // A name is a whole string; a text (a literal's spelling, a comment, a foreign statement's
+    // source, an error's message) is never one and stays byte for byte.
     fn walk(v: &mut serde_json::Value, px: &str, names: &BTreeSet<String>) {
         match v {
             serde_json::Value::String(s) => {
-                // A layout entry `func:<T>.<method>` names its method by its receiver's type.
-                let own = |n: &str| {
-                    names.contains(n) || n.split_once('.').is_some_and(|(t, _)| names.contains(t))
-                };
-                let (kind, n) = match s.split_once(':') {
-                    Some((k, n)) if own(n) => (format!("{k}:"), n.to_string()),
-                    _ => (String::new(), s.clone()),
-                };
-                if names.contains(&n) {
-                    *s = format!("{kind}{}", &n[px.len()..]);
-                } else if let Some((t, m)) = n.split_once('.')
-                    && !kind.is_empty()
-                    && names.contains(t)
-                {
-                    *s = format!("{kind}{}.{m}", &t[px.len()..]);
+                if names.contains(s.as_str()) {
+                    *s = s[px.len()..].to_string();
                 }
             }
             serde_json::Value::Array(a) => a.iter_mut().for_each(|x| walk(x, px, names)),
-            serde_json::Value::Object(o) => o.values_mut().for_each(|x| walk(x, px, names)),
+            serde_json::Value::Object(o) => {
+                for (k, x) in o.iter_mut() {
+                    match (k.as_str(), x) {
+                        ("doc" | "src" | "value" | "message", serde_json::Value::String(_)) => {}
+                        ("layout", serde_json::Value::Array(a)) => {
+                            a.iter_mut().for_each(|l| layout(l, px, names));
+                        }
+                        (_, x) => walk(x, px, names),
+                    }
+                }
+            }
             _ => {}
+        }
+    }
+    // A layout entry `<kind>:<name>`, or `func:<T>.<method>`, naming a method by its receiver's
+    // type.
+    fn layout(l: &mut serde_json::Value, px: &str, names: &BTreeSet<String>) {
+        let serde_json::Value::String(s) = l else {
+            return;
+        };
+        let Some((kind, n)) = s.split_once(':') else {
+            return;
+        };
+        let (t, method) = n
+            .split_once('.')
+            .map_or((n, ""), |(t, _)| (t, &n[t.len()..]));
+        if names.contains(t) {
+            *s = format!("{kind}:{}{method}", &t[px.len()..]);
         }
     }
     walk(&mut v, px, &names);
@@ -428,6 +443,63 @@ fn unprefix(m: Module, px: &str) -> Module {
 /// `s` with each run of white space one space: C text compared with a form the reader reads.
 pub(crate) fn squash(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Whether the C writer's helper `n`, whose text is the writer's, is that text in clang's tree,
+/// where a macro of the module can give it another meaning (`#define cs_append(s, p, n) (s)`):
+/// one statement, a call of the runtime function `runtime`, each argument referring by id to the
+/// parameters `params` (or the `cs_type` `desc`) in the shape the text spells.
+fn helper_tree(n: &J, runtime: &str, params: &[&J], desc: &str) -> bool {
+    let p = |i: usize| params.get(i).map_or("", |p| p.s("id"));
+    let decl = |e: &J, id: &str| {
+        let e = rtbody::bare(e);
+        e.kind() == "DeclRefExpr" && e.get("referencedDecl").s("id") == id
+    };
+    let addr = |e: &J, f: &dyn Fn(&J) -> bool| {
+        let e = rtbody::bare(e);
+        e.kind() == "UnaryOperator" && e.s("opcode") == "&" && matches!(e.inner(), [x] if f(x))
+    };
+    let size = |e: &J, id: &str| {
+        let e = rtbody::bare(e);
+        e.kind() == "UnaryExprOrTypeTraitExpr"
+            && e.s("name") == "sizeof"
+            && matches!(e.inner(), [x] if decl(x, id))
+    };
+    let Some(body) = n.inner().iter().find(|k| k.kind() == "CompoundStmt") else {
+        return false;
+    };
+    let [s] = body.inner() else {
+        return false;
+    };
+    let call = match (s.kind(), s.inner()) {
+        ("ReturnStmt", [e]) => rtbody::bare(e),
+        ("CallExpr", _) => s,
+        _ => return false,
+    };
+    if call.kind() != "CallExpr" {
+        return false;
+    }
+    let callee = rtbody::bare(&call.inner()[0]);
+    let named = callee.kind() == "DeclRefExpr"
+        && callee.get("referencedDecl").s("kind") == "FunctionDecl"
+        && callee.get("referencedDecl").s("name") == runtime;
+    let by = |i: usize| move |x: &J| decl(x, p(i));
+    named
+        && match (runtime, &call.inner()[1..]) {
+            ("cs_append", [a, b, c]) => decl(a, p(0)) && addr(b, &by(1)) && size(c, p(1)),
+            ("cs_chan_send" | "cs_map_put" | "cs_map_find", [a, b]) => {
+                decl(a, p(0)) && addr(b, &by(1))
+            }
+            ("cs_map_get", [a, b, c]) => decl(a, p(0)) && addr(b, &by(1)) && decl(c, p(2)),
+            ("cs_box", [a, b, c]) => {
+                let named_desc = |x: &J| {
+                    let x = rtbody::bare(x);
+                    x.kind() == "DeclRefExpr" && x.get("referencedDecl").s("name") == desc
+                };
+                addr(a, &named_desc) && addr(b, &by(0)) && size(c, p(0))
+            }
+            _ => false,
+        }
 }
 
 /// The position of the declaration of the module named `n`.
@@ -862,7 +934,9 @@ impl<'s> Assembly<'s> {
             _ => return None,
         };
         let have = src_of(self.src, n);
-        (squash(&have) == squash(&text)).then(|| (runtime.to_string(), t))
+        let desc = format!("{px}cs_type_{suffix}");
+        (squash(&have) == squash(&text) && helper_tree(n, runtime, &params, &desc))
+            .then(|| (runtime.to_string(), t))
     }
 
     /// A message function of `cs_error_of`, the C writer's exact text `static cs_string
@@ -1706,13 +1780,29 @@ impl<'s> Assembly<'s> {
             .iter()
             .find(|p| p.kind() == "ParmVarDecl")
             .expect("one parameter, as the message function checked");
-        let recv = match self.tables.spelled(unit, t) {
-            Ok(r @ Type::Named { .. }) => r,
-            r => {
-                let why = format!(
-                    "the method Error of {t}, which is not a struct or newtype of the module{}",
-                    r.err().map(|e| format!(": {e}")).unwrap_or_default()
-                );
+        let recv = self.tables.spelled(unit, t);
+        let why = match &recv {
+            // A field and a method of one name, which cir/1 and Go do not have.
+            Ok(Type::Named { name: tn, .. }) => self
+                .tables
+                .structs
+                .get(tn)
+                .is_some_and(|fs| fs.iter().any(|f| f == "Error"))
+                .then(|| {
+                    format!("the method Error of {t}, which has a field Error: a field and a method of one name")
+                }),
+            r => Some(format!(
+                "the method Error of {t}, which is not a struct or newtype of the module{}",
+                r.as_ref()
+                    .err()
+                    .map(|e| format!(": {e}"))
+                    .unwrap_or_default()
+            )),
+        };
+        let recv = match (recv, why) {
+            (Ok(r), None) => r,
+            (_, why) => {
+                let why = why.expect("a reason for anything but a named type");
                 self.refuse(n, format!("function {name}"), why.clone());
                 let calls = Body::new(&self.tables, unit, self.src, decls, Vec::new()).calls(body);
                 self.opaque.push(Opaque {

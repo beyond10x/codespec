@@ -21,10 +21,15 @@ Every change a user of `codespec` or of `cir/1` would notice.
   prologue that appends each `va_arg(cs_ap, T)` to the parameter's slice, called with the
   constant count first. It refuses a near miss of each at its line: `cs_error_of` of a value of
   another type than its message function's, a message function calling other than `T_Error`, a
-  call of `T_Error`, `va_arg` of another type than the element's, a variadic argument of
-  another C type, a count that is not the number of arguments, a body without the prologue, the
-  count used after it, and an element type C promotes through `...`. It claims `expr.to_error`
-  and `decl.variadic`, from new kit sources `expr-to-error/c/case.c` and
+  call of `T_Error`, a `T_Error` of a struct with a field `Error`, `va_arg` of another type than
+  the element's, a variadic argument of another C type, a count that is not the number of
+  arguments, a call through a declaration other than a prototype ending in `int64_t cs_n, ...`,
+  a body without the prologue or whose prologue a macro of the module changes or hides a call
+  in, the count used after it, and an element type C promotes through `...`. A C writer's
+  helper whose text a macro of the module changes is no longer read as the runtime call it
+  spells, and the C writer's prefix comes off names only, never off a string literal, a comment
+  or a message. It claims
+  `expr.to_error` and `decl.variadic`, from new kit sources `expr-to-error/c/case.c` and
   `decl-variadic-local/c/case.c`: 105 kit features, up from 103.
 - `codespec-read-java` claims `expr.to_error` and `stmt.lookup_else`, 105 features, up from 103,
   each in a package read. An exception of the checked-exception hierarchy carrying final fields of

@@ -213,7 +213,8 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 - The kit's C runtime header `conformance/c/codespec_rt.h` is the C writer's:
   `adapters/c-read/tests/reader.rs::the_kit_s_runtime_header_is_the_one_the_c_writer_writes`; the C
   reader refuses a near miss of each runtime form it reads: `adapters/c-read/tests/runtime.rs`,
-  `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`; what the C writer
+  `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`,
+  `adapters/c-read/tests/to_error_variadic.rs`; what the C writer
   writes for the kit reads back with at least 100 modules free of refusals: `task c-round-trip`.
 - A reader refuses a source past its stated limits of size and nesting with exit 1 and a message,
   never a crash (limits in each reader's crate doc or README and `docs/conformance.md`):

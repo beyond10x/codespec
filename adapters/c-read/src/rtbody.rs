@@ -1823,6 +1823,26 @@ impl<'a> Body<'a> {
                 "a call of {name}, whose variadic parameter is not a slice"
             ));
         };
+        // The declaration the call sees passes the arguments: a prototype ending in `int64_t
+        // cs_n, ...` as the definition's, else C converts them otherwise (C11 6.5.2.2).
+        let seen = self
+            .callee(&n.inner()[0])
+            .and_then(|(id, _)| self.decls.get(id));
+        let prototype = seen.is_some_and(|d| {
+            let dps: Vec<&J> = d
+                .inner()
+                .iter()
+                .filter(|p| p.kind() == "ParmVarDecl")
+                .collect();
+            d.is_true("variadic")
+                && dps.len() == ps.len()
+                && dps.last().is_some_and(|c| spelling(c) == "int64_t")
+        });
+        if !prototype {
+            return Err(format!(
+                "a call of {name} through a declaration that is not its variadic prototype ending in `int64_t cs_n, ...`"
+            ));
+        }
         if kids.len() < ps.len() {
             return Err(format!(
                 "a call of {name} without the count of its variadic arguments"
@@ -1919,6 +1939,13 @@ impl<'a> Body<'a> {
         if c != "cs_n" || have.is_none_or(|h| crate::squash(&h) != crate::squash(&text)) {
             return Err((at(&kids[0]), form.into()));
         }
+        if let Err(k) = self.prologue_tree(kids, count, &t) {
+            return Err((
+                at(k),
+                "a variadic prologue whose C is not what its text spells, as a macro changes it"
+                    .into(),
+            ));
+        }
         if let Some(k) = kids[5..]
             .iter()
             .find(|k| refers(k, count.s("id")) || refers(k, ap.s("id")))
@@ -1929,6 +1956,104 @@ impl<'a> Body<'a> {
             ));
         }
         Ok((xs.s("id").to_string(), x.to_string()))
+    }
+
+    /// The prologue's statements `kids`, whose text is the form, checked in clang's tree, where a
+    /// macro of the module can give that text another meaning (`#define cs_i cs_n`) or hide a call
+    /// in it: each refers by id to the declarations the form makes and to the count parameter
+    /// `count`, and calls only the builtins `va_start` and `va_end` expand to and the runtime's
+    /// `cs_append`; `t` is the C element type. Else the statement that is not the form.
+    fn prologue_tree<'k>(&self, kids: &'k [J], count: &J, t: &str) -> Result<(), &'k J> {
+        let [s_xs, s_ap, s_start, s_for, s_end, ..] = kids else {
+            unreachable!("five statements, as the text compared")
+        };
+        let is = |e: &J, d: &str| ref_id(e) == Some(d);
+        let decl = |s: &'k J, c: &str| single_decl(s).filter(|d| spelling(d) == c);
+        let builtin = |s: &J, f: &str| {
+            s.kind() == "CallExpr" && {
+                let r = bare(&s.inner()[0]);
+                r.kind() == "DeclRefExpr"
+                    && r.get("type").s("qualType") == "<builtin fn type>"
+                    && r.get("referencedDecl").s("name") == f
+            }
+        };
+        let xs = decl(s_xs, "cs_slice")
+            .filter(|d| matches!(d.inner(), [z] if zero_init(z)))
+            .ok_or(s_xs)?
+            .s("id");
+        let ap = decl(s_ap, "va_list")
+            .filter(|d| d.inner().is_empty())
+            .ok_or(s_ap)?
+            .s("id");
+        let n = count.s("id");
+        if !(builtin(s_start, "__builtin_va_start")
+            && matches!(s_start.inner(), [_, a, c] if is(a, ap) && is(c, n)))
+        {
+            return Err(s_start);
+        }
+        let [init, _, cond, inc, body] = s_for.inner() else {
+            return Err(s_for);
+        };
+        let i = decl(init, "int64_t")
+            .filter(|d| matches!(d.inner(), [z] if constant(z) == Some(0)))
+            .ok_or(s_for)?
+            .s("id");
+        let (cond, inc) = (bare(cond), bare(inc));
+        let head = s_for.kind() == "ForStmt"
+            && cond.kind() == "BinaryOperator"
+            && cond.s("opcode") == "<"
+            && matches!(cond.inner(), [a, b] if is(a, i) && is(b, n))
+            && inc.kind() == "UnaryOperator"
+            && inc.s("opcode") == "++"
+            && matches!(inc.inner(), [a] if is(a, i));
+        let [s_v, s_add] = body.inner() else {
+            return Err(s_for);
+        };
+        if !head || body.kind() != "CompoundStmt" {
+            return Err(s_for);
+        }
+        let v = decl(s_v, t)
+            .filter(|d| {
+                matches!(d.inner(), [e] if {
+                    let e = bare(e);
+                    e.kind() == "VAArgExpr"
+                        && spelling(e) == t
+                        && matches!(e.inner(), [a] if is(a, ap))
+                })
+            })
+            .ok_or(s_v)?
+            .s("id");
+        let appends = |r: &J| {
+            let r = bare(r);
+            let rt = r.kind() == "CallExpr"
+                && self.callee(&r.inner()[0]).is_some_and(|(id, f)| {
+                    f == "cs_append"
+                        && self
+                            .decls
+                            .get(id)
+                            .and_then(|d| crate::file_of(d.get("loc")))
+                            .as_deref()
+                            == Some(RT_FILE)
+                });
+            rt && matches!(r.inner(), [_, s, p, z] if {
+                let p = bare(p);
+                is(s, xs)
+                    && p.kind() == "UnaryOperator"
+                    && p.s("opcode") == "&"
+                    && matches!(p.inner(), [x] if is(x, v))
+                    && sizeof_of(z).as_deref() == Some(t)
+            })
+        };
+        if !(s_add.kind() == "BinaryOperator"
+            && s_add.s("opcode") == "="
+            && matches!(s_add.inner(), [l, r] if is(l, xs) && appends(r)))
+        {
+            return Err(s_add);
+        }
+        if !(builtin(s_end, "__builtin_va_end") && matches!(s_end.inner(), [_, a] if is(a, ap))) {
+            return Err(s_end);
+        }
+        Ok(())
     }
 
     /// The source text from the start of the statement `first` to the `;` that ends the
