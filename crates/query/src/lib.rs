@@ -1,7 +1,8 @@
 //! cq, the query language of `codespec query`: a typed Datalog with named-field record patterns
 //! over a fact base derived from a set of `cir/1` documents. The design is
-//! `docs/query-language.md`; this crate holds § 4 (the fact base), § 5.1 (rules) and § 7 (the
-//! engine). Path patterns (§ 5.2) and properties (§ 5.3) are refused by name.
+//! `docs/query-language.md`; this crate holds § 4 (the fact base), § 5.1 (rules), § 5.2 (path
+//! patterns), § 5.3 (properties) and § 7 (the engine). A `check` declaration (§ 5.4) is refused
+//! by name.
 //!
 //! # The fact base
 //!
@@ -20,8 +21,9 @@
 //! `effect` and `syscall`, to the input and to the digest; the summaries in the order given,
 //! since the first summary naming an extern gives its effects.
 //!
-//! `reaches_path` ([`WAITING`]) is the witness of a path pattern: the schema names it as not
-//! built yet, and a query naming it is refused.
+//! `reaches_path(F, G, P)` is `reaches` with its witness `P`, the functions of a path from `F` to
+//! `G` as a path pattern over calls gives it. [`WAITING`] lists what the schema names as not
+//! built yet: nothing now.
 //!
 //! # Unknown
 //!
@@ -70,7 +72,56 @@
 //! aggregates and negations, in the order they first occur, sorted.
 //!
 //! Evaluation is bottom-up and semi-naive, stratum by stratum; a negation or an aggregate inside
-//! a recursion is refused. [`explain`] prints the rules under the stratum of their heads.
+//! a recursion is refused. [`explain`] prints the rules and properties under the stratum of
+//! their heads.
+//!
+//! # Path patterns
+//!
+//! `path(A -> B, over: cfg, avoid: N where body, max: 8, witness: W)` holds when a path of at
+//! most `max` edges leads from `A` to `B` over `cfg_next` (`over: cfg`, the default) or the
+//! linked calls (`over: calls`) and passes no node the body gives as `N` (`avoid: X` avoids the
+//! one node `X`); `A` and `B` and every node on the path count, and a path of no edge joins a
+//! node to itself. Over `cfg` an expression or a listed call stands for the statement it sits
+//! in, so a call site can be an end or a node to avoid. `W` is the witness, the path's nodes
+//! from `A` to `B`: the least of the shortest paths, comparing node ids in order (§ 7). An end
+//! left unbound is bound to every node reached (a statement, or a function over calls), the
+//! pattern running after the literals that could bind it. `every_path(A -> B, through: P)` holds
+//! when every such path passes a `P` node, as `!path(A -> B, avoid: P)` does; both need `A` and
+//! `B` bound and give no witness. The body after `where` shares with the rule the variables the
+//! rest of the rule or the ends hold, and they must be bound before the pattern runs; the
+//! pattern sits a stratum above its body, as a negation does.
+//!
+//! A path passing a node only possibly avoided rests on that node's sites, and a node an unknown
+//! site could add to the avoided ones adds its sites to every path through it (a wild node: to
+//! every path). A negated path holds definitely when no path passes the definitely avoided nodes
+//! alone; when only the possibly avoided ones block every path it holds possibly, resting on
+//! them. Over calls, a function the walk reaches that holds an unknown site makes a negated path
+//! possible, resting on that site.
+//!
+//! # Properties
+//!
+//! A property is a relation of three fields, `name(Start, At, Message)`: a run of its automaton
+//! starts in `start` at `Start` and reaches `error` at `At`, and `Message` is its message with
+//! each `{state}` the node at which the run last left that state (`{error}` is `At`) and each
+//! `{register}` the register's value. With `scope: body` a run starts at the first statement
+//! of every body (a function's or a function literal's, `Start` its id) and follows `cfg_next`;
+//! at each statement its calls are its events, a call's operands before it, and at each exit
+//! (a `return`, a statement falling off the end) the event `exit`. With `scope: calls` a run
+//! starts at each entry of the call graph (a function no linked call reaches) and follows each
+//! of its calls, then the function the call links to, the calls of a call path in order; `exit`
+//! is refused there. A run takes every transition out of its state whose call matches and stays
+//! when none does; in `start` it may always stay, so each matching call starts a run of its
+//! own. A transition's event is a record pattern of `call`; a lower-case name in a field is a
+//! register, and it matches when the field's value is the register's: the local an expression
+//! reads, through `&`, `*` and fields (`<body>$mu.inner`), else the value itself.
+//! `=> m := M` sets a register from the pattern's variable `M` the same way; a property sets at
+//! most three ([`MAX_REGISTERS`]). `defer call{…}` waits for the `defer` statement of `cir/1`
+//! (§ 8) and is refused.
+//!
+//! A run over a body that passes a foreign statement without a call list rests on it, and in the
+//! upper bound such a statement, or an opaque function, may make the property fail anywhere in
+//! its body; over calls, a function from which an unknown site is reached may make it fail. So
+//! a negated property across code nothing read is possible, naming it.
 //!
 //! # Limits
 //!
@@ -103,12 +154,23 @@
 //! - A fact whose sites are replaced by fewer ones more than 16 times keeps its sites from then
 //!   on, so evaluation always ends; it may then name more sites than it rests on.
 //! - `--explain` prints the rules by stratum, not one derivation tree per finding (§ 7).
+//! - A path over calls follows the linked calls only, and its upper bound adds no edge for a
+//!   call nothing links: a positive path through such a call is not found, only a negated one
+//!   made possible.
+//! - A property's run over a body passes a foreign statement without a call list with its state
+//!   unchanged (resting on it): a Lock such a statement could hold starts no run. Over calls a
+//!   run does not continue through a call nothing links (of a function value, through an
+//!   interface, or in a foreign statement without a call list); the upper bound covers it. A
+//!   run that reaches the same statement in the same state with the same registers by two paths
+//!   keeps the sites of the first.
+//! - Neither a path nor a property is cached between bindings: each binding of a pattern's
+//!   bound variables walks again. Its cost on a large set is not measured.
 //! - The checks under `checks/` give `codespec check`'s findings on every fixture of
 //!   `crates/check` they run on, but: `insecure-random` takes neither `--strict` nor `--report`;
 //!   `unreached` neither `--entry` nor `--exported`, and its generated-file names are fixed in
 //!   the check, not the list `generated`; `case-fold-asymmetry` and `clone-aliasing` do not
-//!   follow an accessor of an opaque or foreign function. `lock-without-unlock` waits for
-//!   properties (§ 5.3) and the `defer` statement (§ 8), as `checks/waiting.json` says.
+//!   follow an accessor of an opaque or foreign function. `lock-without-unlock` waits for the
+//!   `defer` statement (§ 8), as `checks/waiting.json` says.
 
 mod engine;
 mod facts;
@@ -123,7 +185,7 @@ use std::path::{Path, PathBuf};
 pub use engine::MAX_BODIES;
 pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, WAITING, schema_text};
 pub use regex::{INST_BYTES, MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
-pub use syntax::{MAX_BODY, MAX_NESTING, Program};
+pub use syntax::{MAX_BODY, MAX_NESTING, MAX_REGISTERS, Program};
 
 /// The format of the JSON report.
 pub const REPORT_FORMAT: &str = "codespec-query-report/1";
@@ -349,7 +411,8 @@ impl Names {
     }
 }
 
-/// Parse a cq module. A path pattern (§ 5.2) or a property (§ 5.3) is refused, naming it.
+/// Parse a cq module. A `check` declaration (§ 5.4) or a `defer` event (§ 8) is refused, naming
+/// it.
 pub fn parse(src: &str) -> Result<Program, String> {
     syntax::parse(src)
 }

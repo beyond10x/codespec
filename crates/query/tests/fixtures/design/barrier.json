@@ -1,0 +1,23 @@
+{
+  "format": "codespec-barrier/1",
+  "language": "go",
+  "numbered": [],
+  "fixed": [
+    {
+      "path": "syscall",
+      "name": "Connect",
+      "syscalls": [
+        "connect"
+      ]
+    }
+  ],
+  "syscalls": [
+    {
+      "name": "connect",
+      "number": 42,
+      "effects": [
+        "net"
+      ]
+    }
+  ]
+}

@@ -71,6 +71,8 @@ calls{site: node, target: node}
     a call linked to the function of the set it names: a function, a method of a declared type, a function used as a value
 reaches{from: node, to: node}
     to is reached from from by one or more calls
+reaches_path{from: node, to: node, path: list}
+    reaches with its witness: the functions from from to to, the least of the shortest call paths by function id
 reached{func: node}
     codespec reach (rta) reaches func from every main.main and init
 scc{func: node, comp: node}
@@ -83,8 +85,3 @@ makes{func: node, t: type}
     func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type; making a struct makes the named types its fields hold by value
 implements{t: type, iface: string}
     the method set of t holds every method of the interface iface with an identical signature (the CHA test); iface a declared interface or one a call list names
-
-// Not built yet: a query naming one is refused.
-
-reaches_path(from, to, path)
-    reaches_path is the witness of a path pattern (§ 5.2 of docs/query-language.md), which cq does not run yet

@@ -1,0 +1,154 @@
+{
+  "format": "cir/1",
+  "name": "errs",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Run",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "n",
+            "_"
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "load",
+              "args": [],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "errs.go:4"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "load",
+            "args": [],
+            "t": {
+              "k": "tuple",
+              "elems": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                {
+                  "k": "error"
+                }
+              ]
+            }
+          },
+          "pos": "errs.go:5"
+        },
+        {
+          "k": "let",
+          "names": [
+            "m",
+            "err"
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "load",
+              "args": [],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "errs.go:6"
+        },
+        {
+          "k": "return",
+          "results": [],
+          "pos": "errs.go:7"
+        }
+      ],
+      "pos": "errs.go:3"
+    },
+    {
+      "name": "load",
+      "exported": false,
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            },
+            {
+              "k": "nil",
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "errs.go:11"
+        }
+      ],
+      "pos": "errs.go:10"
+    }
+  ],
+  "layout": [
+    "func:Run",
+    "func:load"
+  ],
+  "facts": {
+    "shared": [],
+    "fallible": [
+      "load"
+    ]
+  },
+  "path": "example.com/errs"
+}

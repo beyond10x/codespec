@@ -1,0 +1,155 @@
+{
+  "format": "cir/1",
+  "name": "layers",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "ServeOrders",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "apiOrders",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:4"
+        }
+      ],
+      "pos": "layers.go:3"
+    },
+    {
+      "name": "ServeUsers",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "apiUsers",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:8"
+        }
+      ],
+      "pos": "layers.go:7"
+    },
+    {
+      "name": "apiOrders",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "dbOrders",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:12"
+        }
+      ],
+      "pos": "layers.go:11"
+    },
+    {
+      "name": "apiUsers",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "apiFormat",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:16"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "dbUsers",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:17"
+        }
+      ],
+      "pos": "layers.go:15"
+    },
+    {
+      "name": "apiFormat",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "layers.go:20"
+    },
+    {
+      "name": "dbOrders",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "layers.go:23"
+    },
+    {
+      "name": "dbUsers",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "apiFormat",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "layers.go:27"
+        }
+      ],
+      "pos": "layers.go:26"
+    }
+  ],
+  "layout": [
+    "func:ServeOrders",
+    "func:ServeUsers",
+    "func:apiOrders",
+    "func:apiUsers",
+    "func:apiFormat",
+    "func:dbOrders",
+    "func:dbUsers"
+  ],
+  "path": "example.com/layers"
+}

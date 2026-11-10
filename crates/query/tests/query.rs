@@ -184,27 +184,36 @@ fn a_negation_over_a_function_with_no_body_is_possible_and_names_the_site() {
     assert_eq!(definite, expected("unknown-definite.txt"));
 }
 
+/// Path patterns (§ 5.2) and properties (§ 5.3) parse, and `--explain` prints them as written;
+/// a relation named `path` is still an atom when no `->` follows its first term.
 #[test]
-fn a_path_pattern_or_a_property_is_refused_naming_the_construct() {
-    for (src, construct, section) in [
-        ("?- path(A -> B, over: cfg).", "path pattern", "§ 5.2"),
-        (
-            "r(A) :- call{site: A}, every_path(A -> B, through: P).",
-            "path pattern",
-            "§ 5.2",
+fn a_path_pattern_and_a_property_parse_and_print_back() {
+    let src = "property lock_released(scope: body) {\n  start -> held: call{callee: ~\"Lock$\", recv: M} => m := M\n  held -> start: call{callee: ~\"Unlock$\", recv: m}\n  held -> error: exit\n  message \"Lock at {start}\"\n}\n\
+               p(A, B, W) :- call{site: A}, exit(_, B), path(A -> B, over: cfg, avoid: N where call{site: N, callee: \"x\"}, max: 8, witness: W).\n\
+               q(A, B) :- func{id: A}, func{id: B}, every_path(A -> B, over: calls, through: B).\n\
+               r(A) :- func{id: A}, !path(A -> A, over: calls, avoid: \"m.f\").\n\
+               s(X) :- path(X, 1).\n\
+               path(X, Y) :- func{id: X}, Y = 1.\n\
+               ?- lock_released(F, At, M).";
+    let program = parse(src).unwrap_or_else(|e| panic!("{e}"));
+    let printed: Vec<String> = program.rules.iter().map(|r| r.to_string()).collect();
+    assert_eq!(
+        printed[..4],
+        [
+            "p(A, B, W) :- call{site: A}, exit(_, B), path(A -> B, over: cfg, avoid: N where call{site: N, callee: \"x\"}, max: 8, witness: W).",
+            "q(A, B) :- func{id: A}, func{id: B}, every_path(A -> B, over: calls, through: B).",
+            "r(A) :- func{id: A}, !path(A -> A, over: calls, avoid: \"m.f\").",
+            "s(X) :- path(X, 1).",
+        ]
+    );
+    let explained = codespec_query::explain(&program).unwrap();
+    assert!(
+        explained.contains(
+            "  property lock_released(scope: body) {\n    start -> held: call{callee: ~\"Lock$\", recv: M} => m := M\n    held -> start: call{callee: ~\"Unlock$\", recv: m}\n    held -> error: exit\n    message \"Lock at {start}\"\n  }\n"
         ),
-        (
-            "property lock_released(scope: body) {\n  held -> error: exit\n}",
-            "property lock_released",
-            "§ 5.3",
-        ),
-    ] {
-        let err = parse(src)
-            .err()
-            .unwrap_or_else(|| panic!("{src}: accepted"));
-        assert!(err.contains(construct), "{src}: {err}");
-        assert!(err.contains(section), "{src}: {err}");
-    }
+        "{explained}"
+    );
+    assert_eq!(parse(&printed.join("\n")).unwrap().rules, program.rules);
 }
 
 #[test]

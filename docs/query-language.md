@@ -230,7 +230,8 @@ this repository.
 
 ```
 dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item: C},
-                       stmt{id: S, kind: "let"}, let_name(S, -1, "_"), contains(S, Site).
+                       stmt{id: S, kind: "let"}, let_name{stmt: S, name: "_", last: true},
+                       contains(S, Site).
 dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item: C},
                        stmt{kind: "expr", id: S}, contains(S, Site).
 ```
