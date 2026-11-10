@@ -152,6 +152,26 @@ func TestADocumentMissingARequiredPartIsRefusedNotAPanic(t *testing.T) {
 	}
 }
 
+// A var statement without its type reaches the writer as a nil pointer; the recovered panic is a
+// refusal that names the statement's position.
+func TestARecoveredPanicNamesThePositionOfTheStatement(t *testing.T) {
+	doc := docAt(t, "conformance/cases/assign-div/case.cir.json")
+	fn := doc["funcs"].([]any)[0].(map[string]any)
+	body := fn["body"].([]any)
+	fn["body"] = append([]any{map[string]any{"k": "var", "name": "x", "pos": "case.go:4"}}, body...)
+	b, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = run(bytes.NewReader(b), filepath.Join(scratch(t), "out"))
+	if err == nil {
+		t.Fatal("a var without a type was written")
+	}
+	if !strings.HasPrefix(err.Error(), "case.go:4: the document cannot be written") {
+		t.Errorf("the refusal does not name the statement's position: %v", err)
+	}
+}
+
 // codespec-read-go writes an unnamed parameter as _; it is written back as _.
 func TestAParameterNamedUnderscoreIsWritten(t *testing.T) {
 	doc := docAt(t, "conformance/cases/op-add/case.cir.json")

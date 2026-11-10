@@ -168,6 +168,34 @@ fn a_module_name_that_is_no_file_name_is_refused_and_nothing_is_written() {
     }
 }
 
+/// The module name is the file name `<name>.h`: never a C or POSIX header a `#include <…>` could
+/// find instead of the system's, never a Windows device name.
+#[test]
+fn a_module_named_like_a_standard_header_or_a_windows_device_is_refused() {
+    let case =
+        std::fs::read_to_string(root().join("conformance/cases/assign-add/case.cir.json")).unwrap();
+    for (i, bad) in [
+        "stdint",
+        "string",
+        "stdio",
+        "features",
+        "stdckdint",
+        "unistd",
+        "pthread",
+        "con",
+        "NUL",
+        "Com1",
+        "lpt9",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let doc = case.replace("\"name\": \"assign_add\"", &format!("\"name\": {bad:?}"));
+        assert_ne!(doc, case);
+        refused_naming(&doc, &format!("special-module-{i}"), &format!("{bad:?}"));
+    }
+}
+
 /// The Go reader writes an unnamed parameter as `_`.
 #[test]
 fn a_parameter_named_underscore_is_written_and_builds() {

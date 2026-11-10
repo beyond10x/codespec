@@ -150,6 +150,33 @@ fn op_add_runs_to_its_expected_output_and_an_empty_directory_fails() {
     assert_eq!(e.status.code(), Some(1));
 }
 
+/// The written directory is searched by `#include "…"` only: a module header there named like a
+/// system header (`stdint.h`, by hand: the writer refuses that name) never stands in for
+/// `<stdint.h>` in the runtime or the C library.
+#[test]
+fn a_header_in_the_written_directory_never_shadows_a_system_header() {
+    let w = work("shadow");
+    let written = w.join("written");
+    write_case("op-add", &written);
+    let out = w.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    for e in std::fs::read_dir(&written).unwrap() {
+        let p = e.unwrap().path();
+        let name = p
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .replace("op_add", "stdint");
+        let text = std::fs::read_to_string(&p)
+            .unwrap()
+            .replace("op_add", "stdint");
+        std::fs::write(out.join(name), text).unwrap();
+    }
+    assert!(out.join("stdint.h").exists());
+    let o = run_c(&w.join("build"), &out, "op-add", "");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+}
+
 /// A C source as a C reader reads it: lowerCamel names, `const char *` strings, a `typedef enum`,
 /// a `static` helper and a name `<stdlib.h>` declares too.
 const PLAIN_C: &str = r#"#include <stdbool.h>

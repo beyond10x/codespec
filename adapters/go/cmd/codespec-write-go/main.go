@@ -5,7 +5,10 @@
 //
 // The document is untrusted input. The module name must be a Go identifier other than _ (it is
 // the package clause and the file name) that the go command builds as a file name on every
-// platform: no leading _, no _test, _GOOS or _GOARCH suffix. Every other name the written tree
+// platform: no leading _, no _test, _GOOS or _GOARCH suffix, not a Windows device name (con,
+// nul, com1 …, in any case), and not documentation, a package clause the go command ignores. A
+// module named main is written as package main, the package of a Go command: it builds when the
+// module declares func main, and go build fails at link time when it does not. Every other name the written tree
 // holds must be a Go identifier and every literal exactly one Go literal token, or the document is
 // refused naming the value, and nothing is written. A foreign Go statement or initializer is
 // spliced verbatim by design: it is Go source the reader kept, parsed as statements inside its

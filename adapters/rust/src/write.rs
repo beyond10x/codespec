@@ -63,11 +63,12 @@
 //! The document is untrusted input. Every name reaches `lib.rs` as an identifier token (a raw
 //! identifier's `r#`, which `codespec-read-rust` keeps, is dropped and a keyword made raw again):
 //! a Rust spelling that is not one (a leading digit, a `$`, `_1` camel-cased to `1`) refuses the module whole,
-//! naming it, as does a module name that is not an identifier or is a keyword, since it is the
-//! package name of `Cargo.toml`. String literals are written as escaped Rust string tokens,
+//! naming it, as does a module name that is not an identifier, is a keyword or is a Windows device
+//! name (`codespec_model::is_windows_device_name`), since it is the package name of `Cargo.toml`
+//! and the library's file name. String literals are written as escaped Rust string tokens,
 //! integers as parsed numbers, each doc line as its own doc attribute; `foreign` statements are
-//! refused, never written. A message printed to stderr writes the document's control characters
-//! as escapes.
+//! refused, never written. A message printed to stderr and `refusals.json` write the document's
+//! control and format characters as escapes.
 //!
 //! The crate starts with `#![allow(dead_code, unused_assignments, unused_mut)]`: Go compiles an
 //! unexported function nobody calls (or whose only caller is refused), a `var` assigned on every
@@ -123,14 +124,16 @@ pub fn write(m: &Module) -> Result<Written, String> {
 }
 
 fn write_crate(m: &Module) -> Result<Written, String> {
-    // The name is the package name of the written Cargo.toml, inside a TOML string.
+    // The name is the package name of the written Cargo.toml, inside a TOML string, and the
+    // name of the library cargo builds, so never a Windows device name.
     if !is_rust_ident(&m.name)
         || m.name == "_"
         || KEYWORDS.contains(&m.name.as_str())
         || ["self", "Self", "super", "crate"].contains(&m.name.as_str())
+        || codespec_model::is_windows_device_name(&m.name)
     {
         return Err(format!(
-            "module name {:?} is not a Rust package name: an identifier, not a keyword",
+            "module name {:?} is not a Rust package name: an identifier, not a keyword, not a Windows device name",
             m.name
         ));
     }
@@ -345,7 +348,13 @@ fn write_crate(m: &Module) -> Result<Written, String> {
     );
     let list: Vec<serde_json::Value> = refused
         .iter()
-        .map(|r| serde_json::json!({ "name": r.name, "pos": r.pos, "reason": r.reason }))
+        .map(|r| {
+            serde_json::json!({
+                "name": codespec_model::printable(&r.name),
+                "pos": codespec_model::printable(&r.pos),
+                "reason": codespec_model::printable(&r.reason),
+            })
+        })
         .collect();
     let mut refusals = serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?;
     refusals.push('\n');

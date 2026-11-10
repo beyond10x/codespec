@@ -109,7 +109,13 @@ fn run(out: &Path) -> Result<bool, String> {
     let listed: Vec<serde_json::Value> = written
         .refusals
         .iter()
-        .map(|r| serde_json::json!({"name": r.name, "pos": r.pos, "reason": r.reason}))
+        .map(|r| {
+            serde_json::json!({
+                "name": printable(&r.name),
+                "pos": printable(&r.pos),
+                "reason": printable(&r.reason),
+            })
+        })
         .collect();
     let mut refusals = serde_json::to_string_pretty(&listed).map_err(|e| e.to_string())?;
     refusals.push('\n');

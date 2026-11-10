@@ -84,9 +84,13 @@ func write(m *Module) (src []byte, err error) {
 			}
 		}
 	}()
-	// The name is the package clause and the file name: an identifier, never a path, and never
-	// a file name the go command skips or reads as a build constraint or a test file.
-	if !token.IsIdentifier(m.Name) || m.Name == "_" || !plainGoFile(m.Name+".go") {
+	// The name is the package clause and the file name: an identifier, never a path, never a
+	// file name the go command skips or reads as a build constraint or a test file, never
+	// `documentation` (a package clause go/build ignores) and never a Windows device name.
+	// `main` is written as it is: the package of a Go command, which builds when the module
+	// declares func main.
+	if !token.IsIdentifier(m.Name) || m.Name == "_" || m.Name == "documentation" ||
+		windowsDevice(m.Name) || !plainGoFile(m.Name+".go") {
 		return nil, fmt.Errorf("module name %q is not a Go package name the go command builds as %s.go", m.Name, m.Name)
 	}
 	w = &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
@@ -248,6 +252,26 @@ func plainGoFile(name string) bool {
 	}
 	ok, err := ctx.MatchFile(".", name)
 	return err == nil && ok
+}
+
+// windowsDevice reports whether name, before its first ., is in any case a name Windows opens
+// as a device whatever the extension: CON, PRN, AUX, NUL, CONIN$, CONOUT$, COM0 to COM9 and
+// LPT0 to LPT9 (also with a superscript ¹, ² or ³). The model crate's is_windows_device_name
+// holds the same list for the Rust and C writers.
+func windowsDevice(name string) bool {
+	stem, _, _ := strings.Cut(strings.ToLower(name), ".")
+	switch stem {
+	case "con", "prn", "aux", "nul", "conin$", "conout$":
+		return true
+	}
+	if len(stem) < 4 || (stem[:3] != "com" && stem[:3] != "lpt") {
+		return false
+	}
+	switch stem[3:] {
+	case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³":
+		return true
+	}
+	return false
 }
 
 // printable is s with every character that is not printable written as its Go escape, so a

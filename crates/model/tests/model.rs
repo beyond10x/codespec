@@ -165,6 +165,112 @@ fn a_position_or_extern_name_holding_a_control_character_is_refused() {
     assert!(!err.chars().any(char::is_control), "{err:?}");
 }
 
+fn case(name: &str) -> serde_json::Value {
+    let bytes = std::fs::read(root().join(format!("conformance/cases/{name}/case.cir.json")))
+        .expect("read");
+    serde_json::from_slice(&bytes).expect("json")
+}
+
+/// Every text field of the document, not only names and positions, is refused when it holds a
+/// control or format character: an extern call's name, an extern method's type, a fact's
+/// position, a foreign statement's reason and a doc (which keeps its line breaks and tabs).
+#[test]
+fn a_control_or_format_character_in_any_text_of_the_document_is_refused() {
+    let cases: [(&str, &[&str], &str); 6] = [
+        (
+            "expr-extern-method",
+            &["funcs", "0", "body", "2", "results", "0", "name"],
+            "Len\u{7}",
+        ),
+        (
+            "expr-extern-method",
+            &["funcs", "0", "body", "2", "results", "0", "type"],
+            "Builder\u{202e}",
+        ),
+        (
+            "fact-unordered-iteration",
+            &["facts", "unordered_iteration", "0"],
+            "case.go:7\u{9b}",
+        ),
+        (
+            "stmt-foreign",
+            &["funcs", "0", "body", "1", "reason"],
+            "defer \u{9b}2J",
+        ),
+        (
+            "stmt-foreign",
+            &["funcs", "0", "body", "1", "reason"],
+            "defer\u{2066}",
+        ),
+        ("op-add", &["funcs", "0", "doc"], "Add adds.\u{1b}[2J"),
+    ];
+    for (file, path, bad) in cases {
+        let mut v = case(file);
+        let mut at = &mut v;
+        for p in path {
+            at = match p.parse::<usize>() {
+                Ok(i) => &mut at[i],
+                Err(_) => &mut at[*p],
+            };
+        }
+        assert!(at.is_string(), "{file}: {path:?} is no text");
+        *at = serde_json::json!(bad);
+        let err = refused(&v);
+        assert!(
+            err.contains("control or format character"),
+            "{file} {path:?}: {err}"
+        );
+        assert!(
+            !err.chars()
+                .any(|c| c.is_control() || c == '\u{202e}' || c == '\u{2066}'),
+            "{err:?}"
+        );
+    }
+    let mut v = case("op-add");
+    v["funcs"][0]["doc"] = serde_json::json!("Add adds.\n\tIt wraps.");
+    Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("a doc with a tab admitted");
+}
+
+/// A message quoting the document escapes a format character too, here in an unknown field's
+/// name, which serde reports as it is.
+#[test]
+fn a_format_character_in_a_message_is_escaped() {
+    assert_eq!(codespec_model::printable("a\u{202e}b"), "a\\u{202e}b");
+    let mut v = case("op-add");
+    v["funcs"][0]["x\u{2066}"] = serde_json::json!(1);
+    let err = refused(&v);
+    assert!(err.contains("x\\u{2066}"), "{err}");
+}
+
+/// Windows opens these as devices whatever the extension; no writer names a file after one.
+#[test]
+fn windows_device_names_are_known_in_any_case_and_with_any_extension() {
+    for name in [
+        "con",
+        "CON",
+        "Prn",
+        "aux",
+        "nul",
+        "nul.txt",
+        "com0",
+        "com1",
+        "COM9",
+        "lpt1",
+        "Lpt9",
+        "com\u{b9}",
+        "lpt\u{b3}",
+        "conin$",
+        "CONOUT$",
+    ] {
+        assert!(codespec_model::is_windows_device_name(name), "{name}");
+    }
+    for name in [
+        "console", "com10", "lpt", "comx", "connect", "op_add", "nul_x",
+    ] {
+        assert!(!codespec_model::is_windows_device_name(name), "{name}");
+    }
+}
+
 /// Java identifier parts beyond letters and digits are names; control and format characters,
 /// which no writer can spell and a terminal or editor may act on, are not.
 #[test]

@@ -171,9 +171,16 @@ fn refused_naming(doc: &[u8], name: &str, want: &str) {
 
 #[test]
 fn a_module_name_that_is_not_a_package_name_is_refused_and_no_cargo_toml_is_written() {
-    for (i, bad) in ["orders\"\nbuild = \"payload.rs", "1orders", "fn"]
-        .into_iter()
-        .enumerate()
+    for (i, bad) in [
+        "orders\"\nbuild = \"payload.rs",
+        "1orders",
+        "fn",
+        "con",
+        "NUL",
+        "lpt1",
+    ]
+    .into_iter()
+    .enumerate()
     {
         let mut doc = orders();
         doc["name"] = Value::String(bad.into());
@@ -242,6 +249,20 @@ fn a_parameter_named_underscore_is_written() {
         .push(serde_json::json!({"name": "_", "t": int}));
     let (_, lib) = write_ok(&doc, "underscore-param");
     assert!(squash(&lib).contains("b:i64,_cs_p2:i64)"), "{lib}");
+}
+
+/// A blank parameter's name is lengthened past a parameter the document already names `_cs_p<i>`.
+#[test]
+fn a_blank_parameter_beside_one_named_like_its_written_name_stays_distinct() {
+    let text = op_add().to_string().replace("\"b\"", "\"_cs_p2\"");
+    let mut doc: Value = serde_json::from_str(&text).unwrap();
+    let int = doc["funcs"][0]["params"][0]["t"].clone();
+    doc["funcs"][0]["params"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"name": "_", "t": int}));
+    let (_, lib) = write_ok(&doc, "blank-beside-cs-p2");
+    assert!(squash(&lib).contains("_cs_p2:i64,_cs_p2_:i64)"), "{lib}");
 }
 
 #[test]

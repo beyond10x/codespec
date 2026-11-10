@@ -257,9 +257,10 @@ fn is_false(b: &bool) -> bool {
 /// first, after an optional `r#` (a Rust raw identifier, as `codespec-read-rust` keeps it). Those
 /// are letters and digits of any script, `_`, combining marks, connector punctuation and letter
 /// numbers (Unicode `XID_Continue`), and currency signs such as `$` and `€` (Java), but never a
-/// control or format character. A writer puts names into source text and file names, where any
-/// other character could end the name and begin code or a path; each writer applies its own
-/// language's stricter rule on top.
+/// control or format character and never an invisible default-ignorable code point (a Hangul
+/// filler, a variation selector), which would make two names look alike. A writer puts names
+/// into source text and file names, where any other character could end the name and begin code
+/// or a path; each writer applies its own language's stricter rule on top.
 pub fn is_name(name: &str) -> bool {
     let name = name.strip_prefix("r#").unwrap_or(name);
     !name.is_empty()
@@ -267,7 +268,22 @@ pub fn is_name(name: &str) -> bool {
             (c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || is_currency_sign(c))
                 && !c.is_control()
                 && !is_format_char(c)
+                && !is_default_ignorable(c)
         })
+}
+
+/// Whether `c` has the Unicode 16.0 property `Default_Ignorable_Code_Point`
+/// (`DerivedCoreProperties.txt`): characters that show as nothing, among them the Hangul fillers
+/// U+115F, U+1160, U+3164 and U+FFA0, the combining grapheme joiner U+034F, the Mongolian
+/// variation selectors U+180B to U+180F, U+17B4 and U+17B5, the variation selectors U+FE00 to
+/// U+FE0F and U+E0100 to U+E01EF, and the format characters of [`is_format_char`] that are.
+fn is_default_ignorable(c: char) -> bool {
+    matches!(c,
+        '\u{ad}' | '\u{34f}' | '\u{61c}' | '\u{115f}'..='\u{1160}' | '\u{17b4}'..='\u{17b5}'
+        | '\u{180b}'..='\u{180f}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{206f}' | '\u{3164}' | '\u{fe00}'..='\u{fe0f}' | '\u{feff}'
+        | '\u{ffa0}' | '\u{fff0}'..='\u{fff8}' | '\u{1bca0}'..='\u{1bca3}'
+        | '\u{1d173}'..='\u{1d17a}' | '\u{e0000}'..='\u{e0fff}')
 }
 
 /// Whether `c` is a currency sign (Unicode general category `Sc`), a Java identifier part.
@@ -307,6 +323,40 @@ pub fn printable(text: &str) -> std::borrow::Cow<'_, str> {
         }
     }
     std::borrow::Cow::Owned(out)
+}
+
+/// Whether `name`, before its first `.` and in any case, is a name Windows opens as a device
+/// whatever the extension: `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM0` to `COM9` and
+/// `LPT0` to `LPT9`, also with a superscript `¹`, `²` or `³` for the digit. The writers refuse a
+/// module of such a name, which they would write as a file name (the Go writer holds the same
+/// list).
+pub fn is_windows_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").to_lowercase();
+    if matches!(
+        stem.as_str(),
+        "con" | "prn" | "aux" | "nul" | "conin$" | "conout$"
+    ) {
+        return true;
+    }
+    let (Some(head), Some(tail)) = (stem.get(..3), stem.get(3..)) else {
+        return false;
+    };
+    matches!(head, "com" | "lpt")
+        && matches!(
+            tail,
+            "0" | "1"
+                | "2"
+                | "3"
+                | "4"
+                | "5"
+                | "6"
+                | "7"
+                | "8"
+                | "9"
+                | "\u{b9}"
+                | "\u{b2}"
+                | "\u{b3}"
+        )
 }
 
 /// Whether `path` is a module path strict reading admits: empty, or `/`-separated segments, none
@@ -1470,38 +1520,32 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-/// Refuse a position (`pos`, `unordered_iteration`) or an extern's path or name (a module
-/// `externs` entry, an `extern` or `extern_method` type or call) holding a control or format
-/// character: writers print positions and extern names in their messages and source text.
-fn check_text(v: &serde_json::Value, extern_decl: bool) -> Result<(), String> {
+/// The fields whose text may run over several lines: a doc, foreign source, a literal's spelling
+/// (a raw string) and an error message keep line breaks (`\n`, `\r`) and tabs.
+const MULTILINE_TEXT: [&str; 4] = ["doc", "src", "value", "message"];
+
+/// Refuse a control or format character in any text of the document: names, positions
+/// (`pos`, `unordered_iteration`), extern paths, names and types, reasons, a refusal's `what`,
+/// the reader's name and version, signatures, operators and facts. Only the text of
+/// [`MULTILINE_TEXT`] may hold a line feed, a carriage return or a tab, and nothing else of the two
+/// categories. Writers print this text in messages, `refusals.json` and source text.
+fn check_text(v: &serde_json::Value, key: &str) -> Result<(), String> {
     use serde_json::Value;
-    let bad = |s: &str| s.chars().any(|c| c.is_control() || is_format_char(c));
     match v {
-        Value::Array(a) => a.iter().try_for_each(|x| check_text(x, extern_decl)),
-        Value::Object(o) => {
-            let ext = extern_decl
-                || matches!(
-                    o.get("k").and_then(Value::as_str),
-                    Some("extern" | "extern_method")
-                );
-            for (k, x) in o {
-                let what = match k.as_str() {
-                    "pos" | "unordered_iteration" => Some("position"),
-                    "path" | "name" | "type" if ext => Some("extern name"),
-                    _ => None,
-                };
-                if let Some(what) = what {
-                    let texts = x.as_array().map_or_else(|| vec![x], |a| a.iter().collect());
-                    if let Some(s) = texts.into_iter().filter_map(Value::as_str).find(|s| bad(s)) {
-                        return Err(format!(
-                            "the {what} {s:?} holds a control or format character"
-                        ));
-                    }
-                }
-                check_text(x, k == "externs")?;
+        Value::String(s) => {
+            let multiline = MULTILINE_TEXT.contains(&key);
+            if s.chars().any(|c| {
+                (c.is_control() && !(multiline && matches!(c, '\n' | '\r' | '\t')))
+                    || is_format_char(c)
+            }) {
+                return Err(format!(
+                    "the {key} {s:?} holds a control or format character"
+                ));
             }
             Ok(())
         }
+        Value::Array(a) => a.iter().try_for_each(|x| check_text(x, key)),
+        Value::Object(o) => o.iter().try_for_each(|(k, x)| check_text(x, k)),
         _ => Ok(()),
     }
 }
@@ -1542,7 +1586,7 @@ impl Module {
         if format != FORMAT {
             return Err(ReadError::Format(format.to_string()));
         }
-        check_text(&probe, false).map_err(ReadError::Invalid)?;
+        check_text(&probe, "document").map_err(ReadError::Invalid)?;
         let m: Module = serde_json::from_value(probe).map_err(ReadError::Json)?;
         m.check_names().map_err(ReadError::Invalid)?;
         m.check_variadic().map_err(ReadError::Invalid)?;
@@ -1638,7 +1682,7 @@ impl Module {
         self.each_name(&mut |what, name| {
             if bad.is_none() && !is_name(name) {
                 bad = Some(format!(
-                    "the {what} name {name:?} is empty or holds a character no Java or Rust identifier holds after its first, or a control or format character (after an optional `r#`)"
+                    "the {what} name {name:?} is empty or holds a character no Java or Rust identifier holds after its first, a control or format character, or an invisible default-ignorable one (after an optional `r#`)"
                 ));
             }
         });
