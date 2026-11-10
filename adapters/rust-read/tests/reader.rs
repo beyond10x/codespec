@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use codespec_model::{Module, Stmt};
+use codespec_model::{Expr, IntWidth, Module, Stmt, Type};
 use serde_json::Value;
 
 fn root() -> PathBuf {
@@ -1080,4 +1080,522 @@ fn a_guard_whose_body_reads_the_bound_value_is_kept_as_foreign() {
          }\n",
     );
     assert_foreign(&m, "F", "lib.rs:2", "guard");
+}
+
+/// Whether `s` is a Go identifier of ASCII letters, digits and `_`, not starting with a digit.
+fn is_identifier(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| !c.is_ascii_digit())
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+#[test]
+fn a_raw_identifier_is_named_without_its_prefix_for_a_function_a_field_a_parameter_and_a_local() {
+    let m = read(
+        "pub struct Token {\n\
+         \x20   pub r#type: i64,\n\
+         \x20   r#for: i64,\n\
+         }\n\
+         pub fn r#type(r#struct: i64) -> i64 {\n\
+         \x20   let r#loop = r#struct;\n\
+         \x20   r#loop\n\
+         }\n\
+         fn r#match(t: Token) -> i64 {\n\
+         \x20   t.r#type + t.r#for\n\
+         }\n",
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let codespec_model::TypeDecl::Struct { fields, .. } = &m.types[0] else {
+        panic!("{:?}", m.types)
+    };
+    let fields: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+    assert_eq!(fields, ["Type", "for_"]);
+    let f = &m.funcs[0];
+    assert_eq!(f.name, "Type");
+    assert_eq!(f.params[0].name, "struct_");
+    let Stmt::Let { names: local, .. } = &f.body[0] else {
+        panic!("{:?}", f.body)
+    };
+    assert_eq!(local, &["loop".to_string()]);
+    assert_eq!(m.funcs[1].name, "match");
+    let json = m.to_json();
+    assert!(!json.contains("r#"), "a name keeps `r#`: {json}");
+    let names = [&f.name, &f.params[0].name, &local[0], &m.funcs[1].name]
+        .into_iter()
+        .chain(&fields);
+    for n in names {
+        assert!(is_identifier(n), "{n} is not an identifier");
+    }
+}
+
+// ----- constructs read for the kit features the reader claims ---------------------------------
+
+/// The source of `lines`, one per line: line `i + 1` is `lines[i]`.
+fn lines(lines: &[&str]) -> String {
+    lines.join("\n") + "\n"
+}
+
+fn i64t() -> Type {
+    Type::Int {
+        width: IntWidth::W64,
+        signed: true,
+    }
+}
+
+fn var(name: &str, t: Type) -> Expr {
+    Expr::Var {
+        name: name.into(),
+        t,
+    }
+}
+
+/// The one result of the `return` that is the last statement of `body`.
+fn returned(body: &[Stmt]) -> &Expr {
+    match body.last() {
+        Some(Stmt::Return { results, .. }) if results.len() == 1 => &results[0],
+        other => panic!("not a return of one value: {other:?}"),
+    }
+}
+
+#[test]
+fn a_derived_default_whose_fields_default_to_zero_reads_as_the_zero_value() {
+    let m = read(&lines(&[
+        "#[derive(Debug, Default)]",
+        "pub struct P {",
+        "    pub x: i64,",
+        "    pub s: String,",
+        "    pub v: Vec<i64>,",
+        "}",
+        "pub fn z() -> P {",
+        "    P::default()",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let p = Type::Named {
+        name: "P".into(),
+        targs: vec![],
+    };
+    assert_eq!(returned(&m.funcs[0].body), &Expr::Zero { t: p });
+}
+
+#[test]
+fn a_derived_default_of_a_pointer_field_is_not_the_zero_value_and_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "use std::cell::RefCell;",
+        "use std::rc::Rc;",
+        "#[derive(Default)]",
+        "pub struct Q {",
+        "    pub n: i64,",
+        "}",
+        "#[derive(Default)]",
+        "pub struct P {",
+        "    pub q: Rc<RefCell<Q>>,",
+        "}",
+        "pub fn z() -> P {",
+        "    P::default()",
+        "}",
+    ]));
+    assert_foreign(&m, "Z", "lib.rs:12", "P::default");
+}
+
+#[test]
+fn an_rc_of_dyn_any_reads_as_any_and_rc_new_as_the_value_it_holds() {
+    let m = read(&lines(&[
+        "use std::any::Any;",
+        "use std::rc::Rc;",
+        "pub fn boxed(n: i64) -> Rc<dyn Any> {",
+        "    let a: Rc<dyn Any> = Rc::new(n) as Rc<dyn Any>;",
+        "    let b = a.clone();",
+        "    b",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let f = &m.funcs[0];
+    assert_eq!(f.results, [Type::Any]);
+    assert!(
+        matches!(&f.body[0], Stmt::Var { name, t: Type::Any, .. } if name == "a"),
+        "{:?}",
+        f.body
+    );
+    let Stmt::Assign { rhs, .. } = &f.body[1] else {
+        panic!("{:?}", f.body)
+    };
+    assert_eq!(rhs[0], var("n", i64t()));
+    assert_eq!(returned(&f.body), &var("b", Type::Any));
+}
+
+#[test]
+fn a_channel_of_both_ends_reads_as_chan_with_try_send_and_try_recv_as_send_and_receive() {
+    let m = read(&lines(&[
+        "use std::rc::Rc;",
+        "use std::sync::mpsc::{Receiver, SyncSender};",
+        "pub fn echo(ch: Rc<(SyncSender<i64>, Receiver<i64>)>, n: i64) -> i64 {",
+        "    ch.0.try_send(n).expect(\"full\");",
+        "    ch.1.try_recv().unwrap()",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ch = var(
+        "ch",
+        Type::Chan {
+            elem: Box::new(i64t()),
+            dir: codespec_model::ChanDir::Both,
+        },
+    );
+    let f = &m.funcs[0];
+    assert!(
+        matches!(&f.body[0], Stmt::Send { chan, x, .. } if *chan == ch && *x == var("n", i64t())),
+        "{:?}",
+        f.body
+    );
+    assert_eq!(
+        returned(&f.body),
+        &Expr::Unop {
+            op: "<-".into(),
+            x: Box::new(ch),
+            t: i64t(),
+        }
+    );
+}
+
+#[test]
+fn a_blocking_receive_is_kept_as_foreign_where_go_would_deadlock() {
+    let m = read(&lines(&[
+        "use std::rc::Rc;",
+        "use std::sync::mpsc::{Receiver, SyncSender};",
+        "pub fn take(ch: Rc<(SyncSender<i64>, Receiver<i64>)>) -> i64 {",
+        "    let v = ch.1.recv().unwrap();",
+        "    v",
+        "}",
+    ]));
+    assert_foreign(&m, "Take", "lib.rs:4", "");
+}
+
+#[test]
+fn collected_and_sorted_map_keys_read_as_sorted_keys() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "pub fn ints(m: HashMap<i64, bool>) -> Vec<i64> {",
+        "    let mut keys: Vec<i64> = m.keys().copied().collect();",
+        "    keys.sort();",
+        "    keys",
+        "}",
+        "pub fn strs(m: HashMap<String, bool>) -> Vec<String> {",
+        "    let mut keys: Vec<String> = m.keys().cloned().collect();",
+        "    keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));",
+        "    keys",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    for (f, k) in m.funcs.iter().zip([i64t(), Type::String]) {
+        let Stmt::Let { rhs, .. } = &f.body[0] else {
+            panic!("{:?}", f.body)
+        };
+        assert!(
+            matches!(&rhs[0], Expr::Intrinsic { name, t, .. }
+                if name == "sorted_keys" && *t == Type::Slice { elem: Box::new(k.clone()) }),
+            "{:?}",
+            rhs
+        );
+        assert_eq!(
+            f.body.len(),
+            2,
+            "the sort is part of sorted_keys: {:?}",
+            f.body
+        );
+    }
+}
+
+#[test]
+fn string_keys_sorted_by_byte_are_kept_as_foreign_not_read_as_sorted_keys() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "pub fn strs(m: HashMap<String, bool>) -> Vec<String> {",
+        "    let mut keys: Vec<String> = m.keys().cloned().collect();",
+        "    keys.sort();",
+        "    keys",
+        "}",
+    ]));
+    assert_foreign(&m, "Strs", "lib.rs:3", "UTF-16");
+}
+
+#[test]
+fn a_float_literal_is_spelled_at_its_width_and_typed_from_its_context() {
+    let m = read(&lines(&[
+        "pub fn f(big: bool) -> bool {",
+        "    let mut x: f32 = 0.1;",
+        "    if big {",
+        "        x = 1e21;",
+        "    }",
+        "    x / 3.0 > 0.5f32",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let f32t = Type::Float {
+        bits: codespec_model::FloatBits::W32,
+    };
+    let Stmt::Let { rhs, .. } = &m.funcs[0].body[0] else {
+        panic!("{:?}", m.funcs[0].body)
+    };
+    assert_eq!(
+        rhs[0],
+        Expr::Float {
+            value: "0.1".into(),
+            t: f32t.clone(),
+        }
+    );
+    let json = m.to_json();
+    assert!(json.contains("\"value\": \"1e21\""), "{json}");
+    assert!(json.contains("\"value\": \"3\""), "{json}");
+}
+
+#[test]
+fn a_float_literal_without_context_and_a_float_remainder_are_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f(x: f64) -> f64 {",
+        "    let y = 2.5;",
+        "    x % 2.0",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "float literal");
+    assert_foreign(&m, "F", "lib.rs:3", "floats");
+}
+
+#[test]
+fn a_zero_array_reads_as_var_and_indexes_as_a_slice_does() {
+    let m = read(&lines(&[
+        "pub fn pick(i: i64) -> i64 {",
+        "    let mut a: [i64; 3] = [0; 3];",
+        "    a[1] = 7;",
+        "    a[i as usize]",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let arr = Type::Array {
+        len: 3,
+        elem: Box::new(i64t()),
+    };
+    let body = &m.funcs[0].body;
+    assert!(
+        matches!(&body[0], Stmt::Var { name, t, .. } if name == "a" && *t == arr),
+        "{body:?}"
+    );
+    assert!(
+        matches!(returned(body), Expr::Index { x, .. } if **x == var("a", arr.clone())),
+        "{body:?}"
+    );
+}
+
+#[test]
+fn an_array_repeat_of_a_value_other_than_zero_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f() -> i64 {",
+        "    let a: [i64; 2] = [5; 2];",
+        "    a[0]",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "zero value");
+}
+
+#[test]
+fn a_static_mut_reads_as_a_module_variable_read_and_written_inside_unsafe() {
+    let m = read(&lines(&[
+        "static START: i64 = 10;",
+        "static mut HITS: i64 = 0;",
+        "pub fn hit(n: i64) -> i64 {",
+        "    unsafe {",
+        "        HITS += n;",
+        "    }",
+        "    unsafe { START + HITS }",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let names: Vec<(&str, bool)> = m
+        .vars
+        .iter()
+        .map(|v| (v.name.as_str(), v.init.is_some()))
+        .collect();
+    assert_eq!(names, [("start", true), ("hits", false)]);
+    let body = &m.funcs[0].body;
+    let hits = Expr::Global {
+        name: "hits".into(),
+        t: i64t(),
+    };
+    assert!(
+        matches!(&body[0], Stmt::Assign { op, lhs, .. } if op == "+=" && lhs[0] == hits),
+        "{body:?}"
+    );
+    assert!(
+        matches!(returned(body), Expr::Binop { y, .. } if **y == hits),
+        "{body:?}"
+    );
+}
+
+#[test]
+fn an_unsafe_block_that_binds_a_name_is_kept_as_foreign() {
+    let m = read(&lines(&[
+        "static mut HITS: i64 = 0;",
+        "pub fn hit() -> i64 {",
+        "    unsafe {",
+        "        let h = HITS;",
+        "        HITS = h + 1;",
+        "    }",
+        "    0",
+        "}",
+    ]));
+    assert_foreign(&m, "Hit", "lib.rs:3", "binds a name");
+}
+
+#[test]
+fn a_function_pointer_reads_as_a_function_value_called_through_a_parameter_and_a_field() {
+    let m = read(&lines(&[
+        "pub struct Rule {",
+        "    pub check: fn(i64) -> bool,",
+        "}",
+        "fn positive(n: i64) -> bool {",
+        "    n > 0",
+        "}",
+        "fn run(f: fn(i64) -> bool, n: i64) -> bool {",
+        "    f(n)",
+        "}",
+        "pub fn allowed(n: i64) -> bool {",
+        "    let r = Rule { check: positive };",
+        "    run(positive, n) && (r.check)(n)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let ft = Type::Func {
+        params: vec![i64t()],
+        results: vec![Type::Bool],
+    };
+    let run = &m.funcs[1].body;
+    assert!(
+        matches!(returned(run), Expr::CallValue { f, .. } if **f == var("f", ft.clone())),
+        "{run:?}"
+    );
+    let allowed = &m.funcs[2].body;
+    let Expr::Binop { x, y, .. } = returned(allowed) else {
+        panic!("{allowed:?}")
+    };
+    assert!(
+        matches!(&**x, Expr::Call { args, .. } if args[0] == Expr::FuncRef { name: "positive".into(), recv: None, t: ft.clone() }),
+        "{x:?}"
+    );
+    assert!(
+        matches!(&**y, Expr::CallValue { f, .. } if matches!(&**f, Expr::Field { name, .. } if name == "Check")),
+        "{y:?}"
+    );
+}
+
+#[test]
+fn a_typed_closure_reads_as_a_function_literal_with_its_captures() {
+    let m = read(&lines(&[
+        "pub fn scale(n: i64, k: i64) -> i64 {",
+        "    let mut calls: i64 = 0;",
+        "    let mut mul = |x: i64| -> i64 {",
+        "        calls += 1;",
+        "        x * k",
+        "    };",
+        "    let once = mul(n);",
+        "    once + calls",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let body = &m.funcs[0].body;
+    let Stmt::Let { rhs, .. } = &body[1] else {
+        panic!("{body:?}")
+    };
+    let Expr::Lambda {
+        params,
+        results,
+        captures,
+        ..
+    } = &rhs[0]
+    else {
+        panic!("{rhs:?}")
+    };
+    assert_eq!(params[0].name, "x");
+    assert_eq!(results, &[i64t()]);
+    assert_eq!(captures, &["calls".to_string(), "k".to_string()]);
+}
+
+#[test]
+fn a_move_closure_and_a_closure_with_an_untyped_parameter_are_kept_as_foreign() {
+    let m = read(&lines(&[
+        "pub fn f(k: i64) -> i64 {",
+        "    let add = move |x: i64| -> i64 { x + k };",
+        "    let sub = |x| -> i64 { x - k };",
+        "    k",
+        "}",
+    ]));
+    assert_foreign(&m, "F", "lib.rs:2", "move");
+    assert_foreign(&m, "F", "lib.rs:3", "type");
+}
+
+#[test]
+fn a_crate_trait_reads_as_an_interface_its_dyn_as_the_interface_type_and_its_calls_through_it() {
+    let m = read(&lines(&[
+        "pub trait Shape {",
+        "    fn area(&self) -> i64;",
+        "}",
+        "struct Square {",
+        "    side: i64,",
+        "}",
+        "impl Shape for Square {",
+        "    fn area(&self) -> i64 {",
+        "        self.side * self.side",
+        "    }",
+        "}",
+        "fn area(s: &dyn Shape) -> i64 {",
+        "    s.area()",
+        "}",
+        "pub fn areas(n: i64) -> i64 {",
+        "    let b: Box<dyn Shape> = Box::new(Square { side: n });",
+        "    area(&Square { side: n }) + area(&*b)",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(m.interfaces.len(), 1);
+    assert_eq!(m.interfaces[0].name, "Shape");
+    assert_eq!(m.interfaces[0].methods[0].name, "Area");
+    let shape = Type::Named {
+        name: "Shape".into(),
+        targs: vec![],
+    };
+    let keys: Vec<String> = m.funcs.iter().map(|f| f.key()).collect();
+    assert_eq!(keys, ["Square.Area", "area", "Areas"]);
+    assert!(
+        matches!(returned(&m.funcs[1].body), Expr::IfaceCall { iface, name, .. } if iface == "Shape" && name == "Area"),
+        "{:?}",
+        m.funcs[1].body
+    );
+    let Stmt::Let { rhs, .. } = &m.funcs[2].body[0] else {
+        panic!("{:?}", m.funcs[2].body)
+    };
+    assert!(
+        matches!(&rhs[0], Expr::ToIface { t, .. } if *t == shape),
+        "{rhs:?}"
+    );
+}
+
+#[test]
+fn a_trait_method_with_a_default_body_is_refused_and_so_is_its_dyn() {
+    let m = read(&lines(&[
+        "pub trait Shape {",
+        "    fn area(&self) -> i64 {",
+        "        0",
+        "    }",
+        "}",
+        "fn area(s: &dyn Shape) -> i64 {",
+        "    s.area()",
+        "}",
+    ]));
+    assert!(m.interfaces.is_empty(), "{:?}", m.interfaces);
+    assert!(
+        m.refusals
+            .iter()
+            .any(|r| r.pos == "lib.rs:1" && r.reason.contains("default body")),
+        "{:?}",
+        m.refusals
+    );
+    assert!(m.funcs.is_empty(), "{:?}", m.funcs);
 }

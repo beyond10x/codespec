@@ -3,7 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use codespec_model::{
-    Case, Expr, FieldInit, Func, IntWidth, Param, Refusal, Stmt, Type, receiver_type_name,
+    Case, Expr, FieldInit, FloatBits, Func, IntWidth, Param, Refusal, Stmt, Type, float_spelling,
+    receiver_type_name,
 };
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -52,6 +53,9 @@ pub(crate) struct Fx<'r> {
     /// The locals bound to `&mut x` of another local, as (index of their scope, Rust name): the
     /// `cir/1` pointers a `*p` dereferences. A later binding of the name in that scope clears it.
     mut_refs: Vec<(usize, String)>,
+    /// The closures being read, innermost last: the index of the first scope of each, and the
+    /// Go names of the bindings of enclosing scopes it reads or writes, its captures.
+    lambdas: Vec<(usize, BTreeSet<String>)>,
 }
 
 /// Whether `name` is one of the Rust writer's temporaries for `base`: `__base`, then as many `_`
@@ -604,6 +608,7 @@ fn unsuffixed_int(e: &syn::Expr) -> bool {
 /// The zero literals a struct literal may leave out and a `var` starts from.
 fn is_zero_lit(e: &Expr) -> bool {
     matches!(e, Expr::Lit { value, .. } if value == "0" || value == "false" || value == "\"\"")
+        || matches!(e, Expr::Float { value, .. } if value == "0")
 }
 
 fn no_ws(s: &str) -> String {
@@ -666,6 +671,7 @@ impl<'r> Fx<'r> {
             loops: Vec::new(),
             hint: None,
             mut_refs: Vec::new(),
+            lambdas: Vec::new(),
         }
     }
 
@@ -673,10 +679,24 @@ impl<'r> Fx<'r> {
         self.r.pos(n.span())
     }
 
-    fn lookup(&self, rust: &str) -> Option<(String, Type)> {
-        for s in self.scopes.iter().rev() {
+    /// The binding `rust` names, its Go name and type. Inside a closure, a binding of a scope
+    /// outside it is one of its captures, and of every enclosing closure the binding is outside.
+    fn lookup(&mut self, rust: &str) -> Option<(String, Type)> {
+        let found = self.find(rust)?;
+        let (depth, go, t) = found;
+        for (base, captures) in &mut self.lambdas {
+            if depth < *base {
+                captures.insert(go.clone());
+            }
+        }
+        Some((go, t))
+    }
+
+    /// The binding `rust` names, with the index of its scope, without recording a capture.
+    fn find(&self, rust: &str) -> Option<(usize, String, Type)> {
+        for (i, s) in self.scopes.iter().enumerate().rev() {
             if let Some((_, go, t)) = s.iter().rev().find(|(r, _, _)| r == rust) {
-                return Some((go.clone(), t.clone()));
+                return Some((i, go.clone(), t.clone()));
             }
         }
         None
@@ -757,6 +777,10 @@ impl<'r> Fx<'r> {
         };
         match t {
             Type::Int { .. } => lit("0"),
+            Type::Float { .. } => Expr::Float {
+                value: "0".into(),
+                t: t.clone(),
+            },
             Type::Bool => lit("false"),
             Type::String => lit("\"\""),
             Type::Named { name, .. } => match self.r.decls.get(name) {
@@ -798,7 +822,24 @@ impl<'r> Fx<'r> {
         }
         self.scopes.push(Vec::new());
         let mut out = Vec::new();
+        let mut skip = false;
         for (i, s) in stmts.iter().enumerate() {
+            if std::mem::take(&mut skip) {
+                continue;
+            }
+            if let (syn::Stmt::Local(l), Some(next)) = (s, stmts.get(i + 1))
+                && let Some(r) = self.sorted_keys(l, next)
+            {
+                skip = true;
+                match r {
+                    Ok(v) => out.extend(v),
+                    Err(reason) => {
+                        out.push(self.foreign(s, reason.clone()));
+                        out.push(self.foreign(next, reason));
+                    }
+                }
+                continue;
+            }
             self.hint = match s {
                 syn::Stmt::Local(l) => self.empty_hint(l, &stmts[i + 1..], tail),
                 _ => None,
@@ -808,6 +849,113 @@ impl<'r> Fx<'r> {
         }
         self.scopes.pop();
         out
+    }
+
+    /// `let mut keys: Vec<K> = m.keys().copied().collect();` (or `.cloned()`) followed by
+    /// `keys.sort();` for integer keys or
+    /// `keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));` for strings: the keys of
+    /// the map in ascending order, `keys := sorted_keys(m)`. `None` when `l` and `next` do not
+    /// have that form; an error when they do and the order is not `cir/1`'s (strings sorted by
+    /// byte, which differs from UTF-16 order above U+FFFF).
+    fn sorted_keys(&mut self, l: &syn::Local, next: &syn::Stmt) -> Option<R<Vec<Stmt>>> {
+        let (pat, ann) = match &l.pat {
+            syn::Pat::Type(pt) => (&*pt.pat, Some(&*pt.ty)),
+            p => (p, None),
+        };
+        let syn::Pat::Ident(id) = pat else {
+            return None;
+        };
+        if id.by_ref.is_some() || id.subpat.is_some() {
+            return None;
+        }
+        let name = id.ident.to_string();
+        let syn::Expr::MethodCall(collect) = local_init(l)? else {
+            return None;
+        };
+        let syn::Expr::MethodCall(copy) = &*collect.receiver else {
+            return None;
+        };
+        let syn::Expr::MethodCall(keys) = &*copy.receiver else {
+            return None;
+        };
+        if collect.method != "collect"
+            || !collect.args.is_empty()
+            || !(copy.method == "copied" || copy.method == "cloned")
+            || !copy.args.is_empty()
+            || copy.turbofish.is_some()
+            || keys.method != "keys"
+            || !keys.args.is_empty()
+            || keys.turbofish.is_some()
+        {
+            return None;
+        }
+        let syn::Stmt::Expr(syn::Expr::MethodCall(sort), Some(_)) = next else {
+            return None;
+        };
+        if ident_of(&sort.receiver).as_deref() != Some(name.as_str()) {
+            return None;
+        }
+        let utf16 = match (sort.method.to_string().as_str(), sort.args.len()) {
+            ("sort" | "sort_unstable", 0) => false,
+            ("sort_by", 1) => match &sort.args[0] {
+                syn::Expr::Closure(c) => {
+                    let [syn::Pat::Ident(a), syn::Pat::Ident(b)] =
+                        c.inputs.iter().collect::<Vec<_>>()[..]
+                    else {
+                        return None;
+                    };
+                    let want = format!(
+                        "{a}.encode_utf16().cmp({b}.encode_utf16())",
+                        a = a.ident,
+                        b = b.ident
+                    );
+                    if no_ws(&src_of(&*c.body)) != want {
+                        return None;
+                    }
+                    true
+                }
+                _ => return None,
+            },
+            _ => return None,
+        };
+        let pos = self.pos(l);
+        Some((|| {
+            let map = self.val(strip_ref(&keys.receiver), None)?;
+            let Type::Map { key, .. } = map.t().clone() else {
+                return Err("`.keys()` of something other than a map".into());
+            };
+            match (&*key, utf16) {
+                (Type::Int { .. }, false) | (Type::String, true) => {}
+                (Type::String, false) => {
+                    return Err(
+                        "string keys sorted by byte, where cir/1's sorted_keys orders them by UTF-16 code unit"
+                            .into(),
+                    );
+                }
+                _ => {
+                    return Err("map keys sorted in an order other than cir/1's sorted_keys".into());
+                }
+            }
+            let t = Type::Slice { elem: key };
+            let declared = match (ann, &collect.turbofish) {
+                (Some(a), None) => self.r.ty(a, self.impl_ty.as_deref())?,
+                (None, Some(_)) => t.clone(),
+                _ => return Err("collected keys whose type no annotation fixes".into()),
+            };
+            if declared != t {
+                return Err(format!("keys of {t:?} collected as {declared:?}"));
+            }
+            let go = self.bind(&name, t.clone());
+            Ok(vec![Stmt::Let {
+                names: vec![go],
+                rhs: vec![Expr::Intrinsic {
+                    name: "sorted_keys".into(),
+                    args: vec![map],
+                    t,
+                }],
+                pos,
+            }])
+        })())
     }
 
     /// The type of the empty collection `l` binds without an annotation, as the first later
@@ -937,6 +1085,24 @@ impl<'r> Fx<'r> {
             }
             syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
                 let e = self.val(&init.expr, ann.as_ref().or(hint.as_ref()))?;
+                // `let a: Rc<dyn Any> = …` of a value of another type: Go's `var a any` then
+                // `a = …`, so the binding is an `any`, as Rust's is.
+                if ann == Some(Type::Any) && *e.t() != Type::Any {
+                    let name = self.bind(&i.ident.to_string(), Type::Any);
+                    return Ok(vec![
+                        Stmt::Var {
+                            name: name.clone(),
+                            t: Type::Any,
+                            pos: pos.clone(),
+                        },
+                        Stmt::Assign {
+                            op: String::new(),
+                            lhs: vec![Expr::Var { name, t: Type::Any }],
+                            rhs: vec![e],
+                            pos,
+                        },
+                    ]);
+                }
                 if let Some(a) = &ann
                     && e.t() != a
                 {
@@ -949,6 +1115,8 @@ impl<'r> Fx<'r> {
                             &e,
                             Expr::Make {
                                 t: Type::Slice { .. }
+                            } | Expr::Zero {
+                                t: Type::Array { .. }
                             }
                         ));
                 let name = self.bind(&i.ident.to_string(), t.clone());
@@ -1228,6 +1396,7 @@ impl<'r> Fx<'r> {
             syn::Expr::Return(r) => self.ret(r.expr.as_deref(), &pos),
             syn::Expr::Paren(p) => self.tail(&p.expr),
             syn::Expr::Block(b) => self.block_stmt(b, true),
+            syn::Expr::Unsafe(u) => self.unsafe_block(u, true),
             e => self.ret(Some(e), &pos),
         }
     }
@@ -1348,8 +1517,8 @@ impl<'r> Fx<'r> {
                 };
                 Ok(vec![Stmt::Expr { x, pos }])
             }
-            syn::Expr::Unsafe(_) => Err("unsafe is outside cir/1".into()),
-            syn::Expr::Closure(_) => Err("a closure is outside cir/1".into()),
+            syn::Expr::Unsafe(u) => self.unsafe_block(u, false),
+            syn::Expr::Closure(_) => Err("a closure as a statement does nothing Go can say".into()),
             syn::Expr::While(_) | syn::Expr::Loop(_) => Ok(vec![self.loop_stmt(e, None)?]),
             syn::Expr::Break(b) => {
                 if b.label.is_some() {
@@ -1554,6 +1723,133 @@ impl<'r> Fx<'r> {
             self.refusals.truncate(mark);
         }
         r
+    }
+
+    /// An `unsafe` block is read only around a `static` of the crate: a `static mut` is read and
+    /// written in one, as Go reads and writes its module-level variable. Nothing else the reader
+    /// maps needs `unsafe` (it maps no raw pointer, `unsafe fn`, union or foreign item).
+    fn statics_only(&self, u: &syn::ExprUnsafe) -> R<()> {
+        if idents(&u.block)
+            .iter()
+            .any(|i| self.r.statics.contains_key(i) && self.find(i).is_none())
+        {
+            Ok(())
+        } else {
+            Err("unsafe is outside cir/1 other than around a `static mut` of the crate".into())
+        }
+    }
+
+    /// `unsafe { … }` as statements: its statements in the enclosing block, which needs it to
+    /// bind no name (Rust's block would end the binding, Go's enclosing block would not). Any
+    /// statement that does not read keeps the whole block as `foreign`.
+    fn unsafe_block(&mut self, u: &syn::ExprUnsafe, tail: bool) -> R<Vec<Stmt>> {
+        self.statics_only(u)?;
+        let stmts = &u.block.stmts;
+        if stmts
+            .iter()
+            .any(|s| matches!(s, syn::Stmt::Local(_) | syn::Stmt::Item(_)))
+        {
+            return Err("an `unsafe` block that binds a name".into());
+        }
+        let mark = self.refusals.len();
+        let mut out = Vec::new();
+        for (i, s) in stmts.iter().enumerate() {
+            out.extend(self.stmt(s, tail && i + 1 == stmts.len()));
+        }
+        if self.refusals.len() > mark {
+            let reason = self.refusals[mark].reason.clone();
+            self.refusals.truncate(mark);
+            return Err(format!("in an `unsafe` block: {reason}"));
+        }
+        Ok(out)
+    }
+
+    /// `|x: T, …| -> R { … }`: Go's function literal. Every parameter and the result are typed
+    /// in the source, as a Go literal's are: the reader infers neither from the closure's uses or
+    /// body. The closure captures by reference, as Go's literal does; a `move` closure copies
+    /// what it captures, which Go has no form for.
+    fn closure(&mut self, c: &syn::ExprClosure) -> R<Expr> {
+        if c.constness.is_some() || c.asyncness.is_some() || c.lifetimes.is_some() {
+            return Err("a closure other than a plain `|…| -> T { … }`".into());
+        }
+        if c.capture.is_some() {
+            return Err(
+                "a `move` closure copies what it captures, which a Go function literal does not"
+                    .into(),
+            );
+        }
+        let syn::ReturnType::Type(_, rt) = &c.output else {
+            return Err("a closure without its result type (`|…| -> T { … }`): the reader does not infer it".into());
+        };
+        let results = match &**rt {
+            syn::Type::Tuple(tt) => tt
+                .elems
+                .iter()
+                .map(|e| self.r.ty(e, self.impl_ty.as_deref()))
+                .collect::<R<Vec<_>>>()?,
+            t => vec![self.r.ty(t, self.impl_ty.as_deref())?],
+        };
+        let mut typed = Vec::new();
+        for p in &c.inputs {
+            let syn::Pat::Type(pt) = p else {
+                return Err(
+                    "a closure parameter without its type: the reader does not infer it".into(),
+                );
+            };
+            let name = match &*pt.pat {
+                syn::Pat::Ident(i) if i.by_ref.is_none() && i.subpat.is_none() => {
+                    i.ident.to_string()
+                }
+                syn::Pat::Wild(_) => "_".into(),
+                _ => return Err("a closure parameter pattern other than a name".into()),
+            };
+            typed.push((name, self.r.ty(&pt.ty, self.impl_ty.as_deref())?));
+        }
+        let syn::Expr::Block(body) = &*c.body else {
+            return Err("a closure whose body is not a block".into());
+        };
+        if body.label.is_some() {
+            return Err("a closure whose body is a labeled block".into());
+        }
+        // The closure's own function: its results and shape, no enclosing loop, its parameters
+        // in a scope of their own.
+        let saved = (
+            std::mem::replace(&mut self.results, results.clone()),
+            std::mem::replace(&mut self.shape, Shape::Plain),
+            std::mem::take(&mut self.loops),
+            self.hint.take(),
+        );
+        let mark = self.refusals.len();
+        self.scopes.push(Vec::new());
+        self.lambdas.push((self.scopes.len() - 1, BTreeSet::new()));
+        let params: Vec<Param> = typed
+            .iter()
+            .map(|(n, t)| Param {
+                name: self.bind(n, t.clone()),
+                t: t.clone(),
+                variadic: false,
+            })
+            .collect();
+        let stmts = self.block(&body.block.stmts, true);
+        let (_, captures) = self.lambdas.pop().expect("the closure's frame");
+        self.scopes.pop();
+        (self.results, self.shape, self.loops, self.hint) = saved;
+        if self.refusals.len() > mark {
+            let reason = self.refusals[mark].reason.clone();
+            self.refusals.truncate(mark);
+            return Err(format!("in a closure: {reason}"));
+        }
+        let t = Type::Func {
+            params: typed.iter().map(|(_, t)| t.clone()).collect(),
+            results: results.clone(),
+        };
+        Ok(Expr::Lambda {
+            params,
+            results,
+            captures: captures.into_iter().collect(),
+            body: stmts,
+            t,
+        })
     }
 
     /// The Rust writer's multi-value assignment as one `cir/1` assignment: the targets read
@@ -2071,6 +2367,9 @@ impl<'r> Fx<'r> {
             _ => return Err("an expression statement that is not a call or an assignment".into()),
         };
         let l = self.place(&b.left)?;
+        if matches!(l.t(), Type::Float { .. }) && !matches!(op, "+=" | "-=" | "*=" | "/=") {
+            return Err(format!("`{op}` on floats, which Go has no operator for"));
+        }
         // `x &= !y` on integers: Go's `x &^= y`.
         if op == "&="
             && matches!(l.t(), Type::Int { .. })
@@ -2104,6 +2403,20 @@ impl<'r> Fx<'r> {
             let chan = self.val(&send.receiver, None)?;
             let Type::Chan { elem, .. } = chan.t().clone() else {
                 return Err("`send` on something other than a `Sender`".into());
+            };
+            let x = self.val(&send.args[0], Some(&elem))?;
+            return Ok(vec![Stmt::Send { chan, x, pos }]);
+        }
+        // `ch.0.try_send(x).expect(…)`, the Rust writer's send on a channel with both ends: Go's
+        // `ch <- x`. A full channel panics here where Go's only goroutine deadlocks.
+        if ((m == "expect" && mc.args.len() == 1) || (m == "unwrap" && mc.args.is_empty()))
+            && let syn::Expr::MethodCall(send) = &*mc.receiver
+            && send.method == "try_send"
+            && send.args.len() == 1
+            && let Some(chan) = self.chan_end(&send.receiver, 0)?
+        {
+            let Type::Chan { elem, .. } = chan.t().clone() else {
+                unreachable!("a channel end is of a channel")
             };
             let x = self.val(&send.args[0], Some(&elem))?;
             return Ok(vec![Stmt::Send { chan, x, pos }]);
@@ -2195,6 +2508,42 @@ impl<'r> Fx<'r> {
     // ----- expressions -------------------------------------------------------------------
 
     fn val(&mut self, e: &syn::Expr, want: Option<&Type>) -> R<Expr> {
+        let x = self.plain(e, want)?;
+        // A value of a type that implements a crate trait, where the trait object is expected:
+        // Go's conversion to the interface. Rust coerces `&T` and `Box<T>` to the trait object
+        // there.
+        if let Some(w @ Type::Named { name: iface, .. }) = want
+            && self.r.is_iface(w).is_some()
+            && x.t() != w
+        {
+            let tn = match x.t() {
+                Type::Named { name, targs } if targs.is_empty() => name.clone(),
+                t => {
+                    return Err(format!(
+                        "a value of {t:?} where the trait object {iface} is expected"
+                    ));
+                }
+            };
+            if !self.r.impls.contains(&(tn.clone(), iface.clone())) {
+                return Err(format!(
+                    "{tn}, which does not implement {iface}, as a {iface}"
+                ));
+            }
+            if self.r.ptr_types.contains(&tn) {
+                return Err(format!(
+                    "{tn} as a {iface}: its methods have pointer receivers in Go, so its value does not implement the interface"
+                ));
+            }
+            return Ok(Expr::ToIface {
+                x: Box::new(x),
+                t: w.clone(),
+            });
+        }
+        Ok(x)
+    }
+
+    /// A value as `val` gives it, before any conversion to an interface.
+    fn plain(&mut self, e: &syn::Expr, want: Option<&Type>) -> R<Expr> {
         match self.expr(e, want)? {
             V::E(x) => Ok(x),
             V::Deref(p) => {
@@ -2250,7 +2599,35 @@ impl<'r> Fx<'r> {
                 value: b.value.to_string(),
                 t: Type::Bool,
             }),
-            _ => Err("a literal other than an integer, string or bool".into()),
+            // A float literal, its width from its suffix or the type the context expects, never
+            // defaulted to `f64`; its value the number Rust rounds it to at that width.
+            syn::Lit::Float(n) => {
+                let bits = match (n.suffix(), want) {
+                    ("f64", _) => FloatBits::W64,
+                    ("f32", _) => FloatBits::W32,
+                    ("", Some(Type::Float { bits })) => *bits,
+                    ("", _) => {
+                        return Err(
+                            "a float literal whose type the reader cannot tell: no suffix, and no annotation, field, parameter, operand or result fixes it"
+                                .into(),
+                        );
+                    }
+                    (s, _) => return Err(format!("float suffix {s}")),
+                };
+                let digits = n.base10_digits();
+                let v = match bits {
+                    FloatBits::W64 => digits.parse::<f64>().map_err(|e| e.to_string())?,
+                    FloatBits::W32 => digits.parse::<f32>().map_err(|e| e.to_string())? as f64,
+                };
+                if !v.is_finite() {
+                    return Err("a float literal that is not finite at its width".into());
+                }
+                Ok(Expr::Float {
+                    value: float_spelling(v, bits),
+                    t: Type::Float { bits },
+                })
+            }
+            _ => Err("a literal other than an integer, float, string or bool".into()),
         }
     }
 
@@ -2260,6 +2637,9 @@ impl<'r> Fx<'r> {
         match segs.as_slice() {
             [x] if x == "self" => {
                 let (name, t) = self.recv.clone().ok_or("`self` outside a method")?;
+                for (_, captures) in &mut self.lambdas {
+                    captures.insert(name.clone());
+                }
                 Ok(Expr::Var { name, t })
             }
             [x] => {
@@ -2272,7 +2652,34 @@ impl<'r> Fx<'r> {
                         t: t.clone(),
                     });
                 }
-                Err(format!("`{x}`, which is neither a local nor a constant"))
+                if let Some((name, t)) = self.r.statics.get(x) {
+                    return Ok(Expr::Global {
+                        name: name.clone(),
+                        t: t.clone(),
+                    });
+                }
+                // A function of the crate used as a value: Go's function value. Only a plain
+                // one: a `Result` or `Option` result has no `fn` type in the reader's subset.
+                if let Some(sig) = self.r.sigs.get(&(None, x.clone()))
+                    && sig.recv.is_none()
+                {
+                    if sig.shape != Shape::Plain {
+                        return Err(format!(
+                            "the function {x}, which gives a `Result` or `Option`, used as a value"
+                        ));
+                    }
+                    return Ok(Expr::FuncRef {
+                        name: sig.go.clone(),
+                        recv: None,
+                        t: Type::Func {
+                            params: sig.params.iter().map(|(_, _, t)| t.clone()).collect(),
+                            results: sig.results.clone(),
+                        },
+                    });
+                }
+                Err(format!(
+                    "`{x}`, which is neither a local, a constant, a static nor a function"
+                ))
             }
             [t, v] => {
                 let t = if t == "Self" {
@@ -2410,6 +2817,12 @@ impl<'r> Fx<'r> {
             syn::Expr::Binary(b) => self.binary(b, want).map(V::E),
             // `x.len() as i64`: the length as an `i64`. A narrower cast truncates, which `len`
             // does not, and `cir/1` has no integer conversion to say it with.
+            // `Rc::new(x) as Rc<dyn Any>`, the Rust writer's `any`: the value itself.
+            syn::Expr::Cast(c)
+                if matches!(self.r.ty(&c.ty, self.impl_ty.as_deref()), Ok(Type::Any)) =>
+            {
+                Ok(V::E(self.val(&c.expr, Some(&Type::Any))?))
+            }
             syn::Expr::Cast(c) => match &*c.expr {
                 syn::Expr::MethodCall(mc) if mc.method == "len" && mc.args.is_empty() => {
                     if !is_type(&c.ty, "i64") {
@@ -2437,7 +2850,8 @@ impl<'r> Fx<'r> {
                     e => (e, false),
                 };
                 match x.t().clone() {
-                    Type::Slice { elem } => {
+                    // An array indexes as a slice does: out of range panics in both.
+                    Type::Slice { elem } | Type::Array { elem, .. } => {
                         let i = self.val(index, Some(&platform_int()))?;
                         if cast && !matches!(i.t(), Type::Int { signed: true, .. }) {
                             return Err(
@@ -2454,11 +2868,44 @@ impl<'r> Fx<'r> {
                         "indexing a map panics on a missing key where Go reads the zero value"
                             .into(),
                     ),
-                    _ => Err("an index into something other than a slice".into()),
+                    _ => Err("an index into something other than a slice or an array".into()),
                 }
             }
-            syn::Expr::Closure(_) => Err("a closure is outside cir/1".into()),
-            syn::Expr::Unsafe(_) => Err("unsafe is outside cir/1".into()),
+            // `[z; N]`, `z` the zero value of the element: Go's zero array.
+            syn::Expr::Repeat(rp) => {
+                let Some(t @ Type::Array { elem, len }) = want else {
+                    return Err(
+                        "an array `[x; N]` whose type no annotation, field or parameter fixes"
+                            .into(),
+                    );
+                };
+                let n = match &*rp.len {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Int(n),
+                        ..
+                    }) => n.base10_parse::<u64>().map_err(|e| e.to_string())?,
+                    _ => return Err("an array `[x; N]` whose length is not a literal".into()),
+                };
+                let x = self.val(&rp.expr, Some(elem))?;
+                if n != *len || !is_zero_lit(&x) || x.t() != &**elem {
+                    return Err(
+                        "an array `[x; N]` other than the zero value of its annotated type".into(),
+                    );
+                }
+                Ok(V::E(Expr::Zero { t: t.clone() }))
+            }
+            syn::Expr::Closure(c) => self.closure(c).map(V::E),
+            // `unsafe { e }` around a read of a `static mut`: `e`.
+            syn::Expr::Unsafe(u) => {
+                self.statics_only(u)?;
+                match u.block.stmts.as_slice() {
+                    [syn::Stmt::Expr(e, None)] => self.expr(e, want),
+                    _ => Err(
+                        "an `unsafe` block used as a value holding other than one expression"
+                            .into(),
+                    ),
+                }
+            }
             syn::Expr::Try(_) => Err("the `?` operator is outside cir/1".into()),
             syn::Expr::If(_) | syn::Expr::Match(_) | syn::Expr::Block(_) => {
                 Err("an `if`, `match` or block used as a value is outside cir/1".into())
@@ -2526,6 +2973,15 @@ impl<'r> Fx<'r> {
             let y = self.val(strip_ref(&b.right), Some(x.t()))?;
             (x, y)
         };
+        if matches!(x.t(), Type::Float { .. })
+            && !matches!(op, "+" | "-" | "*" | "/")
+            && kind != 'c'
+        {
+            return Err(format!("`{op}` on floats, which Go has no operator for"));
+        }
+        if matches!(x.t(), Type::Func { .. }) {
+            return Err("a comparison of function values, which Go has no operator for".into());
+        }
         let t = match kind {
             'c' | 'l' => Type::Bool,
             _ => x.t().clone(),
@@ -2538,9 +2994,53 @@ impl<'r> Fx<'r> {
         })
     }
 
+    /// A call of a function value: a local, parameter or field of a `fn` type, or a closure.
+    fn call_value(&mut self, f: Expr, c: &syn::ExprCall) -> R<V> {
+        let Type::Func { params, results } = f.t().clone() else {
+            return Err("a call of a value that is not a function".into());
+        };
+        if c.args.len() != params.len() {
+            return Err(format!(
+                "a function value of {} parameters called with {} arguments",
+                params.len(),
+                c.args.len()
+            ));
+        }
+        let args = c
+            .args
+            .iter()
+            .zip(&params)
+            .map(|(a, t)| self.val(strip_ref(a), Some(t)))
+            .collect::<R<Vec<_>>>()?;
+        let t = match results.as_slice() {
+            [] => Type::Unit,
+            [t] => t.clone(),
+            ts => Type::Tuple { elems: ts.to_vec() },
+        };
+        Ok(V::E(Expr::CallValue {
+            f: Box::new(f),
+            args,
+            t,
+        }))
+    }
+
     fn call(&mut self, c: &syn::ExprCall, want: Option<&Type>) -> R<V> {
-        let syn::Expr::Path(p) = &*c.func else {
-            return Err("a call of something other than a path".into());
+        let p = match &*c.func {
+            syn::Expr::Path(p)
+                if p.qself.is_none()
+                    && p.path.get_ident().is_some_and(|i| {
+                        matches!(self.find(&i.to_string()), Some((_, _, Type::Func { .. })))
+                    }) =>
+            {
+                let f = self.path_value(&p.path)?;
+                return self.call_value(f, c);
+            }
+            syn::Expr::Path(p) => p,
+            syn::Expr::Paren(_) | syn::Expr::Field(_) => {
+                let f = self.val(&c.func, None)?;
+                return self.call_value(f, c);
+            }
+            _ => return Err("a call of something other than a path".into()),
         };
         let segs = path_idents(&p.path);
         let arg = |i: usize| c.args.iter().nth(i);
@@ -2600,6 +3100,36 @@ impl<'r> Fx<'r> {
                                 "`{t}::new()` whose element types no annotation, field or parameter fixes"
                             )),
                         };
+                    }
+                    // `Rc::new(x)` where `Rc<dyn Any>` is expected: `x` itself, which Go makes an
+                    // `any` where one is expected.
+                    ("Rc", "new", 1) if matches!(want, Some(Type::Any)) => {
+                        let x = self.val(&c.args[0], None)?;
+                        if matches!(x.t(), Type::Unit | Type::Tuple { .. }) {
+                            return Err("`Rc::new` of a value Go cannot hold in an `any`".into());
+                        }
+                        return Ok(V::E(x));
+                    }
+                    // `Box::new(x)` where `Box<dyn Trait>` is expected: Go's conversion to the
+                    // interface, which `val` makes.
+                    ("Box", "new", 1) if want.is_some_and(|w| self.r.is_iface(w).is_some()) => {
+                        return Ok(V::E(self.val(&c.args[0], want)?));
+                    }
+                    // `T::default()` of a derived `Default` that is Go's zero value, unless an
+                    // inherent `T::default` comes first.
+                    (t, "default", 0)
+                        if self.r.defaults.contains(t)
+                            && !self
+                                .r
+                                .sigs
+                                .contains_key(&(Some(t.to_string()), "default".to_string())) =>
+                    {
+                        return Ok(V::E(Expr::Zero {
+                            t: Type::Named {
+                                targs: Vec::new(),
+                                name: t.to_string(),
+                            },
+                        }));
                     }
                     ("Rc", "new", 1) => {
                         let syn::Expr::Call(inner) = &c.args[0] else {
@@ -2729,6 +3259,23 @@ impl<'r> Fx<'r> {
         }
         let m = mc.method.to_string();
         let n = mc.args.len();
+        // `ch.1.try_recv().expect(…)`, the Rust writer's receive on a channel with both ends:
+        // Go's `<-ch`. An empty channel panics here where Go's only goroutine deadlocks.
+        if ((m == "expect" && n == 1) || (m == "unwrap" && n == 0))
+            && let syn::Expr::MethodCall(inner) = &*mc.receiver
+            && inner.method == "try_recv"
+            && inner.args.is_empty()
+            && let Some(ch) = self.chan_end(&inner.receiver, 1)?
+        {
+            let Type::Chan { elem, .. } = ch.t().clone() else {
+                unreachable!("a channel end is of a channel")
+            };
+            return Ok(V::E(Expr::Unop {
+                op: "<-".into(),
+                x: Box::new(ch),
+                t: *elem,
+            }));
+        }
         let recv = self.expr(&mc.receiver, None)?;
         let x = match recv {
             V::Get { map, index } => {
@@ -2787,6 +3334,37 @@ impl<'r> Fx<'r> {
             args: vec![x],
             t: platform_int(),
         };
+        // A method of a crate trait through its trait object: Go's call through the interface.
+        if let Some(info) = self.r.is_iface(&t) {
+            let Some((go, params, results)) = info.methods.get(&m).cloned() else {
+                return Err(format!(
+                    "the trait {} has no method {m}",
+                    receiver_type_name(&t)
+                ));
+            };
+            if n != params.len() {
+                return Err(format!("{go} called with {n} arguments"));
+            }
+            let args = mc
+                .args
+                .iter()
+                .zip(&params)
+                .map(|(a, pt)| self.val(strip_ref(a), Some(pt)))
+                .collect::<R<Vec<_>>>()?;
+            let vt = match results.as_slice() {
+                [] => Type::Unit,
+                [r] => r.clone(),
+                rs => Type::Tuple { elems: rs.to_vec() },
+            };
+            return Ok(V::E(Expr::IfaceCall {
+                path: String::new(),
+                iface: receiver_type_name(&t).to_string(),
+                name: go,
+                recv: Box::new(x),
+                args,
+                t: vt,
+            }));
+        }
         // Methods of the crate's own types.
         let tn = receiver_type_name(&t).to_string();
         if !tn.is_empty()
@@ -2816,9 +3394,17 @@ impl<'r> Fx<'r> {
             (Type::String, "clone" | "to_string" | "to_owned" | "as_str" | "into", 0) => {
                 Ok(V::E(x))
             }
-            (Type::Int { .. } | Type::Bool | Type::Chan { .. } | Type::Ptr { .. }, "clone", 0) => {
-                Ok(V::E(x))
-            }
+            (
+                Type::Int { .. }
+                | Type::Float { .. }
+                | Type::Bool
+                | Type::Chan { .. }
+                | Type::Ptr { .. }
+                | Type::Any
+                | Type::Func { .. },
+                "clone",
+                0,
+            ) => Ok(V::E(x)),
             (Type::Ptr { .. }, "borrow" | "borrow_mut", 0) => Ok(V::Deref(x)),
             (Type::String | Type::Slice { .. } | Type::Map { .. }, "len", 0) => Ok(V::E(len(x))),
             (Type::String | Type::Slice { .. } | Type::Map { .. }, "is_empty", 0) => {
@@ -2871,6 +3457,25 @@ impl<'r> Fx<'r> {
                     "the method `.{m}()` on {t:?}, outside the reader's table"
                 ))
             }
+        }
+    }
+
+    /// `ch.<end>` of a channel with both ends, `Rc<(SyncSender<T>, Receiver<T>)>`: the channel;
+    /// `None` when `e` is not a field `.<end>`.
+    fn chan_end(&mut self, e: &syn::Expr, end: u32) -> R<Option<Expr>> {
+        let syn::Expr::Field(f) = e else {
+            return Ok(None);
+        };
+        if !matches!(&f.member, syn::Member::Unnamed(i) if i.index == end) {
+            return Ok(None);
+        }
+        let ch = self.val(&f.base, None)?;
+        match ch.t() {
+            Type::Chan {
+                dir: codespec_model::ChanDir::Both,
+                ..
+            } => Ok(Some(ch)),
+            _ => Ok(None),
         }
     }
 

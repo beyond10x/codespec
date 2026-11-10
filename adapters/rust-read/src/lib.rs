@@ -2,7 +2,7 @@
 //! and type resolved by the reader itself for the subset of Rust `cir/1` expresses. Nothing is
 //! guessed: a construct the reader cannot type or map is kept as a `foreign` statement in `rust`
 //! (its source and the reason), with a refusal at its position; an item it cannot map (a generic
-//! function, a trait, a type outside the subset) is listed as a refusal and left out.
+//! function, a trait outside the subset, a type outside it) is listed as a refusal and left out.
 //!
 //! `cir/1` is Go-shaped: the passes and writers expect `(T, error)` results, `(T, bool)` comma-ok
 //! results, pointer receivers, sentinel errors and channels of `any`. The reader maps Rust's idioms
@@ -25,6 +25,10 @@
 //! | `impl T { fn m(&mut self) }` | method with receiver `*T`; once one method of `T` takes `&mut self`, every `&self` method of `T` has `*T` too, otherwise `&self` and `self` are `T` |
 //! | `impl T { fn f(…) }` without `self` | function `F<T>` (`new` → `NewT`) |
 //! | `const X: T = <literal>` | `const` |
+//! | `static X: T = <literal>;`, `static mut X: T = <literal>;` | `var` (`X` → `X`, `HITS` unexported → `hits`); a zero literal is a `var` without a value |
+//! | `#[derive(Default)] struct T` whose every field's default is Go's zero value (an integer, float, `bool`, `String`, `Vec`, map, such a struct, an array of these) | `T::default()` is `zero` of `T`; another `T::default()` is `foreign` |
+//! | `trait Tr { fn m(&self, …) -> R; }` | `interface`, its methods sorted by name; a generic or `unsafe` trait, a supertrait, an item other than a method, a default body, a receiver other than `&self` or a result other than a plain value refuses the trait and every `dyn Tr` |
+//! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; a method an inherent impl of `T` also declares is refused |
 //! | `use` | nothing: names resolve by their last path segment |
 //!
 //! # Types
@@ -33,6 +37,12 @@
 //! |---|---|
 //! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform) |
 //! | `bool`, `String`, `&str` | `bool`, `string` |
+//! | `f32`, `f64` | `float` of that width |
+//! | `[T; N]`, `N` a literal | `array` |
+//! | `fn(A, B) -> R` | `func` |
+//! | `Rc<dyn Any>` (`std::any::Any`) | `any` |
+//! | `Rc<(SyncSender<T>, Receiver<T>)>` | `chan T`, both ends: the Rust writer's form of a channel one function sends on and receives from |
+//! | `dyn Tr`, `Box<dyn Tr>`, `Tr` a trait of the crate | the interface `Tr` |
 //! | `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>` | `slice`, `map` |
 //! | `Rc<RefCell<T>>` | `ptr` to `T` |
 //! | a local bound to `&mut x`, `x` a local | `ptr` to the type of `x` |
@@ -41,14 +51,17 @@
 //! | result `Result<T, Error>` | `(T, error)`; `Result<(), Error>` is `error`, `Result<(A, B), Error>` `(A, B, error)` |
 //! | result `Option<T>` | `(T, bool)` |
 //! | result `(A, B)` | `(A, B)` |
-//! | `dyn`/`impl` traits, generics, `&mut T` elsewhere, `Box`, floats, other paths | refused |
+//! | other `dyn` and `impl` traits, generics, `&mut T` elsewhere, other `Box`es, other paths | refused |
 //!
 //! # Statements
 //!
 //! | Rust | cir/1 |
 //! |---|---|
 //! | `let x = e;` | `let` |
-//! | `let mut x: T = <zero of T>;` (`0`, `false`, `String::new()`, `Vec::new()`) | `var x T` |
+//! | `let mut x: T = <zero of T>;` (`0`, `0.0`, `false`, `String::new()`, `Vec::new()`, `[<zero>; N]`) | `var x T` |
+//! | `let x: Rc<dyn Any> = e;` | `var x any`, then `x = e`, so that `x` holds `any` and not the type of `e` |
+//! | `let mut ks: Vec<K> = m.keys().copied().collect(); ks.sort();` (`cloned`, `sort_unstable`; `String` keys `ks.sort_by(\|a, b\| a.encode_utf16().cmp(b.encode_utf16()))`) | `ks := sorted_keys(m)`; `String` keys sorted by byte are `foreign`, since `sorted_keys` orders by UTF-16 code unit |
+//! | `unsafe { … }` around a `static mut` of the crate | its statements; an `unsafe` block that binds a name, or that holds anything a refusal keeps, is `foreign` |
 //! | `let Some(x) = m.get(&k)[.cloned()/.copied()] else { …; return … };` | `lookup_else` |
 //! | `let Some(x) = f(…) else { … };`, `f` returning `Option` | `x, ok := f(…)`, `if !ok { … }` |
 //! | `let p = &mut x;`, `x` a local | `p := &x`; `*p` is then `*p`, read and assigned through |
@@ -58,6 +71,7 @@
 //! | `x = x.wrapping_<op>(e)` | `assign` with `<op>=` |
 //! | `m.insert(k, v);`, `v.push(x);`, `s.push_str(t);` | `m[k] = v`, `v = append(v, x)`, `s += t` |
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
+//! | `ch.0.try_send(x).expect(…)` / `.unwrap()`, `ch` a channel of both ends | `send` (a full channel panics, where Go would block) |
 //! | `if`, `else if`, `else` | `if` |
 //! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice |
 //! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
@@ -68,26 +82,37 @@
 //! | `return …`, a block's tail expression | `return`, with `Ok(x)` → `x, nil`, `Err(e)` → zero values and `e`, `Some(x)` → `x, true`, `None` → `zero, false` |
 //! | `println!("{} {}", a, b)` (only `{}` separated by single spaces) | `println` |
 //!
-//! Anything else (`while let`, labels, ranges, closures, `unsafe`, `?` other than above, nested
-//! items, blocks other than the Rust writer's, macros other than those named) is `foreign`.
+//! Anything else (`while let`, labels, ranges, closures other than below, `unsafe` other than
+//! above, `?` other than above, nested items, blocks other than the Rust writer's, macros other
+//! than those named) is `foreign`.
 //!
 //! # Expressions
 //!
 //! Every expression's type comes from a local's binding, a parameter, a field declaration, a
 //! signature, a literal's suffix or the type the context expects (an annotation, the other operand,
-//! a field, a parameter, a result). An unsuffixed integer literal with no such context is refused,
-//! not defaulted to `i32`.
+//! a field, a parameter, a result). An unsuffixed integer or float literal with no such context is
+//! refused, not defaulted to `i32` or `f64`.
 //!
 //! | Rust | cir/1 |
 //! |---|---|
 //! | `1i64`, `"s"`, `true` | `lit` in Go's spelling (`"s"` quoted as Go quotes it) |
+//! | `1.5f64`, `0.25` where a float is expected | `lit` of that `float`, spelled as `cir/1` spells the value at its width |
 //! | `T::V` (unit variant), `CONST` | `const` |
+//! | `X`, `unsafe { X }`, `X` a `static` | `global` |
+//! | `f`, a function of the crate as a value | `func_ref` |
+//! | `f(x)`, `f` a local of a `fn` type; `(s.f)(x)` | `call_value` |
+//! | `\|x: T\| -> R { … }` | `lambda`; its captures are the locals of the enclosing function it reads or writes, sorted. A `move` closure (it copies what it captures, where Go shares it), an untyped parameter or result, or a body other than a block is `foreign` |
+//! | `x.m(…)`, `x` of a crate trait's `dyn` | `iface_call` |
+//! | a value of a crate type where its trait is expected (a parameter, field, result, `Box::new(x)`) | `to_iface`; a type that does not implement it is refused |
+//! | `T::default()`, see Items | `zero` |
+//! | `Rc::new(x) as Rc<dyn Any>`, `Rc::new(x)` where `any` is expected | `x` |
+//! | `ch.1.try_recv().expect(…)` / `.unwrap()`, `ch` a channel of both ends | `<-ch` (an empty channel panics, where Go would block); `recv()` is `foreign` |
 //! | `Error::V`, `Error::S(s)`, `Error::Msg(format!(…))` | `errvar`, `to_error`, `errorf` |
 //! | `T(x)` (newtype) | `conv` |
 //! | `T { f: x, .. }` | `struct`; a field whose value is the zero literal (`0`, `false`, `""`, `String::new()`) is left out, as Go does |
 //! | `Rc::new(RefCell::new(x))` | `&x` |
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
-//! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction) |
+//! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
 //! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
 //! | `x.clone()` of a value without a slice or map inside | `x` (Go copies) |
 //! | `*p`, `p` bound to `&mut x` | `*p` |
@@ -115,7 +140,8 @@
 //! | `Rc<RefCell<T>>` | `clone()`, `Rc::clone(&p)` | the pointer |
 //! | `Sender<T>` | `send(x).expect(…)`, `send(x).unwrap()` (statement) | `send` |
 //! | integers | `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_div`, `wrapping_rem` | `+ - * / %` |
-//! | integers, `bool` | `clone()` | the value |
+//! | integers, floats, `bool`, `Rc<dyn Any>`, `fn` | `clone()` | the value |
+//! | `Rc<(SyncSender<T>, Receiver<T>)>` | `.0.try_send(x)`, `.1.try_recv()`, each then `expect(…)` / `unwrap()` | `send`, `<-ch` |
 //! | a type with `Display`, integers | `to_string()` | `sprintf("%s", x)`, `sprintf("%d", x)` |
 //!
 //! # What the reader claims, and what it does not
@@ -123,18 +149,19 @@
 //! `codespec-read-rust --describe` claims each reader feature (the vocabulary without `fact.*`)
 //! whose conformance case has a hand-written Rust source, `conformance/cases/<case>/rust/case.rs`.
 //! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
-//! refusal and with its subject, and passed and written as Go runs as the reference does. These
-//! stay unclaimed:
+//! refusal and with its subject, and passed and written as Go runs as the reference does. It claims
+//! 108 of the 120; these stay unclaimed:
 //!
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | facts are computed by `codespec pass`, never read |
 //! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
 //! | `unop.plus` | Rust has no unary `+` |
-//! | `unop.recv` | `std::sync::mpsc` splits a channel into a `Sender` and a `Receiver`; Go's `chan T` that one function both sends on and receives from has no std Rust value, and the reader maps only `Sender<T>` |
-//! | `type.any` | Rust's dynamic value is `Box<dyn Any>`, a trait object, which the reader does not type; it neither prints nor compares without naming its concrete type again |
-//! | `expr.nil` | the case's subject is a nil slice, and Rust has none: `Vec::new()` is an empty vector and reads as `make`. (`Ok(())` reads as a nil `error`, but that is not the case's subject) |
-//! | `decl.union`, `expr.zero`, `intrinsic.sorted_keys`, `type.tuple`, `type.unit` | no conformance case has the feature as its subject, so nothing holds a claim |
+//! | `decl.embedded` | Rust has no struct embedding: a field is always named, and its methods are not promoted |
+//! | `decl.variadic`, `expr.spread` | Rust functions take a fixed number of arguments; a slice parameter is a `slice`, not a variadic one |
+//! | `decl.type_params`, `type.param`, `expr.instantiate` | the reader refuses a generic item at its line, and a test holds that refusal; reading generics is a change to that rule, not a mapping added under it |
+//! | `expr.extern`, `expr.extern_method`, `type.extern` | the reader refuses a call into another crate and a type of one; the cases' subjects are calls into a Go package, and a module read from Rust would name a Rust crate, which the Go program written at step 4 has no package for |
+//! | `decl.union` | an enum of struct variants reads as a `union`, but step 4 cannot run it: the Go writer has no form for a union. A case source would make the case fail at step 4 rather than be refused, so the kit has none for it yet |
 
 mod body;
 mod names;
@@ -143,8 +170,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use codespec_model::{
-    ConstDecl, ErrorVar, Expr, Field, IntWidth, Module, Reader as ReaderInfo, Refusal, Type,
-    TypeDecl, UnionVariant, Variant,
+    ConstDecl, ErrorVar, Expr, Field, FloatBits, IfaceMethod, IntWidth, Interface, Module,
+    Reader as ReaderInfo, Refusal, Type, TypeDecl, UnionVariant, VarDecl, Variant,
 };
 use syn::spanned::Spanned;
 
@@ -249,7 +276,23 @@ pub(crate) struct Reader {
     pub value_enums: BTreeSet<String>,
     /// Types with a `Display` rendering.
     pub displays: BTreeSet<String>,
+    /// Structs and newtypes whose `#[derive(Default)]` makes Go's zero value of them.
+    pub defaults: BTreeSet<String>,
+    /// The crate's traits by name, read as interfaces; `None` while only the name is known.
+    pub traits: BTreeMap<String, Option<TraitInfo>>,
+    /// `(type, trait)` for each `impl Trait for Type` of a crate trait.
+    pub impls: BTreeSet<(String, String)>,
+    /// `static` and `static mut` items by Rust name: their Go name and type.
+    pub statics: BTreeMap<String, (String, Type)>,
     pub refusals: Vec<Refusal>,
+}
+
+/// A trait of the crate read as an interface: its methods, each taking `&self`.
+#[derive(Debug, Clone)]
+pub(crate) struct TraitInfo {
+    pub exported: bool,
+    /// By Rust name: the Go name, the parameter types and the result types.
+    pub methods: BTreeMap<String, (String, Vec<Type>, Vec<Type>)>,
 }
 
 fn is_pub(v: &syn::Visibility) -> bool {
@@ -273,6 +316,20 @@ fn doc(attrs: &[syn::Attribute]) -> String {
         }
     }
     lines.join("\n").trim().to_string()
+}
+
+/// Whether `#[derive(…)]` among `attrs` names the trait `name`.
+fn derives(attrs: &[syn::Attribute], name: &str) -> bool {
+    attrs.iter().any(|a| {
+        a.path().is_ident("derive")
+            && a.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|ps| {
+                ps.iter()
+                    .any(|p| p.segments.last().is_some_and(|s| s.ident == name))
+            })
+    })
 }
 
 /// The last segment of a path type, with its generic arguments.
@@ -418,8 +475,53 @@ impl Reader {
             error_structs: BTreeSet::new(),
             value_enums: BTreeSet::new(),
             displays: BTreeSet::new(),
+            defaults: BTreeSet::new(),
+            traits: BTreeMap::new(),
+            impls: BTreeSet::new(),
+            statics: BTreeMap::new(),
             refusals: Vec::new(),
         }
+    }
+
+    /// Whether `t` is a crate trait read as an interface.
+    pub fn is_iface(&self, t: &Type) -> Option<&TraitInfo> {
+        match t {
+            Type::Named { name, targs } if targs.is_empty() => {
+                self.traits.get(name).and_then(Option::as_ref)
+            }
+            _ => None,
+        }
+    }
+
+    /// The crate trait a `dyn` type names: one bound, a path to a trait of the crate.
+    fn dyn_trait(&self, t: &syn::TypeTraitObject) -> Option<String> {
+        let mut bounds = t.bounds.iter();
+        let (Some(syn::TypeParamBound::Trait(b)), None) = (bounds.next(), bounds.next()) else {
+            return None;
+        };
+        if b.lifetimes.is_some() || b.maybe.is_some() {
+            return None;
+        }
+        let seg = b.path.segments.last()?;
+        if !matches!(seg.arguments, syn::PathArguments::None) {
+            return None;
+        }
+        let n = seg.ident.to_string();
+        self.traits.contains_key(&n).then_some(n)
+    }
+
+    /// Whether a `dyn` type is `std::any::Any`.
+    fn dyn_any(t: &syn::Type) -> bool {
+        let syn::Type::TraitObject(o) = t else {
+            return false;
+        };
+        let mut bounds = o.bounds.iter();
+        matches!(
+            (bounds.next(), bounds.next()),
+            (Some(syn::TypeParamBound::Trait(b)), None)
+                if b.lifetimes.is_none()
+                    && b.path.segments.last().is_some_and(|s| s.ident == "Any" && s.arguments.is_none())
+        )
     }
 
     pub fn pos(&self, span: proc_macro2::Span) -> String {
@@ -449,7 +551,62 @@ impl Reader {
             }
             syn::Type::Paren(p) => self.ty(&p.elem, self_ty),
             syn::Type::Tuple(tt) if tt.elems.is_empty() => Ok(Type::Unit),
-            syn::Type::TraitObject(_) => Err("a trait object (`dyn`) is outside cir/1".into()),
+            // `dyn Trait` of a crate trait, behind `&` or `Box`: Go's interface value. Its
+            // methods take `&self` only, so neither the borrow nor the box is observable.
+            syn::Type::TraitObject(o) => match self.dyn_trait(o) {
+                Some(name) => Ok(Type::Named {
+                    targs: Vec::new(),
+                    name,
+                }),
+                None => Err(
+                    "a trait object (`dyn`) of other than a trait of the crate is outside cir/1"
+                        .into(),
+                ),
+            },
+            syn::Type::Array(a) => {
+                let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Int(n),
+                    ..
+                }) = &a.len
+                else {
+                    return Err("an array whose length is not an integer literal".into());
+                };
+                let len: u64 = n.base10_parse().map_err(|e| e.to_string())?;
+                Ok(Type::Array {
+                    len,
+                    elem: Box::new(self.ty(&a.elem, self_ty)?),
+                })
+            }
+            // `fn(A) -> R`: Go's `func(A) R`, a function value of the crate's plain functions.
+            syn::Type::FnPtr(f) => {
+                if f.lifetimes.is_some()
+                    || f.unsafety.is_some()
+                    || f.abi.is_some()
+                    || f.variadic.is_some()
+                {
+                    return Err("a function pointer type other than a plain `fn(…) -> …`".into());
+                }
+                let params = f
+                    .inputs
+                    .iter()
+                    .map(|a| self.ty(&a.ty, self_ty))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let results = match &f.output {
+                    syn::ReturnType::Default => Vec::new(),
+                    syn::ReturnType::Type(_, t) => match &**t {
+                        syn::Type::Tuple(tt) => tt
+                            .elems
+                            .iter()
+                            .map(|e| self.ty(e, self_ty))
+                            .collect::<Result<Vec<_>, _>>()?,
+                        t => vec![self.ty(t, self_ty)?],
+                    },
+                };
+                if results.iter().any(|t| matches!(t, Type::Unit)) {
+                    return Err("a function pointer type giving `()` inside a tuple".into());
+                }
+                Ok(Type::Func { params, results })
+            }
             syn::Type::ImplTrait(_) => Err("an `impl Trait` type is outside cir/1".into()),
             syn::Type::Path(_) => {
                 let Some((id, args)) = last_seg(t) else {
@@ -470,6 +627,48 @@ impl Reader {
                 match (name.as_str(), args.as_slice()) {
                     ("bool", []) => Ok(Type::Bool),
                     ("String" | "str", []) => Ok(Type::String),
+                    ("f64", []) => Ok(Type::Float {
+                        bits: FloatBits::W64,
+                    }),
+                    ("f32", []) => Ok(Type::Float {
+                        bits: FloatBits::W32,
+                    }),
+                    // `Rc<dyn Any>`: Go's `any`, a shared value that is never mutated.
+                    ("Rc", [inner]) if Reader::dyn_any(inner) => Ok(Type::Any),
+                    // `Rc<(SyncSender<T>, Receiver<T>)>`, the Rust writer's channel with both
+                    // ends: Go's `chan T`.
+                    ("Rc", [syn::Type::Tuple(tt)]) => {
+                        let ends: Vec<_> = tt.elems.iter().map(last_seg).collect();
+                        match ends.as_slice() {
+                            [Some((s, sa)), Some((r, ra))]
+                                if *s == "SyncSender"
+                                    && *r == "Receiver"
+                                    && sa.len() == 1
+                                    && ra.len() == 1 =>
+                            {
+                                let elem = self.ty(sa[0], self_ty)?;
+                                if self.ty(ra[0], self_ty)? != elem {
+                                    return Err(
+                                        "a channel whose two ends carry different types".into()
+                                    );
+                                }
+                                Ok(Type::Chan {
+                                    elem: Box::new(elem),
+                                    dir: codespec_model::ChanDir::Both,
+                                })
+                            }
+                            _ => Err(
+                                "`Rc` of a tuple other than `(SyncSender<T>, Receiver<T>)`".into()
+                            ),
+                        }
+                    }
+                    ("Box", [syn::Type::TraitObject(o)]) => match self.dyn_trait(o) {
+                        Some(name) => Ok(Type::Named {
+                            targs: Vec::new(),
+                            name,
+                        }),
+                        None => Err("a trait object (`dyn`) of other than a trait of the crate is outside cir/1".into()),
+                    },
                     ("Vec", a) => Ok(Type::Slice {
                         elem: Box::new(one(a)?),
                     }),
@@ -574,6 +773,89 @@ impl Reader {
         Ok((tuple(t)?, Shape::Plain))
     }
 
+    /// Whether the derived `Default` of a value of `t` is Go's zero value of it.
+    fn zero_default(&self, t: &Type) -> bool {
+        match t {
+            Type::Int { .. }
+            | Type::Float { .. }
+            | Type::Bool
+            | Type::String
+            | Type::Slice { .. }
+            | Type::Map { .. } => true,
+            Type::Array { elem, len } => *len <= 32 && self.zero_default(elem),
+            Type::Named { name, targs } => targs.is_empty() && self.defaults.contains(name),
+            _ => false,
+        }
+    }
+
+    /// A trait of the crate as an interface: no generics, supertraits or items other than
+    /// methods without a default body that take `&self` and give plain results.
+    fn trait_info(&self, t: &syn::ItemTrait) -> Result<TraitInfo, String> {
+        if !t.generics.params.is_empty() || t.generics.where_clause.is_some() {
+            return Err("a generic trait is outside cir/1".into());
+        }
+        if !t.supertraits.is_empty() {
+            return Err("a trait with supertraits is outside cir/1".into());
+        }
+        if t.unsafety.is_some() || t.modifiers.auto_token.is_some() {
+            return Err("an unsafe or auto trait is outside cir/1".into());
+        }
+        let exported = is_pub(&t.vis);
+        let mut methods = BTreeMap::new();
+        for item in &t.items {
+            let syn::TraitItem::Fn(f) = item else {
+                return Err("a trait item other than a method is outside cir/1".into());
+            };
+            if f.default.is_some() {
+                return Err(format!(
+                    "the trait method {} has a default body, which Go's interface has no form for",
+                    f.sig.ident
+                ));
+            }
+            let mut inputs = f.sig.inputs.iter();
+            match inputs.next() {
+                Some(syn::FnArg::Receiver(r))
+                    if matches!(r.kind, syn::ReceiverKind::Reference(_, _, None)) => {}
+                _ => {
+                    return Err(format!(
+                        "the trait method {} takes other than `&self`",
+                        f.sig.ident
+                    ));
+                }
+            }
+            if !f.sig.generics.params.is_empty()
+                || f.sig.asyncness.is_some()
+                || matches!(f.sig.safety, syn::Safety::Unsafe(_))
+            {
+                return Err(format!(
+                    "the trait method {} is generic, async or unsafe",
+                    f.sig.ident
+                ));
+            }
+            let params = inputs
+                .map(|a| match a {
+                    syn::FnArg::Typed(pt) => self.ty(&pt.ty, None),
+                    syn::FnArg::Receiver(_) => Err("a second receiver".into()),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let (results, shape) = self.results(&f.sig.output, None)?;
+            if shape != Shape::Plain {
+                return Err(format!(
+                    "the trait method {} gives a `Result` or `Option`",
+                    f.sig.ident
+                ));
+            }
+            let rust = f.sig.ident.to_string();
+            let go = if exported {
+                names::exported(&rust)
+            } else {
+                names::unexported(&rust)
+            };
+            methods.insert(rust, (go, params, results));
+        }
+        Ok(TraitInfo { exported, methods })
+    }
+
     /// The signature of a function or method; `impl_ty` for one inside `impl impl_ty`.
     fn sig(
         &self,
@@ -655,9 +937,15 @@ impl Reader {
             match item {
                 syn::Item::Struct(s) => {
                     self.known.insert(s.ident.to_string());
+                    if derives(&s.attrs, "Default") {
+                        self.defaults.insert(s.ident.to_string());
+                    }
                 }
                 syn::Item::Enum(e) => {
                     self.known.insert(e.ident.to_string());
+                }
+                syn::Item::Trait(t) => {
+                    self.traits.insert(t.ident.to_string(), None);
                 }
                 _ => {}
             }
@@ -817,6 +1105,21 @@ impl Reader {
                 }
             }
         }
+        // Traits, once every type name is declared: each method's signature. A trait that does
+        // not read is forgotten, so no `dyn` of it reads either.
+        for item in &f.items {
+            let syn::Item::Trait(t) = item else { continue };
+            let name = t.ident.to_string();
+            match self.trait_info(t) {
+                Ok(info) => {
+                    self.traits.insert(name, Some(info));
+                }
+                Err(e) => {
+                    self.traits.remove(&name);
+                    deferred.push((t.span(), name, e));
+                }
+            }
+        }
         // Struct fields.
         for item in &pending {
             if let syn::Item::Struct(s) = item {
@@ -857,6 +1160,39 @@ impl Reader {
                         self.decls.insert(name, Decl::Struct(fields));
                     }
                 }
+            }
+        }
+        // `#[derive(Default)]` makes Go's zero value only when every field's default is its
+        // zero: an integer, float, `bool`, `String`, collection or array of such, or a type of
+        // the crate whose derived default is its zero in turn. An `Rc<RefCell<T>>` field's default
+        // is a new value where Go's zero pointer is nil, an enum's is the variant `#[default]`
+        // names, whatever its value.
+        loop {
+            let before = self.defaults.len();
+            let keep: BTreeSet<String> = self
+                .defaults
+                .iter()
+                .filter(|n| match self.decls.get(*n) {
+                    Some(Decl::Struct(fs)) => fs.iter().all(|f| self.zero_default(&f.t)),
+                    Some(Decl::Newtype(u)) => self.zero_default(u),
+                    _ => false,
+                })
+                .cloned()
+                .collect();
+            self.defaults = keep;
+            if self.defaults.len() == before {
+                break;
+            }
+        }
+        // `impl Trait for T` of a crate trait.
+        for item in &f.items {
+            if let syn::Item::Impl(im) = item
+                && let Some((p, _)) = &im.trait_
+                && let Some(tr) = p.get_ident().map(|i| i.to_string())
+                && matches!(self.traits.get(&tr), Some(Some(_)))
+                && let Some(t) = plain_ident(&im.self_ty)
+            {
+                self.impls.insert((t, tr));
             }
         }
         // Receivers: a type with any `&mut self` method has pointer receivers throughout.
@@ -931,6 +1267,24 @@ impl Reader {
                 }
             }
         }
+        // Statics: Go's module-level variables. A `static mut` is read and written only inside
+        // `unsafe`, without synchronisation, as Go's variable is.
+        for item in &f.items {
+            if let syn::Item::Static(s) = item {
+                let rust = s.ident.to_string();
+                let go = if is_pub(&s.vis) {
+                    names::exported(&screaming(&rust))
+                } else {
+                    names::unexported(&screaming(&rust))
+                };
+                match self.ty(&s.ty, None) {
+                    Ok(t) => {
+                        self.statics.insert(rust, (go, t));
+                    }
+                    Err(e) => deferred.push((s.span(), rust, e)),
+                }
+            }
+        }
         // Signatures.
         for item in &f.items {
             match item {
@@ -939,13 +1293,29 @@ impl Reader {
                         self.sigs.insert((None, func.sig.ident.to_string()), s);
                     }
                 }
-                syn::Item::Impl(im) if im.trait_.is_none() => {
+                syn::Item::Impl(im) => {
                     let Some(t) = plain_ident(&im.self_ty) else {
                         continue;
                     };
+                    // The methods of a crate trait's impl are the type's methods, named as the
+                    // trait names them.
+                    let public = match &im.trait_ {
+                        None => None,
+                        Some((p, _)) => {
+                            match p.get_ident().and_then(|i| self.traits.get(&i.to_string())) {
+                                Some(Some(info)) => Some(info.exported),
+                                _ => continue,
+                            }
+                        }
+                    };
                     for ii in &im.items {
                         if let syn::ImplItem::Fn(func) = ii
-                            && let Ok(s) = self.sig(&func.sig, is_pub(&func.vis), Some(&t))
+                            && (public.is_none() || !inherent_method(f, &t, &func.sig.ident))
+                            && let Ok(s) = self.sig(
+                                &func.sig,
+                                public.unwrap_or_else(|| is_pub(&func.vis)),
+                                Some(&t),
+                            )
                         {
                             self.sigs
                                 .insert((Some(t.clone()), func.sig.ident.to_string()), s);
@@ -968,6 +1338,8 @@ impl Reader {
         let mut funcs = Vec::new();
         let mut consts = Vec::new();
         let mut layout = Vec::new();
+        let mut vars = Vec::new();
+        let mut interfaces = Vec::new();
         let mut late_refusals: Vec<Refusal> = Vec::new();
         for item in &f.items {
             match item {
@@ -1145,8 +1517,29 @@ impl Reader {
                         });
                         continue;
                     };
+                    let crate_trait = im.trait_.as_ref().and_then(|(p, _)| {
+                        let n = p.get_ident()?.to_string();
+                        matches!(self.traits.get(&n), Some(Some(_))).then_some(n)
+                    });
+                    if let Some(tr) = &crate_trait
+                        && let Some(clash) = im.items.iter().find_map(|ii| match ii {
+                            syn::ImplItem::Fn(func) if inherent_method(f, &t, &func.sig.ident) => {
+                                Some(func.sig.ident.to_string())
+                            }
+                            _ => None,
+                        })
+                    {
+                        late_refusals.push(Refusal {
+                            pos: self.pos(im.span()),
+                            what: format!("impl {tr} for {t}"),
+                            reason: format!(
+                                "{t} has an inherent method {clash} too: Go has one method per name"
+                            ),
+                        });
+                        continue;
+                    }
                     match &im.trait_ {
-                        None => {
+                        _ if im.trait_.is_none() || crate_trait.is_some() => {
                             for ii in &im.items {
                                 let syn::ImplItem::Fn(func) = ii else {
                                     late_refusals.push(Refusal {
@@ -1222,9 +1615,12 @@ impl Reader {
                             late_refusals.push(Refusal {
                                 pos: self.pos(im.span()),
                                 what: format!("impl {tr} for {t}"),
-                                reason: format!("a trait impl ({tr}) is outside cir/1"),
+                                reason: format!(
+                                    "an impl of {tr}, which is not a trait of the crate, is outside cir/1"
+                                ),
                             });
                         }
+                        None => unreachable!("an inherent impl is read by the arm above"),
                     }
                 }
                 syn::Item::Const(c) => {
@@ -1248,6 +1644,56 @@ impl Reader {
                             reason,
                         }),
                     }
+                }
+                syn::Item::Static(s) => {
+                    let rust = s.ident.to_string();
+                    let Some((go, t)) = self.statics.get(&rust).cloned() else {
+                        continue;
+                    };
+                    match body::const_value(&self, &s.expr, &t) {
+                        Ok(value) => {
+                            layout.push(format!("var:{go}"));
+                            let zero = matches!(&value, Expr::Lit { value, .. } if value == "0" || value == "false" || value == "\"\"")
+                                || matches!(&value, Expr::Float { value, .. } if value == "0");
+                            vars.push(VarDecl {
+                                name: go,
+                                t,
+                                init: (!zero).then_some(value),
+                                foreign: None,
+                                pos: self.pos(s.span()),
+                            });
+                        }
+                        Err(reason) => late_refusals.push(Refusal {
+                            pos: self.pos(s.span()),
+                            what: format!("static {rust}"),
+                            reason,
+                        }),
+                    }
+                }
+                syn::Item::Trait(tr) => {
+                    let name = tr.ident.to_string();
+                    let Some(Some(info)) = self.traits.get(&name) else {
+                        continue;
+                    };
+                    let mut methods: Vec<IfaceMethod> = info
+                        .methods
+                        .values()
+                        .map(|(go, params, results)| IfaceMethod {
+                            name: go.clone(),
+                            params: params.clone(),
+                            results: results.clone(),
+                        })
+                        .collect();
+                    methods.sort_by(|a, b| a.name.cmp(&b.name));
+                    layout.push(format!("type:{name}"));
+                    interfaces.push(Interface {
+                        path: String::new(),
+                        name,
+                        exported: info.exported,
+                        methods,
+                        doc: doc(&tr.attrs),
+                        pos: self.pos(tr.span()),
+                    });
                 }
                 syn::Item::Use(_) => {}
                 other => {
@@ -1281,7 +1727,7 @@ impl Reader {
             types,
             consts,
             errors,
-            vars: vec![],
+            vars,
             funcs,
             externs: vec![],
             layout,
@@ -1292,7 +1738,7 @@ impl Reader {
             methods: vec![],
             linknames: vec![],
             inits: vec![],
-            interfaces: vec![],
+            interfaces,
             entries: vec![],
             beans: vec![],
             injects: vec![],
@@ -1351,6 +1797,20 @@ impl Reader {
             }
         }
     }
+}
+
+/// Whether an inherent `impl t` of the file declares a method named `m`.
+fn inherent_method(f: &syn::File, t: &str, m: &syn::Ident) -> bool {
+    f.items.iter().any(|i| match i {
+        syn::Item::Impl(im)
+            if im.trait_.is_none() && plain_ident(&im.self_ty).as_deref() == Some(t) =>
+        {
+            im.items
+                .iter()
+                .any(|ii| matches!(ii, syn::ImplItem::Fn(func) if func.sig.ident == *m))
+        }
+        _ => false,
+    })
 }
 
 /// `MAX_ITEMS` → `max_items`, so a constant's words convert like any other name.

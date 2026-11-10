@@ -272,13 +272,17 @@ fn every_claimed_feature_is_read_from_its_cases_rust_source_and_runs_as_the_refe
     let claimed = claimed();
     let cases = cases();
     let mut failures = Vec::new();
+    // A subject may have several cases (a variant in a form a language can write); a claim
+    // needs at least one with a Rust source, and every one with a Rust source is held.
     for id in &claimed {
-        match cases.iter().find(|c| &c.subject == id) {
-            None => failures.push(format!("{id}: claimed, and no case has it as subject")),
-            Some(c) if !c.rust => {
-                failures.push(format!("{id}: claimed, and {} has no rust/case.rs", c.name))
-            }
-            Some(_) => {}
+        let of: Vec<&Case> = cases.iter().filter(|c| &c.subject == id).collect();
+        if of.is_empty() {
+            failures.push(format!("{id}: claimed, and no case has it as subject"));
+        } else if !of.iter().any(|c| c.rust) {
+            let names: Vec<&str> = of.iter().map(|c| c.name.as_str()).collect();
+            failures.push(format!(
+                "{id}: claimed, and none of {names:?} has a rust/case.rs"
+            ));
         }
     }
     for c in cases

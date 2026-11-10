@@ -59,9 +59,16 @@ fn guard(s: String) -> String {
     }
 }
 
-/// An exported name: `place` → `Place`, `order_id` → `OrderID`; a name already in UpperCamel
-/// (a type or a variant) is kept.
+/// A raw identifier without its `r#` (`r#type` → `type`): the prefix is Rust's way to use a
+/// keyword as a name, not part of the name.
+fn unraw(rust: &str) -> &str {
+    rust.strip_prefix("r#").unwrap_or(rust)
+}
+
+/// An exported name: `place` → `Place`, `order_id` → `OrderID`, `r#type` → `Type`; a name
+/// already in UpperCamel (a type or a variant) is kept.
 pub fn exported(rust: &str) -> String {
+    let rust = unraw(rust);
     if !rust.contains('_') && rust.chars().next().is_some_and(|c| c.is_uppercase()) {
         return rust.to_string();
     }
@@ -73,8 +80,10 @@ pub fn exported(rust: &str) -> String {
     )
 }
 
-/// An unexported name: `seq` → `seq`, `low_stock` → `lowStock`, `user_id` → `userID`.
+/// An unexported name: `seq` → `seq`, `low_stock` → `lowStock`, `user_id` → `userID`,
+/// `r#type` → `type_` (a Go keyword gets a trailing `_`).
 pub fn unexported(rust: &str) -> String {
+    let rust = unraw(rust);
     if rust == "_" {
         return "_".into();
     }
@@ -130,5 +139,13 @@ mod tests {
         assert_eq!(sentinel("OutOfStock"), "ErrOutOfStock");
         assert_eq!(sentinel("Errand"), "ErrErrand");
         assert_eq!(receiver("Service"), "s");
+    }
+
+    #[test]
+    fn a_raw_identifier_loses_its_prefix_before_its_case_changes() {
+        assert_eq!(exported("r#type"), "Type");
+        assert_eq!(exported("r#match_id"), "MatchID");
+        assert_eq!(unexported("r#type"), "type_");
+        assert_eq!(unexported("r#loop"), "loop");
     }
 }
