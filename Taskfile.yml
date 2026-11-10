@@ -35,6 +35,7 @@ tasks:
       - task: examples-fees
       - task: harness
       - task: conformance-cases
+      - task: eval-kit
       - task: conformance-kit
       - task: groovy-fixture-check
       - task: docs-check
@@ -416,6 +417,11 @@ tasks:
     cmds:
       - cargo run --locked -q -p b10x-codespec-conformance -- kit > conformance/kit.json
       - cargo run --locked -q -p b10x-codespec-conformance -- check --write --codespec {{.CODESPEC}} --adapters {{.ADAPTERS}} --build-dir target/conformance
+
+  eval-kit:
+    desc: Run every conformance kit case twice with the evaluator on its calls.json (crates/eval/tests/kit.rs, rules in codespec_eval::kit) and fail when the two runs differ, a case does not print its expected.txt, a case listed in crates/eval/tests/kit-stops.txt does not stop with its listed line or prints its expected.txt after all, or an unlisted case stops. Needs Rust only.
+    cmds:
+      - cargo test --locked -q -p b10x-codespec-eval --test kit -- --nocapture
 
   conformance-kit:
     desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.

@@ -1,0 +1,15 @@
+[package]
+name = "b10x-codespec-eval"
+description = "The cir/1 evaluator: a tree-walking interpreter that runs a module's functions on a calls file and prints what the native runners print, stopping with a reason at a foreign statement or an extern without a handler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_eval"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-conformance = { path = "../conformance" }

@@ -293,6 +293,14 @@ pub const CAPABILITIES: &[Capability] = &[
         evidence: Some("Taskfile.yml::examples-effects"),
         href: "/docs/concepts/static-analysis",
     },
+    Capability {
+        area: "Analysis",
+        label: "Evaluator",
+        detail: "codespec eval runs a cir/1 module on a calls file with a tree-walking interpreter and prints what the kit's native runners print; every kit case gives its expected output twice byte-equal, and a run that executes a foreign statement or calls an extern without a built-in handler stops naming the node.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::eval-kit"),
+        href: "/docs/reference/cli",
+    },
 ];
 
 /// Whether `source`, the text of `file`, defines the check `name`.

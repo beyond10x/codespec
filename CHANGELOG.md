@@ -2,6 +2,18 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec eval MODULE --calls CALLS` runs a `cir/1` module on a `codespec-calls/1` file with a
+  new evaluator, the crate `b10x-codespec-eval`, and prints what the conformance kit's native
+  runners print. A run that executes a `foreign` statement, calls an extern with no built-in
+  handler or would panic stops with exit 1, naming the node by its id
+  (`<module path>.<function key>#<index path>`), its position and the reason. The gate step
+  `eval-kit` runs every kit case twice and requires both runs equal to its `expected.txt`, or,
+  for a case listed in `crates/eval/tests/kit-stops.txt`, the stop listed there.
+
 ## 0.6.1
 
 ### Changed
