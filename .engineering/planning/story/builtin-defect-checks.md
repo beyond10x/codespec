@@ -14,7 +14,7 @@ scope:
   path: crates/cli/src/lib.rs
 - confidence: cited
   path: docs/checks-capslock.md
-revision: 8
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-11-09T02:47:02Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":3}}}
@@ -30,9 +30,8 @@ name, and the evidence the check read (the calls and positions it matched). `cod
 prints every check with one line on what it finds. `--format json` prints `codespec-check-report/1`.
 Exit 0 with no findings, 1 with findings, 2 on an input error.
 
-The checks are the query kinds of a defect hunt over a third-party Go library (2026-11-08) that are
-not specific to that library. They read only `cir/1`: bodies, `foreign.calls`, opaque functions,
-method sets, `inits` and facts. No check reads source text.
+The checks are query kinds that hold for any codebase. They read only `cir/1`: bodies,
+`foreign.calls`, opaque functions, method sets, `inits` and facts. No check reads source text.
 
 | check | finds |
 |---|---|
@@ -71,7 +70,7 @@ two stories do not claim the same deliverable. A check may later be rewritten as
 - From that triage, each check's false-positive rate is in the record. A check with more than half
   its findings false is narrowed and run again, or marked `experimental` in `--list`.
 - No file this story adds or changes contains a name on the deny-list the coordinator holds outside
-  the repository (the names of the library the checks came from). The coordinator runs
+  the repository. The coordinator runs
   `git diff origin/main --name-only | xargs grep -i -F -f <deny-list>` before the merge, and it must
   print nothing.
 - `task check` green.
