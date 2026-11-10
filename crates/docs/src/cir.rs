@@ -166,17 +166,22 @@ pub fn page_for(schema: &Value) -> Result<String> {
          definition; the schema and this page follow it. Every object refuses fields it does not \
          list. Fields are listed in alphabetical order, as the schema lists them; the canonical \
          encoding writes them in the model's declaration order. Why the format looks like this: \
-         [The cir/1 model](/docs/concepts/cir-1).\n\n## Module\n\n{}\n\n{}",
-        description(schema),
-        fields(schema)?,
+         [The cir/1 model](/docs/concepts/cir-1).\n",
     ));
+    // The index comes before the first table, so every definition is one click from the first
+    // screen (UXF-015).
     out.push_str(&format!(
-        "\n## Definitions\n\n{} definitions: {}.\n",
+        "\n## Definitions\n\n[`Module`](#module), then {} definitions: {}.\n",
         defs.len(),
         defs.keys()
             .map(|name| format!("[`{name}`](#{})", anchor(name)))
             .collect::<Vec<_>>()
             .join(", ")
+    ));
+    out.push_str(&format!(
+        "\n## Module\n\n{}\n\n{}",
+        description(schema),
+        fields(schema)?,
     ));
     for (name, node) in defs {
         out.push_str(&definition(name, node)?);

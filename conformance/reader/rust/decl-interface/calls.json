@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Areas",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Areas",
+      "args": [
+        "-4"
+      ]
+    }
+  ]
+}

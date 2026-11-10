@@ -392,7 +392,7 @@
 
 .root .table .featureId {
   font-family: var(--b10x-font-mono, var(--ifm-font-family-monospace));
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   color: var(--sm-link);
   border-radius: 3px;
 }
@@ -419,7 +419,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.72rem;
+  font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.3;
   color: var(--sm-muted);
@@ -427,7 +427,7 @@
 
 .root .table .description code {
   padding: 0 0.15rem;
-  font-size: 0.95em;
+  font-size: 1em;
   border: 0;
   color: inherit;
   white-space: nowrap;

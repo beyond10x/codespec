@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use codespec_conformance::conform::{
-    Exec, OUTPUT_LIMIT, Process, Program, Ran, Reason, Report, Run, UNKNOWN_KIND, Verdict, claim,
-    conform_reader, conform_writer, conform_writer_within, read_kit, read_report, reader_corpus,
-    report_json,
+    Exec, OUTPUT_LIMIT, Process, Program, Ran, ReaderPrograms, Reason, Report, Run, Target,
+    UNKNOWN_KIND, Verdict, claim, conform_adapter, conform_reader, conform_writer,
+    conform_writer_within, read_kit, read_report, reader_corpus, report_json,
 };
 use codespec_conformance::load_cases;
 use codespec_model::Module;
@@ -463,8 +463,13 @@ fn a_writer_that_writes_a_case_twice_with_different_bytes_does_not_conform() {
 
 /// A corpus of two cases, `op-add` and `stmt-if`, each its module as the stub source and the kit's calls.
 fn stub_corpus(dir: &Path) -> PathBuf {
+    stub_corpus_of(dir, &["op-add", "stmt-if"])
+}
+
+/// A corpus of `cases`, each its module as the stub source and the kit's calls.
+fn stub_corpus_of(dir: &Path, cases: &[&str]) -> PathBuf {
     let corpus = dir.join("corpus");
-    for case in ["op-add", "stmt-if"] {
+    for case in cases {
         let d = corpus.join(case);
         std::fs::create_dir_all(&d).unwrap();
         // The stub language's source is the module itself, which the stub runner runs.
@@ -510,13 +515,21 @@ fn a_reader_that_turns_its_claimed_subject_into_foreign_fails_step_3() {
         kit: kit(),
         work: w.join("work"),
     };
+    let runner = stub_runner(|_| None);
+    let go_runner = stub_runner(|_| None);
+    let cir_writer = stub_writer(|_| None);
+    let cir_runner = stub_runner(|_| None);
     let report = conform_reader(
         &r,
         &corpus,
-        &reader,
-        &stub_runner(|_| None),
-        &go_writer,
-        &stub_runner(|_| None),
+        &ReaderPrograms {
+            reader: &reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &go_runner,
+            cir_writer: &cir_writer,
+            cir_runner: &cir_runner,
+        },
     )
     .unwrap();
     let add = feature(&report, "op.add");
@@ -528,6 +541,313 @@ fn a_reader_that_turns_its_claimed_subject_into_foreign_fails_step_3() {
     assert!(report.boundary.is_empty());
     assert!(report.corpus.is_some());
     assert!(!report.conforms);
+}
+
+/// A reader that reads every corpus case as the kit case's own module.
+fn kit_module_reader(args: &[OsString], _: Option<&[u8]>) -> Result<Exec, String> {
+    let case = PathBuf::from(&args[0])
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    exec(
+        0,
+        std::fs::read(kit().join("cases").join(case).join("case.cir.json")).unwrap(),
+        "",
+    )
+}
+
+/// Step 4 falls back to the evaluator when the Go writer refuses: what `codespec-run-cir` prints
+/// for the passed module is compared with `expected.txt` (pass, or fail with the first differing
+/// line), a stop after a prefix of it is `refused` with the stop as the detail, a stop after a
+/// wrong line fails, and the evaluator's writer refusing is `refused` too. Each such entry names
+/// the evaluator's runner; a case the Go writer writes is judged by the Go runner as before.
+#[test]
+fn a_case_the_go_writer_refuses_is_judged_by_the_evaluator_pass_fail_or_refused_at_its_stop() {
+    let w = work("stub-reader-evaluator");
+    let corpus = stub_corpus_of(
+        &w,
+        &[
+            "op-add", "op-and", "op-eq", "op-ge", "op-mul", "op-sub", "stmt-if",
+        ],
+    );
+    let m = manifest(
+        "reader",
+        &["op.add", "op.eq", "op.mul", "op.sub"].map(String::from),
+    );
+    let go_writer = stub_writer(|name| {
+        (name != "op_mul").then(|| exec(1, "", "codespec-write-go: case.go:3: no form for it"))
+    });
+    let cir_writer = stub_writer(|name| {
+        (name == "op_and").then(|| {
+            exec(
+                1,
+                "",
+                "codespec-write-cir: refused And (case.go:4): foreign go statement: kept; the evaluator stops there",
+            )
+        })
+    });
+    let cir_calls = AtomicUsize::new(0);
+    let cir_runner = |args: &[OsString], _: Option<&[u8]>| {
+        cir_calls.fetch_add(1, Ordering::SeqCst);
+        let bytes = std::fs::read(PathBuf::from(&args[2]).join("module.json"))
+            .map_err(|e| format!("the evaluator was not given the written module: {e}"))?;
+        let name = Module::from_json(&bytes).unwrap().name;
+        match name.as_str() {
+            "op_add" => exec(0, "ok 5\nok -5\n", ""),
+            "op_sub" => exec(0, "ok 0\n", ""),
+            "stmt_if" => exec(
+                1,
+                "ok 1\n",
+                "codespec-run-cir: stopped at stmt_if.Pick#0 (case.go:4): unsupported: stub stop",
+            ),
+            "op_eq" => exec(
+                1,
+                "ok wrong\n",
+                "codespec-run-cir: stopped at op_eq.Eq#0 (case.go:4): unsupported: stub stop",
+            ),
+            "op_ge" => exec(
+                1,
+                "ok true\n",
+                "codespec-run-cir: stopped at op_ge.Ge#0 (case.go:4): panic: index out of range",
+            ),
+            other => panic!("the evaluator ran {other}, which the Go writer wrote"),
+        }
+    };
+    let runner = stub_runner(|_| None);
+    let go_runner = stub_runner(|_| None);
+    let report = conform_reader(
+        &Run {
+            manifest: &m,
+            kit: kit(),
+            work: w.join("work"),
+        },
+        &corpus,
+        &ReaderPrograms {
+            reader: &kit_module_reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &go_runner,
+            cir_writer: &cir_writer,
+            cir_runner: &cir_runner,
+        },
+    )
+    .unwrap();
+    let json = report_json(&report);
+    assert_eq!(read_report(json.as_bytes()).unwrap(), report);
+    let cir = Some("codespec-run-cir");
+
+    let add = feature(&report, "op.add");
+    assert_eq!((add.claimed, add.verdict), (true, Verdict::Pass), "{json}");
+    assert_eq!(add.runner.as_deref(), cir, "{json}");
+
+    let sub = feature(&report, "op.sub");
+    assert_eq!(sub.verdict, Verdict::Fail, "{json}");
+    assert_eq!((sub.step, sub.reason), (Some(4), Some(Reason::WrongOutput)));
+    let d = sub
+        .first_difference
+        .as_ref()
+        .expect("the first differing line");
+    assert_eq!(
+        (d.line, d.expected.as_str(), d.got.as_str()),
+        (1, "ok -1", "ok 0")
+    );
+    assert_eq!(sub.runner.as_deref(), cir);
+
+    let stop = feature(&report, "stmt.if");
+    assert_eq!(
+        (stop.claimed, stop.verdict),
+        (false, Verdict::Refused),
+        "{json}"
+    );
+    assert_eq!((stop.step, stop.reason), (Some(4), Some(Reason::Refused)));
+    assert_eq!(
+        stop.detail.as_deref(),
+        Some("codespec-run-cir: stopped at stmt_if.Pick#0 (case.go:4): unsupported: stub stop")
+    );
+    assert_eq!(stop.runner.as_deref(), cir);
+
+    let wrong_then_stop = feature(&report, "op.eq");
+    assert_eq!(wrong_then_stop.verdict, Verdict::Fail, "{json}");
+    assert_eq!(wrong_then_stop.reason, Some(Reason::WrongOutput));
+    assert_eq!(wrong_then_stop.first_difference.as_ref().unwrap().line, 1);
+
+    let cir_refused = feature(&report, "op.and");
+    assert_eq!(cir_refused.verdict, Verdict::Refused, "{json}");
+    assert_eq!(cir_refused.reason, Some(Reason::Refused));
+    assert!(
+        cir_refused
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.starts_with("codespec-write-cir: refused And")),
+        "{json}"
+    );
+    assert_eq!(
+        cir_refused.runner.as_deref(),
+        Some("codespec-write-cir"),
+        "the evaluator's writer refused it: the runner never ran"
+    );
+
+    // A stop that is not about a construct the evaluator does not reproduce (here `panic`, as
+    // `blocked` and `step budget`) is a failure even after a prefix and unclaimed, as a Go
+    // runner that crashes is.
+    let crashed = feature(&report, "op.ge");
+    assert_eq!(
+        (crashed.claimed, crashed.verdict),
+        (false, Verdict::Fail),
+        "{json}"
+    );
+    assert_eq!(
+        (crashed.step, crashed.reason),
+        (Some(4), Some(Reason::RunFailed))
+    );
+    assert!(
+        crashed
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("panic: index out of range")),
+        "{json}"
+    );
+    assert_eq!(crashed.runner.as_deref(), cir);
+
+    let by_go = feature(&report, "op.mul");
+    assert_eq!(by_go.verdict, Verdict::Pass, "{json}");
+    assert_eq!(by_go.runner, None, "{json}");
+    assert!(!json.contains("\"runner\": \"codespec-run-go\""), "{json}");
+
+    assert_eq!(cir_calls.load(Ordering::SeqCst), 5);
+    assert_eq!(report.summary.pass, 2);
+    assert_eq!(report.summary.fail, 3);
+    assert_eq!(report.summary.refused_unclaimed, 2);
+}
+
+/// A `raise` stop of the evaluator after a prefix of `expected.txt` is `refused` with the stop as
+/// the detail, as a `foreign` stop is: the value leaves every caller up to a framework the
+/// evaluator does not run, so the run says nothing about what the program prints after it.
+#[test]
+fn an_evaluator_stop_at_a_raise_is_refused_at_its_stop() {
+    let w = work("stub-reader-evaluator-raise");
+    let corpus = stub_corpus_of(&w, &["stmt-if"]);
+    let m = manifest("reader", &[]);
+    let go_writer =
+        stub_writer(|_| Some(exec(1, "", "codespec-write-go: case.go:3: no form for it")));
+    let cir_writer = stub_writer(|_| None);
+    let cir_runner = |_: &[OsString], _: Option<&[u8]>| {
+        exec(
+            1,
+            "ok 1\n",
+            "codespec-run-cir: stopped at stmt_if.Pick#0.then.0 (case.go:4): raise: raise of x.E: it leaves every caller up to the framework, which the evaluator does not run",
+        )
+    };
+    let runner = stub_runner(|_| None);
+    let go_runner = stub_runner(|_| None);
+    let report = conform_reader(
+        &Run {
+            manifest: &m,
+            kit: kit(),
+            work: w.join("work"),
+        },
+        &corpus,
+        &ReaderPrograms {
+            reader: &kit_module_reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &go_runner,
+            cir_writer: &cir_writer,
+            cir_runner: &cir_runner,
+        },
+    )
+    .unwrap();
+    let json = report_json(&report);
+    let stop = feature(&report, "stmt.if");
+    assert_eq!(
+        (stop.verdict, stop.step, stop.reason),
+        (Verdict::Refused, Some(4), Some(Reason::Refused)),
+        "{json}"
+    );
+    assert!(
+        stop.detail
+            .as_deref()
+            .is_some_and(|d| d.contains(": raise: raise of x.E")),
+        "{json}"
+    );
+}
+
+/// `dir/name`, an executable shell script of `body`.
+fn script(dir: &Path, name: &str, body: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+    let p = dir.join(name);
+    std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// An `--adapters` directory for a reader of the stub language over a one-case kit `op-add`: the
+/// reader prints the corpus case's `module.json`, its runner the case's output, and the Go pair
+/// is the real one unless `go_writer_refuses`; the evaluator's pair is absent.
+fn reader_adapters_without_the_evaluator(w: &Path, go_writer_refuses: bool) -> Target {
+    let k = mini_kit(w, &["op-add"]);
+    let corpus = stub_corpus_of(w, &["op-add"]);
+    let adapters = w.join("adapters");
+    std::fs::create_dir_all(&adapters).unwrap();
+    let m = w.join("manifest.json");
+    std::fs::write(&m, manifest("reader", &["op.add".to_string()])).unwrap();
+    script(
+        &adapters,
+        "codespec-read-stub",
+        &format!(
+            "if [ \"$1\" = --describe ]; then cat '{}'; exit 0; fi\ncat \"$1/module.json\"",
+            m.display()
+        ),
+    );
+    script(&adapters, "codespec-run-stub", "printf 'ok 5\\nok -5\\n'");
+    if go_writer_refuses {
+        script(
+            &adapters,
+            "codespec-write-go",
+            "echo 'codespec-write-go: no form for it' >&2; exit 1",
+        );
+    } else {
+        std::fs::copy(
+            go_bin().join("codespec-write-go"),
+            adapters.join("codespec-write-go"),
+        )
+        .unwrap();
+    }
+    std::fs::copy(
+        go_bin().join("codespec-run-go"),
+        adapters.join("codespec-run-go"),
+    )
+    .unwrap();
+    Target {
+        adapters,
+        role: "reader".into(),
+        lang: "stub".into(),
+        kit: k,
+        corpus: Some(corpus),
+        work: w.join("work"),
+    }
+}
+
+/// The evaluator's pair is looked up only when the Go writer refuses a case: a reader run whose
+/// every case the Go writer writes needs only the Go pair.
+#[test]
+fn a_reader_run_the_go_writer_writes_through_needs_no_evaluator_programs() {
+    let w = work("reader-no-evaluator-needed");
+    let report = conform_adapter(&reader_adapters_without_the_evaluator(&w, false))
+        .expect("a reader run with the Go pair only");
+    let add = feature(&report, "op.add");
+    assert_eq!(add.verdict, Verdict::Pass, "{}", report_json(&report));
+    assert_eq!(add.runner, None);
+}
+
+/// A case the Go writer refuses with no evaluator in `--adapters` is an error naming the missing
+/// program, never a verdict.
+#[test]
+fn a_case_the_go_writer_refuses_without_the_evaluator_programs_is_an_error_naming_them() {
+    let w = work("reader-evaluator-missing");
+    let e = conform_adapter(&reader_adapters_without_the_evaluator(&w, true))
+        .expect_err("a case needs the evaluator and it is missing");
+    assert!(e.contains("codespec-write-cir does not exist"), "{e}");
 }
 
 /// The Rust writer and runner, built once with cargo.

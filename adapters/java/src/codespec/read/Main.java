@@ -84,7 +84,12 @@ public final class Main {
         "usage: codespec-read-java <package or project dir> | --packages <project dir> | --all <project dir> <out dir>"
             + " | --effects <project dir> | --describe";
 
+    /** Runs the reader on the stack {@link codespec.jvm.Bounded} states; deeper is a refusal. */
     public static void main(String[] args) {
+        codespec.jvm.Bounded.run("codespec-read-java", () -> run(args));
+    }
+
+    private static void run(String[] args) {
         if (args.length == 1 && args[0].equals("--describe")) {
             print(describe());
             return;

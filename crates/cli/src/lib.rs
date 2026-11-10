@@ -104,7 +104,8 @@ pub enum Cmd {
         #[arg(long)]
         corpus: Option<PathBuf>,
         /// Directory holding the adapter, its runner and, for a reader, codespec-write-go and
-        /// codespec-run-go.
+        /// codespec-run-go, and codespec-write-cir and codespec-run-cir, which judge a case the Go
+        /// writer refuses.
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,
         /// Where each case is written, read and built; emptied first. Defaults to

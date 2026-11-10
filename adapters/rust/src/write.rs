@@ -32,6 +32,7 @@
 //! | `conv` to a built-in integer type (`int32(len(xs))`) | `as`, which truncates and sign-extends as a Go conversion does | — |
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
+//! | `raise` | refused: the function leaves every caller up to the framework with the raised value, which no Rust form here hands on; the function is listed in `refusals.json` and `stmt.raise` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
 //! | an embedded field (`decl.embedded`) read, written or set in a struct literal | the function refused; the struct is written with it as an ordinary field | — |
 //! | type parameters (`decl.type_params`), a type parameter (`type.param`) or type arguments (`expr.instantiate`) in a function | the function refused, naming the feature; a module declaring a generic type refused whole | — |

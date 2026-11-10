@@ -33,7 +33,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Project',
-      items: ['vision', 'status'],
+      items: ['vision', 'status', 'codesec'],
     },
   ],
 };

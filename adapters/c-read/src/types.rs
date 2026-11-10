@@ -31,6 +31,26 @@ pub struct Tables {
     /// The tag of each struct, union and enum the source directory declares (`struct`, `union`,
     /// `enum`), by name.
     pub tags: BTreeMap<String, String>,
+    /// The source directory is in runtime form: it holds the kit's `codespec_rt.h` and a file
+    /// includes it.
+    pub runtime: bool,
+    /// The parameters and results of each function a `codespec: func` line types, by name.
+    pub sigs: BTreeMap<String, (Vec<Type>, Vec<Type>)>,
+    /// Each sentinel error, by name, with its message.
+    pub errors: BTreeMap<String, String>,
+    /// Each `static const cs_type` of the module, by name: its `CS_K_*` kind, the type name it
+    /// carries and, for `CS_K_NAMED`, the `cs_type` of the type it is defined over.
+    pub descs: BTreeMap<String, (String, String, Option<String>)>,
+    /// Each struct `<F>_result` that carries the results of `F`, by name, with `F`.
+    pub result_types: BTreeMap<String, String>,
+    /// The fields of each of those structs, name and C type, in order.
+    pub result_fields: BTreeMap<String, Vec<(String, String)>>,
+    /// The prefix `<m>_` of every name of a module the C writer wrote (its header `<m>.h` holds
+    /// the `codespec:` lines), empty otherwise.
+    pub prefix: String,
+    /// Each helper the C writer writes around one runtime call (`<m>_cs_append_int`), by name,
+    /// with the runtime function it calls and the C type of the value it takes.
+    pub helpers: BTreeMap<String, (String, String)>,
 }
 
 /// One typedef of a file: the type it names, spelled, and the module type it names when that
@@ -124,6 +144,12 @@ impl Tables {
     pub fn ty(&self, unit: &Unit, t: &J) -> Result<Type, String> {
         let q = clean(t.s("qualType"));
         let bare = q.strip_prefix("const ").unwrap_or(&q);
+        let bare = bare.strip_suffix(" const").unwrap_or(bare);
+        if self.runtime
+            && let Some(r) = crate::runtime::rt_type(bare)
+        {
+            return r;
+        }
         if let Some(Typedef { named: Some(n), .. }) = unit.typedefs.get(bare) {
             return self.named(n);
         }
@@ -137,6 +163,12 @@ impl Tables {
     /// The `cir/1` type of the C type spelled `s`.
     pub fn spelled(&self, unit: &Unit, s: &str) -> Result<Type, String> {
         let s = clean(s);
+        if self.runtime {
+            let bare = s.strip_prefix("const ").unwrap_or(&s);
+            if let Some(r) = crate::runtime::rt_type(bare.strip_suffix(" const").unwrap_or(bare)) {
+                return r;
+            }
+        }
         if s == "const char *" || s == "char const *" {
             return Ok(Type::String);
         }
@@ -296,6 +328,13 @@ impl Tables {
     }
 
     /// The module type `n`, a struct, enum or newtype the module declares and reads.
+    pub fn module_type(&self, n: &str) -> Result<Type, String> {
+        match self.named(&format!("{}{n}", self.prefix)) {
+            Ok(t) => Ok(t),
+            Err(_) => self.named(n),
+        }
+    }
+
     fn named(&self, n: &str) -> Result<Type, String> {
         if let Some(why) = self.refused.get(n) {
             return Err(format!("{n}, which is not read: {why}"));

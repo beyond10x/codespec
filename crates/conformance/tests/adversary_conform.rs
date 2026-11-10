@@ -7,8 +7,8 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use codespec_conformance::conform::{
-    Exec, Process, Reason, Run, Target, UNKNOWN_KIND, Verdict, conform_adapter, conform_reader,
-    conform_writer, report_json,
+    Exec, Process, ReaderPrograms, Reason, Run, Target, UNKNOWN_KIND, Verdict, conform_adapter,
+    conform_reader, conform_writer, report_json,
 };
 
 fn root() -> PathBuf {
@@ -218,6 +218,7 @@ fn adversary_a_go_reader_that_hides_the_loop_in_foreign_behind_a_dead_wrong_copy
     let go = go_bin();
     let runner = Process(go.join("codespec-run-go"));
     let go_writer = Process(go.join("codespec-write-go"));
+    let no_evaluator = |_: &[OsString], _: Option<&[u8]>| exec(1, "", "no evaluator in this test");
     let report = conform_reader(
         &Run {
             manifest: &m,
@@ -225,10 +226,14 @@ fn adversary_a_go_reader_that_hides_the_loop_in_foreign_behind_a_dead_wrong_copy
             work: b.join("work"),
         },
         &corpus,
-        &reader,
-        &runner,
-        &go_writer,
-        &runner,
+        &ReaderPrograms {
+            reader: &reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &runner,
+            cir_writer: &no_evaluator,
+            cir_runner: &no_evaluator,
+        },
     )
     .unwrap();
     let f = report.features.iter().find(|f| f.id == "stmt.for").unwrap();

@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Pipe",
+      "args": [
+        "chan",
+        "2"
+      ]
+    },
+    {
+      "func": "Pipe",
+      "args": [
+        "chan",
+        "0"
+      ]
+    }
+  ]
+}

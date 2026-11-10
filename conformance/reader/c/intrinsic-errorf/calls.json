@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Validate",
+      "args": [
+        "-2"
+      ]
+    },
+    {
+      "func": "Validate",
+      "args": [
+        "2"
+      ]
+    }
+  ]
+}

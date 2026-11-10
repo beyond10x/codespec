@@ -53,14 +53,14 @@
 //! String literals and error messages are written as escaped C string literals ([`c_str`]),
 //! integer literals as parsed numbers, doc comments with every `\` written as `/` and every `*/`,
 //! `/*` and `??` broken, so no line join, trigraph or nested comment can end the comment
-//! ([`comment`]). A `foreign` statement is refused, never written. A refusal printed to stderr or
+//! ([`comment`]). A `foreign` statement and a `raise` are refused, never written. A refusal printed to stderr or
 //! listed in `refusals.json` writes the document's text with its control and format characters
 //! escaped.
 //!
 //! # Refusals
 //!
-//! A function the writer cannot express (a `foreign` statement, a construct or type without a
-//! mapping, a call of a refused function) is left out and listed in `refusals.json` with its key,
+//! A function the writer cannot express (a `foreign` statement, a `raise`, a construct or type
+//! without a mapping, a call of a refused function) is left out and listed in `refusals.json` with its key,
 //! its position and the reason; so is a module-level variable whose initializer is not a literal.
 
 use std::collections::{BTreeMap, BTreeSet};

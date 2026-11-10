@@ -95,7 +95,9 @@ Fix the adapter. The model's strictness does not change.
   and runs it on a case's `calls.json`.
 
 A reader also needs `codespec-write-go` and `codespec-run-go`, which write its output as Go and run
-it. Each kit case is then run, and every feature gets a verdict against the claim.
+it, and `codespec-write-cir` and `codespec-run-cir`, the evaluator's pair, which judge a case the Go
+writer refuses (such as a tagged union); they are looked up only when a case needs them. Each kit
+case is then run, and every feature gets a verdict against the claim.
 
 Here is the Go writer, run in this repository. `codespec-docs generate` writes this block from the
 checked-in report `website/data/conformance/writer-go.json`, and `task docs-check` fails when it
@@ -116,12 +118,11 @@ The kit defaults to `conformance/` in this repository. Outside it, take
 `codespec-conformance-<version>.tar.gz` from the release, unpack it, and pass its `conformance/`
 directory as `--kit`.
 
-Each release's binary archive `codespec-<version>-<target>.tar.gz` holds `codespec`, the Go and
-Rust readers and writers, the C writer and the runners `codespec-run-go`, `codespec-run-rust` and
-`codespec-run-c`. Unpack it into one directory, put your own adapter and runner beside them, and
-pass the directory as `--adapters`. That directory is everything `codespec conform` needs for a
-Go, Rust or C writer and for a reader. The runners build what they run, so `go`, `cargo` and `cc`
-must be on `PATH`.
+Unpack a release's binary archive ([what it holds](/docs/getting-started#install)) into one
+directory, put your own adapter and runner beside its programs, and pass the directory as
+`--adapters`. That directory is everything `codespec conform` needs for a writer whose runner
+it holds and for a reader. The runners build what they run, so `go`, `cargo` and, for C, `cc` must
+be on `PATH`.
 
 | flag | effect |
 |---|---|

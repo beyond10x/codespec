@@ -21,6 +21,11 @@ program that decides it. An id without a link has no case yet.
 `codespec-docs` generates the matrix from the feature list, each adapter's `--describe` manifest and
 its conformance report, so a cell cannot claim more than a report shows.
 
+The **Evaluator** column is the `cir/1` evaluator run as a writer: `codespec-write-cir` copies the
+module and `codespec-run-cir` runs the kit's calls with the evaluator, so a write cell says whether
+the evaluator prints what the Go reference prints. It has no reader. Each feature it leaves out of
+its claim carries the reason in its note.
+
 <SupportMatrix data={matrix} />
 
 ## Reading a cell

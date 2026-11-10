@@ -1,7 +1,7 @@
 ---
 title: Readers, passes and writers
 sidebar_position: 2
-description: The adapter boundary, the passes and the seven facts, the two writers, and how refusals travel through the pipeline.
+description: The adapter boundary, the passes and the seven facts, the Go and Rust writers, and how refusals travel through the pipeline.
 lede: Readers and writers are separate programs that codespec checks at every crossing; passes in between compute the facts, so writers decide nothing themselves.
 source: crates/cli/src/main.rs, crates/passes/src/lib.rs, crates/passes/tests/passes.rs, adapters/go/cmd, adapters/rust/src/write.rs, adapters/rust/tests/writer.rs
 ---
@@ -33,7 +33,10 @@ handles its target best:
 | `codespec-write-go` | Go | `go/ast`, `go/printer`, `go/format` | shipped |
 | `codespec-write-rust` | Rust | `syn`, `prettyplease` | shipped |
 | `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
-| `codespec-read-c` | C | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
+| `codespec-read-c` | Rust | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
+| `codespec-write-c` | Rust | C11 with the header-only runtime `codespec_rt.h` | shipped |
+| `codespec-read-java` | Java | javac's attributed trees | shipped |
+| `codespec-read-groovy` | Java | the Groovy 2.4 compiler and its static type checker | shipped |
 
 How to add one: [Add a reader or writer adapter](/docs/guides/add-an-adapter).
 

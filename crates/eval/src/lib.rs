@@ -82,6 +82,15 @@
 //! `let`, `for_range`, `lookup_else`'s name and a receive declare variables of the value's own
 //! type, and a `var` holds a zero value: no crossing.
 //!
+//! # As a conformance adapter, and differential runs
+//!
+//! [`runner`] is the writer and runner pair `codespec-write-cir` / `codespec-run-cir` that
+//! `codespec conform --lang cir --role writer` judges, with the claim and the reason for each
+//! feature left out of it. [`diff`] makes per-function differential runs: seeded calls of every
+//! exported function of a module, through generated probes for what a calls file cannot pass,
+//! run by the evaluator and the native runners and compared byte for byte (`codespec-eval-diff`,
+//! `task eval-diff`).
+//!
 //! # Limits
 //!
 //! - Constant expressions are computed as `cir/1` writes them, operator by operator in their
@@ -96,11 +105,13 @@
 
 mod builtins;
 mod check;
+pub mod diff;
 mod gofmt;
 mod growth;
 pub mod id;
 mod interp;
 pub mod kit;
+pub mod runner;
 mod value;
 
 use codespec_conformance::{Calls, calls_go};

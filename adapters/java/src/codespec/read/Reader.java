@@ -666,10 +666,13 @@ public final class Reader {
         StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ROOT, StandardCharsets.UTF_8);
         List<CompilationUnitTree> units = new ArrayList<>();
         JavacTask task;
+        // What javac prints besides diagnostics: its report of a crash, printed unless the crash is
+        // a stack overflow, which codespec.jvm.Bounded turns into a refusal.
+        java.io.StringWriter javacOut = new java.io.StringWriter();
         try {
             fm.setLocation(StandardLocation.SOURCE_PATH, List.of());
             fm.setLocation(StandardLocation.CLASS_PATH, classpath.stream().map(Path::toFile).toList());
-            task = (JavacTask) javac.getTask(null, fm, diags,
+            task = (JavacTask) javac.getTask(javacOut, fm, diags,
                 List.of("-proc:none", "-implicit:none", "-encoding", "UTF-8", "-Xlint:none", "-nowarn"),
                 null, fm.getJavaFileObjectsFromPaths(files));
             for (CompilationUnitTree cu : task.parse()) {
@@ -678,7 +681,13 @@ public final class Reader {
             task.analyze();
         } catch (IOException e) {
             throw new Failure(dir + ": " + e.getMessage());
+        } catch (RuntimeException | Error e) {
+            if (!codespec.jvm.Bounded.overflow(e)) {
+                System.err.print(javacOut);
+            }
+            throw e;
         }
+        System.err.print(javacOut);
         List<String> errors = new ArrayList<>();
         for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
             if (d.getKind() == Diagnostic.Kind.ERROR) {

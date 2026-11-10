@@ -17,12 +17,93 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `raise` or at a call of a function that raises, `codespec query` has the relation `raises`
   and counts a `raise` as an exit, and `codespec eval` stops at a `raise` by name with its node
   id. `codespec-write-go` and `codespec-write-c` refuse a function holding `raise` by name with
-  exit 1, `codespec-write-rust` lists it in `refusals.json`; no reader or writer claims
-  `stmt.raise`. The kit case `stmt-raise` is written by hand.
+  exit 1, `codespec-write-rust` lists it in `refusals.json`, and `codespec-write-cir` refuses
+  it as it does a `foreign` statement; no reader or writer claims `stmt.raise`. The reader
+  check counts an evaluator stop at a `raise` as `refused`, and `codespec-eval-diff` skips a
+  function that raises, naming why. The kit case `stmt-raise` is written by hand.
 - `codespec-read-java` reads, in a project, a `throw new X(…)` of a jar's unchecked exception in a
   method an entry names as `raise`, a `@Provider` `ExceptionMapper` as an `exception-mapper` entry,
   and prints a path parameter only the framework passes. The Quarkus quickstart reads with 8
   refusals, down from 13 (`adapters/java/README.md`).
+- The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
+  module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
+  `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which
+  Go has no form. Output equal to `expected.txt` passes, different output fails; a stop is never a
+  pass: a `foreign`, `no handler`, `no body` or `unsupported` stop is `refused` with the stop as
+  the detail, a `panic`, `blocked` or `step budget` stop is `run_failed`. Such a feature entry
+  carries the new optional field `runner`, the evaluator's program that judged it
+  (`codespec-run-cir`, or `codespec-write-cir` when it refused the module). In the library,
+  `conform_reader` and `conform_reader_within` take the programs as one `ReaderPrograms`.
+- The evaluator is a conformance adapter: `codespec-write-cir` copies a module and refuses one
+  holding a `foreign` statement, `codespec-run-cir` runs the calls with the evaluator, so
+  `codespec conform --lang cir --role writer` judges it like any writer. It claims every kit
+  feature but `stmt.foreign`, which it refuses, and `intrinsic.append`, whose case passes but
+  whose sharing of a backing array may differ from Go's where Go's compiler puts a slice on the
+  stack; its report is `website/data/conformance/writer-cir.json` and the support matrix has an
+  Evaluator column, whose notes give the reason for each unclaimed feature. Both programs ship in
+  the release archives.
+- `task eval-diff` (in `task check`), per-function differential runs: every exported function of
+  `examples/series` and `examples/inventory` gets 200 seeded calls, a method through a generated
+  probe function that builds its receiver from the constructor and up to four drawn calls of the
+  type's mutators (one that would return an error is skipped), and the evaluator,
+  `codespec-run-go` and `codespec-run-rust` must print the same bytes. A method returning nothing
+  prints its receiver's state after the call. Each example's line counts the calls that reached
+  their function and those printing a result; a function reached by fewer than half its seeds
+  fails. `Inventory.Find` is not run as Rust: the Rust writer refuses every call of a comma-ok
+  function. Nothing is timed.
+- `codespec-read-rust` claims 111 of the 120 features a reader can claim, up from 89. It reads
+  generics: a function or struct with type parameters, each unbounded (`any`) or bound by one
+  trait of the crate (its interface), a `where T: Trait` clause, an impl of a generic struct, and
+  an instantiation written with a turbofish or inferred from the arguments, written out. A bound
+  `cir/1` has no constraint for (`Clone`, `PartialEq`, two bounds), another `where` clause, a
+  lifetime or const parameter, an associated type, `impl Trait` as a parameter type and a method
+  with its own type parameters are refused at their line. It also reads
+  `f64` and `f32` with their literals, `[T; N]` with `[0; N]` and indexing, `static` and
+  `static mut` items as module-level variables (a `static mut` inside `unsafe` around it only),
+  `fn(A) -> R` with a function's name as a value and a call through a local, parameter or field,
+  a closure whose parameter and result types are written out as a function literal with its
+  captures (a `move` closure is refused), a trait of the crate whose methods take `&self` as an
+  interface with `&dyn Trait` and `Box<dyn Trait>` its type, an `impl Trait for T` as `T`'s
+  methods and the coercion to the trait object as `to_iface`, `Rc<dyn Any>` as `any`, the Rust
+  writer's channel with both ends (`Rc<(SyncSender<T>, Receiver<T>)>`, `try_send`, `try_recv`)
+  as `chan T`, `T::default()` of a `#[derive(Default)]` whose every field defaults to its zero as
+  `zero`, and map keys collected and sorted (`sort()` for integers, by `encode_utf16` for
+  strings) as `sorted_keys`. Kit cases gain the Rust sources that hold the 22 new claims. A raw
+  identifier (`r#type`, `struct r#match`, a raw trait or path segment) is named without its `r#`
+  in every position.
+- `codespec-read-c` reads C in runtime form: a directory holding the kit's runtime header,
+  `conformance/c/codespec_rt.h` (the one the C writer writes), whose functions carry
+  `/* codespec: func … */` lines. It reads `cs_string`, `cs_slice`, `cs_map`, `cs_chan`, `cs_any`
+  and `cs_error` in the forms its crate doc lists (literals, wrapping arithmetic through
+  `uint64_t`, append, index, map put and get, send and receive, boxing, sentinel errors, string
+  builders as `sprintf`, `errorf` and `println`, result structs as tuples, multiple assignment,
+  lookup with a miss, switch as an if chain, loops over a slice or map as `range`), and refuses a
+  near miss of each by name. It claims 103 kit features, up from 76: `decl.var`, `expr.errvar`,
+  `expr.index`, `expr.intrinsic`, `expr.make`, `intrinsic.*`, `op.eq`, `sem.error.propagate`,
+  `sem.int.wrap`, `sem.map.order`, `sem.multi_assign.order`, `sem.switch.break`,
+  `stmt.for_range`, `stmt.lookup_else`, `stmt.send`, `type.any`, `type.chan`, `type.error`,
+  `type.map`, `type.slice`, `type.tuple`, `unop.recv`. A directory name that is no identifier
+  (`zlib-1.3.1`) reads to one (`zlib_1_3_1`), and a parameter without a name reads as `_`.
+- `codespec-read-c` reads what the C writer writes: its `<m>_` prefix, its static helpers, its
+  range blocks, scoped `for`, `(void)` calls, shifts, zero literals and `int64_t` newtypes
+  (`task c-round-trip` re-reads the writer's output for every kit case). It refuses an operator
+  or call with two operands that make calls (C leaves their order unspecified), a multiple
+  assignment whose later target reads an earlier one, an assignment through `cs_map_get` or
+  `cs_chan_recv`, an argument or result of another type than the `codespec: func` line's, a
+  receive or send against a channel's direction, and a loop over a map whose result depends on
+  the order of its entries. `int64_t` and `uint64_t` take their width from the line.
+- `codespec-read-c` refuses more orders C leaves open: two operands of which one is an `append`
+  or an operation that can panic (an integer `/` or `%`, an index, a shift by a signed count)
+  beside a call; an assignment to a place reading a global, memory or a local whose address is
+  taken, from a call; a multiple assignment or a loop over a map that reads or writes through a
+  pointer where a name may be aliased. A call of a function without a `codespec: func` line
+  checks each argument against its C parameter type. A name of the C writer's that would lose
+  its prefix onto the name of another declaration, a parameter or a local keeps it, with a
+  refusal. A `codespec: func` line spells a receive-only channel `<-chan T`.
+- `codespec-run-c` compiles each `.c` file as its own translation unit, as the reader reads it.
+- `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
+  a call of a function without one is refused. The C row of the reader corpus holds
+  `codespec_rt.h` beside each `case.c`.
 - `codespec-read-c` reads floats, pointers, arrays, function pointers and newtypes: `float` and
   `double`, their literals, `T *` with `&`, `*`, `->` and a null pointer as `nil`, `T[N]` with
   `a[i]`, `R (*)(P)` with a function's name as a value and a call through the pointer, and a
@@ -158,6 +239,22 @@ Every change a user of `codespec` or of `cir/1` would notice.
   position from the document is named in the message of a construct it cannot write.
 - The Rust, C and Go writers refuse a module named like a Windows device (`con`, `prn`, `aux`,
   `nul`, `com0` to `com9`, `lpt0` to `lpt9`, in any case), which they would write as a file name.
+- The documentation site: the cir/1 reference lists its definitions before the first table, so
+  every entry is one click from the first screen. The sidebar's group names are 14 px in sentence
+  case. The home page, the overview and Readers, passes and writers name every reader and writer
+  (Go, Rust, Java, Groovy and C readers; Go, Rust and C writers), and Status lists the conformance
+  of the C reader and the C writer. Use cases links Getting started for the orders run instead of
+  repeating it, and the overview links pages by their sidebar names.
+- The documentation site: field names, types and commands in tables, and table headers, are 14 px,
+  headers in sentence case. The pipeline diagram is on Readers, passes and writers only, the orders
+  harness run on Getting started only, and pages whose header names the run no longer say it again
+  in their first paragraph.
+- The documentation site: Status says it describes this tree and points to Unreleased here for
+  what the tree adds to the last release, the C reader and writer among them. The home page's lede
+  names the C writer. Code in tables breaks inside long identifiers, so no Markdown table scrolls
+  sideways at 1280 px and wider. Feature ids and descriptions on Language support, and the headers
+  and status chips on Status, are 14 px. Add a reader or writer adapter links Getting started for
+  what a release archive holds.
 - The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
   other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
   does not compile.
@@ -173,6 +270,18 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec-read-go` keeps `f(g())` with a multi-valued `g` foreign with a refusal at its line. It
   was read as a call with one argument of tuple type, which `cir/1` does not define and the
   writers refused.
+- Readers bound what an untrusted source can cost: past a limit is a refusal, exit 1 and a
+  message, not a crash. `codespec-read-rust` refuses a `Cargo.toml` or `src/lib.rs` over 4 MiB and
+  a source nested past 256 levels, counted on its tokens before parsing, and parses and lifts on a
+  256 MiB stack; nesting crashed it with a stack overflow. `codespec-read-c` reads clang's JSON AST
+  as a stream and refuses it past 64 MiB per file, 256 MiB for the directory's files together or
+  4096 levels, and refuses `.c` and `.h` files over 16 MiB together; clang indents a level two
+  spaces, so the JSON of a deep expression grows with the square of the source, and the reader
+  held all of it, every file's tree until the module was assembled. A file name clang printed once is
+  held once, not once per location. `codespec-read-java` and `codespec-read-groovy` run on a 64 MiB
+  stack and refuse a source nested deeper than it holds; they crashed with a stack overflow.
+  `codespec-read-go`'s libraries bound depth already. The limits are in each reader's crate doc or
+  README and in `docs/conformance.md`.
 
 ## 0.6.1
 

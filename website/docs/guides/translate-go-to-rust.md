@@ -8,10 +8,9 @@ source: crates/cli/src/lib.rs, adapters/go/cmd/codespec-read-go, adapters/rust/s
 
 # Translate a Go package to Rust
 
-This guide translates a small Go package that is not one of the repository's examples. Every
-command was run in an empty directory with an installed `codespec` and `CODESPEC_ADAPTERS` set
-([Getting started](/docs/getting-started#install)). Absolute paths are shortened to `<dir>` for
-that directory and `<install>` for the install directory.
+This guide translates a small Go package that is not one of the repository's examples.
+`CODESPEC_ADAPTERS` was set ([Getting started](/docs/getting-started#install)). Absolute paths are
+shortened to `<dir>` for the directory and `<install>` for the install directory.
 
 ## 1. The package
 
