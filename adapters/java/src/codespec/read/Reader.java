@@ -1477,10 +1477,7 @@ public final class Reader {
             if (r.getInterfaces().size() != 1) {
                 return what + " implements another interface: a cir/1 union variant is no other type";
             }
-            TreePath rp = trees.getPath(r);
-            // javac gives the implicit members (accessors, toString, equals, hashCode) no origin
-            // of their own, so the body's source is what says the record declares nothing.
-            if (!source(rp.getCompilationUnit(), rp.getLeaf()).replaceAll("\\s+", "").endsWith("{}")) {
+            if (declaresMembers(trees.getPath(r))) {
                 return what + " declares members: a cir/1 union variant has fields only";
             }
             for (javax.lang.model.element.RecordComponentElement c : r.getRecordComponents()) {
@@ -1492,6 +1489,24 @@ public final class Reader {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether the record at {@code rp} declares a member of its own. Its tree holds, besides what the
+     * source declares, a field per component (a record declares no other instance field) and the
+     * canonical constructor javac makes when none is written (origin mandated); the accessors,
+     * {@code toString}, {@code equals} and {@code hashCode} javac makes are not in it.
+     */
+    private boolean declaresMembers(TreePath rp) {
+        for (Tree m : ((ClassTree) rp.getLeaf()).getMembers()) {
+            Element e = trees.getElement(new TreePath(rp, m));
+            boolean component = m instanceof VariableTree && e != null && e.getKind() == ElementKind.FIELD
+                && !e.getModifiers().contains(Modifier.STATIC);
+            if (!component && !generated(e)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String interfaceShape(ClassTree ct) {

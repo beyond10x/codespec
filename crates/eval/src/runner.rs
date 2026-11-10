@@ -16,9 +16,10 @@
 //!
 //! The runner reads `<written dir>/module.cir.json` and the calls file, runs the calls with
 //! [`crate::run_calls`] and prints what `codespec eval` prints. A call names a function as Go
-//! spells it, as every kit `calls.json` does: one that names no exported top-level function calls
-//! the one whose name the Go writer exports so, its first letter upper-cased (`Echo` calls a Java
-//! reader's `echo`). `--build` (or `-build`) is accepted and unused: nothing is built.
+//! spells it, as every kit `calls.json` does: one that names nothing at package level calls the
+//! exported top-level function whose name the Go writer exports so, its first letter upper-cased
+//! (`Echo` calls a Java reader's `echo`, unless a type, variant, constant, error, variable or other
+//! function holds `Echo`). `--build` (or `-build`) is accepted and unused: nothing is built.
 //!
 //! | exit | when |
 //! |---|---|
@@ -34,7 +35,7 @@
 
 use std::path::{Path, PathBuf};
 
-use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, printable};
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, TypeDecl, printable};
 use serde_json::Value;
 
 use crate::{Options, Run, run_calls};
@@ -219,19 +220,33 @@ pub fn run(dir: &Path, calls: &Path) -> Result<Run, Failed> {
 }
 
 /// The function a call names as Go spells it: a kit `calls.json` names `Echo` where a Java or
-/// Rust reader's module has `echo`. With no exported top-level function named `func`, the one
-/// exported top-level function whose name with its first letter upper-cased is `func`, as the Go
-/// writer exports it; `None` when there is none or more than one, so the call is refused as one
-/// that does not fit.
+/// Rust reader's module has `echo`. When no package-level name is `func` (no top-level function,
+/// type, enum variant, constant, error or variable: the Go writer's `pkg` set, `names.go` rule 1,
+/// else it exports `echo` as `Echo_`), the one exported top-level function whose name with its
+/// first letter upper-cased, to one letter, is `func`, as the Go writer exports it; `None` when
+/// there is none or more than one, so the call is refused as one that does not fit.
 fn go_spelled(m: &Module, func: &str) -> Option<String> {
-    let top = || m.funcs.iter().filter(|f| f.recv.is_none() && f.exported);
-    if top().any(|f| f.name == func) {
+    let held = m.funcs.iter().any(|f| f.recv.is_none() && f.name == func)
+        || m.types.iter().any(|t| {
+            t.name() == func
+                || matches!(t, TypeDecl::Enum { variants, .. } if variants.iter().any(|v| v.name == func))
+        })
+        || m.consts.iter().any(|c| c.name == func)
+        || m.errors.iter().any(|e| e.name == func)
+        || m.vars.iter().any(|v| v.name == func);
+    if held {
         return None;
     }
-    let mut found = top().filter(|f| {
+    let mut found = m.funcs.iter().filter(|f| {
         let mut cs = f.name.chars();
-        cs.next()
-            .is_some_and(|c| c.is_lowercase() && c.to_uppercase().chain(cs).eq(func.chars()))
+        f.recv.is_none()
+            && f.exported
+            && cs.next().is_some_and(|c| {
+                let mut up = c.to_uppercase();
+                c.is_lowercase()
+                    && up.len() == 1
+                    && up.next().into_iter().chain(cs).eq(func.chars())
+            })
     });
     match (found.next(), found.next()) {
         (Some(f), None) => Some(f.name.clone()),
