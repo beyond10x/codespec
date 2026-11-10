@@ -18,6 +18,8 @@ pub enum Ty {
     Node,
     /// A type id, its spelling.
     Type,
+    /// A list of nodes: a path's witness.
+    List,
 }
 
 impl Ty {
@@ -28,6 +30,7 @@ impl Ty {
             Ty::Bool => "bool",
             Ty::Node => "node",
             Ty::Type => "type",
+            Ty::List => "list",
         }
     }
 
@@ -37,6 +40,7 @@ impl Ty {
             Ty::Str | Ty::Node | Ty::Type => matches!(v, Value::Str(_)),
             Ty::Int => matches!(v, Value::Int(_)),
             Ty::Bool => matches!(v, Value::Bool(_)),
+            Ty::List => matches!(v, Value::List(_)),
         }
     }
 }
@@ -63,7 +67,7 @@ impl Relation {
     }
 }
 
-use Ty::{Bool as B, Int as I, Node as N, Str as S, Type as T};
+use Ty::{Bool as B, Int as I, List as L, Node as N, Str as S, Type as T};
 
 /// Every relation, in the order `codespec query --schema` prints them.
 pub const RELATIONS: &[Relation] = &[
@@ -316,6 +320,12 @@ pub const RELATIONS: &[Relation] = &[
         group: Group::Graph,
     },
     Relation {
+        name: "reaches_path",
+        fields: &[("from", N), ("to", N), ("path", L)],
+        about: "reaches with its witness: the functions from from to to, the least of the shortest call paths by function id",
+        group: Group::Graph,
+    },
+    Relation {
         name: "reached",
         fields: &[("func", N)],
         about: "codespec reach (rta) reaches func from every main.main and init",
@@ -354,7 +364,7 @@ pub const RELATIONS: &[Relation] = &[
 ];
 
 /// The relations computed when a query names them, not stored or cached.
-pub const ON_DEMAND: &[&str] = &["reaches"];
+pub const ON_DEMAND: &[&str] = &["reaches", "reaches_path"];
 
 pub fn relation(name: &str) -> Option<&'static Relation> {
     RELATIONS.iter().find(|r| r.name == name)
@@ -368,17 +378,19 @@ pub struct Waiting {
     pub why: &'static str,
 }
 
-/// The relations of § 4.2 that wait for a construct cq does not run yet.
-pub const WAITING: &[Waiting] = &[Waiting {
-    name: "reaches_path",
-    fields: "from, to, path",
-    why: "is the witness of a path pattern (§ 5.2 of docs/query-language.md), which cq does not run yet",
-}];
+/// The relations of § 4.2 that wait for a construct cq does not run yet: none since path
+/// patterns (§ 5.2) gave `reaches_path` its witness.
+pub const WAITING: &[Waiting] = &[];
 
 /// Whether a site holds code nothing read: an opaque function, a foreign statement without a
 /// call list (not a call the fact base cannot link, which `codespec reach` resolves itself).
 pub(crate) fn hides_code(site: &crate::Site) -> bool {
     site.reason.starts_with(OPAQUE) || site.reason.starts_with(FOREIGN)
+}
+
+/// Whether a site is an opaque function: a body nothing read.
+pub(crate) fn is_opaque(site: &crate::Site) -> bool {
+    site.reason.starts_with(OPAQUE)
 }
 
 const OPAQUE: &str = "opaque function: ";
@@ -411,7 +423,9 @@ pub fn schema_text() -> String {
             .collect();
         out += &format!("{}{{{}}}\n    {}\n", r.name, fields.join(", "), r.about);
     }
-    out += "\n// Not built yet: a query naming one is refused.\n\n";
+    if !WAITING.is_empty() {
+        out += "\n// Not built yet: a query naming one is refused.\n\n";
+    }
     for w in WAITING {
         out += &format!("{}({})\n    {} {}\n", w.name, w.fields, w.name, w.why);
     }

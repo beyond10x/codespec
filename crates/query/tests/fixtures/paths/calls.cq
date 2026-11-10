@@ -1,0 +1,3 @@
+// From each entry to write on a call path that passes no authorize, with that path.
+?- func{id: F, name: ~"^Entry"}, func{id: G, name: "write"},
+   path(F -> G, over: calls, avoid: N where func{id: N, name: "authorize"}, witness: W).

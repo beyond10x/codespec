@@ -205,6 +205,11 @@ property lock_released(scope: body) {
 It compiles to Datalog by a product of automaton states and `cfg_next`. Registers are limited to 3
 (Topl reports cost exponential in registers, with 3 the most used in practice).
 
+With `scope: calls` a run starts at each entry of the call graph: a function that no linked call
+from outside its own strongly connected component reaches, so recursion does not hide an entry. A
+register compared with a value the facts do not carry (the receiver or arguments of a listed call)
+matches only possibly, naming the call: never a definite error, never a silent pass.
+
 ### 5.4 Modules and checks
 
 A `.cq` file is a module: rules, properties and `check` declarations. A check is a query with a
@@ -230,7 +235,8 @@ this repository.
 
 ```
 dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item: C},
-                       stmt{id: S, kind: "let"}, let_name(S, -1, "_"), contains(S, Site).
+                       stmt{id: S, kind: "let"}, let_name{stmt: S, name: "_", last: true},
+                       contains(S, Site).
 dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item: C},
                        stmt{kind: "expr", id: S}, contains(S, Site).
 ```

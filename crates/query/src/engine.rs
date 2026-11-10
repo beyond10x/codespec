@@ -14,7 +14,10 @@ use std::rc::Rc;
 
 use crate::facts::{FactBase, ON_DEMAND, Ty, relation};
 use crate::regex::Regex;
-use crate::syntax::{AggFn, Args, Atom, Field, Lit, MAX_BODY, Op, Program, Rule, Term, query_text};
+use crate::syntax::{
+    AggFn, Args, Atom, Avoid, Event, Field, Lit, MAX_BODY, Op, Over, PathForm, PathPat, Program,
+    Property, Rule, Scope, Term, placeholders, query_text, registers_read,
+};
 use crate::{Answer, CHECK_LISTS, Glob, Names, Row, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -288,6 +291,89 @@ enum Step {
         outer: Vec<(usize, usize)>,
         target: Option<usize>,
     },
+    Path(Box<PathStep>),
+}
+
+/// What a path may not pass.
+#[derive(Debug, Clone)]
+enum AvoidStep {
+    None,
+    Node(Arg),
+    /// The nodes in column 0 of a relation the compiler made for `N where body`, its other
+    /// columns the variables the body shares with the rule.
+    Rel(Rel, Vec<Arg>),
+}
+
+/// A path pattern compiled: `neg` for `!path` and `every_path`.
+#[derive(Debug, Clone)]
+struct PathStep {
+    over: Over,
+    from: Arg,
+    to: Arg,
+    avoid: AvoidStep,
+    max: Option<usize>,
+    witness: Option<usize>,
+    neg: bool,
+}
+
+/// A path pattern lowered; variables still by name.
+#[derive(Debug, Clone)]
+struct LowPath {
+    over: Over,
+    from: Term,
+    to: Term,
+    avoid: LowAvoid,
+    max: Option<usize>,
+    witness: Option<String>,
+    neg: bool,
+}
+
+#[derive(Debug, Clone)]
+enum LowAvoid {
+    None,
+    Node(Term),
+    Rel(Rel, Vec<Term>),
+}
+
+/// A property compiled: its states (`start` first), its transitions, the registers and the
+/// message.
+struct CProp {
+    head: usize,
+    scope: Scope,
+    states: Vec<String>,
+    error: usize,
+    trans: Vec<CTrans>,
+    regs: usize,
+    message: Vec<Piece>,
+    /// The states whose leaving node the message prints.
+    marked: Vec<bool>,
+}
+
+struct CTrans {
+    from: usize,
+    to: usize,
+    event: CEvent,
+}
+
+enum CEvent {
+    Exit,
+    /// The call sites the event's relation holds in column 0, each with the values of its
+    /// variables: (register, column) pairs the register must equal, and the registers set.
+    /// `fields` names the `call` field each column holding a variable comes from, for the
+    /// fields a listed call does not read (`recv`, `args`).
+    Call {
+        rel: usize,
+        checks: Vec<(usize, usize)>,
+        assigns: Vec<(usize, usize)>,
+        fields: Vec<(usize, &'static str)>,
+    },
+}
+
+/// A part of a property's message.
+enum Piece {
+    Text(String),
+    State(usize),
+    Reg(usize),
 }
 
 struct CRule {
@@ -314,6 +400,9 @@ pub struct Compiled {
     vars: Vec<String>,
     /// Each derived relation's stratum, from 1.
     strata: Vec<usize>,
+    props: Vec<CProp>,
+    /// The property each derived relation is, if one.
+    prop_of: Vec<Option<usize>>,
 }
 
 /// A body literal once record patterns, attributes, disjunctions and nested negations are
@@ -333,6 +422,7 @@ enum Low {
         outer: Vec<String>,
         target: Option<String>,
     },
+    Path(Box<LowPath>),
 }
 
 fn term_vars(t: &Term, out: &mut Vec<String>) {
@@ -377,6 +467,26 @@ fn lit_vars(l: &Lit, out: &mut Vec<String>) {
             body.iter().for_each(|l| lit_vars(l, out));
         }
         Lit::Or(alts) => alts.iter().flatten().for_each(|l| lit_vars(l, out)),
+        Lit::Path(p) => path_vars(p, out),
+    }
+}
+
+/// The variables of a path pattern: its ends, its witness, the node it avoids and those of the
+/// body after `where` but the node that body names.
+fn path_vars(p: &PathPat, out: &mut Vec<String>) {
+    term_vars(&p.from, out);
+    term_vars(&p.to, out);
+    if let Some(w) = &p.witness {
+        out.push(w.clone());
+    }
+    match &p.avoid {
+        Some(Avoid::Node(t)) => term_vars(t, out),
+        Some(Avoid::Where(n, body)) => {
+            let mut vs = Vec::new();
+            body.iter().for_each(|l| lit_vars(l, &mut vs));
+            out.extend(vs.into_iter().filter(|v| v != n));
+        }
+        None => {}
     }
 }
 
@@ -805,6 +915,61 @@ impl Compiler<'_> {
                 });
             }
             Lit::Or(_) => unreachable!("disjunctions are expanded first"),
+            Lit::Path(p) => {
+                for t in [&p.from, &p.to] {
+                    if matches!(t, Term::Attr(..) | Term::Arith(..)) {
+                        return Err(format!("{p}: a path's ends are variables or nodes"));
+                    }
+                }
+                let avoid = match &p.avoid {
+                    None => LowAvoid::None,
+                    Some(Avoid::Node(t)) => LowAvoid::Node(t.clone()),
+                    Some(Avoid::Where(n, body)) => {
+                        let mut vs = Vec::new();
+                        body.iter().for_each(|l| lit_vars(l, &mut vs));
+                        if !vs.contains(n) {
+                            return Err(format!("{p}: the body after where does not name {n}"));
+                        }
+                        let mut ends = Vec::new();
+                        term_vars(&p.from, &mut ends);
+                        term_vars(&p.to, &mut ends);
+                        ends.extend(p.witness.iter().cloned());
+                        let mut shared: Vec<String> = Vec::new();
+                        for v in vs {
+                            if v != *n
+                                && (elsewhere(&v) || ends.contains(&v))
+                                && !shared.contains(&v)
+                            {
+                                shared.push(v);
+                            }
+                        }
+                        let aux = format!("__avoid{}", self.derived.len());
+                        let mut head = vec![Term::Var(n.clone())];
+                        head.extend(shared.iter().cloned().map(Term::Var));
+                        let d = self.derived(&aux, head.len())?;
+                        self.rule(
+                            &Rule {
+                                head: Atom {
+                                    rel: aux,
+                                    args: Args::Positional(head),
+                                },
+                                body: body.clone(),
+                            },
+                            d,
+                        )?;
+                        LowAvoid::Rel(Rel::Derived(d), shared.into_iter().map(Term::Var).collect())
+                    }
+                };
+                out.push(Low::Path(Box::new(LowPath {
+                    over: p.over,
+                    from: p.from.clone(),
+                    to: p.to.clone(),
+                    avoid,
+                    max: p.max.map(|m| usize::try_from(m).unwrap_or(usize::MAX)),
+                    witness: p.witness.clone(),
+                    neg: p.form != PathForm::Path,
+                })));
+            }
         }
         Ok(())
     }
@@ -938,8 +1103,30 @@ impl Compiler<'_> {
             ts.iter()
                 .all(|t| vars_of(t).iter().all(|v| bound.contains(v)))
         };
+        let path_needs = |p: &LowPath| {
+            let mut vs = Vec::new();
+            match &p.avoid {
+                LowAvoid::None => {}
+                LowAvoid::Node(t) => term_vars(t, &mut vs),
+                LowAvoid::Rel(_, ts) => ts.iter().for_each(|t| term_vars(t, &mut vs)),
+            }
+            if p.neg {
+                term_vars(&p.from, &mut vs);
+                term_vars(&p.to, &mut vs);
+            }
+            vs
+        };
         while !pending.is_empty() {
-            let ready = pending.iter().position(|l| match l {
+            // A path waits for one of its ends to be bound while another literal can run; with
+            // none left it walks from every node.
+            let is_ready = |l: &Low, strict: bool| match l {
+                Low::Path(p) => {
+                    path_needs(p).iter().all(|v| bound.contains(v))
+                        && (!strict
+                            || p.neg
+                            || all_bound(&[&p.from], &bound)
+                            || all_bound(&[&p.to], &bound))
+                }
                 Low::Scan(..) => true,
                 Low::Neg(_, ts) => all_bound(&ts.iter().collect::<Vec<_>>(), &bound),
                 Low::Cmp(a, Op::Bind, b) => {
@@ -966,7 +1153,11 @@ impl Compiler<'_> {
                     all_bound(&ts[..n].iter().collect::<Vec<_>>(), &bound)
                 }
                 Low::Agg { outer, .. } => outer.iter().all(|v| bound.contains(v)),
-            });
+            };
+            let ready = pending
+                .iter()
+                .position(|l| is_ready(l, true))
+                .or_else(|| pending.iter().position(|l| is_ready(l, false)));
             let Some(k) = ready else {
                 let mut waiting = BTreeSet::new();
                 for l in &pending {
@@ -981,6 +1172,7 @@ impl Compiler<'_> {
                         }
                         Low::Match(t, ..) | Low::In(t, ..) => term_vars(t, &mut vs),
                         Low::Agg { outer, .. } => vs.extend(outer.iter().cloned()),
+                        Low::Path(p) => vs.extend(path_needs(p)),
                         Low::Scan(..) => {}
                     }
                     waiting.extend(
@@ -1074,6 +1266,30 @@ impl Compiler<'_> {
                         target: target.map(|t| t.parse().expect("a column")),
                     }
                 }
+                Low::Path(p) => {
+                    let avoid = match &p.avoid {
+                        LowAvoid::None => AvoidStep::None,
+                        LowAvoid::Node(t) => AvoidStep::Node(arg(t, &mut slots)),
+                        LowAvoid::Rel(rel, ts) => {
+                            AvoidStep::Rel(*rel, ts.iter().map(|t| arg(t, &mut slots)).collect())
+                        }
+                    };
+                    let s = PathStep {
+                        over: p.over,
+                        from: arg(&p.from, &mut slots),
+                        to: arg(&p.to, &mut slots),
+                        avoid,
+                        max: p.max,
+                        witness: p.witness.as_deref().map(|w| slot(w, &mut slots)),
+                        neg: p.neg,
+                    };
+                    bind(&p.from, &mut bound);
+                    bind(&p.to, &mut bound);
+                    if let Some(w) = &p.witness {
+                        bound.insert(w.clone());
+                    }
+                    Step::Path(Box::new(s))
+                }
             };
             steps.push(step);
         }
@@ -1111,7 +1327,12 @@ fn query_vars(body: &[Lit]) -> Vec<String> {
                     vs.extend(query_vars(alt));
                 }
             }
-            Lit::Not(_) | Lit::NotCond(_) => {}
+            Lit::Path(p) if p.form == PathForm::Path => {
+                term_vars(&p.from, &mut vs);
+                term_vars(&p.to, &mut vs);
+                vs.extend(p.witness.iter().cloned());
+            }
+            Lit::Not(_) | Lit::NotCond(_) | Lit::Path(_) => {}
         }
         for v in vs {
             if !v.starts_with('_') && !out.contains(&v) {
@@ -1173,9 +1394,26 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         };
         c.derived(&r.head.rel, ts.len())?;
     }
+    let mut heads = Vec::new();
+    for prop in &p.properties {
+        if relation(&prop.name).is_some()
+            || Builtin::of(&prop.name).is_some()
+            || c.by_name.contains_key(&prop.name)
+        {
+            return Err(format!(
+                "property {}: a relation of that name exists; a property is a relation of its own",
+                prop.name
+            ));
+        }
+        heads.push(c.derived(&prop.name, 3)?);
+    }
     for r in &p.rules {
         let d = c.by_name[&r.head.rel];
         c.rule(r, d)?;
+    }
+    let mut props = Vec::new();
+    for (prop, head) in p.properties.iter().zip(heads) {
+        props.push(c.property(prop, head)?);
     }
     let vars = query_vars(query);
     let q = c.derived("__query", vars.len())?;
@@ -1189,10 +1427,14 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         },
         q,
     )?;
-    let strata = stratify(&c.derived, &c.rules)?;
+    let strata = stratify(&c.derived, &c.rules, &props)?;
     let mut by_head: Vec<Vec<usize>> = vec![Vec::new(); c.derived.len()];
     for (k, r) in c.rules.iter().enumerate() {
         by_head[r.head].push(k);
+    }
+    let mut prop_of = vec![None; c.derived.len()];
+    for (k, pr) in props.iter().enumerate() {
+        prop_of[pr.head] = Some(k);
     }
     Ok(Compiled {
         by_name: c.by_name,
@@ -1202,12 +1444,154 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         query: q,
         vars,
         strata,
+        props,
+        prop_of,
     })
+}
+
+/// The relations a property's events read.
+fn prop_deps(p: &CProp) -> impl Iterator<Item = usize> + '_ {
+    p.trans.iter().filter_map(|t| match t.event {
+        CEvent::Call { rel, .. } => Some(rel),
+        CEvent::Exit => None,
+    })
+}
+
+impl Compiler<'_> {
+    /// A property: each call event a relation of its own, `(site, its variables…)`, from the
+    /// record pattern of `call`; the states numbered from `start`.
+    fn property(&mut self, p: &Property, head: usize) -> Result<CProp, String> {
+        let mut states = vec!["start".to_string()];
+        for t in &p.transitions {
+            for s in [&t.from, &t.to] {
+                if !states.contains(s) {
+                    states.push(s.clone());
+                }
+            }
+        }
+        let state = |s: &str| states.iter().position(|x| x == s).expect("a state");
+        let mut regs: Vec<String> = Vec::new();
+        for t in &p.transitions {
+            for (r, _) in &t.assign {
+                if !regs.contains(r) {
+                    regs.push(r.clone());
+                }
+            }
+        }
+        let reg = |r: &str| regs.iter().position(|x| x == r).expect("a register");
+        let mut trans = Vec::new();
+        for t in &p.transitions {
+            let event = match &t.event {
+                Event::Exit => CEvent::Exit,
+                Event::Call(a) => {
+                    let Args::Named(fields) = &a.args else {
+                        unreachable!("the parser takes call{{…}} only")
+                    };
+                    let site = self.fresh();
+                    let mut fields = fields.clone();
+                    let mut body = Vec::new();
+                    match fields.iter().position(|(n, _)| n == "site") {
+                        Some(k) => {
+                            let (_, f) = std::mem::replace(
+                                &mut fields[k],
+                                ("site".into(), Field::Term(Term::Var(site.clone()))),
+                            );
+                            let v = Term::Var(site.clone());
+                            match f {
+                                Field::Term(Term::Any) => {}
+                                Field::Term(t) => body.push(Lit::Cmp(v, Op::Bind, t)),
+                                Field::Regex(re) => body.push(Lit::Match(v, re)),
+                                Field::In(l) => body.push(Lit::In(v, l)),
+                            }
+                        }
+                        None => fields.push(("site".into(), Field::Term(Term::Var(site.clone())))),
+                    }
+                    let mut unread: Vec<(&'static str, String)> = Vec::new();
+                    for (n, f) in &fields {
+                        if let (Some(n), Field::Term(Term::Var(v))) =
+                            (UNREAD.iter().find(|u| **u == n.as_str()), f)
+                        {
+                            unread.push((n, v.clone()));
+                        }
+                    }
+                    let atom = Atom {
+                        rel: "call".into(),
+                        args: Args::Named(fields),
+                    };
+                    let mut vars = vec![site.clone()];
+                    let mut vs = Vec::new();
+                    atom_vars(&atom, &mut vs);
+                    body.iter().for_each(|l| lit_vars(l, &mut vs));
+                    for v in vs {
+                        if !vars.contains(&v) {
+                            vars.push(v);
+                        }
+                    }
+                    body.insert(0, Lit::Atom(atom));
+                    let aux = format!("__event{}", self.derived.len());
+                    let d = self.derived(&aux, vars.len())?;
+                    self.rule(
+                        &Rule {
+                            head: Atom {
+                                rel: aux,
+                                args: Args::Positional(
+                                    vars.iter().cloned().map(Term::Var).collect(),
+                                ),
+                            },
+                            body,
+                        },
+                        d,
+                    )?;
+                    let col = |v: &str| vars.iter().position(|x| x == v).expect("a column");
+                    let unread = unread.iter().map(|(n, v)| (col(v), *n)).collect();
+                    CEvent::Call {
+                        rel: d,
+                        checks: registers_read(t).iter().map(|r| (reg(r), col(r))).collect(),
+                        assigns: t.assign.iter().map(|(r, v)| (reg(r), col(v))).collect(),
+                        fields: unread,
+                    }
+                }
+            };
+            trans.push(CTrans {
+                from: state(&t.from),
+                to: state(&t.to),
+                event,
+            });
+        }
+        let mut message = Vec::new();
+        let mut marked = vec![false; states.len()];
+        let text = p.message.clone().unwrap_or_else(|| p.name.clone());
+        let mut rest = text.as_str();
+        let names = placeholders(&text);
+        for name in &names {
+            let at = rest.find(&format!("{{{name}}}")).expect("a placeholder");
+            message.push(Piece::Text(rest[..at].to_string()));
+            match states.iter().position(|s| s == name) {
+                Some(s) => {
+                    marked[s] = true;
+                    message.push(Piece::State(s));
+                }
+                None => message.push(Piece::Reg(reg(name))),
+            }
+            rest = &rest[at + name.len() + 2..];
+        }
+        message.push(Piece::Text(rest.to_string()));
+        Ok(CProp {
+            head,
+            scope: p.scope,
+            error: state("error"),
+            states,
+            trans,
+            regs: regs.len(),
+            message,
+            marked,
+        })
+    }
 }
 
 /// Each derived relation's stratum: 1 for one over the fact base only, one more than any it
 /// negates or aggregates over. A negation or an aggregate inside a recursion is refused.
-fn stratify(derived: &[Derived], rules: &[CRule]) -> Result<Vec<usize>, String> {
+fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec<usize>, String> {
     let n = derived.len();
     let mut edges: Vec<BTreeSet<(usize, bool)>> = vec![BTreeSet::new(); n];
     for r in rules {
@@ -1223,8 +1607,20 @@ fn stratify(derived: &[Derived], rules: &[CRule]) -> Result<Vec<usize>, String> 
                 } => {
                     edges[r.head].insert((*d, true));
                 }
+                // A path needs every node it avoids first, as a negation does.
+                Step::Path(p) => {
+                    if let AvoidStep::Rel(Rel::Derived(d), _) = &p.avoid {
+                        edges[r.head].insert((*d, true));
+                    }
+                }
                 _ => {}
             }
+        }
+    }
+    // A property needs every call of its events first.
+    for p in props {
+        for d in prop_deps(p) {
+            edges[p.head].insert((d, true));
         }
     }
     // Strongly connected components, dependencies first.
@@ -1274,10 +1670,21 @@ pub fn explain(p: &Program) -> Result<String, String> {
             .or_default()
             .push(r);
     }
+    let mut props: BTreeMap<usize, Vec<&Property>> = BTreeMap::new();
+    for pr in &p.properties {
+        props
+            .entry(c.strata[c.by_name(&pr.name)])
+            .or_default()
+            .push(pr);
+    }
     let mut out = String::new();
-    for (s, rules) in by {
+    let strata: BTreeSet<usize> = by.keys().chain(props.keys()).copied().collect();
+    for s in strata {
         out += &format!("stratum {s}\n");
-        for r in rules {
+        for pr in props.get(&s).into_iter().flatten() {
+            out += &format!("  {pr}\n");
+        }
+        for r in by.get(&s).into_iter().flatten() {
             out += &format!("  {r}\n");
         }
     }
@@ -1315,7 +1722,209 @@ struct Eval<'a> {
     /// The relations evaluated in the upper mode too.
     in_upper: Vec<bool>,
     closure: RefCell<Option<Closure>>,
+    graphs: RefCell<Option<Rc<Graphs>>>,
+    /// Sites the evaluation names beyond the fact base's, numbered after them: the values of a
+    /// listed call nothing read that a register met.
+    extra: RefCell<Vec<crate::Site>>,
 }
+
+/// The graphs path patterns and properties walk, built from the fact base once.
+#[derive(Default)]
+struct Graphs {
+    /// `cfg_next`: each node's successors, sorted.
+    cfg: HashMap<Rc<str>, Vec<Rc<str>>>,
+    /// Every node of the control flow: those of `cfg_next`, `entry` and `exit`.
+    cfg_nodes: BTreeSet<Rc<str>>,
+    /// The linked calls: each function's callees, sorted.
+    calls: BTreeMap<Rc<str>, Vec<Rc<str>>>,
+    funcs: BTreeSet<Rc<str>>,
+    /// The functions a linked call from outside their own strongly connected component reaches.
+    called: HashSet<Rc<str>>,
+    /// Each function's own unknown sites: its wild calls and the calls nothing links.
+    own: HashMap<Rc<str>, Ann>,
+    /// The statement each expression sits in.
+    stmt_of: HashMap<Rc<str>, Rc<str>>,
+    /// The local each expression reads.
+    value: HashMap<Rc<str>, Rc<str>>,
+    /// Each expression's kind, operand `x`, name and operator.
+    exprs: HashMap<Rc<str>, [Rc<str>; 4]>,
+    /// (body, its first statement)
+    entries: Vec<(Rc<str>, Rc<str>)>,
+    exits: HashSet<Rc<str>>,
+    /// The calls of each statement, in the order they run: a call's operands before it.
+    events: HashMap<Rc<str>, Vec<Rc<str>>>,
+    /// The calls each function makes, sorted.
+    func_calls: HashMap<Rc<str>, Vec<Rc<str>>>,
+    /// The functions each call links to.
+    targets: HashMap<Rc<str>, Vec<Rc<str>>>,
+    /// The statements that hide code (a foreign statement without a call list), with their site.
+    hidden: HashMap<Rc<str>, u32>,
+    /// The opaque functions, with their site.
+    opaque: Vec<(Rc<str>, u32)>,
+    /// The listed calls (of a foreign statement's call list): whether a receiver it has goes
+    /// unread, and its position.
+    listed: HashMap<Rc<str>, (bool, Rc<str>)>,
+}
+
+impl Graphs {
+    /// The statement a node of a body is: itself, the statement an expression sits in, or the
+    /// statement whose call list holds a listed call.
+    fn stmt(&self, v: &str) -> Rc<str> {
+        if let Some(n) = self.cfg_nodes.get(v) {
+            return n.clone();
+        }
+        if let Some(s) = self.stmt_of.get(v) {
+            return s.clone();
+        }
+        match v.find(".calls.") {
+            Some(k) => Rc::from(&v[..k]),
+            None => Rc::from(v),
+        }
+    }
+
+    /// What a value of a register is: the local an expression reads, followed through `&`, `*`
+    /// and fields (`<body>$mu.inner`), else the value itself.
+    fn canon(&self, v: &V) -> V {
+        let V::Str(s) = v else { return v.clone() };
+        let mut fields: Vec<Rc<str>> = Vec::new();
+        let mut cur = s.clone();
+        loop {
+            if let Some(var) = self.value.get(&cur) {
+                let mut out = var.to_string();
+                for f in fields.iter().rev() {
+                    out.push('.');
+                    out += f;
+                }
+                return V::Str(Rc::from(out));
+            }
+            match self.exprs.get(&cur) {
+                Some([kind, x, name, _]) if &**kind == "field" && !x.is_empty() => {
+                    fields.push(name.clone());
+                    cur = x.clone();
+                }
+                Some([kind, x, _, op]) if &**kind == "unop" && matches!(&**op, "&" | "*") => {
+                    cur = x.clone();
+                }
+                _ => return v.clone(),
+            }
+        }
+    }
+
+    fn succ(&self, over: Over, u: &str) -> &[Rc<str>] {
+        match over {
+            Over::Cfg => self.cfg.get(u).map_or(&[], Vec::as_slice),
+            Over::Calls => self.calls.get(u).map_or(&[], Vec::as_slice),
+        }
+    }
+}
+
+/// The order two calls of one statement run in: a call's operands (a longer id under it)
+/// before it, then by index path, numbers as numbers.
+fn run_order(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut x, mut y) = (a.split('.'), b.split('.'));
+    loop {
+        match (x.next(), y.next()) {
+            (Some(p), Some(q)) if p == q => {}
+            (Some(p), Some(q)) => {
+                return match (p.parse::<u64>(), q.parse::<u64>()) {
+                    (Ok(m), Ok(n)) => m.cmp(&n),
+                    _ => p.cmp(q),
+                };
+            }
+            (Some(_), None) => return Ordering::Less,
+            (None, Some(_)) => return Ordering::Greater,
+            (None, None) => return Ordering::Equal,
+        }
+    }
+}
+
+/// The least shortest paths from a root: each node reached, with its parent on its path.
+struct Tree {
+    root: Rc<str>,
+    parent: HashMap<Rc<str>, Rc<str>>,
+    /// In the order reached.
+    reached: Vec<Rc<str>>,
+    /// Whether the root is reached by a path of no edge.
+    zero: bool,
+}
+
+impl Tree {
+    /// The path from the root to `n`, both included.
+    fn path(&self, n: &Rc<str>) -> Option<Vec<Rc<str>>> {
+        let Some(mut p) = self.parent.get(n) else {
+            return (self.zero && *n == self.root).then(|| vec![n.clone()]);
+        };
+        let mut out = vec![n.clone()];
+        loop {
+            out.push(p.clone());
+            if *p == self.root {
+                break;
+            }
+            p = &self.parent[p];
+        }
+        out.reverse();
+        Some(out)
+    }
+}
+
+/// Every node reached from `root` over `succ`, by paths of at most `max` edges that pass no
+/// `blocked` node, and of one or more edges unless `zero`. Breadth first, each level's nodes
+/// expanded in the order of their own paths and their successors in id order, so the parent
+/// each node gets lies on the least of its shortest paths.
+fn walk<'g>(
+    succ: impl Fn(&str) -> &'g [Rc<str>],
+    root: &Rc<str>,
+    blocked: impl Fn(&str) -> bool,
+    max: Option<usize>,
+    zero: bool,
+) -> Tree {
+    let mut t = Tree {
+        root: root.clone(),
+        parent: HashMap::new(),
+        reached: Vec::new(),
+        zero: false,
+    };
+    if blocked(root) {
+        return t;
+    }
+    let mut seen: HashSet<Rc<str>> = HashSet::new();
+    let mut queue: std::collections::VecDeque<(Rc<str>, usize)> = Default::default();
+    if zero {
+        t.zero = true;
+        seen.insert(root.clone());
+        t.reached.push(root.clone());
+    }
+    queue.push_back((root.clone(), 0));
+    while let Some((u, d)) = queue.pop_front() {
+        if max.is_some_and(|m| d >= m) {
+            continue;
+        }
+        for v in succ(&u) {
+            if !blocked(v) && seen.insert(v.clone()) {
+                t.parent.insert(v.clone(), u.clone());
+                t.reached.push(v.clone());
+                queue.push_back((v.clone(), d + 1));
+            }
+        }
+    }
+    t
+}
+
+/// One run of a property: its state, its registers and the node at which it last left each
+/// state the message prints.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Run {
+    state: usize,
+    regs: Vec<Option<V>>,
+    /// For each register set from a value nothing read, the site naming it.
+    unread: Vec<Option<u32>>,
+    marks: Vec<Option<Rc<str>>>,
+}
+
+/// The fields of `call` a listed call does not read: its receiver (of a method, interface or
+/// reference call) and its argument count. A register meeting one matches only possibly.
+const UNREAD: &[&str] = &["recv", "args"];
 
 /// Each function, the functions it reaches and the unknown sites it reaches ([`Eval::closure`]).
 type Closure = Rc<Vec<(Rc<str>, Vec<Rc<str>>, Ann)>>;
@@ -1341,6 +1950,31 @@ fn arith(a: &V, op: char, b: &V) -> Option<V> {
     }
 }
 
+/// Whether a property's walk goes on with `key` resting on `a`: when it is new, or when it
+/// was seen only resting on something and now holds definitely.
+fn visit(seen: &mut HashMap<(Rc<str>, Run), Ann>, key: (Rc<str>, Run), a: &Ann) -> bool {
+    match seen.get_mut(&key) {
+        None => {
+            seen.insert(key, a.clone());
+            true
+        }
+        Some(old) if a.is_empty() && !old.is_empty() => {
+            old.clear();
+            true
+        }
+        Some(_) => false,
+    }
+}
+
+/// Adds the run `x` resting on `a` to `runs`, a definite one replacing a possible one.
+fn keep(runs: &mut Vec<(Run, Ann)>, x: Run, a: Ann) {
+    match runs.iter_mut().find(|(r, _)| *r == x) {
+        Some((_, b)) if a.is_empty() => b.clear(),
+        Some(_) => {}
+        None => runs.push((x, a)),
+    }
+}
+
 fn value_of(a: &Arg, b: &[Option<V>]) -> Option<V> {
     match a {
         Arg::Var(x) => b[*x].clone(),
@@ -1356,7 +1990,30 @@ impl<'a> Eval<'a> {
             return s.clone();
         }
         let mut st = Store::default();
-        if name == "reaches" {
+        if name == "reaches_path" {
+            let g = self.graphs();
+            for f in g.calls.keys() {
+                let t = walk(|u| g.succ(Over::Calls, u), f, |_| false, None, false);
+                for n in &t.reached {
+                    let w = t.path(n).expect("a node reached has a path");
+                    st.insert(
+                        vec![
+                            V::Str(f.clone()),
+                            V::Str(n.clone()),
+                            V::List(w.into_iter().map(V::Str).collect()),
+                        ],
+                        Vec::new(),
+                    );
+                }
+            }
+            if upper {
+                for (f, _, sites) in self.closure().iter() {
+                    if !sites.is_empty() {
+                        st.insert(vec![V::Str(f.clone()), V::Top, V::Top], sites.clone());
+                    }
+                }
+            }
+        } else if name == "reaches" {
             for (f, reached, sites) in self.closure().iter() {
                 let f = V::Str(f.clone());
                 for g in reached {
@@ -1453,72 +2110,631 @@ impl<'a> Eval<'a> {
         if let Some(c) = self.closure.borrow().as_ref() {
             return c.clone();
         }
-        let mut func_of: HashMap<&str, &str> = HashMap::new();
-        for row in self.fb.rels.get("call").into_iter().flatten() {
-            if let (Value::Str(site), Value::Str(f)) = (&row[0], &row[1]) {
-                func_of.insert(site, f);
-            }
-        }
-        let mut next: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-        for row in self.fb.rels.get("calls").into_iter().flatten() {
-            if let (Value::Str(site), Value::Str(t)) = (&row[0], &row[1])
-                && let Some(f) = func_of.get(site.as_str())
-            {
-                next.entry(f).or_default().insert(t);
-            }
-        }
-        let mut own: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
-        for (row, site) in self.fb.wild.get("call").into_iter().flatten() {
-            if let Some(Value::Str(f)) = &row[1] {
-                own.entry(f).or_default().insert(*site as u32);
-            }
-        }
-        for (row, site) in self.fb.wild.get("calls").into_iter().flatten() {
-            if let Some(Value::Str(s)) = &row[0] {
-                let f = func_of.get(s.as_str()).copied().or_else(|| {
-                    self.fb
-                        .wild
-                        .get("call")
-                        .into_iter()
-                        .flatten()
-                        .find_map(|(w, _)| match (&w[0], &w[1]) {
-                            (Some(Value::Str(ws)), Some(Value::Str(wf))) if ws == s => {
-                                Some(wf.as_str())
-                            }
-                            _ => None,
-                        })
-                });
-                if let Some(f) = f {
-                    own.entry(f).or_default().insert(*site as u32);
-                }
-            }
-        }
-        let mut froms: BTreeSet<&str> = next.keys().copied().collect();
-        froms.extend(own.keys().copied());
+        let g = self.graphs();
+        let mut froms: BTreeSet<&Rc<str>> = g.calls.keys().collect();
+        froms.extend(g.own.keys());
         let mut out = Vec::new();
         for from in froms {
-            let mut seen: BTreeSet<&str> = BTreeSet::new();
-            let mut stack: Vec<&str> = next.get(from).into_iter().flatten().copied().collect();
-            while let Some(g) = stack.pop() {
-                if seen.insert(g) {
-                    stack.extend(next.get(g).into_iter().flatten().copied());
+            let mut seen: BTreeSet<&Rc<str>> = BTreeSet::new();
+            let mut stack: Vec<&Rc<str>> = g.calls.get(from).into_iter().flatten().collect();
+            while let Some(f) = stack.pop() {
+                if seen.insert(f) {
+                    stack.extend(g.calls.get(f).into_iter().flatten());
                 }
             }
-            let mut sites: BTreeSet<u32> = own.get(from).cloned().unwrap_or_default();
-            for g in &seen {
-                if let Some(s) = own.get(g) {
-                    sites.extend(s);
+            let mut sites: Ann = g.own.get(from).cloned().unwrap_or_default();
+            for f in &seen {
+                if let Some(s) = g.own.get(*f) {
+                    union(&mut sites, s);
                 }
             }
-            out.push((
-                Rc::from(from),
-                seen.into_iter().map(Rc::from).collect(),
-                sites.into_iter().collect(),
-            ));
+            out.push((from.clone(), seen.into_iter().cloned().collect(), sites));
         }
         let c = Rc::new(out);
         *self.closure.borrow_mut() = Some(c.clone());
         c
+    }
+
+    /// The graphs of path patterns and properties, built once.
+    fn graphs(&self) -> Rc<Graphs> {
+        if let Some(g) = self.graphs.borrow().as_ref() {
+            return g.clone();
+        }
+        let fb = self.fb;
+        let rows = |name: &str| fb.rels.get(name).into_iter().flatten();
+        let rc = |v: &Value| -> Rc<str> {
+            match v {
+                Value::Str(s) => Rc::from(s.as_str()),
+                _ => Rc::from(""),
+            }
+        };
+        let mut g = Graphs::default();
+        for r in rows("cfg_next") {
+            let (a, b) = (rc(&r[0]), rc(&r[1]));
+            g.cfg_nodes.insert(a.clone());
+            g.cfg_nodes.insert(b.clone());
+            g.cfg.entry(a).or_default().push(b);
+        }
+        for r in rows("entry") {
+            let (f, n) = (rc(&r[0]), rc(&r[1]));
+            g.cfg_nodes.insert(n.clone());
+            g.entries.push((f, n));
+        }
+        for r in rows("exit") {
+            let n = rc(&r[1]);
+            g.cfg_nodes.insert(n.clone());
+            g.exits.insert(n);
+        }
+        for r in rows("expr") {
+            let id = rc(&r[0]);
+            g.stmt_of.insert(id.clone(), rc(&r[4]));
+            g.exprs
+                .insert(id, [rc(&r[2]), rc(&r[11]), rc(&r[9]), rc(&r[8])]);
+        }
+        for r in rows("value") {
+            g.value.insert(rc(&r[0]), rc(&r[1]));
+        }
+        for r in rows("func") {
+            g.funcs.insert(rc(&r[0]));
+        }
+        let mut func_of: HashMap<Rc<str>, Rc<str>> = HashMap::new();
+        for r in rows("call") {
+            let (site, f) = (rc(&r[0]), rc(&r[1]));
+            func_of.insert(site.clone(), f.clone());
+            if r[11] == Value::Bool(true) {
+                let recv = matches!(&*rc(&r[2]), "method" | "iface" | "ref");
+                g.listed.insert(site.clone(), (recv, rc(&r[9])));
+            }
+            g.func_calls.entry(f).or_default().push(site.clone());
+            let in_body = g.stmt_of.contains_key(&site) || site.contains(".calls.");
+            if in_body {
+                let st = g.stmt(&site);
+                g.events.entry(st).or_default().push(site);
+            }
+        }
+        let comp: HashMap<Rc<str>, Rc<str>> = rows("scc").map(|r| (rc(&r[0]), rc(&r[1]))).collect();
+        for r in rows("calls") {
+            let (site, t) = (rc(&r[0]), rc(&r[1]));
+            g.targets.entry(site.clone()).or_default().push(t.clone());
+            let caller = func_of.get(&site);
+            if let Some(f) = caller {
+                g.calls.entry(f.clone()).or_default().push(t.clone());
+            }
+            // A call within the callee's own strongly connected component (recursion) does not
+            // make it a callee: it is still an entry if nothing outside calls it.
+            let within =
+                caller.is_some_and(|f| comp.get(f).is_some_and(|c| comp.get(&t) == Some(c)));
+            if !within {
+                g.called.insert(t);
+            }
+        }
+        for (row, site) in fb.wild.get("call").into_iter().flatten() {
+            if let Some(f) = &row[1] {
+                union(g.own.entry(rc(f)).or_default(), &[*site as u32]);
+            }
+        }
+        for (row, site) in fb.wild.get("calls").into_iter().flatten() {
+            if let Some(Value::Str(s)) = &row[0] {
+                let f = func_of.get(s.as_str()).cloned().or_else(|| {
+                    fb.wild
+                        .get("call")
+                        .into_iter()
+                        .flatten()
+                        .find_map(|(w, _)| match (&w[0], &w[1]) {
+                            (Some(Value::Str(ws)), Some(f)) if ws == s => Some(rc(f)),
+                            _ => None,
+                        })
+                });
+                if let Some(f) = f {
+                    union(g.own.entry(f).or_default(), &[*site as u32]);
+                }
+            }
+        }
+        for row in rows("unknown") {
+            let Some(k) = self.site_of(row) else { continue };
+            let site = &fb.sites[k as usize];
+            if crate::facts::is_opaque(site) {
+                g.opaque.push((rc(&row[0]), k));
+            } else if crate::facts::hides_code(site) {
+                g.hidden.insert(rc(&row[1]), k);
+            }
+        }
+        for v in g
+            .cfg
+            .values_mut()
+            .chain(g.calls.values_mut())
+            .chain(g.targets.values_mut())
+        {
+            v.sort();
+            v.dedup();
+        }
+        for v in g.func_calls.values_mut() {
+            v.sort();
+            v.dedup();
+        }
+        for v in g.events.values_mut() {
+            v.sort_by(|a, b| run_order(a, b));
+            v.dedup();
+        }
+        let g = Rc::new(g);
+        *self.graphs.borrow_mut() = Some(g.clone());
+        g
+    }
+
+    /// The ways a path pattern goes on from `b`: each end it binds and its witness, resting on
+    /// the unknown sites behind a node it might not pass.
+    ///
+    /// A path is walked three times at most, avoiding the nodes that are definitely avoided
+    /// (`def`), those too that possibly are (`maybe`), and those an unknown site could add
+    /// (`up`; a wild node avoids every node). A path passing no `maybe` node is definite but for
+    /// the `up` nodes on it; one passing some rests on their sites. A negated path holds
+    /// definitely when no path passes the `def` nodes alone, else possibly when the others
+    /// would block every path. A node the walk reaches that holds an unknown site (a function
+    /// with a wild call or a call nothing links, a foreign statement without a call list) could
+    /// lead anywhere: a negated path rests on it, and the upper bound gives the wild end, or
+    /// the bound end when no path reached it.
+    fn path_ways(&self, p: &PathStep, b: &[Option<V>], ann: &Ann, mode: Mode) -> Ways<'_> {
+        let g = self.graphs();
+        let from = value_of(&p.from, b);
+        let to = value_of(&p.to, b);
+        let tops = from.as_ref().is_some_and(V::has_top) || to.as_ref().is_some_and(V::has_top);
+        if tops {
+            // The upper mode only: any path may join a node of code nothing read.
+            let mut binds = Vec::new();
+            for (a, v) in [(&p.from, &from), (&p.to, &to)] {
+                if let (Arg::Var(x), None) = (a, v)
+                    && !binds.iter().any(|(y, _)| y == x)
+                {
+                    binds.push((*x, V::Top));
+                }
+            }
+            if let Some(w) = p.witness.filter(|w| b[*w].is_none()) {
+                binds.push((w, V::Top));
+            }
+            return Ways::Binds(vec![(binds, ann.clone())]);
+        }
+        let node = |s: &str| -> Rc<str> {
+            match p.over {
+                Over::Cfg => g.stmt(s),
+                Over::Calls => Rc::from(s),
+            }
+        };
+        let mut def: HashSet<Rc<str>> = HashSet::new();
+        let mut maybe: HashMap<Rc<str>, Ann> = HashMap::new();
+        let mut up: HashMap<Rc<str>, Ann> = HashMap::new();
+        let mut up_all: Ann = Vec::new();
+        match &p.avoid {
+            AvoidStep::None => {}
+            AvoidStep::Node(a) => {
+                if let Some(V::Str(s)) = value_of(a, b) {
+                    def.insert(node(&s));
+                }
+            }
+            AvoidStep::Rel(rel, args) => {
+                let mut full = vec![Arg::Any];
+                full.extend(args.iter().cloned());
+                let low = self.store(*rel, Mode::Lower);
+                for t in self.matches(&low, &full, b, None, Mode::Lower) {
+                    if let V::Str(s) = &low.tuples[t][0] {
+                        if low.anns[t].is_empty() {
+                            def.insert(node(s));
+                        } else {
+                            union(maybe.entry(node(s)).or_default(), &low.anns[t]);
+                        }
+                    }
+                }
+                maybe.retain(|n, _| !def.contains(n));
+                if self.has_upper(*rel) {
+                    let upper = self.store(*rel, Mode::Upper);
+                    for t in self.matches(&upper, &full, b, None, Mode::Upper) {
+                        match &upper.tuples[t][0] {
+                            V::Str(s) => union(up.entry(node(s)).or_default(), &upper.anns[t]),
+                            _ => union(&mut up_all, &upper.anns[t]),
+                        }
+                    }
+                }
+                up.retain(|n, a| !def.contains(n) && !a.is_empty());
+            }
+        }
+        let same_end = matches!((&p.from, &p.to), (Arg::Var(x), Arg::Var(y)) if x == y);
+        let sources: Vec<(Rc<str>, bool)> = match &from {
+            Some(V::Str(s)) => vec![(node(s), false)],
+            Some(_) => Vec::new(),
+            None => match p.over {
+                Over::Cfg => g.cfg_nodes.iter().map(|n| (n.clone(), true)).collect(),
+                Over::Calls => g.funcs.iter().map(|n| (n.clone(), true)).collect(),
+            },
+        };
+        let succ = |u: &str| g.succ(p.over, u);
+        let mut ways = Vec::new();
+        for (src, bind_from) in sources {
+            let tdef = walk(succ, &src, |n| def.contains(n), p.max, true);
+            let tall = (!maybe.is_empty()).then(|| {
+                walk(
+                    succ,
+                    &src,
+                    |n| def.contains(n) || maybe.contains_key(n),
+                    p.max,
+                    true,
+                )
+            });
+            let mut wild: Ann = Vec::new();
+            for u in &tdef.reached {
+                match p.over {
+                    Over::Calls => {
+                        if let Some(s) = g.own.get(u) {
+                            union(&mut wild, s);
+                        }
+                    }
+                    Over::Cfg => {
+                        if let Some(&s) = g.hidden.get(u) {
+                            union(&mut wild, &[s]);
+                        }
+                    }
+                }
+            }
+            let to_node = match (&to, same_end && bind_from) {
+                (_, true) => Some(src.clone()),
+                (Some(V::Str(t)), _) => Some(node(t)),
+                (Some(_), _) => continue,
+                (None, _) => None,
+            };
+            if p.neg {
+                let Some(t) = to_node else { continue };
+                let all_maybe = || {
+                    let mut a = Vec::new();
+                    maybe.values().for_each(|x| union(&mut a, x));
+                    a
+                };
+                let rests = if tdef.path(&t).is_none() {
+                    Some(wild.clone())
+                } else if tall.as_ref().is_some_and(|x| x.path(&t).is_none()) {
+                    let mut a = all_maybe();
+                    union(&mut a, &wild);
+                    Some(a)
+                } else if !up_all.is_empty()
+                    || (!up.is_empty()
+                        && walk(
+                            succ,
+                            &src,
+                            |n| def.contains(n) || maybe.contains_key(n) || up.contains_key(n),
+                            p.max,
+                            true,
+                        )
+                        .path(&t)
+                        .is_none())
+                {
+                    let mut a = all_maybe();
+                    union(&mut a, &wild);
+                    union(&mut a, &up_all);
+                    up.values().for_each(|x| union(&mut a, x));
+                    Some(a)
+                } else {
+                    None
+                };
+                if let Some(a) = rests {
+                    let mut a2 = ann.clone();
+                    union(&mut a2, &a);
+                    ways.push((Vec::new(), a2));
+                }
+                continue;
+            }
+            let targets: Vec<Rc<str>> = match &to_node {
+                Some(t) => vec![t.clone()],
+                None => tdef.reached.clone(),
+            };
+            let mut ends = Vec::new();
+            for t in targets {
+                let (w, mut a) = match tall.as_ref().and_then(|x| x.path(&t)) {
+                    Some(w) => (w, Vec::new()),
+                    None => match tdef.path(&t) {
+                        Some(w) => {
+                            let mut a = Vec::new();
+                            for n in &w {
+                                if let Some(x) = maybe.get(n) {
+                                    union(&mut a, x);
+                                }
+                            }
+                            (w, a)
+                        }
+                        None => continue,
+                    },
+                };
+                for n in &w {
+                    if let Some(x) = up.get(n) {
+                        union(&mut a, x);
+                    }
+                }
+                union(&mut a, &up_all);
+                ends.push((
+                    Some(V::Str(t)),
+                    Some(V::List(w.into_iter().map(V::Str).collect())),
+                    a,
+                ));
+            }
+            if mode == Mode::Upper && !wild.is_empty() {
+                match &to_node {
+                    None => ends.push((Some(V::Top), Some(V::Top), wild.clone())),
+                    // A bound end no path reaches may still be reached through the unknown.
+                    Some(t) if ends.is_empty() => {
+                        ends.push((Some(V::Str(t.clone())), Some(V::Top), wild.clone()))
+                    }
+                    Some(_) => {}
+                }
+            }
+            for (end, w, a) in ends {
+                let mut binds = Vec::new();
+                if let (Arg::Var(x), true) = (&p.from, bind_from) {
+                    binds.push((*x, V::Str(src.clone())));
+                }
+                if let (Arg::Var(x), None, false) = (&p.to, &to, same_end) {
+                    binds.push((*x, end.expect("an end")));
+                }
+                if let (Some(wi), Some(w)) = (p.witness, w) {
+                    match &b[wi] {
+                        Some(v) if *v != w && w != V::Top => continue,
+                        Some(_) => {}
+                        None => binds.push((wi, w)),
+                    }
+                }
+                let mut a2 = ann.clone();
+                union(&mut a2, &a);
+                ways.push((binds, a2));
+            }
+        }
+        Ways::Binds(ways)
+    }
+
+    /// The site naming the field `field` of the listed call `site`, which nothing read.
+    fn unread_site(&self, fb_sites: usize, site: &str, pos: &str, field: &str) -> u32 {
+        let x = crate::Site {
+            site: site.to_string(),
+            pos: pos.to_string(),
+            reason: format!("the {field} of a listed call, not read"),
+        };
+        let mut extra = self.extra.borrow_mut();
+        let k = match extra.iter().position(|s| *s == x) {
+            Some(k) => k,
+            None => {
+                extra.push(x);
+                extra.len() - 1
+            }
+        };
+        (fb_sites + k) as u32
+    }
+
+    /// The runs `run` goes on to at the call `site`, each with what it rests on: every
+    /// transition out of its state whose event matches, its registers equal and set; else it
+    /// stays, as it always may in `start`. A register compared with a value nothing read (the
+    /// receiver of a listed call, or a register set from one) matches only possibly: the run
+    /// both moves and stays, each resting on the site naming that value.
+    fn fire(&self, g: &Graphs, p: &CProp, run: &Run, site: &Rc<str>) -> Vec<(Run, Ann)> {
+        let mut out: Vec<(Run, Ann)> = Vec::new();
+        let mut moved = false;
+        let mut stays: Ann = Vec::new();
+        let key = [V::Str(site.clone())];
+        let listed = g.listed.get(site);
+        for t in p.trans.iter().filter(|t| t.from == run.state) {
+            let CEvent::Call {
+                rel,
+                checks,
+                assigns,
+                fields,
+            } = &t.event
+            else {
+                continue;
+            };
+            let unread = |c: usize| -> Option<u32> {
+                let (recv, pos) = listed?;
+                let &(_, field) = fields
+                    .iter()
+                    .find(|(x, f)| *x == c && (*f != "recv" || *recv))?;
+                Some(self.unread_site(self.fb.sites.len(), site, pos, field))
+            };
+            let st = &self.lower[*rel];
+            for k in st.candidates(&[0], &key) {
+                let tuple = &st.tuples[k];
+                if tuple[0] != key[0] {
+                    continue;
+                }
+                let mut a: Ann = Vec::new();
+                let mut holds = true;
+                for &(r, c) in checks {
+                    if let Some(s) = unread(c).or(run.unread[r]) {
+                        union(&mut a, &[s]);
+                    } else if run.regs[r].as_ref() != Some(&g.canon(&tuple[c])) {
+                        holds = false;
+                        break;
+                    }
+                }
+                if !holds {
+                    continue;
+                }
+                let mut next = run.clone();
+                for &(r, c) in assigns {
+                    next.regs[r] = Some(g.canon(&tuple[c]));
+                    next.unread[r] = unread(c);
+                }
+                if p.marked[run.state] {
+                    next.marks[run.state] = Some(site.clone());
+                }
+                next.state = t.to;
+                if a.is_empty() {
+                    moved = true;
+                } else {
+                    union(&mut stays, &a);
+                }
+                match out.iter_mut().find(|(x, _)| *x == next) {
+                    Some((_, b)) if a.is_empty() => b.clear(),
+                    Some(_) => {}
+                    None => out.push((next, a)),
+                }
+            }
+        }
+        if run.state == 0 {
+            stays.clear();
+        }
+        if run.state == 0 || !moved {
+            match out.iter_mut().find(|(x, _)| x == run) {
+                Some((_, b)) if stays.is_empty() => b.clear(),
+                Some(_) => {}
+                None => out.push((run.clone(), stays)),
+            }
+        }
+        out
+    }
+
+    /// The rows of a property: (where it starts, where it reached error, its message), each
+    /// resting on the code nothing read that its run passed; in the upper mode also a wild row
+    /// for each place such code could make it fail.
+    fn property_rows(&self, p: &CProp, mode: Mode) -> Vec<(Vec<V>, Ann)> {
+        let g = self.graphs();
+        let init = Run {
+            state: 0,
+            regs: vec![None; p.regs],
+            unread: vec![None; p.regs],
+            marks: vec![None; p.states.len()],
+        };
+        let mut out: Vec<(Vec<V>, Ann)> = Vec::new();
+        let emit =
+            |out: &mut Vec<(Vec<V>, Ann)>, start: &Rc<str>, at: &Rc<str>, run: &Run, a: &Ann| {
+                let mut run = run.clone();
+                run.marks[p.error] = Some(at.clone());
+                let text: String = p
+                    .message
+                    .iter()
+                    .map(|piece| match piece {
+                        Piece::Text(t) => t.clone(),
+                        Piece::State(s) => run.marks[*s].as_deref().unwrap_or("").to_string(),
+                        Piece::Reg(r) => match &run.regs[*r] {
+                            Some(V::Str(s)) => s.to_string(),
+                            Some(V::Top) | None => String::new(),
+                            Some(v) => v.value().to_string(),
+                        },
+                    })
+                    .collect();
+                out.push((
+                    vec![
+                        V::Str(start.clone()),
+                        V::Str(at.clone()),
+                        V::Str(Rc::from(text)),
+                    ],
+                    a.clone(),
+                ));
+            };
+        let wild_row = |f: &Rc<str>| vec![V::Str(f.clone()), V::Top, V::Top];
+        match p.scope {
+            Scope::Body => {
+                for (owner, entry) in &g.entries {
+                    // First without the statements that hide code: what holds definitely; then
+                    // through them, each run resting on those it passed.
+                    let mut blocked = false;
+                    for through in [false, true] {
+                        if through && !blocked {
+                            break;
+                        }
+                        let mut seen: HashMap<(Rc<str>, Run), Ann> = HashMap::new();
+                        let mut queue = std::collections::VecDeque::new();
+                        visit(&mut seen, (entry.clone(), init.clone()), &Ann::new());
+                        queue.push_back((entry.clone(), init.clone(), Ann::new()));
+                        let mut passed = Ann::new();
+                        while let Some((n, run, mut a)) = queue.pop_front() {
+                            if let Some(&site) = g.hidden.get(&n) {
+                                if !through {
+                                    blocked = true;
+                                    continue;
+                                }
+                                union(&mut a, &[site]);
+                                union(&mut passed, &[site]);
+                            }
+                            let mut runs = vec![(run, a)];
+                            for site in g.events.get(&n).into_iter().flatten() {
+                                let mut next: Vec<(Run, Ann)> = Vec::new();
+                                for (r, ra) in &runs {
+                                    for (x, mut xa) in self.fire(&g, p, r, site) {
+                                        union(&mut xa, ra);
+                                        if x.state == p.error {
+                                            emit(&mut out, owner, site, &x, &xa);
+                                        } else {
+                                            keep(&mut next, x, xa);
+                                        }
+                                    }
+                                }
+                                runs = next;
+                            }
+                            if g.exits.contains(&n) {
+                                for (r, ra) in &runs {
+                                    let fails = p.trans.iter().any(|t| {
+                                        t.from == r.state
+                                            && t.to == p.error
+                                            && matches!(t.event, CEvent::Exit)
+                                    });
+                                    if fails {
+                                        let mut x = r.clone();
+                                        if p.marked[r.state] {
+                                            x.marks[r.state] = Some(n.clone());
+                                        }
+                                        emit(&mut out, owner, &n, &x, ra);
+                                    }
+                                }
+                            }
+                            for s in g.cfg.get(&n).into_iter().flatten() {
+                                for (r, ra) in &runs {
+                                    if visit(&mut seen, (s.clone(), r.clone()), ra) {
+                                        queue.push_back((s.clone(), r.clone(), ra.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        if mode == Mode::Upper {
+                            for &site in &passed {
+                                out.push((wild_row(owner), vec![site]));
+                            }
+                        }
+                    }
+                }
+                if mode == Mode::Upper {
+                    for (f, site) in &g.opaque {
+                        out.push((wild_row(f), vec![*site]));
+                    }
+                }
+            }
+            Scope::Calls => {
+                let closure = if mode == Mode::Upper {
+                    Some(self.closure())
+                } else {
+                    None
+                };
+                for e in g.funcs.iter().filter(|f| !g.called.contains(*f)) {
+                    let mut seen: HashMap<(Rc<str>, Run), Ann> = HashMap::new();
+                    let mut stack = vec![(e.clone(), init.clone(), Ann::new())];
+                    visit(&mut seen, (e.clone(), init.clone()), &Ann::new());
+                    while let Some((f, run, a)) = stack.pop() {
+                        for site in g.func_calls.get(&f).into_iter().flatten() {
+                            for (x, mut xa) in self.fire(&g, p, &run, site) {
+                                union(&mut xa, &a);
+                                if x.state == p.error {
+                                    emit(&mut out, e, site, &x, &xa);
+                                    continue;
+                                }
+                                for t in g.targets.get(site).into_iter().flatten() {
+                                    if visit(&mut seen, (t.clone(), x.clone()), &xa) {
+                                        stack.push((t.clone(), x.clone(), xa.clone()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(c) = &closure
+                        && let Some((_, _, sites)) = c.iter().find(|(f, _, _)| f == e)
+                        && !sites.is_empty()
+                    {
+                        out.push((wild_row(e), sites.clone()));
+                    }
+                }
+            }
+        }
+        out
     }
 
     fn store(&self, rel: Rel, mode: Mode) -> StoreRef<'_> {
@@ -1846,11 +3062,28 @@ impl<'a> Eval<'a> {
                 }
                 Ways::Binds(ways)
             }
+            Step::Path(p) => self.path_ways(p, b, ann, mode),
         }
     }
 
     /// One stratum to its fixed point in `mode`.
     fn stratum(&mut self, heads: &BTreeSet<usize>, mode: Mode) {
+        // A property's rows first: it depends on its events only, all in lower strata.
+        let mut props = Vec::new();
+        for &h in heads {
+            if let Some(k) = self.c.prop_of[h] {
+                props.push((h, self.property_rows(&self.c.props[k], mode)));
+            }
+        }
+        for (h, rows) in props {
+            let st = match mode {
+                Mode::Lower => &mut self.lower[h],
+                Mode::Upper => &mut self.upper[h],
+            };
+            for (t, a) in rows {
+                st.insert(t, a);
+            }
+        }
         let rules: Vec<&CRule> = heads
             .iter()
             .flat_map(|&h| self.c.by_head[h].iter().map(|&k| &self.c.rules[k]))
@@ -2093,16 +3326,24 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         if std::mem::replace(&mut need[d], true) {
             continue;
         }
+        if let Some(k) = c.prop_of[d] {
+            stack.extend(prop_deps(&c.props[k]));
+        }
         for r in c.by_head[d].iter().map(|&k| &c.rules[k]) {
             for s in &r.steps {
-                if let Step::Scan(Rel::Derived(e), _)
-                | Step::Neg(Rel::Derived(e), _)
-                | Step::Agg {
-                    rel: Rel::Derived(e),
-                    ..
-                } = s
-                {
-                    stack.push(*e);
+                match s {
+                    Step::Scan(Rel::Derived(e), _)
+                    | Step::Neg(Rel::Derived(e), _)
+                    | Step::Agg {
+                        rel: Rel::Derived(e),
+                        ..
+                    } => stack.push(*e),
+                    Step::Path(p) => {
+                        if let AvoidStep::Rel(Rel::Derived(e), _) = &p.avoid {
+                            stack.push(*e);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -2111,13 +3352,19 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
     let mut stack: Vec<usize> = Vec::new();
     for r in c.rules.iter().filter(|r| need[r.head]) {
         for s in &r.steps {
-            if let Step::Neg(Rel::Derived(e), _)
-            | Step::Agg {
-                rel: Rel::Derived(e),
-                ..
-            } = s
-            {
-                stack.push(*e);
+            match s {
+                Step::Neg(Rel::Derived(e), _)
+                | Step::Agg {
+                    rel: Rel::Derived(e),
+                    ..
+                } => stack.push(*e),
+                // What an unknown site could add to the nodes a path avoids.
+                Step::Path(p) => {
+                    if let AvoidStep::Rel(Rel::Derived(e), _) = &p.avoid {
+                        stack.push(*e);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -2146,6 +3393,8 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         upper: (0..n).map(|_| Store::default()).collect(),
         in_upper,
         closure: RefCell::new(None),
+        graphs: RefCell::new(None),
+        extra: RefCell::new(Vec::new()),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {
@@ -2166,8 +3415,14 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         rows: rows
             .into_iter()
             .map(|(t, a)| {
-                let mut unknown: Vec<crate::Site> =
-                    a.iter().map(|&k| fb.sites[k as usize].clone()).collect();
+                let extra = ev.extra.borrow();
+                let mut unknown: Vec<crate::Site> = a
+                    .iter()
+                    .map(|&k| match fb.sites.get(k as usize) {
+                        Some(s) => s.clone(),
+                        None => extra[k as usize - fb.sites.len()].clone(),
+                    })
+                    .collect();
                 unknown.sort_by(|x, y| {
                     (&x.site, &x.pos, &x.reason).cmp(&(&y.site, &y.pos, &y.reason))
                 });

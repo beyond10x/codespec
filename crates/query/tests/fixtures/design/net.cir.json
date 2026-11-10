@@ -1,0 +1,99 @@
+{
+  "format": "cir/1",
+  "name": "net",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Dial",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "dial",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "net.go:4"
+        }
+      ],
+      "pos": "net.go:3"
+    },
+    {
+      "name": "dial",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "syscall",
+            "name": "Connect",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "net.go:8"
+        }
+      ],
+      "pos": "net.go:7"
+    },
+    {
+      "name": "Listen",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "bind",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "net.go:12"
+        }
+      ],
+      "pos": "net.go:11"
+    },
+    {
+      "name": "bind",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "net.go:15"
+    }
+  ],
+  "externs": [
+    {
+      "path": "syscall",
+      "name": "Connect",
+      "params": [],
+      "results": []
+    }
+  ],
+  "layout": [
+    "func:Dial",
+    "func:dial",
+    "func:Listen",
+    "func:bind"
+  ],
+  "path": "example.com/net"
+}

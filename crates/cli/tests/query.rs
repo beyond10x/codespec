@@ -77,10 +77,10 @@ fn no_rows_exit_0_and_an_error_exits_2() {
     let none = codespec(&["?- func{name: \"nothing\", id: F}.", &doc]);
     assert_eq!(none.status.code(), Some(0), "{none:?}");
     assert_eq!(stdout(&none), "");
-    let refused = codespec(&["?- path(A -> B, over: cfg).", &doc]);
+    let refused = codespec(&["check c {\n}\n?- func{id: F}.", &doc]);
     assert_eq!(refused.status.code(), Some(2), "{refused:?}");
     assert!(
-        String::from_utf8_lossy(&refused.stderr).contains("§ 5.2"),
+        String::from_utf8_lossy(&refused.stderr).contains("§ 5.4"),
         "{refused:?}"
     );
     let missing = codespec(&["?- func{id: F}.", "no-such-document.json"]);

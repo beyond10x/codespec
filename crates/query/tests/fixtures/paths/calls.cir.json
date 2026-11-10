@@ -1,0 +1,146 @@
+{
+  "format": "cir/1",
+  "name": "calls",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "EntryA",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "authorize",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:4"
+        }
+      ],
+      "pos": "calls.go:3"
+    },
+    {
+      "name": "EntryB",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "authorize",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:8"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "helper",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:9"
+        }
+      ],
+      "pos": "calls.go:7"
+    },
+    {
+      "name": "EntryC",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "write",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:13"
+        }
+      ],
+      "pos": "calls.go:12"
+    },
+    {
+      "name": "authorize",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "write",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:17"
+        }
+      ],
+      "pos": "calls.go:16"
+    },
+    {
+      "name": "helper",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "write",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "calls.go:21"
+        }
+      ],
+      "pos": "calls.go:20"
+    },
+    {
+      "name": "write",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "calls.go:24"
+    }
+  ],
+  "layout": [
+    "func:EntryA",
+    "func:EntryB",
+    "func:EntryC",
+    "func:authorize",
+    "func:helper",
+    "func:write"
+  ],
+  "path": "example.com/calls"
+}

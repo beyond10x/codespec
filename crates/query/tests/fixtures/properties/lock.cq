@@ -1,0 +1,9 @@
+// Lock, then Unlock of the same mutex on every path to exit.
+property lock_released(scope: body) {
+  start -> held:  call{callee: ~"^sync\.(RW)?Mutex\.(R)?Lock$", recv: M} => m := M
+  held  -> start: call{callee: ~"^sync\.(RW)?Mutex\.(R)?Unlock$", recv: m}
+  held  -> error: exit
+  message "Lock at {start} has a path to return without Unlock"
+}
+
+?- lock_released(F, At, Message).
