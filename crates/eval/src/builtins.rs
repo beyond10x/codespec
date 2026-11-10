@@ -8,8 +8,11 @@
 //! | `strconv.Itoa` | decimal | `expr-extern` |
 //! | `strings.Repeat` | panics on a negative count | `expr-extern`, `type-extern` |
 //! | `strings.Builder.WriteString`, `.Len`, `.String` | a `strings.Builder`, its zero value empty | `expr-extern-method`, `expr-iface-call`, `type-extern` |
+//! | `strings.ToUpper`, `strings.ToLower`, `strings.TrimSpace` | on ASCII; a string outside it is `unsupported` | `examples/envcheck`, `trim_space_is_gos_on_ascii` |
+//! | `os.Getenv`, `os.LookupEnv` | the run's environment ([`crate::Options::env`]), empty unless given | `examples/envcheck` |
 //!
-//! An extern with no handler here stops the run (E4).
+//! An extern with no handler here stops the run (E4), unless a stub the user names answers
+//! ([`crate::Stub`]).
 
 use std::rc::Rc;
 
@@ -47,6 +50,24 @@ pub(crate) fn call<'m>(
     let unsupported = |what: &str| Err(Fail::Unsupported(format!("{key}: {what}")));
     Some(match (key, args.as_slice()) {
         ("strconv.Itoa", [Value::Int(n)]) => Ok(Value::str(&n.to_string())),
+        ("os.Getenv", [Value::Str(k)]) => Ok(Value::str(it.host.getenv(k).unwrap_or(""))),
+        ("os.LookupEnv", [Value::Str(k)]) => {
+            let v = it.host.getenv(k);
+            Ok(Value::Tuple(vec![
+                Value::str(v.unwrap_or("")),
+                Value::Bool(v.is_some()),
+            ]))
+        }
+        ("strings.ToUpper" | "strings.ToLower" | "strings.TrimSpace", [Value::Str(s)]) => {
+            if !s.is_ascii() {
+                return Some(unsupported("a string outside ASCII"));
+            }
+            Ok(Value::bytes(match key {
+                "strings.ToUpper" => s.to_ascii_uppercase(),
+                "strings.ToLower" => s.to_ascii_lowercase(),
+                _ => trim_space(s).to_vec(),
+            }))
+        }
         ("strings.Repeat", [Value::Str(s), Value::Int(n)]) => {
             if *n < 0 {
                 Err(Fail::Panic("strings: negative Repeat count".into()))
@@ -109,6 +130,23 @@ pub(crate) fn call<'m>(
         }
         _ => return None,
     })
+}
+
+/// The handler kind the trace names for `key`: `env` for the environment, else `builtin`.
+pub(crate) fn handler(key: &str) -> &'static str {
+    match key {
+        "os.Getenv" | "os.LookupEnv" => "env",
+        _ => "builtin",
+    }
+}
+
+/// Go's `strings.TrimSpace` on ASCII: without the leading and trailing bytes `asciiSpace` holds,
+/// `\t`, `\n`, `\v`, `\f`, `\r` and the space.
+fn trim_space(s: &[u8]) -> &[u8] {
+    let space = |b: &u8| matches!(b, b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ');
+    let start = s.iter().position(|b| !space(b)).unwrap_or(s.len());
+    let end = s.iter().rposition(|b| !space(b)).map_or(start, |i| i + 1);
+    &s[start..end]
 }
 
 /// Go's `path.Join`: the non-empty elements joined with `/`, then `Clean`ed; `""` when every
@@ -204,6 +242,21 @@ mod tests {
             ("abc/def/..", "abc"),
         ] {
             assert_eq!(String::from_utf8(clean(p.as_bytes())).unwrap(), go, "{p}");
+        }
+    }
+
+    /// Each string as Go's `strings.TrimSpace` gives it; `\v` is a space to Go, not to Rust's
+    /// `trim_ascii`.
+    #[test]
+    fn trim_space_is_gos_on_ascii() {
+        for (s, go) in [
+            ("  prod \n", "prod"),
+            ("\x0b\x0cx y\t\r", "x y"),
+            ("", ""),
+            (" \t ", ""),
+            ("a", "a"),
+        ] {
+            assert_eq!(trim_space(s.as_bytes()), go.as_bytes(), "{s:?}");
         }
     }
 }

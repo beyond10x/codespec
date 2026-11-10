@@ -6,6 +6,23 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec eval --session` runs a `codespec-session/1` file, whose calls bind results that later
+  calls take as receivers and arguments (`$name`), and prints the run's trace,
+  `codespec-eval-trace/1`: one JSON object per call, return, effect (an extern call with the
+  handler that answered, a send on a channel the session passed, a `println`), panic and stop. A
+  panic ends its call, not the session. A bound value is a variable: a pointer-receiver method
+  changes it. Writing the trace runs none of the module's code: an error is written by what it
+  holds (`error(ErrWrongState{Status: "paid"})`), not through its `Error` method. `examples/orders/orders.session.json` gives the checked-in
+  `orders.eval-trace.jsonl` (`task eval-traces` writes it, a test checks it). `--env KEY=VALUE`
+  gives the run its environment, which `os.Getenv` and `os.LookupEnv` now read (empty unless
+  given, never the host's); `strings.ToUpper`, `ToLower` and `TrimSpace` have built-in handlers
+  on ASCII, so `envcheck.Banner("svc", 80)` with `--env APP_MODE=prod` prints `"PROD svc:80"`.
+  `--stub SITE=VALUES` answers for an extern at every call (`SITE` its key) or at one call
+  (`SITE` the call's node id), the values JSON, one per result (a site given twice, or a stub that
+  would answer no call, is refused); an extern without a handler still
+  stops the run unless a stub answers, and standard error names every site a stub answered at
+  and how often. In the library, `Options` has `env` and `stubs`, and `Run` has `stubbed`.
+
 - The reader check's step 4 falls back to the evaluator when the Go writer refuses the passed
   module: `codespec-write-cir` writes it and `codespec-run-cir` runs the calls, both looked up in
   `--adapters` when a case first needs them, so a reader can be judged on `decl.union`, for which

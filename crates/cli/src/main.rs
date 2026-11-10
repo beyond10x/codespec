@@ -42,10 +42,18 @@ fn main() -> ExitCode {
     if let Cmd::Eval {
         module,
         calls,
+        session,
+        env,
+        stub,
         max_steps,
     } = &command
     {
-        return codespec_cli::eval::main(module, calls, *max_steps);
+        let input = match (calls, session) {
+            (Some(c), _) => codespec_cli::eval::Input::Calls(c),
+            (None, Some(s)) => codespec_cli::eval::Input::Session(s),
+            (None, None) => unreachable!("clap requires --calls or --session"),
+        };
+        return codespec_cli::eval::main(module, input, env, stub, *max_steps);
     }
     match run(command) {
         Ok(()) => ExitCode::SUCCESS,
