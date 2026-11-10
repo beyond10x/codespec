@@ -21,7 +21,7 @@
 //! | C | cir/1 |
 //! |---|---|
 //! | a function definition | function; `static` is unexported, any other exported |
-//! | a variadic function definition | opaque, with a refusal |
+//! | a variadic function definition | opaque, with a refusal; in runtime form, one whose `codespec: func` line says so, a function with a variadic parameter ("C in runtime form") |
 //! | a function whose parameter or result type is outside the subset | opaque, with a refusal |
 //! | `struct T { … }`, `typedef struct { … } T` | `struct`, fields in order |
 //! | `enum E { … }`, `typedef enum { … } E` | `enum` over `int` (32-bit, signed), values as clang computes them |
@@ -129,7 +129,9 @@
 //! line, in Go's spelling of the `cir/1` types, as the C writer writes it into its header; the line
 //! types the function and each C type is checked to hold its type. A function of several results
 //! returns `typedef struct { T0 r0; T1 r1; … } <Name>_result;`. A function without the line, a
-//! second line of one name, or a C type that does not hold the line's type is refused.
+//! second line of one name, or a C type that does not hold the line's type is refused. A last
+//! parameter `...T` is variadic, of type `[]T`, and held by the C parameters `int64_t cs_n, ...`
+//! (below).
 //!
 //! | C in runtime form | cir/1 |
 //! |---|---|
@@ -149,6 +151,10 @@
 //! | `*(T *)cs_chan_recv(ch)` | `unop` `<-` |
 //! | `cs_box(&desc, &v, sizeof(T))`, `desc` a `static const cs_type desc = {CS_K_…, "name", NULL};` of `T`'s kind and Go's name of `T` (`int`, `int64`), or for a newtype `{CS_K_NAMED, "Name", &<desc of the type it is over>}` | the value as `any` |
 //! | `static struct cs_error_s X_s = {{"…", n}, NULL, NULL};` and `cs_error const X = &X_s;` | `error_var` `X` |
+//! | a message function `static cs_string m(const void *self) { return T_Error(*(const T *)self); }`, the C writer's text, `T` a struct or newtype of the module and `cs_string T_Error(T e) { … }` defined in its file | `T_Error` is the method `Error` of `T` with receiver `e`, typed by its C types and needing no line; `m` is no function. A call of `T_Error` or `m`, or either as a value, is refused: a method call is not read |
+//! | `cs_error_of(m, cs_dup(&v, sizeof v))` (or `sizeof(T)`), `m` a message function of `T`, `v` a value of `T` | `to_error` of `v` |
+//! | `R f(…, int64_t cs_n, ...)` under `/* codespec: func f(…, ...T) R */`, its body beginning `cs_slice xs = {0}; va_list cs_ap; va_start(cs_ap, cs_n); for (int64_t cs_i = 0; cs_i < cs_n; cs_i++) { T cs_v = va_arg(cs_ap, T); xs = cs_append(xs, &cs_v, sizeof(T)); } va_end(cs_ap);`, `T` the C type of the element type, `cs_n` and `cs_ap` used no further | a variadic parameter `xs ...T`; the body is what follows. An element type C promotes through `...` (an integer narrower than `int`, `_Bool`, `float`) is refused, as `va_arg` cannot read it |
+//! | `f(…, n, a1, …, an)` of such an `f`, `n` the constant number of the arguments after it, each of the element's C type as it is passed | `call` of `f` with `a1, …, an` as its variadic arguments |
 //! | a chain from `cs_sb_new()` of `cs_sb_bytes(b, "…", n)`, `cs_fmt_str`, `cs_fmt_int`, `cs_fmt_bool`, `cs_fmt_error`, ended by `cs_sb_string`, `cs_sb_error` or `cs_sb_println` | `sprintf`, `errorf` (`%s %d %t %v`), `println` (values separated by one space) |
 //! | `<Name>_result t = <Name>(…); T0 x0 = t.r0; …` (`t` used no further) | `let x0, … := <Name>(…)` |
 //! | `return (<Name>_result){e0, e1, …};` | `return e0, e1, …` |
@@ -162,8 +168,13 @@
 //! on those does too. A loop over a slice or map is read as `range` only when its body neither uses
 //! the counter nor assigns the container, which Go evaluates once. A near miss of each form (a wrong
 //! length or size, a cast another type than the container holds, `cs_map_put` read as a value, a
-//! printed line ending in a separator, a temporary used later) is refused with its reason,
+//! printed line ending in a separator, a temporary used later, `cs_error_of` of a value of another
+//! type than its message function's, `va_arg` of another type than the element's, a variadic
+//! argument of another C type or a count that is not their number) is refused with its reason,
 //! `tests/runtime.rs`.
+//!
+//! The variadic parameter's slice is made by `cs_append`, so its capacity is the runtime's, not
+//! its length as Go's is; no form the reader reads observes a capacity.
 //!
 //! **Order.** C leaves the order of a call's arguments and an operator's operands unspecified (gcc
 //! goes right to left), Go goes left to right. A call, an operator, an assignment, a `return`, a
@@ -237,13 +248,11 @@
 //! |---|---|
 //! | `fact.*` | computed by `codespec pass`, never by a reader |
 //! | `stmt.foreign` | what a reader writes for what it cannot read; a corpus case of it would hold the construct the reader refuses, which `codespec conform` counts only for that subject |
-//! | `decl.variadic` | a variadic C definition reads its arguments through `va_list`, `va_start` and `va_arg` of `<stdarg.h>`, one at a time and with no count; `cir/1` has only a slice parameter for them, so reading one is a convention of its own, and the first case's subject is a slice |
-//! | `expr.spread` | it passes a slice to a variadic parameter, which no C definition the reader reads has |
+//! | `expr.spread` | it passes a slice as the arguments of a variadic parameter, which C cannot: a call passes each argument of `...` on its own |
 //! | `decl.interface`, `expr.iface_call`, `expr.to_iface` | C has no interface, and the runtime and the C writer no form of one |
 //! | `decl.type_params`, `expr.instantiate`, `type.param` | C has no type parameter, and the runtime and the C writer no form of one |
 //! | `expr.lambda` | C has no closure, and the runtime and the C writer no form of one |
-//! | `expr.method`, `decl.embedded` | C has no method and no promoted field; reading a function `T_m(T *self, …)` as a method would be a naming convention this crate doc does not state |
-//! | `expr.to_error` | a value of a type of the module as an error is `cs_error_of(fn, &v)`, a function giving the message and a copy of the value, a form the reader does not read |
+//! | `expr.method`, `decl.embedded` | C has no method and no promoted field; reading a function `T_m(T *self, …)` as a method would be a naming convention this crate doc does not state. Only `T_Error`, which a message function of `cs_error_of` names, is read as a method, and a call of it is refused |
 //! | `decl.union` | a C `union` has no tag, a `cir/1` union does: refused |
 //! | `expr.extern`, `expr.extern_method`, `type.extern` | their cases call Go's standard library (`strings`, `strconv`), which C has not; a C function the module does not define is read as an `extern` of `libc`, which no case of them holds |
 //!
@@ -388,12 +397,21 @@ fn unprefix(m: Module, px: &str) -> Module {
     fn walk(v: &mut serde_json::Value, px: &str, names: &BTreeSet<String>) {
         match v {
             serde_json::Value::String(s) => {
+                // A layout entry `func:<T>.<method>` names its method by its receiver's type.
+                let own = |n: &str| {
+                    names.contains(n) || n.split_once('.').is_some_and(|(t, _)| names.contains(t))
+                };
                 let (kind, n) = match s.split_once(':') {
-                    Some((k, n)) if names.contains(n) => (format!("{k}:"), n.to_string()),
+                    Some((k, n)) if own(n) => (format!("{k}:"), n.to_string()),
                     _ => (String::new(), s.clone()),
                 };
                 if names.contains(&n) {
                     *s = format!("{kind}{}", &n[px.len()..]);
+                } else if let Some((t, m)) = n.split_once('.')
+                    && !kind.is_empty()
+                    && names.contains(t)
+                {
+                    *s = format!("{kind}{}.{m}", &t[px.len()..]);
                 }
             }
             serde_json::Value::Array(a) => a.iter_mut().for_each(|x| walk(x, px, names)),
@@ -405,6 +423,11 @@ fn unprefix(m: Module, px: &str) -> Module {
     let mut out: Module = serde_json::from_value(v).unwrap_or(m);
     out.refusals.extend(refusals);
     out
+}
+
+/// `s` with each run of white space one space: C text compared with a form the reader reads.
+pub(crate) fn squash(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The position of the declaration of the module named `n`.
@@ -839,8 +862,69 @@ impl<'s> Assembly<'s> {
             _ => return None,
         };
         let have = src_of(self.src, n);
-        let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
         (squash(&have) == squash(&text)).then(|| (runtime.to_string(), t))
+    }
+
+    /// A message function of `cs_error_of`, the C writer's exact text `static cs_string
+    /// <m>(const void *self) { return F(*(const T *)self); }`: `T` as C spells it and `F`.
+    /// `None` for any other function.
+    fn message(&self, n: &J) -> Option<(String, String)> {
+        if !self.tables.runtime || n.s("storageClass") != "static" {
+            return None;
+        }
+        let body = n.inner().iter().find(|k| k.kind() == "CompoundStmt")?;
+        let [ret] = body.inner() else {
+            return None;
+        };
+        let call = rtbody::bare(ret.inner().first()?);
+        if ret.kind() != "ReturnStmt" || call.kind() != "CallExpr" || call.inner().len() != 2 {
+            return None;
+        }
+        let f = rtbody::bare(&call.inner()[0]);
+        let deref = rtbody::bare(&call.inner()[1]);
+        if f.kind() != "DeclRefExpr" || deref.kind() != "UnaryOperator" || deref.s("opcode") != "*"
+        {
+            return None;
+        }
+        let f = f.get("referencedDecl").s("name").to_string();
+        let t = rtbody::bare(&deref.inner()[0])
+            .get("type")
+            .s("qualType")
+            .strip_prefix("const ")?
+            .strip_suffix(" *")?
+            .to_string();
+        let text = format!(
+            "static cs_string {}(const void *self) {{ return {f}(*(const {t} *)self); }}",
+            n.s("name")
+        );
+        (squash(&src_of(self.src, n)) == squash(&text)).then_some((t, f))
+    }
+
+    /// Whether `f`, which a message function calls on a value of `T` (spelled `t`), is the
+    /// method `Error` of `T`: `cs_string T_Error(T e)`, defined in the same file.
+    fn error_method(&self, ast: &J, t: &str, f: &str) -> Result<(), String> {
+        let def = ast.inner().iter().find(|d| {
+            d.kind() == "FunctionDecl"
+                && d.s("name") == f
+                && d.inner().iter().any(|k| k.kind() == "CompoundStmt")
+        });
+        let want = format!("{}_Error", self.bare_name(t));
+        let ok = def.is_some_and(|d| {
+            let ps: Vec<&J> = d
+                .inner()
+                .iter()
+                .filter(|p| p.kind() == "ParmVarDecl")
+                .collect();
+            matches!(ps.as_slice(), [p] if p.get("type").s("qualType") == t)
+                && d.get("type").s("qualType").starts_with("cs_string (")
+                && self.bare_name(f) == want
+        });
+        if !ok {
+            return Err(format!(
+                "a message function of cs_error_of whose {f} is not cs_string {want}({t}) defined in its file, the method Error of {t}"
+            ));
+        }
+        Ok(())
     }
 
     /// A name of the module as `cir/1` names it: without the C writer's prefix.
@@ -854,12 +938,27 @@ impl<'s> Assembly<'s> {
     fn resolve_sigs(&mut self) {
         let lines = std::mem::take(&mut self.sig_lines);
         for (name, l) in &lines {
-            let ps: Result<Vec<Type>, String> =
-                l.params.iter().map(|p| self.tables.go(p)).collect();
+            // `...T`, the last parameter only, is a variadic parameter of type `[]T`.
+            let last = l.params.len().saturating_sub(1);
+            let ps: Result<Vec<Type>, String> = l
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, p)| match p.strip_prefix("...") {
+                    Some(_) if i != last => {
+                        Err(format!("the variadic parameter {p}, which is not the last"))
+                    }
+                    Some(e) => self.tables.go(e).map(|e| Type::Slice { elem: Box::new(e) }),
+                    None => self.tables.go(p),
+                })
+                .collect();
             let rs: Result<Vec<Type>, String> =
                 l.results.iter().map(|p| self.tables.go(p)).collect();
             match (ps, rs) {
                 (Ok(ps), Ok(rs)) => {
+                    if l.params.last().is_some_and(|p| p.starts_with("...")) {
+                        self.tables.variadic.insert(name.clone());
+                    }
                     self.tables.sigs.insert(name.clone(), (ps, rs));
                 }
                 (Err(e), _) | (_, Err(e)) => self.refusals.push(Refusal {
@@ -920,7 +1019,14 @@ impl<'s> Assembly<'s> {
             .sort_by(|a, b| (&a.path, &a.name).cmp(&(&b.path, &b.name)));
         self.externs
             .dedup_by(|a, b| a.path == b.path && a.name == b.name);
-        let read: BTreeSet<String> = self.funcs.iter().map(|f| f.name.clone()).collect();
+        let read: BTreeSet<String> = self
+            .funcs
+            .iter()
+            .map(|f| match f.recv.as_ref().map(|r| &r.t) {
+                Some(Type::Named { name, .. }) => format!("{name}.{}", f.name),
+                _ => f.name.clone(),
+            })
+            .collect();
         self.layout
             .retain(|l| l.strip_prefix("func:").is_none_or(|f| read.contains(f)));
         let prefix = self.tables.prefix.clone();
@@ -1022,6 +1128,16 @@ impl<'s> Assembly<'s> {
                     let name = n.s("name");
                     if let Some(h) = self.helper(n) {
                         self.tables.helpers.insert(name.into(), h);
+                        continue;
+                    }
+                    if let Some((t, f)) = self.message(n) {
+                        match self.error_method(ast, &t, &f) {
+                            Ok(()) => {
+                                self.tables.methods.insert(f.clone(), t.clone());
+                                self.tables.messages.insert(name.into(), (t, f));
+                            }
+                            Err(why) => self.refuse(n, format!("function {name}"), why),
+                        }
                         continue;
                     }
                     if !self.tables.funcs.insert(name.into()) {
@@ -1428,6 +1544,9 @@ impl<'s> Assembly<'s> {
 
     fn function(&mut self, unit: &Unit, decls: &BTreeMap<String, &J>, n: &J) {
         let name = n.s("name").to_string();
+        if let Some(t) = self.tables.methods.get(&name).cloned() {
+            return self.method(unit, decls, n, &t);
+        }
         let body = n
             .inner()
             .iter()
@@ -1435,7 +1554,10 @@ impl<'s> Assembly<'s> {
             .expect("a definition");
         let mut params = Vec::new();
         let mut why = None;
-        if n.is_true("variadic") {
+        // Where the refusal is, when not at the function.
+        let mut why_at = None;
+        let variadic = n.is_true("variadic");
+        if variadic && !(self.tables.runtime && self.tables.variadic.contains(&name)) {
             why = Some("a variadic function definition".to_string());
         }
         let pdecls: Vec<&J> = n
@@ -1487,6 +1609,27 @@ impl<'s> Assembly<'s> {
             },
             (Some(_), _) => None,
         };
+        // A variadic parameter is the slice its prologue makes; the count is no parameter of it.
+        let mut skip = 0;
+        if variadic && why.is_none() {
+            let (count, elem) = match (pdecls.last(), params.last()) {
+                (Some(c), Some((_, _, Type::Slice { elem }))) => (*c, (**elem).clone()),
+                _ => unreachable!("a variadic codespec: func line ends in a slice"),
+            };
+            match Body::new(&self.tables, unit, self.src, decls, Vec::new())
+                .variadic_prologue(body, count, &elem)
+            {
+                Ok((id, xs)) => {
+                    let last = params.last_mut().expect("a variadic parameter");
+                    (last.0, last.1) = (id, xs);
+                    skip = 5;
+                }
+                Err((pos, reason)) => {
+                    why_at = Some(pos);
+                    why = Some(reason);
+                }
+            }
+        }
         let mut b = Body::new(&self.tables, unit, self.src, decls, params.clone());
         b.addressed = body::addressed(n);
         b.results = match (&sig_results, &result) {
@@ -1499,7 +1642,11 @@ impl<'s> Assembly<'s> {
         }
         if let Some(why) = why {
             let calls = b.calls(body);
-            self.refuse(n, format!("function {name}"), why.clone());
+            self.refusals.push(Refusal {
+                pos: why_at.unwrap_or_else(|| pos_of(self.src, n)),
+                what: format!("function {name}"),
+                reason: why.clone(),
+            });
             self.opaque.push(Opaque {
                 name,
                 recv: None,
@@ -1510,10 +1657,19 @@ impl<'s> Assembly<'s> {
             });
             return;
         }
-        let stmts = b.block(body);
+        let stmts = if skip == 0 {
+            b.block(body)
+        } else {
+            let mut out = Vec::new();
+            b.scopes.push(Vec::new());
+            b.stmts(&body.inner()[skip..], &mut out);
+            b.scopes.pop();
+            out
+        };
         self.refusals.append(&mut b.refusals);
         self.externs.append(&mut b.externs);
         let results = std::mem::take(&mut b.results);
+        let last = params.len().saturating_sub(1);
         self.funcs.push(Func {
             exported: n.s("storageClass") != "static",
             name,
@@ -1521,13 +1677,87 @@ impl<'s> Assembly<'s> {
             recv: None,
             params: params
                 .into_iter()
-                .map(|(_, name, t)| Param {
+                .enumerate()
+                .map(|(i, (_, name, t))| Param {
                     name,
                     t,
-                    variadic: false,
+                    variadic: variadic && i == last,
                 })
                 .collect(),
             results,
+            raises: Vec::new(),
+            body: stmts,
+            doc: String::new(),
+            pos: pos_of(self.src, n),
+        });
+    }
+
+    /// `T_Error`, which a message function of `cs_error_of` calls on a value of `T` (spelled
+    /// `t`): the method `Error` of `T`, typed by its C types.
+    fn method(&mut self, unit: &Unit, decls: &BTreeMap<String, &J>, n: &J, t: &str) {
+        let name = n.s("name").to_string();
+        let body = n
+            .inner()
+            .iter()
+            .find(|k| k.kind() == "CompoundStmt")
+            .expect("a definition");
+        let p = n
+            .inner()
+            .iter()
+            .find(|p| p.kind() == "ParmVarDecl")
+            .expect("one parameter, as the message function checked");
+        let recv = match self.tables.spelled(unit, t) {
+            Ok(r @ Type::Named { .. }) => r,
+            r => {
+                let why = format!(
+                    "the method Error of {t}, which is not a struct or newtype of the module{}",
+                    r.err().map(|e| format!(": {e}")).unwrap_or_default()
+                );
+                self.refuse(n, format!("function {name}"), why.clone());
+                let calls = Body::new(&self.tables, unit, self.src, decls, Vec::new()).calls(body);
+                self.opaque.push(Opaque {
+                    name,
+                    recv: None,
+                    pos: pos_of(self.src, n),
+                    reason: why,
+                    no_body: false,
+                    calls,
+                });
+                return;
+            }
+        };
+        let Type::Named { name: tname, .. } = &recv else {
+            unreachable!("matched above")
+        };
+        let key = format!("func:{name}");
+        if let Some(l) = self.layout.iter_mut().find(|l| **l == key) {
+            *l = format!("func:{tname}.Error");
+        }
+        let recv_name = param_name(p);
+        let mut b = Body::new(
+            &self.tables,
+            unit,
+            self.src,
+            decls,
+            vec![(p.s("id").to_string(), recv_name.clone(), recv.clone())],
+        );
+        b.addressed = body::addressed(n);
+        b.results = vec![Type::String];
+        b.pin_locals(body);
+        let stmts = b.block(body);
+        self.refusals.append(&mut b.refusals);
+        self.externs.append(&mut b.externs);
+        self.funcs.push(Func {
+            exported: true,
+            name: "Error".into(),
+            tparams: Vec::new(),
+            recv: Some(Param {
+                name: recv_name,
+                t: recv,
+                variadic: false,
+            }),
+            params: Vec::new(),
+            results: vec![Type::String],
             raises: Vec::new(),
             body: stmts,
             doc: String::new(),

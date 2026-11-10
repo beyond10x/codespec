@@ -51,6 +51,14 @@ pub struct Tables {
     /// Each helper the C writer writes around one runtime call (`<m>_cs_append_int`), by name,
     /// with the runtime function it calls and the C type of the value it takes.
     pub helpers: BTreeMap<String, (String, String)>,
+    /// Each function whose `codespec: func` line's last parameter is variadic (`...T`), by name.
+    pub variadic: BTreeSet<String>,
+    /// Each message function of `cs_error_of`, `static cs_string m(const void *self) { return
+    /// T_Error(*(const T *)self); }`, by name, with `T` as C spells it and `T_Error`.
+    pub messages: BTreeMap<String, (String, String)>,
+    /// Each `T_Error` a message function calls, by name, with `T` as C spells it: the method
+    /// `Error` of `T`.
+    pub methods: BTreeMap<String, String>,
 }
 
 /// One typedef of a file: the type it names, spelled, and the module type it names when that

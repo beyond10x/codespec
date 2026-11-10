@@ -4,6 +4,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-c` reads, in runtime form, a value of a type `T` of the module as an error,
+  `cs_error_of(m, cs_dup(&v, sizeof v))` with the C writer's message function `m` calling
+  `cs_string T_Error(T e)`, as `to_error`, and `T_Error` as the method `Error` of `T`; and a
+  variadic parameter `...T` of a `codespec: func` line as `int64_t cs_n, ...` and a fixed
+  prologue that appends each `va_arg(cs_ap, T)` to the parameter's slice, called with the
+  constant count first. It refuses a near miss of each at its line: `cs_error_of` of a value of
+  another type than its message function's, a message function calling other than `T_Error`, a
+  call of `T_Error`, `va_arg` of another type than the element's, a variadic argument of
+  another C type, a count that is not the number of arguments, a body without the prologue, the
+  count used after it, and an element type C promotes through `...`. It claims `expr.to_error`
+  and `decl.variadic`, from new kit sources `expr-to-error/c/case.c` and
+  `decl-variadic-local/c/case.c`: 105 kit features, up from 103.
+
 ## 0.7.0
 
 ### Added
