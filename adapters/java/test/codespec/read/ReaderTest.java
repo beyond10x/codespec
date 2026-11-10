@@ -20,8 +20,9 @@ import java.util.stream.Stream;
  *
  * <pre>java -cp &lt;classes&gt; codespec.read.ReaderTest &lt;repo root&gt; &lt;codespec binary&gt; &lt;work dir&gt; &lt;adapters dir&gt;</pre>
  *
- * The adapters directory holds {@code codespec-read-java}, {@code codespec-write-go} and {@code
- * codespec-run-go}, as {@code task adapters} builds them. It prints one line per case and a summary
+ * The adapters directory holds {@code codespec-read-java}, {@code codespec-write-go}, {@code
+ * codespec-run-go}, {@code codespec-write-cir} and {@code codespec-run-cir}, as {@code task
+ * adapters} builds them. It prints one line per case and a summary
  * {@code N passed, M failed}, and exits 1 when any case fails.
  */
 public final class ReaderTest {
@@ -90,6 +91,18 @@ public final class ReaderTest {
         cases.add(t::aGenericMethodIsRefusedAtItsLine);
         names.add("an_interface_with_two_implementations_is_a_cir_1_interface");
         cases.add(t::anInterfaceWithTwoImplementationsIsACir1Interface);
+        names.add("a_sealed_interface_of_records_without_members_is_a_cir_1_union");
+        cases.add(t::aSealedInterfaceOfRecordsWithoutMembersIsACir1Union);
+        names.add("a_sealed_interface_whose_record_declares_a_member_is_refused_at_its_line");
+        cases.add(t::aSealedInterfaceWhoseRecordDeclaresAMemberIsRefusedAtItsLine);
+        names.add("an_exception_carrying_fields_with_its_own_get_message_is_an_error_struct_thrown_as_to_error");
+        cases.add(t::anExceptionCarryingFieldsWithItsOwnGetMessageIsAnErrorStructThrownAsToError);
+        names.add("an_exception_carrying_a_field_of_a_mutable_type_is_refused_at_its_line");
+        cases.add(() -> t.refusedAtMarkers("refuse/error-struct", 2, "field keys"));
+        names.add("a_map_get_followed_by_an_if_on_its_null_that_returns_is_lookup_else");
+        cases.add(t::aMapGetFollowedByAnIfOnItsNullThatReturnsIsLookupElse);
+        names.add("a_map_get_whose_if_on_its_null_goes_on_is_refused_at_its_line");
+        cases.add(() -> t.refusedAtMarkers("refuse/lookup-else", 2, "Map.get of a value that is not a reference"));
         names.add("the_edges_of_the_kit_constructs_are_refused_at_their_lines");
         cases.add(t::theEdgesOfTheKitConstructsAreRefusedAtTheirLines);
         names.add("a_float_literal_is_spelled_as_cir_1_spells_it");
@@ -512,6 +525,145 @@ public final class ReaderTest {
     }
 
     /**
+     * The kit case {@code decl-union}'s Java source: a sealed interface whose permitted classes are
+     * records without members is a cir/1 union, its variants the records in {@code permits} order
+     * with their components as fields, and nothing is refused.
+     */
+    private void aSealedInterfaceOfRecordsWithoutMembersIsACir1Union() throws Exception {
+        Map<String, Object> doc = Reader.read(kit().resolve("decl-union/java"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> shape = byName(list(doc.get("types")), "Shape");
+        check("union".equals(shape.get("k")), "Shape is " + shape.get("k"));
+        check(Boolean.FALSE.equals(shape.get("exported")), "Shape exported " + shape.get("exported"));
+        String i64 = "{\"k\":\"int\",\"width\":\"64\",\"signed\":true}";
+        check(same(shape.get("variants"), "[{\"name\":\"Circle\",\"fields\":[{\"name\":\"radius\",\"t\":" + i64 + "}]},"
+            + "{\"name\":\"Rect\",\"fields\":[{\"name\":\"w\",\"t\":" + i64 + "},{\"name\":\"h\",\"t\":" + i64 + "}]},"
+            + "{\"name\":\"Label\",\"fields\":[{\"name\":\"text\",\"t\":{\"k\":\"string\"}}]}]"),
+            "Shape's variants " + Json.write(shape.get("variants")).replaceAll("\\s+", " "));
+        for (String r : new String[] {"Circle", "Rect", "Label"}) {
+            check(byNameOrNull(list(doc.get("types")), r) == null, "the record " + r + " is a type of its own");
+        }
+        check(funcByKeyOrNull(doc, "echo") != null, "the method beside it was not read");
+    }
+
+    /**
+     * {@code refuse/union-member}: a sealed interface of records one of which declares a method is
+     * no union. The interface is refused at its line, naming the record, and each record with it, at
+     * the lines marked {@code // refused}; no union is read and the method beside them is.
+     */
+    private void aSealedInterfaceWhoseRecordDeclaresAMemberIsRefusedAtItsLine() throws Exception {
+        Path dir = testdata.resolve("refuse/union-member");
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> want = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.sorted().toList()) {
+                List<String> lines = Files.readAllLines(f);
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i).contains("// refused")) {
+                        want.add(f.getFileName() + ":" + (i + 1));
+                    }
+                }
+            }
+        }
+        check(want.size() == 3, "markers in " + dir + ": " + want);
+        List<String> got = refusalPositions(doc);
+        check(new TreeSet<>(got).equals(new TreeSet<>(want)) && got.size() == want.size(),
+            "refusals at " + got + ", want " + want + ": " + String.valueOf(doc.get("refusals")));
+        String sealed = "Shapes.java:" + lineOf(dir.resolve("Shapes.java"), "sealed interface Shape");
+        boolean named = false;
+        for (Object r : list(doc.get("refusals"))) {
+            String reason = String.valueOf(map(r).get("reason"));
+            named |= sealed.equals(map(r).get("pos")) && reason.contains("permitted class Square declares members");
+        }
+        check(named, "the interface's refusal does not name Square's members: " + String.valueOf(doc.get("refusals")));
+        for (Object t : list(doc.get("types"))) {
+            check(!"union".equals(map(t).get("k")), "a union was read: " + Json.write(t).replaceAll("\\s+", " "));
+        }
+        check(funcByKeyOrNull(doc, "one") != null, "the method beside them was not read");
+    }
+
+    /**
+     * The kit case {@code expr-to-error}'s Java source: a leaf of the checked-exception hierarchy with
+     * a final field its one constructor sets from its parameter after {@code super("")}, and its own
+     * {@code getMessage()}, is a struct of that field with an {@code Error} method on the value, and
+     * {@code throw new NotFound(k)} returns {@code to_error} of the struct literal; nothing is refused.
+     */
+    private void anExceptionCarryingFieldsWithItsOwnGetMessageIsAnErrorStructThrownAsToError() throws Exception {
+        Map<String, Object> doc = Reader.read(kit().resolve("expr-to-error/java"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> nf = byName(list(doc.get("types")), "NotFound");
+        check("struct".equals(nf.get("k")), "NotFound is " + nf.get("k"));
+        check(same(nf.get("fields"), "[{\"name\":\"key\",\"t\":{\"k\":\"string\"}}]"), "NotFound's fields " + Json.write(nf.get("fields")));
+        Map<String, Object> error = funcByKey(doc, "NotFound.Error");
+        check(same(map(error.get("recv")).get("t"), "{\"k\":\"named\",\"name\":\"NotFound\"}"),
+            "the receiver of Error " + Json.write(error.get("recv")));
+        check(same(error.get("results"), "[{\"k\":\"string\"}]"), "Error's results " + Json.write(error.get("results")));
+        check(byNameOrNull(list(doc.get("errors")), "NotFound") == null, "NotFound is a sentinel error");
+        check(same(returned(funcByKey(doc, "get")), "{\"k\":\"to_error\",\"x\":{\"k\":\"struct\",\"name\":\"NotFound\","
+            + "\"fields\":[{\"name\":\"key\",\"value\":{\"k\":\"var\",\"name\":\"k\",\"t\":{\"k\":\"string\"}}}],"
+            + "\"t\":{\"k\":\"named\",\"name\":\"NotFound\"}},\"t\":{\"k\":\"error\"}}"),
+            "get returns " + Json.write(returned(funcByKey(doc, "get"))).replaceAll("\\s+", " "));
+    }
+
+    /**
+     * The kit case {@code stmt-lookup-else}'s Java source: {@code Long v = m.get(k);} followed by
+     * {@code if (v == null)} whose block ends in a throw is one {@code lookup_else} at the local's
+     * line, its {@code then} the block; nothing is refused.
+     */
+    private void aMapGetFollowedByAnIfOnItsNullThatReturnsIsLookupElse() throws Exception {
+        Path dir = kit().resolve("stmt-lookup-else/java");
+        Map<String, Object> doc = Reader.read(dir);
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> le = null;
+        int ifs = 0;
+        for (Object s : list(funcByKey(doc, "find").get("body"))) {
+            if ("lookup_else".equals(map(s).get("k"))) {
+                le = map(s);
+            }
+            if ("if".equals(map(s).get("k"))) {
+                ifs++;
+            }
+        }
+        check(le != null, "no lookup_else in find: " + Json.write(funcByKey(doc, "find").get("body")).replaceAll("\\s+", " "));
+        check(ifs == 0, "the if on the null is read beside the lookup_else");
+        check("v".equals(le.get("name")), "lookup_else binds " + le.get("name"));
+        check(("Case.java:" + lineOf(dir.resolve("Case.java"), "Long v = m.get(k);")).equals(le.get("pos")), "lookup_else at " + le.get("pos"));
+        check(same(le.get("index"), "{\"k\":\"var\",\"name\":\"k\",\"t\":{\"k\":\"string\"}}"), "index " + Json.write(le.get("index")));
+        List<Object> then = list(le.get("then"));
+        check(then.size() == 1 && "return".equals(map(then.get(0)).get("k")), "then " + Json.write(then).replaceAll("\\s+", " "));
+    }
+
+    /**
+     * Exactly the lines marked {@code // refused} in the fixture are refusals, {@code count} of them,
+     * one of whose reasons holds {@code reason}; the method {@code one} beside them is read.
+     */
+    private void refusedAtMarkers(String fixture, int count, String reason) throws Exception {
+        Path dir = testdata.resolve(fixture);
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> want = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.sorted().toList()) {
+                List<String> lines = Files.readAllLines(f);
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i).contains("// refused")) {
+                        want.add(f.getFileName() + ":" + (i + 1));
+                    }
+                }
+            }
+        }
+        check(want.size() == count, "markers in " + dir + ": " + want);
+        List<String> got = refusalPositions(doc);
+        check(new TreeSet<>(got).equals(new TreeSet<>(want)) && got.size() == want.size(),
+            "refusals at " + got + ", want " + want + ": " + String.valueOf(doc.get("refusals")));
+        boolean named = false;
+        for (Object r : list(doc.get("refusals"))) {
+            named |= String.valueOf(map(r).get("reason")).contains(reason);
+        }
+        check(named, "no refusal names " + reason + ": " + String.valueOf(doc.get("refusals")));
+        check(funcByKeyOrNull(doc, "one") != null, "the method beside them was not read");
+    }
+
+    /**
      * Each line marked {@code // refused} in {@code refuse/kit-limits} is a refusal: the edges of
      * what the conformance kit work maps (shifts, labels, floats, arrays, generics, lambdas, static
      * fields, formatted exceptions) where Java and cir/1 would differ.
@@ -865,14 +1017,14 @@ public final class ReaderTest {
      * {@code calls.json}, printing its {@code expected.txt}. Its subject is claimed. The module and
      * the subject are left in {@code <work>/kit/<case>/} for {@code task adapters-check}, which
      * checks the module uses the subject ({@code codespec-conformance features}). A case whose
-     * subject is one of {@link #REFUSED} is read into {@code <work>/refused/<case>/} instead, and
-     * holds the one refusal its entry names, at the line its entry names, and no foreign statement.
+     * subject is one of {@link #GO_REFUSES} must be refused by the Go writer, and is written by
+     * {@code codespec-write-cir} and run by {@code codespec-run-cir} instead, as the reader check's
+     * step 4 judges it.
      */
     private void kitCase(String kase) throws Exception {
         Path dir = kit().resolve(kase);
         String subject = subject(kase);
-        boolean refusedCase = REFUSED.containsKey(subject);
-        Path w = work.resolve(refusedCase ? "refused" : "kit").resolve(kase);
+        Path w = work.resolve("kit").resolve(kase);
         Files.createDirectories(w);
         Path read = w.resolve("read.cir.json");
         Path passed = w.resolve("passed.cir.json");
@@ -881,21 +1033,6 @@ public final class ReaderTest {
         run("codespec read", log, err, codespec.toString(), "read", "--lang", "java", dir.resolve("java").toString(),
             "--out", read.toString(), "--adapters", adapters.toString());
         Map<String, Object> doc = map(Json.parse(Files.readString(read)));
-        if (refusedCase) {
-            check(!Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is claimed and refused");
-            List<Object> rs = doc.containsKey("refusals") ? list(doc.get("refusals")) : List.of();
-            List<String> lines = Files.readAllLines(dir.resolve("java").resolve("Case.java"));
-            String at = null;
-            for (int i = 0; i < lines.size() && at == null; i++) {
-                if (lines.get(i).strip().startsWith(REFUSED.get(subject)[0])) {
-                    at = "Case.java:" + (i + 1);
-                }
-            }
-            check(rs.size() == 1 && String.valueOf(map(rs.get(0)).get("reason")).contains(REFUSED.get(subject)[1])
-                && refusalPositions(doc).contains(at), "want one refusal at " + at + ": " + Json.write(rs));
-            check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
-            return;
-        }
         if (doc.containsKey("refusals")) {
             throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
         }
@@ -905,23 +1042,33 @@ public final class ReaderTest {
         Files.writeString(w.resolve("subject"), subject + "\n", StandardCharsets.UTF_8);
         check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
         run("codespec pass", log, err, codespec.toString(), "pass", read.toString(), "--out", passed.toString());
-        run("codespec write --lang go", log, err, codespec.toString(), "write", "--lang", "go", passed.toString(),
-            "--out", w.resolve("go").toString(), "--adapters", adapters.toString());
         Path got = w.resolve("output.txt");
-        run("codespec-run-go", got, err, adapters.resolve("codespec-run-go").toString(), "-build",
-            w.resolve("build").toString(), w.resolve("go").toString(), dir.resolve("calls.json").toString());
+        if (GO_REFUSES.contains(subject)) {
+            Process go = new ProcessBuilder(codespec.toString(), "write", "--lang", "go", passed.toString(), "--out",
+                w.resolve("go").toString(), "--adapters", adapters.toString())
+                .redirectOutput(log.toFile()).redirectError(err.toFile()).start();
+            check(go.waitFor() != 0, "the Go writer wrote " + subject + ", which GO_REFUSES lists");
+            run("codespec write --lang cir", log, err, codespec.toString(), "write", "--lang", "cir", passed.toString(),
+                "--out", w.resolve("cir").toString(), "--adapters", adapters.toString());
+            run("codespec-run-cir", got, err, adapters.resolve("codespec-run-cir").toString(), "--build",
+                w.resolve("cir-build").toString(), w.resolve("cir").toString(), dir.resolve("calls.json").toString());
+        } else {
+            run("codespec write --lang go", log, err, codespec.toString(), "write", "--lang", "go", passed.toString(),
+                "--out", w.resolve("go").toString(), "--adapters", adapters.toString());
+            run("codespec-run-go", got, err, adapters.resolve("codespec-run-go").toString(), "-build",
+                w.resolve("build").toString(), w.resolve("go").toString(), dir.resolve("calls.json").toString());
+        }
         String want = Files.readString(dir.resolve("expected.txt"));
         String have = Files.readString(got);
         check(want.equals(have), "printed\n" + have + "expected.txt\n" + want);
     }
 
     /**
-     * Subjects whose kit case holds a Java source the reader refuses on purpose, with the start of
-     * the refused line and a part of the refusal's reason: {@code decl.union}, which the reader
-     * recognises but does not emit while the Go writer that checks a read refuses every union
-     * ({@code Reader.READ_UNIONS}).
+     * Subjects whose module the Go writer refuses, which the reader check's step 4 hands to the
+     * evaluator ({@code codespec-write-cir}, {@code codespec-run-cir}; {@code crates/conformance}
+     * {@code conform}): {@code decl.union}, Go having no tagged union.
      */
-    private static final Map<String, String[]> REFUSED = Map.of("decl.union", new String[] {"sealed interface", "a cir/1 union"});
+    private static final Set<String> GO_REFUSES = Set.of("decl.union");
 
     private void everyKitCaseWithAJavaSourcePrintsItsExpectedTxtThroughTheGoWriter() throws Exception {
         List<String> kases = javaCases();

@@ -213,7 +213,8 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 - The kit's C runtime header `conformance/c/codespec_rt.h` is the C writer's:
   `adapters/c-read/tests/reader.rs::the_kit_s_runtime_header_is_the_one_the_c_writer_writes`; the C
   reader refuses a near miss of each runtime form it reads: `adapters/c-read/tests/runtime.rs`,
-  `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`; what the C writer
+  `adapters/c-read/tests/adversary2.rs`, `adapters/c-read/tests/adversary3.rs`,
+  `adapters/c-read/tests/to_error_variadic.rs`; what the C writer
   writes for the kit reads back with at least 100 modules free of refusals: `task c-round-trip`.
 - A reader refuses a source past its stated limits of size and nesting with exit 1 and a message,
   never a crash (limits in each reader's crate doc or README and `docs/conformance.md`):
@@ -260,12 +261,25 @@ Work in a managed worktree (`worktree` CLI); never in the primary checkout. Rust
 worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
 under `target/`. End a merged tree with `worktree finish --discard-cache --archive <tree>`.
 
+No disk checks around builds (operator's rule, 2026-11-10): no `df`, `du` or `find` over a tree or
+`/` before, during or after a build, no free-space threshold that stops or delays work, and no
+polling script that waits for space. A build that fails with "No space left on device" is reported
+with its output. Disk space is the `disk-doctor` round's job, never an agent's: an implementor,
+adversary or coordinator does not measure, watch or free disk space, and deletes build output only
+as `worktree finish --discard-cache` of its own merged tree or when `disk-doctor` asks it to.
+
+A wave over several languages or features follows `.claude/skills/language-wave/SKILL.md`: one
+tree, one commit per unit, generated files regenerated once, one review, one PR.
+
 ## Delivery
 
 All commits and pushes are `b10x-bot[bot]` through `b10x-gates bot --repository beyond10x/codespec`;
 every other GitHub write (pull request, release, re-run, dispatch) goes through `b10x-gates api`.
 Common Gates run in `.github/workflows/shared-gates.yml`, `task check` in
 `.github/workflows/check.yml`. Planning lives in `.engineering/planning/` (AEP).
+
+`b10x-gates api --path` takes the full path, `/repos/beyond10x/codespec/...`; a path without that
+prefix answers 404.
 
 The repository is public (again since 2026-11-10, after one day private; visibility is set through
 `b10x-gates api --policy <gates-policy>/policy.json`, `PATCH /repos/beyond10x/codespec`, and Pages

@@ -29,30 +29,31 @@ import java.util.Map;
  */
 public final class Main {
     /** The workspace version; written into every document as {@code reader.version}. */
-    public static final String VERSION = "0.7.0";
+    public static final String VERSION = "0.8.0";
 
     /**
      * The reader's claim: the features its output for {@code examples/ledger} uses and the subject
      * of every conformance kit case with a {@code java/Case.java}, which the reader reads, the passes
-     * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}
-     * ({@code ReaderTest}; {@code codespec-conformance manifest --read} over the ledger and the kit
-     * modules checks every claimed feature is used).
+     * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}, or,
+     * for a module the Go writer refuses ({@code decl.union}), {@code codespec-write-cir} writes and
+     * {@code codespec-run-cir} runs ({@code ReaderTest}; {@code codespec-conformance manifest
+     * --read} over the ledger and the kit modules checks every claimed feature is used).
      */
     static final String[] CLAIM = {
         "assign.add", "assign.and", "assign.div", "assign.mul", "assign.or", "assign.rem",
         "assign.shl", "assign.shr", "assign.sub", "assign.xor", "decl.enum", "decl.interface",
-        "decl.struct", "decl.type_params", "decl.var", "decl.variadic", "expr.binop", "expr.call",
+        "decl.struct", "decl.type_params", "decl.union", "decl.var", "decl.variadic", "expr.binop", "expr.call",
         "expr.call_value", "expr.const", "expr.conv", "expr.errvar", "expr.field", "expr.float",
         "expr.func_ref", "expr.global", "expr.iface_call", "expr.index", "expr.instantiate",
         "expr.intrinsic", "expr.lambda", "expr.lit", "expr.make", "expr.method", "expr.nil",
-        "expr.spread", "expr.struct", "expr.to_iface", "expr.unop", "expr.var", "expr.zero",
+        "expr.spread", "expr.struct", "expr.to_error", "expr.to_iface", "expr.unop", "expr.var", "expr.zero",
         "intrinsic.append", "intrinsic.errorf", "intrinsic.len", "intrinsic.println",
         "intrinsic.sorted_keys", "intrinsic.sprintf", "op.add", "op.and", "op.div", "op.eq", "op.ge",
         "op.gt", "op.land", "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem",
         "op.shl", "op.shr", "op.sub", "op.xor", "sem.continue.post", "sem.error.propagate",
         "sem.int.wrap", "sem.map.order", "sem.rem.sign", "sem.switch.break", "stmt.assign",
         "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range",
-        "stmt.if", "stmt.incr", "stmt.let", "stmt.return", "stmt.switch", "type.any", "type.bool",
+        "stmt.if", "stmt.incr", "stmt.let", "stmt.lookup_else", "stmt.return", "stmt.switch", "type.any", "type.bool",
         "type.error", "type.float", "type.func", "type.int", "type.map", "type.named", "type.param",
         "type.ptr", "type.slice", "type.string", "type.tuple", "type.unit", "unop.complement",
         "unop.neg", "unop.not", "unop.plus", "unop.ref",

@@ -160,20 +160,21 @@
 //! `codespec-read-rust --describe` claims each reader feature (the vocabulary without `fact.*`)
 //! whose conformance case has a hand-written Rust source, `conformance/cases/<case>/rust/case.rs`.
 //! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
-//! refusal and with its subject, and passed and written as Go runs as the reference does. It claims
-//! 111 of the 121; these stay unclaimed. Each reason says whether it holds of Rust or of this
-//! reader only:
+//! refusal and with its subject, and passed and written as Go runs as the reference does; a module
+//! the Go writer refuses for a subject it does not claim (`decl.union`, Go has no tagged union) the
+//! evaluator runs instead, as the reader check's step 4 does. `stmt.foreign` is held the same way:
+//! its source keeps a labelled loop as a `foreign` statement with a refusal, on a path the calls
+//! do not take, and the evaluator runs the module the Go writer refuses. It claims 113 of the 121;
+//! these stay unclaimed. Each reason says whether it holds of Rust or of this reader only:
 //!
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | facts are computed by `codespec pass`, never read |
-//! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
 //! | `unop.plus` | Rust: the language has no unary `+` |
 //! | `stmt.raise` | Rust: a `panic!` is no value of another crate's type handed to a framework, and a `Result` is a result; the case's module is written by hand |
 //! | `decl.embedded` | Rust has no struct embedding: every field is named. Its nearest form, `impl Deref<Target = Inner> for Outer`, lets one field's fields and methods be reached through the outer value by auto-deref; this reader refuses an impl of a std trait other than `Display` and so does not read it. Reading it as `embedded` would take mapping that impl and writing each access it makes possible as the explicit path `cir/1` records |
 //! | `decl.variadic`, `expr.spread` | Rust: a function takes a fixed number of arguments (C-variadic `...` exists only on `extern "C"` declarations, and a variadic-looking `println!` is a macro); a slice parameter is a `slice` |
-//! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |
-//! | `decl.union` | this conformance run, not Rust: an enum of struct variants reads as a `union`, but step 4 cannot run it, as the Go writer has no form for a union. A case source would make the case fail at step 4 rather than be refused, so the kit has none for it yet |
+//! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |//!
 //!
 //! # Limits
 //!

@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "rust",
-    "version": "0.7.0",
-    "manifest_sha256": "e451e6a7573ae560d05273488e00c751a5f9c31920cb692d3ee9e9671d542cd8"
+    "version": "0.8.0",
+    "manifest_sha256": "3d655bfd9c229f0fd30a4d291b08ceec4855f07ad5932b4918985d1c7f3fb027"
   },
   "kit": {
-    "version": "0.7.0",
-    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
+    "version": "0.8.0",
+    "sha256": "7084313f70a660884c736e4a92532b4f6bdad32ec499fe7b582b53d40a118137"
   },
   "corpus": {
-    "sha256": "6b9149c1f48320d08de0a267bf494c00f854f60bd50324eb0a5791674e20de62"
+    "sha256": "46791ece95f5b38e01a7c0d9c5c94ceaa21d385c84cf52334ac3692fb13002dd"
   },
-  "codespec": "0.7.0",
+  "codespec": "0.8.0",
   "features": [
     {
       "id": "assign.add",
@@ -151,9 +151,12 @@
     },
     {
       "id": "decl.union",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-union"
+      ],
+      "runner": "codespec-run-cir"
     },
     {
       "id": "decl.var",
@@ -743,9 +746,12 @@
     },
     {
       "id": "stmt.foreign",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-foreign"
+      ],
+      "runner": "codespec-run-cir"
     },
     {
       "id": "stmt.if",
@@ -1008,12 +1014,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 111,
-    "pass": 111,
+    "claimed": 113,
+    "pass": 113,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 17,
+    "untested": 15,
     "boundary_fail": 0
   },
   "conforms": true

@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "groovy",
-    "version": "0.7.0",
-    "manifest_sha256": "37b61004ab8466918d706d2e1c05f582c4e2a00fc048e37b1dd7ff2d625ddadc"
+    "version": "0.8.0",
+    "manifest_sha256": "996dbaa066e8c821d9fb82a6501830a5ffc9c7c3531b33612e61b70d5b3d9bda"
   },
   "kit": {
-    "version": "0.7.0",
-    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
+    "version": "0.8.0",
+    "sha256": "7084313f70a660884c736e4a92532b4f6bdad32ec499fe7b582b53d40a118137"
   },
   "corpus": {
-    "sha256": "6c2751e6f6727d962413e60687531328518fa5a52def545593044942226719a1"
+    "sha256": "2e089a5d418ed33c63ac4cca5ef2563b76697c2bc9384943ac1b2325894be4c8"
   },
-  "codespec": "0.7.0",
+  "codespec": "0.8.0",
   "features": [
     {
       "id": "assign.add",
@@ -420,8 +420,14 @@
     {
       "id": "expr.to_error",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-to-error"
+      ],
+      "case": "expr-to-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.to_error outside a foreign statement"
     },
     {
       "id": "expr.to_iface",
@@ -871,8 +877,14 @@
     {
       "id": "stmt.lookup_else",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "stmt-lookup-else"
+      ],
+      "case": "stmt-lookup-else",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use stmt.lookup_else outside a foreign statement"
     },
     {
       "id": "stmt.raise",
@@ -1120,9 +1132,9 @@
     "claimed": 72,
     "pass": 72,
     "fail": 0,
-    "refused_unclaimed": 31,
+    "refused_unclaimed": 33,
     "pass_unclaimed": 0,
-    "untested": 25,
+    "untested": 23,
     "boundary_fail": 0
   },
   "conforms": true

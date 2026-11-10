@@ -24,7 +24,9 @@ Java original (`driver/Main.java`) on its `calls.json`, byte-equal.
 subject of every kit case under `../../conformance/cases` that holds `java/Case.java`: the case in
 Java, package `<case>` with `-` read as `_`, `long` for Go's `int`. `ReaderTest` reads each through
 `codespec read --lang java` with no refusal and no `foreign`, passes it, writes it as Go and runs it
-with `codespec-run-go` on the case's `calls.json`, and requires the case's `expected.txt`; `task
+with `codespec-run-go` on the case's `calls.json`, and requires the case's `expected.txt` (a module
+the Go writer refuses, `decl-union`'s, is written by `codespec-write-cir` and run by
+`codespec-run-cir`, as the reader check's step 4 does); `task
 adapters-check` then requires each module to use its case's subject and every claimed feature to be
 used by the ledger or a kit module.
 
@@ -40,23 +42,19 @@ float), `intrinsic-println-int` (a line of a string and an integer), `decl-varia
 `expr-spread-local` (a variable arity method and a spread array without the `path.Join` extern).
 
 `decl-union` holds a Java source: a sealed interface whose permitted classes are records without
-members. The reader recognises it as a `union` but refuses it at its line (`Reader.READ_UNIONS` is
-off): the reader check writes every read as Go, and the Go writer refuses a union, so a read union
-would fail step 4 where a refused one is `refused`. `ReaderTest` requires that one refusal. The
-features left unclaimed, and why:
+members, read as a `union`. The Go writer refuses a union, so the reader check's step 4 hands the
+module to the evaluator, which runs it to the case's `expected.txt`. The features left unclaimed,
+and why:
 
 | case | subject | why |
 |---|---|---|
 | `assign-and-not`, `op-and-not` | `assign.and_not`, `op.and_not` | Java has no `&^`; `a & ~b` is `op.and` and `unop.complement` |
 | `decl-embedded` | `decl.embedded` | Java has no embedded field; a class extending another is refused as inheritance |
 | `decl-newtype` | `decl.newtype` | Java has no defined type over a primitive or `String`; a class is a struct |
-| `decl-union` | `decl.union` | refused at the sealed interface while the Go writer, which checks a read, refuses a union |
 | `expr-extern`, `expr-extern-method`, `type-extern` | `expr.extern`, `expr.extern_method`, `type.extern` | a package read maps the JDK calls of its table and refuses the rest; externs come only from a project's jars, which a kit case has none of |
-| `expr-to-error` | `expr.to_error` | not mapped: the reader reads one checked-exception hierarchy whose leaves are sentinels or formats (`errorf`); an exception carrying fields would be a struct with an `Error` method, which that model does not hold |
 | `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
 | `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
-| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
-| `stmt-lookup-else` | `stmt.lookup_else` | the reader never produces it: `Map.get` of a value that is not a reference is refused (an absent key gives null), and `containsKey` is not read |
+| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write, so the evaluator runs the module; the case `stmt-foreign/java/Case.java` exists, the claim is not made in 0.8.0 because the case has not been run since `codespec-run-cir` resolves a call name as Go spells it |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
 | `stmt-raise` | `stmt.raise` | read only in a project, in a function an entry names (Projects and Quarkus); a kit case is a package read with no entry, so its module is written by hand |
 | `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |
@@ -86,8 +84,10 @@ before):
 | `LongUnaryOperator`, `LongBinaryOperator`, `IntUnaryOperator`, `IntBinaryOperator`, `LongPredicate`, `IntPredicate`, `LongSupplier`, `IntSupplier`, `BooleanSupplier` | `func` types; a lambda `lambda`, a method reference of the same signature `func_ref`, a call of the abstract method `call_value` |
 | a variable arity method; an array initializer, `a[i]`, `.length`, for-each over an array | `variadic`, a spread when an array is passed; `append` to an empty slice, `index`, `len`, `for_range` |
 | an exception leaf whose one constructor passes `String.format("<format>", <its parameters>)` to `super` | `errorf` at its throw |
+| an exception leaf carrying final fields of a primitive or `String` type, whose one constructor is `super` of a `String` literal or `null` (never read, since `getMessage()` gives the message) and then `this.<field> = <parameter>;` for each field in order, with its own `getMessage()` | a struct of the fields, `getMessage()` its `Error` method on the value; `throw new X(…)` returns `to_error` of the struct literal of the arguments. A field of another type is refused at the class (`testdata/refuse/error-struct`): Java's exception holds the object, which can change after the throw |
+| `T v = m.get(k);` of a map whose value is not a reference, followed by `if (v == null)` without an else whose branch ends in a return or a throw and does not read `v` | `lookup_else` at the local's line, the branch its `then`: `get` gives null only for an absent key, since nothing the module puts in such a map is null. Any other `get` of such a map stays refused, an `if` that goes on after it too (`testdata/refuse/lookup-else`) |
 | `System.out.println` of an integer, a boolean or a `String` | `println` |
-| a sealed interface whose permitted classes are records without members | `union`, refused while `READ_UNIONS` is off |
+| a sealed interface whose permitted classes are records without members | `union`, its variants the records in `permits` order; a use of the interface or a record (a parameter, `new Circle(…)`) is refused, since `cir/1` has no expression that builds or inspects a union value, and so is a sealed interface whose record declares a member (`testdata/refuse/union-member`) |
 
 Refused at their line, since the written Go would print otherwise than Java
 (`testdata/refuse/kit-limits` and `testdata/adversary1`, run by `ReaderTest` and `AdversaryTest`):

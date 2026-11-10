@@ -24,7 +24,10 @@ outputs only. An evaluator sees every node, and every effect passes through a ha
 - **E3.** Effects at a named boundary, supplied by the host, replaceable per call site.
 - **E4.** Never past the unknown: a `foreign` statement, a `raise` (it leaves every caller up to a
   framework the evaluator does not run) or an extern with no handler stops the run with a reason,
-  or is replaced by a stub the user names. The result says which.
+  or is replaced by a stub the user names. The result says which. Only what the run reaches
+  stops it: a module holding one on a path the run does not take runs to the end, and its
+  output is the program's on that path. The reader check of `codespec conform` relies on it
+  (`docs/conformance.md` § 6, step 4): a stop reached is `refused`, never a pass.
 - **E5.** Sites named by the `cq` node id `<module>.<funckey>#<index path>`.
 - **E6.** Rust, in this workspace, minimal dependencies. A solver is an optional external program.
 
@@ -123,8 +126,10 @@ ends a run that does not return (wasmi's fuel). `Stop` carries the node id and r
 - **The kit is the test suite.** `codespec eval <case.cir.json> --calls calls.json` prints the
   harness encoding, and every case must print `expected.txt`.
 - **One more `codespec conform` runner.** An identity writer `codespec-write-cir` copies the
-  module and `codespec-run-cir` evaluates it. `conform` looks programs up by language name, so
-  `codespec conform --lang cir --role writer` needs no change.
+  module and `codespec-run-cir` evaluates it, calling a function the calls file names as Go
+  spells it (`Echo`) by the name the module gives it (`echo`), as the Go writer exports it.
+  `conform` looks programs up by language name, so `codespec conform --lang cir --role writer`
+  needs no change.
 - **Differential oracle.** Inputs generated per function from its `cir/1` signature (Flourine's
   per-function differential fuzzing) go as one `codespec-calls/1` file to the evaluator and to the
   Go, Rust, Java, Groovy and, once it lands, C runners. On a difference, the evaluator's trace

@@ -4,6 +4,65 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.8.0
+
+### Added
+
+- `codespec-read-rust` claims `decl.union`, 112 of the 121 features a reader can claim, up from
+  111. The kit case `decl-union` has a Rust source, an enum of struct variants, and the reader
+  check runs its module through the evaluator, as the Go writer has no form for a union.
+- `codespec-read-java` claims `decl.union`, 103 features, up from 102: a sealed interface whose
+  permitted classes are records without members is read as a `union` in a package read, where
+  it was refused at its line. The Go writer refuses a union, and the reader check's evaluator step
+  judges the kit case `decl-union` instead. A sealed interface one of whose records declares a
+  member is still refused at its line, its records with it.
+- `codespec-read-c` reads, in runtime form, a value of a type `T` of the module as an error,
+  `cs_error_of(m, cs_dup(&v, sizeof v))` with the C writer's message function `m` calling
+  `cs_string T_Error(T e)`, as `to_error`, and `T_Error` as the method `Error` of `T`; and a
+  variadic parameter `...T` of a `codespec: func` line as `int64_t cs_n, ...` and a fixed
+  prologue that appends each `va_arg(cs_ap, T)` to the parameter's slice, called with the
+  constant count first. It refuses a near miss of each at its line: `cs_error_of` of a value of
+  another type than its message function's, a message function calling other than `T_Error`, a
+  call of `T_Error`, a `T_Error` of a struct with a field `Error`, `va_arg` of another type than
+  the element's, a variadic argument of another C type, a count that is not the number of
+  arguments, a call through a declaration other than a prototype ending in `int64_t cs_n, ...`,
+  a body without the prologue or whose prologue a macro of the module changes or hides a call
+  in, the count used after it, and an element type C promotes through `...`. A C writer's
+  helper whose text a macro of the module changes is no longer read as the runtime call it
+  spells, and the C writer's prefix comes off names only, never off a string literal, a comment
+  or a message. It claims
+  `expr.to_error` and `decl.variadic`, from new kit sources `expr-to-error/c/case.c` and
+  `decl-variadic-local/c/case.c`: 105 kit features, up from 103.
+- `codespec-read-java` claims `expr.to_error` and `stmt.lookup_else`, 105 features, up from 103,
+  each in a package read. An exception of the checked-exception hierarchy carrying final fields of
+  a primitive or `String` type, set by its one constructor after `super` of a literal, with its own
+  `getMessage()`, is a struct with an `Error` method, and a throw of it is `to_error` of the struct;
+  a field of another type is refused at the class. `T v = m.get(k);` of a map of values that are not
+  references, followed by `if (v == null)` whose branch ends in a return or a throw, is
+  `lookup_else`; any other `get` of such a map is still refused at its line. The kit cases
+  `expr-to-error` and `stmt-lookup-else` have Java sources.
+- `codespec-read-rust` claims `stmt.foreign`, 113 of the 121 features a reader can claim. The
+  kit case `stmt-foreign` has a Rust source keeping a labelled loop as a `foreign` statement on
+  a path its calls do not take. `codespec-read-c` and `codespec-read-java` do not claim it
+  yet: their case sources exist and have not been run since `codespec-run-cir` resolves a
+  call name as Go spells it.
+
+### Changed
+
+- The reader check of `codespec conform` judges a module holding a `raise` or a `foreign`
+  statement through the evaluator, which stops only when the run reaches one: a module that holds
+  one on a path the calls do not take passes when it prints `expected.txt`, and a stop reached is
+  still `refused` with the stop as the reason. Before, `codespec-write-cir` refused such a module
+  wherever the statement was. It writes one with the new flag `--stop-when-reached`, which the
+  reader check passes; without the flag it refuses as before.
+
+### Fixed
+
+- `codespec-run-cir` calls a function a `calls.json` names as Go spells it (`Echo`) by the name a
+  reader of another language gives it (`echo`), as the Go writer exports it. The reader check's
+  evaluator step refused such a call as one that does not fit, so no reader but Go's could pass a
+  case the Go writer refuses.
+
 ## 0.7.0
 
 ### Added

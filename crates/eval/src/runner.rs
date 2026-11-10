@@ -3,7 +3,7 @@
 //! --role writer` finds by name like any other pair.
 //!
 //! ```console
-//! codespec-write-cir <out dir> | --describe
+//! codespec-write-cir <out dir> [--stop-when-reached] | --describe
 //! codespec-run-cir [--build <dir>] <written dir> <calls.json>
 //! ```
 //!
@@ -14,9 +14,19 @@
 //! A module it cannot read is refused the same way. It reads no facts: a module with or without
 //! them is copied as it is.
 //!
+//! With `--stop-when-reached` ([`Stops::WhenReached`]) it refuses only a module it cannot read
+//! and writes one holding a `foreign` statement, a `raise` or a foreign initializer as it is: the
+//! runner stops at one when the run reaches it, and a run that never does prints what the module
+//! gives (`docs/evaluator.md` E4). A reader's step 4 of `codespec conform` writes with it
+//! (`docs/conformance.md` § 6); as a writer of the kit, the evaluator refuses, since a writer must
+//! refuse what it cannot write.
+//!
 //! The runner reads `<written dir>/module.cir.json` and the calls file, runs the calls with
-//! [`crate::run_calls`] and prints what `codespec eval` prints. `--build` (or `-build`) is
-//! accepted and unused: nothing is built.
+//! [`crate::run_calls`] and prints what `codespec eval` prints. A call names a function as Go
+//! spells it, as every kit `calls.json` does: one that names nothing at package level calls the
+//! exported top-level function whose name the Go writer exports so, its first letter upper-cased
+//! (`Echo` calls a Java reader's `echo`, unless a type, variant, constant, error, variable or other
+//! function holds `Echo`). `--build` (or `-build`) is accepted and unused: nothing is built.
 //!
 //! | exit | when |
 //! |---|---|
@@ -32,7 +42,7 @@
 
 use std::path::{Path, PathBuf};
 
-use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, printable};
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, TypeDecl, printable};
 use serde_json::Value;
 
 use crate::{Options, Run, run_calls};
@@ -176,11 +186,23 @@ pub fn refusals(m: &Module) -> Vec<Refusal> {
     out
 }
 
+/// What the writer does with a `foreign` statement, a `raise` or a foreign initializer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stops {
+    /// Refuse the module, naming each ([`refusals`]): the writer of `codespec conform --lang cir`.
+    Refuse,
+    /// Write it as it is; the runner stops when the run reaches one (`--stop-when-reached`).
+    WhenReached,
+}
+
 /// The writer: read `bytes`, refuse or write `<out>/module.cir.json`. `Err` holds the lines for
 /// standard error; nothing is written then.
-pub fn write(bytes: &[u8], out: &Path) -> Result<(), Vec<String>> {
+pub fn write(bytes: &[u8], out: &Path, stops: Stops) -> Result<(), Vec<String>> {
     let m = Module::from_json(bytes).map_err(|e| vec![printable(&e.to_string()).into_owned()])?;
-    let refused = refusals(&m);
+    let refused = match stops {
+        Stops::Refuse => refusals(&m),
+        Stops::WhenReached => Vec::new(),
+    };
     if !refused.is_empty() {
         return Err(refused.iter().map(|r| format!("refused {r}")).collect());
     }
@@ -206,7 +228,47 @@ pub fn run(dir: &Path, calls: &Path) -> Result<Run, Failed> {
     let m = Module::from_json(&bytes).map_err(|e| {
         Failed::Module(format!("{}: {}", path.display(), printable(&e.to_string())))
     })?;
-    let c = codespec_conformance::read_calls(calls).map_err(Failed::Refused)?;
+    let mut c = codespec_conformance::read_calls(calls).map_err(Failed::Refused)?;
+    for call in &mut c.calls {
+        if let Some(name) = go_spelled(&m, &call.func) {
+            call.func = name;
+        }
+    }
     run_calls(&m, &c, &Options::default())
         .map_err(|e| Failed::Refused(format!("{}: {e}", calls.display())))
+}
+
+/// The function a call names as Go spells it: a kit `calls.json` names `Echo` where a Java or
+/// Rust reader's module has `echo`. When no package-level name is `func` (no top-level function,
+/// type, enum variant, constant, error or variable: the Go writer's `pkg` set, `names.go` rule 1,
+/// else it exports `echo` as `Echo_`), the one exported top-level function whose name with its
+/// first letter upper-cased, to one letter, is `func`, as the Go writer exports it; `None` when
+/// there is none or more than one, so the call is refused as one that does not fit.
+fn go_spelled(m: &Module, func: &str) -> Option<String> {
+    let held = m.funcs.iter().any(|f| f.recv.is_none() && f.name == func)
+        || m.types.iter().any(|t| {
+            t.name() == func
+                || matches!(t, TypeDecl::Enum { variants, .. } if variants.iter().any(|v| v.name == func))
+        })
+        || m.consts.iter().any(|c| c.name == func)
+        || m.errors.iter().any(|e| e.name == func)
+        || m.vars.iter().any(|v| v.name == func);
+    if held {
+        return None;
+    }
+    let mut found = m.funcs.iter().filter(|f| {
+        let mut cs = f.name.chars();
+        f.recv.is_none()
+            && f.exported
+            && cs.next().is_some_and(|c| {
+                let mut up = c.to_uppercase();
+                c.is_lowercase()
+                    && up.len() == 1
+                    && up.next().into_iter().chain(cs).eq(func.chars())
+            })
+    });
+    match (found.next(), found.next()) {
+        (Some(f), None) => Some(f.name.clone()),
+        _ => None,
+    }
 }

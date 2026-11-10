@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use codespec_model::{Case, ChanDir, Expr, IntWidth, Stmt, Type};
+use codespec_model::{Case, ChanDir, Expr, FloatBits, IntWidth, Stmt, Type};
 
 use crate::body::{Body, R, constant, lit, string_literal, strip, zero_init};
 use crate::json::J;
@@ -24,7 +24,7 @@ fn platform() -> Type {
 }
 
 /// `n` through implicit casts and parentheses.
-fn bare(mut n: &J) -> &J {
+pub(crate) fn bare(mut n: &J) -> &J {
     loop {
         n = strip(n);
         if n.kind() == "ImplicitCastExpr" {
@@ -42,7 +42,7 @@ fn ref_id(n: &J) -> Option<&str> {
 }
 
 /// Whether `n` or any node under it refers to the declaration `id`.
-fn refers(n: &J, id: &str) -> bool {
+pub(crate) fn refers(n: &J, id: &str) -> bool {
     (n.kind() == "DeclRefExpr" && n.get("referencedDecl").s("id") == id)
         || n.inner().iter().any(|k| refers(k, id))
 }
@@ -656,6 +656,7 @@ impl<'a> Body<'a> {
                     t,
                 })
             }
+            "cs_error_of" => self.rt_error_of(args),
             "cs_sb_string" | "cs_sb_error" | "cs_sb_println" => self.rt_format(name, &args[0]),
             "cs_slice_make" => Err(
                 "cs_slice_make where no declaration or assignment gives the slice's type".into(),
@@ -664,6 +665,57 @@ impl<'a> Body<'a> {
                 "the runtime's {other}, used outside the forms the reader reads"
             )),
         }
+    }
+
+    /// `cs_error_of(m, cs_dup(&v, sizeof v))` (or `sizeof(T)`), `m` a message function of `T`
+    /// and `v` a value of `T`: `v` as an error, whose message `T`'s method `Error` gives.
+    fn rt_error_of(&mut self, args: &[J]) -> R<Expr> {
+        let f = bare(&args[0]);
+        let m = if f.kind() == "DeclRefExpr" {
+            f.get("referencedDecl").s("name")
+        } else {
+            ""
+        };
+        let Some((tc, _)) = self.tables.messages.get(m).cloned() else {
+            return Err(
+                "cs_error_of with a function other than a message function `static cs_string m(const void *self) { return T_Error(*(const T *)self); }`"
+                    .into(),
+            );
+        };
+        let t = self.spelled_type(&tc)?;
+        if !matches!(t, Type::Named { .. }) {
+            return Err(format!(
+                "cs_error_of of a {tc}, which is not a struct or newtype of the module"
+            ));
+        }
+        let dup = bare(&args[1]);
+        if self.rt_callee(dup).as_deref() != Some("cs_dup") {
+            return Err(
+                "cs_error_of of other than cs_dup(&v, sizeof v), a copy of the value".into(),
+            );
+        }
+        let d = &dup.inner()[1..];
+        let x = self.copied(&d[0], &t).map_err(|e| {
+            format!("cs_error_of of a value other than a {tc}, whose message its message function gives: {e}")
+        })?;
+        let v = bare(&d[0]).inner().first().and_then(ref_id);
+        let size = bare(&d[1]);
+        let same = match sizeof_of(size) {
+            Some(s) => self.spelled_type(&s).ok().as_ref() == Some(&t),
+            None => {
+                size.kind() == "UnaryExprOrTypeTraitExpr"
+                    && size.s("name") == "sizeof"
+                    && v.is_some()
+                    && size.inner().first().and_then(ref_id) == v
+            }
+        };
+        if !same {
+            return Err("cs_error_of of a copy whose size is not its value's".into());
+        }
+        Ok(Expr::ToError {
+            x: Box::new(x),
+            t: Type::Error,
+        })
     }
 
     /// A string builder chain made a string, an error or a printed line.
@@ -1634,7 +1686,25 @@ impl<'a> Body<'a> {
                     params.len()
                 ));
             }
-            for (p, t) in params.iter().zip(&ps) {
+            // A variadic parameter is held by an `int64_t` count and `...`.
+            let variadic = self.tables.variadic.contains(name);
+            if variadic != n.is_true("variadic") {
+                return Err(format!(
+                    "a codespec: func line of {name} {} a variadic parameter, where the definition {} `...`",
+                    if variadic { "with" } else { "without" },
+                    if variadic { "has no" } else { "has" }
+                ));
+            }
+            for (i, (p, t)) in params.iter().zip(&ps).enumerate() {
+                if variadic && i + 1 == ps.len() {
+                    if spelling(p) != "int64_t" {
+                        return Err(format!(
+                            "parameter {}: the count of a variadic parameter, whose C type is not int64_t",
+                            p.s("name")
+                        ));
+                    }
+                    continue;
+                }
                 self.agrees(&spelling(p), p.get("type"), t)
                     .map_err(|e| format!("parameter {}: {e}", p.s("name")))?;
             }
@@ -1742,6 +1812,274 @@ impl<'a> Body<'a> {
         }
         Ok(())
     }
+
+    /// A call of the module function `name` whose `codespec: func` line `ps` ends in a variadic
+    /// parameter: its other arguments, the constant count of the variadic ones, then those, each
+    /// passed as the element's C type, the type `va_arg` reads.
+    pub(crate) fn variadic_call(&mut self, n: &J, name: &str, ps: &[Type], t: Type) -> R<Expr> {
+        let kids = &n.inner()[1..];
+        let Some((Type::Slice { elem }, fixed)) = ps.split_last() else {
+            return Err(format!(
+                "a call of {name}, whose variadic parameter is not a slice"
+            ));
+        };
+        // The declaration the call sees passes the arguments: a prototype ending in `int64_t
+        // cs_n, ...` as the definition's, else C converts them otherwise (C11 6.5.2.2).
+        let seen = self
+            .callee(&n.inner()[0])
+            .and_then(|(id, _)| self.decls.get(id));
+        let prototype = seen.is_some_and(|d| {
+            let dps: Vec<&J> = d
+                .inner()
+                .iter()
+                .filter(|p| p.kind() == "ParmVarDecl")
+                .collect();
+            d.is_true("variadic")
+                && dps.len() == ps.len()
+                && dps.last().is_some_and(|c| spelling(c) == "int64_t")
+        });
+        if !prototype {
+            return Err(format!(
+                "a call of {name} through a declaration that is not its variadic prototype ending in `int64_t cs_n, ...`"
+            ));
+        }
+        if kids.len() < ps.len() {
+            return Err(format!(
+                "a call of {name} without the count of its variadic arguments"
+            ));
+        }
+        let rest = &kids[ps.len()..];
+        if constant(&kids[fixed.len()]) != Some(rest.len() as i128) {
+            return Err(format!(
+                "a call of {name} whose count of variadic arguments is not the constant {}, their number",
+                rest.len()
+            ));
+        }
+        let mut args = Vec::new();
+        for (i, (a, p)) in kids.iter().zip(fixed).enumerate() {
+            let v = self.value_want(a, p)?;
+            if v.t() != p && *p != Type::Any {
+                return Err(format!(
+                    "a call of {name} whose argument {i} is not of its parameter's type"
+                ));
+            }
+            args.push(v);
+        }
+        for (i, a) in rest.iter().enumerate() {
+            let c = spelling(a);
+            let v = self.value_want(a, elem)?;
+            if self.agrees(&c, a.get("type"), elem).is_err() || v.t() != &**elem {
+                return Err(format!(
+                    "a call of {name} whose variadic argument {i} is passed as {c}, which va_arg does not read as the element type of its codespec: func line"
+                ));
+            }
+            args.push(v);
+        }
+        Ok(Expr::Call {
+            name: name.into(),
+            targs: Vec::new(),
+            args,
+            t,
+        })
+    }
+
+    /// The prologue of a variadic function in runtime form, the first five statements of `body`
+    /// (the crate doc): the id and name of the slice of element type `elem` it makes from the
+    /// arguments after the count parameter `count`. Else where and why it is refused.
+    pub(crate) fn variadic_prologue(
+        &self,
+        body: &J,
+        count: &J,
+        elem: &Type,
+    ) -> Result<(String, String), (String, String)> {
+        let at = |n: &J| crate::pos_of(self.src, n);
+        let form = "a variadic function whose body does not begin with the prologue `cs_slice xs = {0}; va_list cs_ap; va_start(cs_ap, cs_n); for (int64_t cs_i = 0; cs_i < cs_n; cs_i++) { T cs_v = va_arg(cs_ap, T); xs = cs_append(xs, &cs_v, sizeof(T)); } va_end(cs_ap);`";
+        if matches!(
+            self.under(elem),
+            Type::Int {
+                width: IntWidth::W8 | IntWidth::W16,
+                ..
+            } | Type::Bool
+                | Type::Float {
+                    bits: FloatBits::W32
+                }
+        ) {
+            return Err((
+                at(count),
+                "a variadic parameter whose element type C promotes when it is passed through `...` (an integer narrower than int, _Bool, float), which va_arg cannot read as itself".into(),
+            ));
+        }
+        let kids = body.inner();
+        let (Some(xs), Some(ap)) = (
+            kids.first().and_then(single_decl),
+            kids.get(1).and_then(single_decl),
+        ) else {
+            return Err((at(body), form.into()));
+        };
+        let Some(va) = kids.get(3).and_then(va_arg) else {
+            return Err((at(&kids[0]), form.into()));
+        };
+        let t = va.get("type").s("qualType").to_string();
+        if self.agrees(&t, va.get("type"), elem).is_err() {
+            return Err((
+                at(va),
+                format!(
+                    "va_arg reads an argument of the variadic parameter {} as {t}, which does not hold the element type of its codespec: func line",
+                    xs.s("name")
+                ),
+            ));
+        }
+        let (x, c) = (xs.s("name"), count.s("name"));
+        let text = format!(
+            "cs_slice {x} = {{0}}; va_list cs_ap; va_start(cs_ap, cs_n); for (int64_t cs_i = 0; cs_i < cs_n; cs_i++) {{ {t} cs_v = va_arg(cs_ap, {t}); {x} = cs_append({x}, &cs_v, sizeof({t})); }} va_end(cs_ap);"
+        );
+        let have = kids
+            .get(4)
+            .and_then(|last| self.text_through(&kids[0], last));
+        if c != "cs_n" || have.is_none_or(|h| crate::squash(&h) != crate::squash(&text)) {
+            return Err((at(&kids[0]), form.into()));
+        }
+        if let Err(k) = self.prologue_tree(kids, count, &t) {
+            return Err((
+                at(k),
+                "a variadic prologue whose C is not what its text spells, as a macro changes it"
+                    .into(),
+            ));
+        }
+        if let Some(k) = kids[5..]
+            .iter()
+            .find(|k| refers(k, count.s("id")) || refers(k, ap.s("id")))
+        {
+            return Err((
+                at(k),
+                "the count or the va_list of a variadic parameter used after its prologue".into(),
+            ));
+        }
+        Ok((xs.s("id").to_string(), x.to_string()))
+    }
+
+    /// The prologue's statements `kids`, whose text is the form, checked in clang's tree, where a
+    /// macro of the module can give that text another meaning (`#define cs_i cs_n`) or hide a call
+    /// in it: each refers by id to the declarations the form makes and to the count parameter
+    /// `count`, and calls only the builtins `va_start` and `va_end` expand to and the runtime's
+    /// `cs_append`; `t` is the C element type. Else the statement that is not the form.
+    fn prologue_tree<'k>(&self, kids: &'k [J], count: &J, t: &str) -> Result<(), &'k J> {
+        let [s_xs, s_ap, s_start, s_for, s_end, ..] = kids else {
+            unreachable!("five statements, as the text compared")
+        };
+        let is = |e: &J, d: &str| ref_id(e) == Some(d);
+        let decl = |s: &'k J, c: &str| single_decl(s).filter(|d| spelling(d) == c);
+        let builtin = |s: &J, f: &str| {
+            s.kind() == "CallExpr" && {
+                let r = bare(&s.inner()[0]);
+                r.kind() == "DeclRefExpr"
+                    && r.get("type").s("qualType") == "<builtin fn type>"
+                    && r.get("referencedDecl").s("name") == f
+            }
+        };
+        let xs = decl(s_xs, "cs_slice")
+            .filter(|d| matches!(d.inner(), [z] if zero_init(z)))
+            .ok_or(s_xs)?
+            .s("id");
+        let ap = decl(s_ap, "va_list")
+            .filter(|d| d.inner().is_empty())
+            .ok_or(s_ap)?
+            .s("id");
+        let n = count.s("id");
+        if !(builtin(s_start, "__builtin_va_start")
+            && matches!(s_start.inner(), [_, a, c] if is(a, ap) && is(c, n)))
+        {
+            return Err(s_start);
+        }
+        let [init, _, cond, inc, body] = s_for.inner() else {
+            return Err(s_for);
+        };
+        let i = decl(init, "int64_t")
+            .filter(|d| matches!(d.inner(), [z] if constant(z) == Some(0)))
+            .ok_or(s_for)?
+            .s("id");
+        let (cond, inc) = (bare(cond), bare(inc));
+        let head = s_for.kind() == "ForStmt"
+            && cond.kind() == "BinaryOperator"
+            && cond.s("opcode") == "<"
+            && matches!(cond.inner(), [a, b] if is(a, i) && is(b, n))
+            && inc.kind() == "UnaryOperator"
+            && inc.s("opcode") == "++"
+            && matches!(inc.inner(), [a] if is(a, i));
+        let [s_v, s_add] = body.inner() else {
+            return Err(s_for);
+        };
+        if !head || body.kind() != "CompoundStmt" {
+            return Err(s_for);
+        }
+        let v = decl(s_v, t)
+            .filter(|d| {
+                matches!(d.inner(), [e] if {
+                    let e = bare(e);
+                    e.kind() == "VAArgExpr"
+                        && spelling(e) == t
+                        && matches!(e.inner(), [a] if is(a, ap))
+                })
+            })
+            .ok_or(s_v)?
+            .s("id");
+        let appends = |r: &J| {
+            let r = bare(r);
+            let rt = r.kind() == "CallExpr"
+                && self.callee(&r.inner()[0]).is_some_and(|(id, f)| {
+                    f == "cs_append"
+                        && self
+                            .decls
+                            .get(id)
+                            .and_then(|d| crate::file_of(d.get("loc")))
+                            .as_deref()
+                            == Some(RT_FILE)
+                });
+            rt && matches!(r.inner(), [_, s, p, z] if {
+                let p = bare(p);
+                is(s, xs)
+                    && p.kind() == "UnaryOperator"
+                    && p.s("opcode") == "&"
+                    && matches!(p.inner(), [x] if is(x, v))
+                    && sizeof_of(z).as_deref() == Some(t)
+            })
+        };
+        if !(s_add.kind() == "BinaryOperator"
+            && s_add.s("opcode") == "="
+            && matches!(s_add.inner(), [l, r] if is(l, xs) && appends(r)))
+        {
+            return Err(s_add);
+        }
+        if !(builtin(s_end, "__builtin_va_end") && matches!(s_end.inner(), [_, a] if is(a, ap))) {
+            return Err(s_end);
+        }
+        Ok(())
+    }
+
+    /// The source text from the start of the statement `first` to the `;` that ends the
+    /// statement `last`, which may be a macro's expansion (`va_end(ap)`), whose range clang gives
+    /// as the macro's name.
+    fn text_through(&self, first: &J, last: &J) -> Option<String> {
+        let b = crate::at(first.get("range").get("begin"));
+        let e = crate::at(last.get("range").get("begin"));
+        let text = self.src.files.get(&crate::file_name(b.s("file")))?;
+        if crate::file_name(e.s("file")) != crate::file_name(b.s("file")) {
+            return None;
+        }
+        let start = usize::try_from(b.get("offset").int()?).ok()?;
+        let from = usize::try_from(e.get("offset").int()?).ok()?;
+        let end = from + text.get(from..)?.iter().position(|&c| c == b';')? + 1;
+        text.get(start..end)
+            .map(|t| String::from_utf8_lossy(t).into_owned())
+    }
+}
+
+/// The `va_arg` under `n`.
+fn va_arg(n: &J) -> Option<&J> {
+    if n.kind() == "VAArgExpr" {
+        return Some(n);
+    }
+    n.inner().iter().find_map(va_arg)
 }
 
 /// Go's name of a type an `any` holds by kind: `int`, `int64`, `uint8`, `bool`, `string`.

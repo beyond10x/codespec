@@ -110,7 +110,8 @@ rewrites them, so `codespec-read-go` does not claim it, while `codespec-read-rus
 would credit every reader with the pass's work and say nothing about the reader. Facts (`fact.*`)
 are the same case, and a writer feature only (§ 2). `stmt.foreign` is a reader feature: a reader
 claims it when its source for a construct outside `cir/1` reads to a `foreign` statement holding
-that source verbatim, with a refusal.
+that source verbatim, with a refusal. Its corpus case puts that statement on a path the calls do
+not take, so the run of step 4 prints `expected.txt` without reaching it.
 
 ## 6. The verdicts
 
@@ -143,14 +144,21 @@ A reader is checked by what it produces, run through a writer this repository tr
    anything is read.
 2. The reader reads it: exit 0, a valid module, the same bytes on a second read.
 3. The module contains the case's subject feature at least once outside a `foreign`
-   statement, so a reader cannot pass `stmt.for` by refusing every loop.
+   statement, so a reader cannot pass `stmt.for` by refusing every loop, and holds no `foreign`
+   statement elsewhere. For the subject `stmt.foreign` the rule is that the module holds a
+   `foreign` statement.
 4. `codespec pass` and the Go writer write it; `codespec-run-go` prints `expected.txt`. When the
-   Go writer refuses the passed module (it has no form for a tagged union, `decl.union`), the
-   evaluator judges it instead: `codespec-write-cir` writes it and `codespec-run-cir` runs the
-   calls, both looked up in `--adapters` when a case first needs them (a run whose every case
-   the Go writer writes does not; a case that needs them while they are missing is an error of
-   the run, never a verdict). Its output equal to `expected.txt` is a pass, a different one
-   fails with the first differing line. A stop is never a pass, and its kind decides the rest:
+   Go writer refuses the passed module (it has no form for a tagged union, `decl.union`, a
+   `raise`, or a `foreign` statement of another language), the evaluator judges it instead:
+   `codespec-write-cir --stop-when-reached` writes it and `codespec-run-cir` runs the calls (a
+   call names a function as Go spells it, `Echo` for a Java reader's `echo`, as the Go writer
+   exports it),
+   both looked up in `--adapters` when a case first needs them (a run whose every case the Go
+   writer writes does not; a case that needs them while they are missing is an error of the
+   run, never a verdict). A `raise` or a `foreign` statement in the module stops the run only
+   when the run reaches it: one on a path the calls do not take is judged like the rest. Its
+   output equal to `expected.txt` is a pass, a different one fails with the first differing
+   line. A stop is never a pass, and its kind decides the rest:
    - `foreign`, `raise`, `no handler`, `no body` and `unsupported` say that `cir/1` or the
      evaluator does not give the program's meaning (`docs/evaluator.md` E4; a `raise` leaves
      every caller up to a framework the evaluator does not run): `refused`, with the stop as the
@@ -158,8 +166,7 @@ A reader is checked by what it produces, run through a writer this repository tr
    - `panic`, `blocked` and `step budget` are the program running wrong, as a Go runner that
      crashes is: `run_failed`, claimed or not.
 
-   `codespec-write-cir` refusing the module (a `foreign` statement or a `raise`) is `refused`
-   with its message. The feature's entry then names the evaluator's program that judged it:
+   `codespec-write-cir` refusing the module (one it cannot read) is `refused` with its message. The feature's entry then names the evaluator's program that judged it:
    `"runner": "codespec-run-cir"` when it ran, `"runner": "codespec-write-cir"` when the writer
    refused, so nothing ran.
 

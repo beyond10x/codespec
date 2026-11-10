@@ -1116,7 +1116,7 @@
         "decl.newtype": "verified",
         "decl.struct": "verified",
         "decl.type_params": "verified",
-        "decl.union": "refused",
+        "decl.union": "verified",
         "decl.var": "verified",
         "decl.variadic": "refused",
         "expr.binop": "verified",
@@ -1193,7 +1193,7 @@
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
-        "stmt.foreign": "refused",
+        "stmt.foreign": "verified",
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
@@ -1448,10 +1448,7 @@
         "decl.newtype": "refused",
         "decl.struct": "verified",
         "decl.type_params": "verified",
-        "decl.union": {
-          "note": "Case decl-union: its module does not use the feature.",
-          "state": "refused"
-        },
+        "decl.union": "verified",
         "decl.var": "verified",
         "decl.variadic": "verified",
         "expr.binop": "verified",
@@ -1477,7 +1474,7 @@
         "expr.nil": "verified",
         "expr.spread": "verified",
         "expr.struct": "verified",
-        "expr.to_error": "refused",
+        "expr.to_error": "verified",
         "expr.to_iface": "verified",
         "expr.unop": "verified",
         "expr.var": "verified",
@@ -1532,7 +1529,7 @@
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
-        "stmt.lookup_else": "refused",
+        "stmt.lookup_else": "verified",
         "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
@@ -1791,7 +1788,10 @@
           "state": "refused"
         },
         "expr.struct": "verified",
-        "expr.to_error": "refused",
+        "expr.to_error": {
+          "note": "Case expr-to-error: its module does not use the feature.",
+          "state": "refused"
+        },
         "expr.to_iface": {
           "note": "Case expr-to-iface: its module does not use the feature.",
           "state": "refused"
@@ -1870,7 +1870,10 @@
         "stmt.if": "verified",
         "stmt.incr": "verified",
         "stmt.let": "verified",
-        "stmt.lookup_else": "refused",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: its module does not use the feature.",
+          "state": "refused"
+        },
         "stmt.raise": "refused",
         "stmt.return": "verified",
         "stmt.send": "refused",
@@ -2072,7 +2075,7 @@
         "decl.type_params": "refused",
         "decl.union": "refused",
         "decl.var": "verified",
-        "decl.variadic": "refused",
+        "decl.variadic": "verified",
         "expr.binop": "verified",
         "expr.call": "verified",
         "expr.call_value": "verified",
@@ -2096,7 +2099,7 @@
         "expr.nil": "verified",
         "expr.spread": "refused",
         "expr.struct": "verified",
-        "expr.to_error": "refused",
+        "expr.to_error": "verified",
         "expr.to_iface": "refused",
         "expr.unop": "verified",
         "expr.var": "verified",

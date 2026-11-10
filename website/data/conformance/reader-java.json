@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "java",
-    "version": "0.7.0",
-    "manifest_sha256": "ea4cd9843037196f8d25101c9c02858aeebd5fc2e13438479eb4c2e15597022e"
+    "version": "0.8.0",
+    "manifest_sha256": "6e716dd48229c39246c18c46023afba950cb6beaa16678083fa8fa2a6ad150b2"
   },
   "kit": {
-    "version": "0.7.0",
-    "sha256": "e6a98c9a458eb3ba4215331e970c1a8946e3bfbd0823070e1595096a7432cbd4"
+    "version": "0.8.0",
+    "sha256": "7084313f70a660884c736e4a92532b4f6bdad32ec499fe7b582b53d40a118137"
   },
   "corpus": {
-    "sha256": "35dcdf26a50411670cc21d724913923cc5796c269c0d9cadb061c0de1703033c"
+    "sha256": "63f695919382b40416adad8ae7de196d1a441c105fe879d57c2d9b80e05a6441"
   },
-  "codespec": "0.7.0",
+  "codespec": "0.8.0",
   "features": [
     {
       "id": "assign.add",
@@ -147,15 +147,12 @@
     },
     {
       "id": "decl.union",
-      "claimed": false,
-      "verdict": "refused",
+      "claimed": true,
+      "verdict": "pass",
       "cases": [
         "decl-union"
       ],
-      "case": "decl-union",
-      "step": 3,
-      "reason": "subject_missing",
-      "detail": "the module does not use decl.union outside a foreign statement"
+      "runner": "codespec-run-cir"
     },
     {
       "id": "decl.var",
@@ -355,9 +352,11 @@
     },
     {
       "id": "expr.to_error",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-error"
+      ]
     },
     {
       "id": "expr.to_iface",
@@ -774,9 +773,11 @@
     },
     {
       "id": "stmt.lookup_else",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-lookup-else"
+      ]
     },
     {
       "id": "stmt.raise",
@@ -997,12 +998,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 102,
-    "pass": 102,
+    "claimed": 105,
+    "pass": 105,
     "fail": 0,
-    "refused_unclaimed": 1,
+    "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 25,
+    "untested": 23,
     "boundary_fail": 0
   },
   "conforms": true

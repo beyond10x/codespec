@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T21:15:36Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-java-decl-union",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task adapters-check: ReaderTest 86 passed, UnionMemberTest 8 passed; cargo test -p b10x-codespec-eval --test runner --test go_spelling: 9 passed; reader java 103 claimed, 103 pass",
+    "reference": "5c3afcfe"
+  }
+}

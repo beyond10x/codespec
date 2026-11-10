@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T22:06:35Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-c-to-error-variadic",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-c --test to_error_variadic --test runtime: 74 passed; reader c 105 claimed, 105 pass on the merged tree",
+    "reference": "4acf3303"
+  }
+}
