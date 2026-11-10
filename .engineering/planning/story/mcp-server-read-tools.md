@@ -6,6 +6,7 @@ status: draft
 title: 'codespec mcp: a stdio server with the read tools'
 relations:
 - decomposes: epic:agent-mcp-server
+- depends_on: story:reach-three-valued
 scope:
 - confidence: inferred
   path: AGENTS.md
