@@ -45,6 +45,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
   Java reads the field before the call and the written Go after it.
 - `codespec-run-java` and `codespec-run-groovy` print a result of type `Object` as the value it
   holds.
+- A project read of `codespec-read-java` reads a second constructor (`New<Class>2`), a static
+  nested class, a `static final` field set by a literal or by a jar's static method with constant
+  arguments (`Logger.getLogger(C.class.getName())`) as a module-level variable, a field of a class
+  of another package of the project, and the `id` an entity inherits from `PanacheEntity`. It
+  refuses at its line a constructor calling `this(…)`, an inner class, a `static final` field set
+  otherwise, an access of a Panache entity's field whose getter or setter the entity declares, and
+  a class implementing `ExceptionMapper`. It records `@Entity`, `@Cacheable`, `@Id`,
+  `@GeneratedValue` and `@Column` on a class or its instance field in `persistence`. A package
+  read is unchanged. The pinned `hibernate-orm-panache-quickstart` reads with 12 refusals, down
+  from 25: 10 throws of a jar exception and 2 exception mappers, neither of which `cir/1` has a
+  form for.
+- `cir/1` modules have an optional field `persistence`: the persistence annotations of the module,
+  each with the type or field (`Type.field`) it marks, the annotation's simple name and its
+  arguments as written. Strict reading refuses a mark on a type or field the module lacks, a mark
+  that is no identifier and an empty argument. A module without it reads and writes as before.
 
 ## 0.6.1
 

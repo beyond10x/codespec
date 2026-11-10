@@ -56,10 +56,26 @@ and so is a signature with a generic type, which is erased to the bound.
 | Panache, `EntityManager`, `Query` and JDBC calls | externs of effect `db` |
 
 An `@Inject` type with no bean, or with several, is an extern. Anything else the reader cannot map
-stays `foreign` with one refusal. `@Entity` and the other persistence annotations are refusals: the class
-or method is still read. `@Transactional` is recorded in `transactional`, the keys of the functions that
+stays `foreign` with one refusal.
+
+A project read also maps what a package read refuses:
+
+| In the source | In the module |
+|---|---|
+| a second constructor | `New<Class>2` (the n-th: `New<Class><n>`); `new C(…)` calls the one Java chose |
+| a `static` nested class | a struct named as the class |
+| a `static final` field set by a literal or by a jar's static method with constant arguments, such as `Logger.getLogger(C.class.getName())` | a module-level variable with that initializer |
+| a field of a class of another package of the project | a field of that package's struct, of the type it has there |
+| the `id` a class extending `PanacheEntity` inherits | the struct's first field, nil until `persist()` sets it |
+
+It refuses, each at its line: a constructor calling `this(…)`, an inner class, a `static final`
+field set by anything else, a read of a Panache entity's field from outside it when the entity
+declares the field's getter or setter (Panache calls it instead), and a class implementing
+`ExceptionMapper`. `@Transactional` is recorded in `transactional`, the keys of the functions that
 run in a transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the
-`http` entry.
+`http` entry. `@Entity`, `@Cacheable`, `@Id`, `@GeneratedValue` and `@Column` on a class or its
+instance field are recorded in `persistence`, each with the type or field it marks and its arguments
+as written; elsewhere they are refusals.
 
 A `throw` of an exception outside the package's checked-exception hierarchy, such as a
 `WebApplicationException` from a jar, is refused and kept as `foreign`. `cir/1` has no statement

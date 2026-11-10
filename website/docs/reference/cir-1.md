@@ -37,6 +37,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `name` | `string` | yes |  |
 | `opaque` | list of [`Opaque`](#opaque) | no | Every function the module declares that is not in `funcs`: a declaration the reader refused, or one without a body in the source language. Each keeps its name, receiver, position, reason and the calls it makes, so the call graph has no hole where it is. |
 | `path` | `string` | no | The module's import path in the source language's spelling (`net/http`), when the reader knows it: the name an `extern` of another module uses for it. |
+| `persistence` | list of [`Persistence`](#persistence) | no | The marks (Java: JPA annotations) by which an object-relational mapper stores the module's types: on a type of `types` (`T`) or a field of one (`T.f`). Source order. |
 | `reader` | [`Reader`](#reader) | yes | Which reader produced this document. |
 | `refusals` | list of [`Refusal`](#refusal) | no | Every construct the reader kept as `foreign` or could not read. |
 | `transactional` | list of `string` | no | The keys (`F` or `T.m`) of the functions of `funcs` that run in a transaction: the container opens one around each call. Source order. |
@@ -45,7 +46,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 
 ## Definitions
 
-35 definitions: [`Bean`](#bean), [`CallRef`](#callref), [`Case`](#case), [`ChanDir`](#chandir), [`ConstArg`](#constarg), [`ConstDecl`](#constdecl), [`Entry`](#entry), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`FloatBits`](#floatbits), [`ForeignInit`](#foreigninit), [`Func`](#func), [`IfaceMethod`](#ifacemethod), [`Inject`](#inject), [`IntWidth`](#intwidth), [`Interface`](#interface), [`Linkname`](#linkname), [`MethodEntry`](#methodentry), [`MethodSet`](#methodset), [`MethodSig`](#methodsig), [`Opaque`](#opaque), [`Param`](#param), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`TypeParam`](#typeparam), [`UnionVariant`](#unionvariant), [`VarDecl`](#vardecl), [`Variant`](#variant).
+36 definitions: [`Bean`](#bean), [`CallRef`](#callref), [`Case`](#case), [`ChanDir`](#chandir), [`ConstArg`](#constarg), [`ConstDecl`](#constdecl), [`Entry`](#entry), [`ErrorVar`](#errorvar), [`Expr`](#expr), [`Extern`](#extern), [`Facts`](#facts), [`Field`](#field), [`FieldInit`](#fieldinit), [`FloatBits`](#floatbits), [`ForeignInit`](#foreigninit), [`Func`](#func), [`IfaceMethod`](#ifacemethod), [`Inject`](#inject), [`IntWidth`](#intwidth), [`Interface`](#interface), [`Linkname`](#linkname), [`MethodEntry`](#methodentry), [`MethodSet`](#methodset), [`MethodSig`](#methodsig), [`Opaque`](#opaque), [`Param`](#param), [`Persistence`](#persistence), [`Reader`](#reader), [`Refusal`](#refusal), [`Stmt`](#stmt), [`Type`](#type), [`TypeDecl`](#typedecl), [`TypeParam`](#typeparam), [`UnionVariant`](#unionvariant), [`VarDecl`](#vardecl), [`Variant`](#variant).
 
 ## Bean
 
@@ -330,6 +331,16 @@ A function the module declares whose body `cir/1` does not hold.
 | `name` | `string` | yes |  |
 | `t` | [`Type`](#type) | yes |  |
 | `variadic` | `boolean` | no | The last parameter of a function takes zero or more arguments, or one `spread` slice; `t` is the slice it is inside the body (Go `...T`). |
+
+## Persistence
+
+One persistence mark: an annotation of a type or of a field of it that tells an object-relational mapper how its objects are stored.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `args` | list of `string` | no | Its arguments as written, `name = value` each, in source order. |
+| `at` | `string` | yes | `T`, a type of `types`, or `T.f`, a field of it. |
+| `mark` | `string` | yes | The annotation without its package: `Entity`, `Cacheable`, `Id`, `GeneratedValue`, `Column`. |
 
 ## Reader
 

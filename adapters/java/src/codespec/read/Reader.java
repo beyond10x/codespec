@@ -162,6 +162,17 @@ import javax.tools.ToolProvider;
  * externs, and Panache, {@code EntityManager} and JDBC calls are externs ({@link
  * #effectsSummary} gives them {@code net} and {@code db}).
  *
+ * <p>A project read (not a package's, which refuses them as before) also maps, each listed with its
+ * refused forms in README.md: a second constructor as {@code New<Class>2}, the n-th as {@code
+ * New<Class><n>}; a static nested class as a struct of its simple name; a {@code static final}
+ * field set by a literal or by a jar's static method with constant arguments as a module-level
+ * variable, {@code C.class.getName()} as the literal of the class's binary name; a field of a class
+ * another package of the project reads, as that package types it; and the {@code id} a class
+ * extending {@code PanacheEntity} inherits, as the struct's first field. It records the JPA
+ * annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and {@code
+ * @Column} on a class or its instance field in {@code persistence}, each with what it marks and its
+ * arguments as written. A class implementing {@code ExceptionMapper} is refused at its line.
+ *
  * <p>Everything else is kept as a {@code foreign} statement holding its Java source, or, for a
  * declaration cir/1 has no foreign form for, refused at its line; either way it is listed as a
  * refusal. Implicit numeric conversions are refused except for an integer literal, whose constant
@@ -206,6 +217,13 @@ public final class Reader {
     private final List<Object> outBeans = new ArrayList<>();
     private final List<Object> outInjects = new ArrayList<>();
     private final List<String> outTransactional = new ArrayList<>();
+    private final List<Object> outPersistence = new ArrayList<>();
+    /**
+     * The JPA annotations a project read records in {@code persistence} instead of refusing, on a
+     * class and on its instance fields; anywhere else they stay refusals.
+     */
+    private static final Set<String> PERSISTENCE = Set.of("jakarta.persistence.Entity", "jakarta.persistence.Cacheable",
+        "jakarta.persistence.Id", "jakarta.persistence.GeneratedValue", "jakarta.persistence.Column");
 
     private static final String REST_CLIENT = "org.eclipse.microprofile.rest.client.inject.RegisterRestClient";
     private static final String REST_CLIENT_QUALIFIER = "org.eclipse.microprofile.rest.client.inject.RestClient";
@@ -217,6 +235,11 @@ public final class Reader {
     private static final String SCHEDULED = "io.quarkus.scheduler.Scheduled";
     private static final String INCOMING = "org.eclipse.microprofile.reactive.messaging.Incoming";
     private static final List<String> HTTP_METHODS = List.of("GET", "POST", "PUT", "DELETE", "PATCH");
+    private static final String EXCEPTION_MAPPER = "jakarta.ws.rs.ext.ExceptionMapper";
+    /** The Panache superclass whose one field, {@code id}, a project read gives every entity extending it. */
+    private static final String PANACHE_ENTITY = "io.quarkus.hibernate.orm.panache.PanacheEntity";
+    private static final List<String> PANACHE_ENTITY_BASES = List.of(
+        "io.quarkus.hibernate.orm.panache.PanacheEntityBase", "io.quarkus.hibernate.reactive.panache.PanacheEntityBase");
     private static final List<String> SCOPES = List.of(
         "jakarta.enterprise.context.ApplicationScoped", "jakarta.inject.Singleton",
         "jakarta.enterprise.context.RequestScoped", "jakarta.enterprise.context.Dependent");
@@ -284,8 +307,17 @@ public final class Reader {
     /** Every compilation unit, in file order. */
     private final List<CompilationUnitTree> units = new ArrayList<>();
 
-    /** Top-level type declarations, in file then source order. */
+    /**
+     * Top-level type declarations, in file then source order; in a project read each followed by the
+     * static classes nested in it that are read ({@link #nested}).
+     */
     private final List<TreePath> decls = new ArrayList<>();
+    /** The static nested classes of a project read that are read as structs of their own. */
+    private final Set<Tree> nested = new HashSet<>();
+    /** Why each class nested in a top-level class of a project read is not read. */
+    private final Map<Tree, String> nestedWhy = new HashMap<>();
+    /** The structs the other packages of a project read, whose fields this module reads too. */
+    private final Set<TypeElement> otherStructs = new HashSet<>();
     private final Set<TypeElement> structs = new HashSet<>();
     private final Set<TypeElement> enums = new HashSet<>();
     private final Set<TypeElement> interfaces = new HashSet<>();
@@ -410,6 +442,12 @@ public final class Reader {
         final Set<String> projectClasses = new HashSet<>();
         /** The beans of the project: a class with a scope annotation, in source order. */
         final List<TypeElement> beans = new ArrayList<>();
+        /**
+         * The compilation units of each package and its classification, made once: what another
+         * package's module reads of its classes ({@link #otherPackages}).
+         */
+        final Map<String, List<CompilationUnitTree>> packages = new TreeMap<>();
+        final Map<String, Reader> classified = new HashMap<>();
 
         Analysis(JavacTask task, List<CompilationUnitTree> units) {
             this.task = task;
@@ -506,6 +544,7 @@ public final class Reader {
         for (CompilationUnitTree cu : a.units) {
             byPackage.computeIfAbsent(cu.getPackageName() == null ? "" : cu.getPackageName().toString(), k -> new ArrayList<>()).add(cu);
         }
+        a.packages.putAll(byPackage);
         Map<String, Map<String, Object>> out = new TreeMap<>();
         for (Map.Entry<String, List<CompilationUnitTree>> e : byPackage.entrySet()) {
             out.put(e.getKey(), new Reader(a, true).module(e.getValue()));
@@ -529,9 +568,18 @@ public final class Reader {
         for (CompilationUnitTree cu : a.units) {
             for (Tree t : cu.getTypeDecls()) {
                 if (t instanceof ClassTree) {
-                    TypeElement te = r.element(new TreePath(new TreePath(cu), t));
-                    if (te.getKind() == ElementKind.CLASS && !te.getModifiers().contains(Modifier.ABSTRACT) && r.scope(te) != null) {
-                        a.beans.add(te);
+                    TreePath tp = new TreePath(new TreePath(cu), t);
+                    List<TypeElement> classes = new ArrayList<>(List.of(r.element(tp)));
+                    for (Tree m : ((ClassTree) t).getMembers()) {
+                        if (m instanceof ClassTree) {
+                            classes.add(r.element(new TreePath(tp, m)));
+                        }
+                    }
+                    for (TypeElement te : classes) {
+                        if (te.getKind() == ElementKind.CLASS && !te.getModifiers().contains(Modifier.ABSTRACT) && r.scope(te) != null
+                            && (te.getNestingKind() == javax.lang.model.element.NestingKind.TOP_LEVEL || te.getModifiers().contains(Modifier.STATIC))) {
+                            a.beans.add(te);
+                        }
                     }
                 }
             }
@@ -635,30 +683,11 @@ public final class Reader {
     // ---- the module ----
 
     private Map<String, Object> module(List<CompilationUnitTree> units) throws Failure {
-        String pkg = null;
-        for (CompilationUnitTree cu : units) {
-            String p = cu.getPackageName() == null ? "" : cu.getPackageName().toString();
-            if (p.isEmpty()) {
-                throw new Failure(fileName(cu) + ": no package declaration");
-            }
-            if (pkg != null && !pkg.equals(p)) {
-                throw new Failure(fileName(cu) + ": package " + p + ", other files are in " + pkg);
-            }
-            pkg = p;
-            this.units.add(cu);
-            try {
-                sources.put(cu, cu.getSourceFile().getCharContent(true).toString());
-            } catch (IOException e) {
-                throw new Failure(fileName(cu) + ": " + e.getMessage());
-            }
-            for (Tree t : cu.getTypeDecls()) {
-                if (t instanceof ClassTree) {
-                    decls.add(new TreePath(new TreePath(cu), t));
-                }
-            }
+        prepare(units);
+        String pkg = pkgName;
+        if (project) {
+            otherPackages();
         }
-        pkgName = pkg;
-        classify();
         signatures();
         for (TreePath p : decls) {
             emit(p);
@@ -711,7 +740,110 @@ public final class Reader {
         if (!outTransactional.isEmpty()) {
             doc.put("transactional", new ArrayList<Object>(outTransactional));
         }
+        if (!outPersistence.isEmpty()) {
+            doc.put("persistence", outPersistence);
+        }
         return doc;
+    }
+
+    /**
+     * What the other packages of the project read, which this module's reads of their classes
+     * follow: the structs they make, and the fields of those that hold null until assigned.
+     */
+    private void otherPackages() throws Failure {
+        for (Map.Entry<String, List<CompilationUnitTree>> e : analysis.packages.entrySet()) {
+            if (e.getKey().equals(pkgName)) {
+                continue;
+            }
+            Reader other = analysis.classified.get(e.getKey());
+            if (other == null) {
+                other = new Reader(analysis, true);
+                other.prepare(e.getValue());
+                analysis.classified.put(e.getKey(), other);
+            }
+            otherStructs.addAll(other.structs);
+            unassigned.addAll(other.unassigned);
+        }
+    }
+
+    /** Take in the units of one package and classify its declarations. */
+    private void prepare(List<CompilationUnitTree> units) throws Failure {
+        String pkg = null;
+        for (CompilationUnitTree cu : units) {
+            String p = cu.getPackageName() == null ? "" : cu.getPackageName().toString();
+            if (p.isEmpty()) {
+                throw new Failure(fileName(cu) + ": no package declaration");
+            }
+            if (pkg != null && !pkg.equals(p)) {
+                throw new Failure(fileName(cu) + ": package " + p + ", other files are in " + pkg);
+            }
+            pkg = p;
+            this.units.add(cu);
+            try {
+                sources.put(cu, cu.getSourceFile().getCharContent(true).toString());
+            } catch (IOException e) {
+                throw new Failure(fileName(cu) + ": " + e.getMessage());
+            }
+            for (Tree t : cu.getTypeDecls()) {
+                if (t instanceof ClassTree) {
+                    decls.add(new TreePath(new TreePath(cu), t));
+                }
+            }
+        }
+        pkgName = pkg;
+        if (project) {
+            nestedClasses();
+        }
+        classify();
+    }
+
+    /**
+     * The classes nested in the top-level classes of a project read: each static class is read as a
+     * struct of its own simple name, after the class it is nested in; an inner class, a nested
+     * interface, enum or record, or a nested class whose simple name another type of the package has,
+     * is refused at its line ({@link #nestedWhy}). A static nested class has no object of the
+     * enclosing class, so nothing of it is lost; an inner class's objects hold one, which a cir/1
+     * struct has no field for.
+     */
+    private void nestedClasses() {
+        Set<String> names = new HashSet<>();
+        for (TreePath p : decls) {
+            names.add(classTree(p).getSimpleName().toString());
+        }
+        List<TreePath> all = new ArrayList<>();
+        for (TreePath p : decls) {
+            all.add(p);
+            if (element(p).getKind() != ElementKind.CLASS) {
+                continue;
+            }
+            for (Tree m : classTree(p).getMembers()) {
+                if (!(m instanceof ClassTree)) {
+                    continue;
+                }
+                TreePath np = new TreePath(p, m);
+                TypeElement ne = element(np);
+                String n = ne.getSimpleName().toString();
+                String why = null;
+                if (ne.getKind() != ElementKind.CLASS) {
+                    why = "nested " + ne.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + ": only a static nested class is read";
+                } else if (!ne.getModifiers().contains(Modifier.STATIC)) {
+                    why = "inner class: each object holds the object of " + element(p).getSimpleName()
+                        + " it was made in, which a cir/1 struct has no field for";
+                } else if (names.contains(n)) {
+                    why = "a nested class named as another type of the package: the types of a cir/1 module have one name each";
+                }
+                if (why != null) {
+                    nestedWhy.put(m, why);
+                    continue;
+                }
+                names.add(n);
+                nested.add(m);
+                all.add(np);
+            }
+        }
+        decls.clear();
+        decls.addAll(all);
     }
 
     private static String file(String pos) {
@@ -774,7 +906,14 @@ public final class Reader {
             TypeElement te = element(p);
             ClassTree ct = classTree(p);
             CompilationUnitTree cu = p.getCompilationUnit();
-            refuseAnnotations(cu, ct.getModifiers());
+            if (project && te.getKind() == ElementKind.CLASS && exceptionMapper(te)) {
+                refuseDecl(cu, ct, ct.getModifiers(), te.getSimpleName().toString(), "a class implementing ExceptionMapper:"
+                    + " the framework calls it with an exception a resource method throws, and cir/1 has no thrown exception"
+                    + " to hand it");
+                refused.add(te);
+                continue;
+            }
+            refuseAnnotations(cu, ct.getModifiers(), te.getKind() == ElementKind.CLASS);
             String why = null;
             switch (te.getKind()) {
                 case ANNOTATION_TYPE:
@@ -956,8 +1095,57 @@ public final class Reader {
                 for (VariableTree f : nullableFields(p)) {
                     unassigned.add((VariableElement) trees.getElement(new TreePath(p, f)));
                 }
+                if (extendsPanacheEntity(element(p))) {
+                    unassigned.add(panacheId());
+                }
             }
         }
+    }
+
+    /** Whether a class of a project read is a JAX-RS {@code ExceptionMapper}. */
+    private boolean exceptionMapper(TypeElement te) {
+        TypeElement em = elements.getTypeElement(EXCEPTION_MAPPER);
+        return em != null && types.isAssignable(types.erasure(te.asType()), types.erasure(em.asType()));
+    }
+
+    /**
+     * The field {@code id} of Panache's {@code PanacheEntity}, or null without it on the class path.
+     * The jar declares it {@code public Long id} without an initializer, and no constructor of the
+     * class assigns it: it is null until {@code persist()} gives the entity its key.
+     */
+    private VariableElement panacheId() {
+        TypeElement pe = elements.getTypeElement(PANACHE_ENTITY);
+        if (pe == null) {
+            return null;
+        }
+        for (Element e : pe.getEnclosedElements()) {
+            if (e.getKind() == ElementKind.FIELD && e.getSimpleName().contentEquals("id") && !e.getModifiers().contains(Modifier.STATIC)) {
+                return (VariableElement) e;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether a class of a project read extends {@code PanacheEntity} directly: its struct holds the
+     * inherited {@code id} before its own fields.
+     */
+    private boolean extendsPanacheEntity(TypeElement te) {
+        return project && qname(te.getSuperclass()).equals(PANACHE_ENTITY) && panacheId() != null;
+    }
+
+    /**
+     * Whether {@code te} is a Panache entity: Panache makes every access of a public field of one
+     * from outside the class a call of the field's getter or setter.
+     */
+    private boolean panacheEntity(TypeElement te) {
+        for (String b : PANACHE_ENTITY_BASES) {
+            TypeElement be = elements.getTypeElement(b);
+            if (be != null && types.isAssignable(types.erasure(te.asType()), types.erasure(be.asType()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1403,11 +1591,15 @@ public final class Reader {
     }
 
     private String structShape(TreePath p) {
+        boolean inheritsId = extendsPanacheEntity(element(p));
         for (Tree m : classTree(p).getMembers()) {
             if (m instanceof VariableTree) {
                 Element e = trees.getElement(new TreePath(p, m));
                 if (e.getModifiers().contains(Modifier.STATIC)) {
                     continue;
+                }
+                if (inheritsId && e.getSimpleName().contentEquals("id")) {
+                    return "field id hides PanacheEntity.id: a cir/1 struct has one field of a name";
                 }
                 try {
                     typeOf(e.asType());
@@ -1439,17 +1631,23 @@ public final class Reader {
             CompilationUnitTree cu = p.getCompilationUnit();
             Set<String> methodNames = new HashSet<>();
             boolean explicitCtor = false;
+            boolean declaresCtor = false;
             for (Tree m : classTree(p).getMembers()) {
                 TreePath mp = new TreePath(p, m);
                 if (m instanceof ClassTree) {
-                    refuseDecl(cu, m, ((ClassTree) m).getModifiers(), ((ClassTree) m).getSimpleName().toString(),
-                        "nested class: only top-level classes are read");
+                    if (nested.contains(m)) {
+                        continue;
+                    }
+                    String why = !project ? "nested class: only top-level classes are read"
+                        : nestedWhy.containsKey(m) ? nestedWhy.get(m)
+                        : "a class nested in a nested class: only a class nested in a top-level class is read";
+                    refuseDecl(cu, m, ((ClassTree) m).getModifiers(), ((ClassTree) m).getSimpleName().toString(), why);
                     continue;
                 }
                 if (m instanceof VariableTree) {
                     VariableTree vt = (VariableTree) m;
-                    refuseAnnotations(cu, vt.getModifiers());
                     VariableElement ve = (VariableElement) trees.getElement(mp);
+                    refuseAnnotations(cu, vt.getModifiers(), !ve.getModifiers().contains(Modifier.STATIC));
                     if (!ve.getModifiers().contains(Modifier.STATIC)) {
                         continue;
                     }
@@ -1458,6 +1656,18 @@ public final class Reader {
                     boolean mutable = !ve.getModifiers().contains(Modifier.FINAL);
                     if (mutable && !project) {
                         why = varShape(vt, ve);
+                        if (why == null && (funcNames.contains(vname) || consts.containsValue(vname) || vars.containsValue(vname))) {
+                            why = "a second module-level name " + vname;
+                        }
+                        if (why == null) {
+                            vars.put(ve, vname);
+                        } else {
+                            refuseDecl(cu, m, vt.getModifiers(), te.getSimpleName() + "." + vt.getName(), why);
+                        }
+                        continue;
+                    }
+                    if (project && !mutable && ve.getConstantValue() == null) {
+                        why = staticFinalShape(mp, vt, ve);
                         if (why == null && (funcNames.contains(vname) || consts.containsValue(vname) || vars.containsValue(vname))) {
                             why = "a second module-level name " + vname;
                         }
@@ -1500,11 +1710,17 @@ public final class Reader {
                     refuseAnnotations(cu, param.getModifiers());
                 }
                 boolean ctor = ee.getKind() == ElementKind.CONSTRUCTOR;
-                String name = ctor ? "New" + te.getSimpleName() : ee.getSimpleName().toString();
+                declaresCtor |= ctor;
+                String name = ctor ? (project ? ctorName(ee) : "New" + te.getSimpleName()) : ee.getSimpleName().toString();
                 String what = ctor ? te.getSimpleName() + "(…)" : te.getSimpleName() + "." + name + "(…)";
                 String why = null;
-                if (ctor && explicitCtor) {
+                if (ctor && project && callsThis(mt)) {
+                    why = "a constructor calling this(…): Java runs the field initializers once, in the constructor it calls,"
+                        + " and cir/1 has no call of a constructor on an object already made";
+                } else if (ctor && explicitCtor && !project) {
                     why = "a second constructor: overloading is outside cir/1";
+                } else if (ctor && project && !name.equals("New" + te.getSimpleName()) && funcNames.contains(name)) {
+                    why = "a second function named " + name + " in the package";
                 } else if (!ctor && methodNames.contains(name)) {
                     why = "a second method named " + name + ": overloading is outside cir/1";
                 } else if (!ctor && ee.getModifiers().contains(Modifier.STATIC) && funcNames.contains(name)) {
@@ -1537,8 +1753,11 @@ public final class Reader {
                 }
                 fns.put(ee, fn);
                 if (ctor) {
+                    if (!explicitCtor) {
+                        ctors.put(te, fn);
+                    }
                     explicitCtor = true;
-                    ctors.put(te, fn);
+                    funcNames.add(name);
                 } else {
                     methodNames.add(name);
                     if (fn.isStatic) {
@@ -1546,7 +1765,7 @@ public final class Reader {
                     }
                 }
             }
-            if (!explicitCtor) {
+            if (!explicitCtor && !(project && declaresCtor)) {
                 Fn fn = new Fn();
                 fn.name = "New" + te.getSimpleName();
                 fn.exported = te.getModifiers().contains(Modifier.PUBLIC);
@@ -1557,6 +1776,114 @@ public final class Reader {
                 ctors.put(te, fn);
             }
         }
+    }
+
+    /**
+     * The function a project read makes of a constructor: {@code New<Class>} for the first the class
+     * declares, {@code New<Class><n>} for the n-th after it, in source order, read or refused; a
+     * call names the one javac chose. The default constructor javac adds is {@code New<Class>}.
+     */
+    private String ctorName(ExecutableElement ce) {
+        TypeElement te = (TypeElement) ce.getEnclosingElement();
+        int i = 0;
+        for (Element e : te.getEnclosedElements()) {
+            if (e.getKind() != ElementKind.CONSTRUCTOR || generated(e)) {
+                continue;
+            }
+            if (e.equals(ce)) {
+                break;
+            }
+            i++;
+        }
+        return "New" + te.getSimpleName() + (i == 0 ? "" : String.valueOf(i + 1));
+    }
+
+    /** Whether a constructor starts by calling another of its class, {@code this(…)}. */
+    private static boolean callsThis(MethodTree mt) {
+        List<? extends StatementTree> body = mt.getBody() == null ? List.of() : mt.getBody().getStatements();
+        if (body.isEmpty() || !(body.get(0) instanceof ExpressionStatementTree)) {
+            return false;
+        }
+        ExpressionTree e = ((ExpressionStatementTree) body.get(0)).getExpression();
+        return e instanceof MethodInvocationTree && ((MethodInvocationTree) e).getMethodSelect() instanceof IdentifierTree
+            && ((IdentifierTree) ((MethodInvocationTree) e).getMethodSelect()).getName().contentEquals("this");
+    }
+
+    /**
+     * Why a {@code static final} field of a project read that is not a compile-time constant is not
+     * read as a module-level variable, or null. Java runs its initializer when it first uses the
+     * class, cir/1 when it loads the module; the value is the same when the initializer is a literal,
+     * or a call of a static method of a jar whose arguments are literals, constants or {@code
+     * C.class.getName()}, and the method gives the same value whenever it is called (README.md,
+     * Assumptions). A call of the module's own code or of a value computed at run time could see
+     * another state at load than at first use.
+     */
+    private String staticFinalShape(TreePath fp, VariableTree vt, VariableElement ve) {
+        try {
+            typeOf(ve.asType());
+        } catch (Unsupported u) {
+            return u.getMessage();
+        }
+        ExpressionTree init = vt.getInitializer();
+        String why = "a static field initialized other than by a literal or by a call of a jar's static method with constant"
+            + " arguments: Java runs the initializer when it first uses the class, a module-level variable is set when the"
+            + " module is loaded";
+        if (init == null || init.getKind() == Tree.Kind.NULL_LITERAL || init.getKind() == Tree.Kind.CHAR_LITERAL) {
+            return why;
+        }
+        TreePath ip = new TreePath(fp, init);
+        if (!(init instanceof LiteralTree)) {
+            if (!(init instanceof MethodInvocationTree) || !(trees.getElement(ip) instanceof ExecutableElement)) {
+                return why;
+            }
+            ExecutableElement m = (ExecutableElement) trees.getElement(ip);
+            TypeElement owner = (TypeElement) m.getEnclosingElement();
+            if (!m.getModifiers().contains(Modifier.STATIC) || isProjectClass(owner) || owner.getQualifiedName().toString().startsWith("java.")) {
+                return why;
+            }
+            for (ExpressionTree a : ((MethodInvocationTree) init).getArguments()) {
+                TreePath ap = new TreePath(ip, a);
+                Element ae = trees.getElement(ap);
+                boolean constant = a instanceof LiteralTree && a.getKind() != Tree.Kind.NULL_LITERAL
+                    || ae instanceof VariableElement && ((VariableElement) ae).getConstantValue() != null
+                    || classNameOf(ap) != null;
+                if (!constant) {
+                    return why;
+                }
+            }
+        }
+        try {
+            Map<String, Object> t = typeOf(ve.asType());
+            checkTyped(coerce(expr(ip, new Ctx(null, fp.getCompilationUnit(), false)), t));
+        } catch (Unsupported u) {
+            return u.getMessage();
+        }
+        return null;
+    }
+
+    /**
+     * The binary name of the class {@code C} when {@code p} is {@code C.class.getName()} of a class
+     * or interface, which is the name {@code getName} returns; else null.
+     */
+    private String classNameOf(TreePath p) {
+        if (!(p.getLeaf() instanceof MethodInvocationTree)) {
+            return null;
+        }
+        MethodInvocationTree mi = (MethodInvocationTree) p.getLeaf();
+        if (!mi.getArguments().isEmpty() || !(mi.getMethodSelect() instanceof MemberSelectTree)) {
+            return null;
+        }
+        MemberSelectTree sel = (MemberSelectTree) mi.getMethodSelect();
+        if (!sel.getIdentifier().contentEquals("getName") || !(sel.getExpression() instanceof MemberSelectTree)
+            || !((MemberSelectTree) sel.getExpression()).getIdentifier().contentEquals("class")) {
+            return null;
+        }
+        ExpressionTree of = ((MemberSelectTree) sel.getExpression()).getExpression();
+        TypeMirror t = trees.getTypeMirror(new TreePath(new TreePath(new TreePath(p, sel), sel.getExpression()), of));
+        if (t == null || t.getKind() != TypeKind.DECLARED) {
+            return null;
+        }
+        return elements.getBinaryName((TypeElement) ((DeclaredType) t).asElement()).toString();
     }
 
     /**
@@ -1745,6 +2072,12 @@ public final class Reader {
         d.put("name", name);
         d.put("exported", te.getModifiers().contains(Modifier.PUBLIC));
         List<Object> fields = new ArrayList<>();
+        if (extendsPanacheEntity(te)) {
+            Map<String, Object> f = Json.obj();
+            f.put("name", "id");
+            f.put("t", fieldType(panacheId()));
+            fields.add(f);
+        }
         for (Tree m : ct.getMembers()) {
             if (m instanceof VariableTree) {
                 Element e = trees.getElement(new TreePath(p, m));
@@ -1762,7 +2095,7 @@ public final class Reader {
         outTypes.add(d);
         layout.add("type:" + name);
         Fn ctor = ctors.get(te);
-        if (ctor.path == p) {
+        if (ctor != null && ctor.path == p) {
             emitFunc(ctor);
         }
         for (Tree m : ct.getMembers()) {
@@ -1784,7 +2117,35 @@ public final class Reader {
             }
         }
         if (project) {
+            persistence(cu, name, ct.getModifiers());
+            for (Tree m : ct.getMembers()) {
+                if (m instanceof VariableTree && !trees.getElement(new TreePath(p, m)).getModifiers().contains(Modifier.STATIC)) {
+                    persistence(cu, name + "." + ((VariableTree) m).getName(), ((VariableTree) m).getModifiers());
+                }
+            }
             framework(p, te, ct);
+        }
+    }
+
+    /** The JPA annotations of a struct or of one of its fields, {@code at}, as {@code persistence} marks. */
+    private void persistence(CompilationUnitTree cu, String at, ModifiersTree mods) {
+        for (AnnotationTree a : mods.getAnnotations()) {
+            TypeMirror t = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
+            String qn = t == null ? "" : qname(t);
+            if (!PERSISTENCE.contains(qn)) {
+                continue;
+            }
+            Map<String, Object> x = Json.obj();
+            x.put("at", at);
+            x.put("mark", qn.substring(qn.lastIndexOf('.') + 1));
+            List<Object> args = new ArrayList<>();
+            for (ExpressionTree e : a.getArguments()) {
+                args.add(source(cu, e));
+            }
+            if (!args.isEmpty()) {
+                x.put("args", args);
+            }
+            outPersistence.add(x);
         }
     }
 
@@ -3102,6 +3463,9 @@ public final class Reader {
         Element e = trees.getElement(p);
         if (p.getLeaf() instanceof NewClassTree) {
             TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(p));
+            if (project && structs.contains(te) && fns.get(e) != null) {
+                return fns.get(e);
+            }
             return structs.contains(te) ? ctors.get(te) : null;
         }
         if (!(e instanceof ExecutableElement)) {
@@ -3315,7 +3679,7 @@ public final class Reader {
                 return varRef(id.getName().toString(), typeOf(trees.getTypeMirror(p)));
             case FIELD:
             case ENUM_CONSTANT:
-                return fieldRef((VariableElement) el, null, ctx);
+                return fieldRef((VariableElement) el, null, ctx, ctx == null || ctx.fn == null ? null : ctx.fn.cls);
             default:
                 throw new Unsupported(el.getKind().toString().toLowerCase(Locale.ROOT) + " " + id.getName() + " as a value");
         }
@@ -3340,10 +3704,20 @@ public final class Reader {
             }
             return fieldRef((VariableElement) el, null, ctx);
         }
-        return fieldRef((VariableElement) el, expr(new TreePath(p, ms.getExpression()), ctx), ctx);
+        TypeMirror xt = trees.getTypeMirror(xp);
+        TypeElement holder = xt != null && xt.getKind() == TypeKind.DECLARED ? (TypeElement) ((DeclaredType) xt).asElement() : null;
+        return fieldRef((VariableElement) el, expr(new TreePath(p, ms.getExpression()), ctx), ctx, holder);
     }
 
     private Map<String, Object> fieldRef(VariableElement el, Map<String, Object> recv, Ctx ctx) {
+        return fieldRef(el, recv, ctx, null);
+    }
+
+    /**
+     * A field read or written; {@code holder} is the class of the object it is reached through, the
+     * receiver's static type or the class of {@code this}, or null when not known.
+     */
+    private Map<String, Object> fieldRef(VariableElement el, Map<String, Object> recv, Ctx ctx, TypeElement holder) {
         TypeElement owner = (TypeElement) el.getEnclosingElement();
         String name = el.getSimpleName().toString();
         if (el.getKind() == ElementKind.ENUM_CONSTANT) {
@@ -3373,8 +3747,21 @@ public final class Reader {
             }
             throw new Unsupported("static field " + owner.getSimpleName() + "." + name);
         }
-        if (!structs.contains(owner)) {
+        boolean inherited = project && el.equals(panacheId()) && holder != null
+            && (structs.contains(holder) || otherStructs.contains(holder)) && extendsPanacheEntity(holder);
+        boolean other = project && otherStructs.contains(owner) && recv != null;
+        if (!structs.contains(owner) && !inherited && !other) {
+            if (project && isProjectClass(owner) && !packageOf(owner).equals(pkgName)) {
+                throw new Unsupported("field of " + owner.getQualifiedName() + ", which its package does not read");
+            }
             throw new Unsupported("field of " + owner.getQualifiedName() + ", which is not read");
+        }
+        if (project) {
+            String accessor = panacheAccessor(holder != null ? holder : owner, owner, name, ctx);
+            if (accessor != null) {
+                throw new Unsupported("field " + name + " of the Panache entity " + (holder != null ? holder : owner).getSimpleName()
+                    + " outside it: Panache makes the access a call of " + accessor + ", which the entity declares");
+            }
         }
         Map<String, Object> x = recv != null ? recv : thisRef(ctx);
         Map<String, Object> f = Json.obj();
@@ -3383,6 +3770,35 @@ public final class Reader {
         f.put("name", name);
         f.put("t", fieldType(el));
         return derefed(el) ? unop("*", f, typeOf(el.asType())) : f;
+    }
+
+    /**
+     * The getter or setter of field {@code name} a Panache entity declares, when the access is from
+     * outside the entity: Panache turns such an access into a call of it, which runs the entity's own
+     * code. Null for any other access.
+     */
+    private String panacheAccessor(TypeElement holder, TypeElement owner, String name, Ctx ctx) {
+        if (!panacheEntity(holder)) {
+            return null;
+        }
+        TypeElement from = ctx == null || ctx.fn == null ? null : ctx.fn.cls;
+        if (holder.equals(from) || owner.equals(from)) {
+            return null;
+        }
+        String cap = Character.toUpperCase(name.charAt(0)) + name.substring(1);
+        Set<String> accessors = Set.of("get" + cap, "is" + cap, "set" + cap);
+        for (TypeElement c = holder; c != null; ) {
+            for (Element m : c.getEnclosedElements()) {
+                if (m.getKind() == ElementKind.METHOD && accessors.contains(m.getSimpleName().toString())) {
+                    return c.getSimpleName() + "." + m.getSimpleName();
+                }
+            }
+            if (c.equals(owner) || c.getSuperclass().getKind() != TypeKind.DECLARED) {
+                break;
+            }
+            c = (TypeElement) types.asElement(c.getSuperclass());
+        }
+        return null;
     }
 
     /**
@@ -3463,6 +3879,9 @@ public final class Reader {
         TypeElement owner = (TypeElement) m.getEnclosingElement();
         String on = owner.getQualifiedName().toString();
         String name = m.getSimpleName().toString();
+        if (project && on.equals("java.lang.Class") && classNameOf(p) != null) {
+            return lit(quote(classNameOf(p)), tString());
+        }
         if (on.equals("java.lang.Class") || on.startsWith("java.lang.reflect.") || name.equals("getClass")) {
             throw new Unsupported("reflection: " + owner.getSimpleName() + "." + name + " is outside cir/1");
         }
@@ -3798,6 +4217,12 @@ public final class Reader {
         if (structs.contains(te)) {
             Fn fn = ctors.get(te);
             Element called = trees.getElement(p);
+            if (project && fns.get(called) != null) {
+                fn = fns.get(called);
+            }
+            if (fn == null) {
+                throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read");
+            }
             boolean synthesized = fns.get(called) == null && called != null && generated(called) && fn.params.isEmpty();
             if (fns.get(called) != fn && !synthesized || nc.getArguments().size() != fn.params.size()) {
                 throw new Unsupported("a call of a constructor of " + te.getSimpleName() + " that is not read: the class"
@@ -3843,7 +4268,7 @@ public final class Reader {
         }
         boolean variadic = ce.isVarArgs();
         String path = staticPath(te);
-        String name = inOtherPackage(te) ? "New" + te.getSimpleName() : "<init>";
+        String name = inOtherPackage(te) ? ctorName(ce) : "<init>";
         Map<String, Object> declared = Json.obj();
         declared.put("path", path);
         declared.put("name", name);
@@ -4830,10 +5255,11 @@ public final class Reader {
         return null;
     }
 
-    /** Drop every extern no call of a function the module reads names. */
+    /** Drop every extern no call of a function or a variable's initializer the module reads names. */
     private void pruneExterns() {
         Set<String> used = new HashSet<>();
         collectExterns(outFuncs, used);
+        collectExterns(outVars, used);
         externs.keySet().removeIf(k -> !used.contains(k));
     }
 
@@ -5323,9 +5749,17 @@ public final class Reader {
     }
 
     private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods) {
+        refuseAnnotations(cu, mods, false);
+    }
+
+    /** With {@code persistence}, a class or instance field of a project read, whose JPA annotations {@link #persistence} records. */
+    private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods, boolean persistence) {
         for (AnnotationTree a : mods.getAnnotations()) {
             TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
             String qn = at == null ? "" : qname(at);
+            if (project && persistence && PERSISTENCE.contains(qn)) {
+                continue;
+            }
             if (!HARMLESS_ANNOTATIONS.contains(qn) && !(project && QUARKUS_ANNOTATIONS.contains(qn))) {
                 refuse(pos(cu, a), source(cu, a), "annotation " + qn + ": annotations with behaviour are outside cir/1");
             }

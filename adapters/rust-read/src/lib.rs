@@ -1297,6 +1297,7 @@ impl Reader {
             beans: vec![],
             injects: vec![],
             transactional: vec![],
+            persistence: vec![],
         }
     }
 

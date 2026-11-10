@@ -118,6 +118,13 @@
       "description": "The module's import path in the source language's spelling (`net/http`), when the reader\nknows it: the name an `extern` of another module uses for it.",
       "type": "string"
     },
+    "persistence": {
+      "description": "The marks (Java: JPA annotations) by which an object-relational mapper stores the module's\ntypes: on a type of `types` (`T`) or a field of one (`T.f`). Source order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Persistence"
+      }
+    },
     "reader": {
       "description": "Which reader produced this document.",
       "$ref": "#/$defs/Reader"
@@ -1739,6 +1746,32 @@
       "required": [
         "name",
         "t"
+      ]
+    },
+    "Persistence": {
+      "description": "One persistence mark: an annotation of a type or of a field of it that tells an object-relational\nmapper how its objects are stored.",
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Its arguments as written, `name = value` each, in source order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "at": {
+          "description": "`T`, a type of `types`, or `T.f`, a field of it.",
+          "type": "string"
+        },
+        "mark": {
+          "description": "The annotation without its package: `Entity`, `Cacheable`, `Id`, `GeneratedValue`, `Column`.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "mark"
       ]
     },
     "Reader": {

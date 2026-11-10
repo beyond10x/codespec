@@ -152,6 +152,48 @@ public final class ReaderTest {
         cases.add(t::quarkusReadTwiceGivesTheSameBytes);
         names.add("effects_over_the_quarkus_read_give_the_persisting_method_db_and_the_client_method_net");
         cases.add(t::effectsOverTheQuarkusReadGiveThePersistingMethodDbAndTheClientMethodNet);
+        names.add("quarkus_persistence_annotations_are_recorded_in_the_module");
+        cases.add(t::quarkusPersistenceAnnotationsAreRecordedInTheModule);
+        names.add("quarkus_the_refusal_list_of_the_fixture_is_pinned");
+        cases.add(t::quarkusTheRefusalListOfTheFixtureIsPinned);
+        names.add("quarkus_a_second_constructor_is_a_second_function_its_calls_name");
+        cases.add(t::quarkusASecondConstructorIsASecondFunctionItsCallsName);
+        names.add("quarkus_a_static_nested_class_is_a_struct_of_the_module");
+        cases.add(t::quarkusAStaticNestedClassIsAStructOfTheModule);
+        names.add("quarkus_a_static_final_field_set_by_a_jar_call_of_constants_is_a_module_level_variable");
+        cases.add(t::quarkusAStaticFinalFieldSetByAJarCallOfConstantsIsAModuleLevelVariable);
+        names.add("quarkus_panache_entity_id_is_a_field_of_the_entity_null_until_persisted");
+        cases.add(t::quarkusPanacheEntityIdIsAFieldOfTheEntityNullUntilPersisted);
+        names.add("project_a_field_of_a_class_of_another_package_is_read_as_that_package_reads_it");
+        cases.add(t::projectAFieldOfAClassOfAnotherPackageIsReadAsThatPackageReadsIt);
+        names.add("project_a_constructor_calling_this_is_refused_and_no_constructor_is_made_up");
+        cases.add(t::projectAConstructorCallingThisIsRefusedAndNoConstructorIsMadeUp);
+        names.add("project_an_inner_class_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Inner.java", "inner class"));
+        names.add("project_a_nested_class_named_as_another_type_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Nesting.java", "a nested class named as another type"));
+        names.add("project_a_class_nested_in_a_nested_class_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Nesting.java", "a class nested in a nested class"));
+        names.add("project_a_nested_interface_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Nesting.java", "nested interface"));
+        names.add("project_an_exception_mapper_is_refused_once_at_its_class");
+        cases.add(() -> t.formsRefused("Mapper.java", "ExceptionMapper"));
+        names.add("project_a_second_constructor_whose_function_name_is_taken_is_refused");
+        cases.add(() -> t.formsRefused("Box.java", "a second function named NewBox2"));
+        names.add("project_a_static_field_set_other_than_by_a_literal_or_a_jar_call_of_constants_is_refused");
+        cases.add(() -> t.formsRefused("Statics.java", "a static field initialized other than"));
+        names.add("project_a_second_static_field_of_one_name_is_refused");
+        cases.add(() -> t.formsRefused("Statics.java", "a second module-level name LOGGER"));
+        names.add("project_a_read_of_a_panache_entity_field_its_entity_has_a_getter_for_is_refused");
+        cases.add(() -> t.formsRefused("Shelf.java", "Panache"));
+        names.add("project_an_entity_field_hiding_panache_entity_id_is_refused");
+        cases.add(() -> t.formsRefused("Tag.java", "hides"));
+        names.add("project_a_field_of_a_jar_superclass_other_than_panache_entity_id_is_refused");
+        cases.add(() -> t.formsRefused("Spot.java", "field of java.awt.Point, which is not read"));
+        names.add("project_a_field_of_a_class_its_package_does_not_read_is_refused");
+        cases.add(() -> t.formsRefused("Reach.java", "which its package does not read"));
+        names.add("project_the_forms_fixture_refuses_exactly_at_its_markers");
+        cases.add(t::projectTheFormsFixtureRefusesExactlyAtItsMarkers);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -1004,15 +1046,24 @@ public final class ReaderTest {
         check(got.equals(List.of(
             "io.quarkus.hibernate.orm.panache.PanacheEntityBase - deleteAll []" + "[{\"k\":\"int\",\"width\":\"64\",\"signed\":true}]",
             "io.quarkus.hibernate.orm.panache.PanacheEntityBase PanacheEntityBase persist [][]",
-            "org.acme.CountryClient CountryClient byName [" + s + "][" + s + "]")), "externs " + got);
+            "org.acme.CountryClient CountryClient byName [" + s + "][" + s + "]",
+            "org.jboss.logging.Logger - getLogger [" + s + "][{\"k\":\"extern\",\"path\":\"org.jboss.logging.Logger\",\"name\":\"Logger\"}]",
+            "org.jboss.logging.Logger Logger isDebugEnabled [][{\"k\":\"bool\"}]")), "externs " + got);
     }
 
     private void quarkusRefusesOnlyWhatItCannotMap() throws Exception {
         Map<String, Object> doc = quarkus();
-        List<Object> refusals = list(doc.get("refusals"));
-        check(refusals.size() == 1, "refusals " + Json.write(refusals).replaceAll("\\s+", " "));
-        check(String.valueOf(map(refusals.get(0)).get("reason")).startsWith("annotation jakarta.persistence.Entity"), Json.write(refusals));
+        check(!doc.containsKey("refusals"), "refusals " + doc.get("refusals"));
         check("org.acme".equals(doc.get("path")), "path " + doc.get("path"));
+    }
+
+    /** Each JPA annotation of an entity and of its fields is a {@code persistence} mark with its arguments as written. */
+    private void quarkusPersistenceAnnotationsAreRecordedInTheModule() throws Exception {
+        String want = "[{\"at\":\"Basket\",\"mark\":\"Entity\"},{\"at\":\"Basket\",\"mark\":\"Cacheable\"},"
+            + "{\"at\":\"Basket.id\",\"mark\":\"Id\"},{\"at\":\"Basket.id\",\"mark\":\"GeneratedValue\"},"
+            + "{\"at\":\"Basket.label\",\"mark\":\"Column\",\"args\":[\"length = 40\",\"unique = true\"]},"
+            + "{\"at\":\"Fruit\",\"mark\":\"Entity\"}]";
+        check(same(quarkus().get("persistence"), want), "persistence " + Json.write(quarkus().get("persistence")).replaceAll("\\s+", " "));
     }
 
     private void quarkusReadTwiceGivesTheSameBytes() throws Exception {
@@ -1038,6 +1089,169 @@ public final class ReaderTest {
         check(Json.write(map(funcByKeyInReport(doc, "FruitService.defaultName")).get("effects")).replaceAll("\\s+", "").equals("[]"), "defaultName has effects");
         check(Json.write(map(funcByKeyInReport(doc, "FruitResource.create")).get("unknown")).replaceAll("\\s+", "").equals("[]"), "create is unknown: "
             + Json.write(funcByKeyInReport(doc, "FruitResource.create")));
+    }
+
+    /**
+     * The fixture's refusal list is empty: its one refusal, the {@code @Entity} of {@code Fruit}, is
+     * a persistence mark now, and the sources added for the project forms (second constructor,
+     * static nested class, static final field, inherited Panache id, persistence annotations) add
+     * none.
+     */
+    private void quarkusTheRefusalListOfTheFixtureIsPinned() throws Exception {
+        check(!quarkus().containsKey("refusals"), "refusals " + quarkus().get("refusals"));
+    }
+
+    /**
+     * {@code Crate} has two constructors: the first is {@code NewCrate}, the second {@code NewCrate2},
+     * each starting from the field initializers, and {@code new Crate(label)} calls the one javac
+     * chose.
+     */
+    private void quarkusASecondConstructorIsASecondFunctionItsCallsName() throws Exception {
+        Map<String, Object> doc = quarkus();
+        check(list(funcByKey(doc, "NewCrate").get("params")).isEmpty(), "NewCrate params " + Json.write(funcByKey(doc, "NewCrate").get("params")));
+        Map<String, Object> second = funcByKey(doc, "NewCrate2");
+        check(list(second.get("params")).size() == 1 && "label".equals(map(list(second.get("params")).get(0)).get("name")),
+            "NewCrate2 params " + Json.write(second.get("params")));
+        String init = Json.write(map(list(second.get("body")).get(0))).replaceAll("\\s+", "");
+        check(init.contains("\"name\":\"label\",\"value\":{\"k\":\"lit\",\"value\":\"\\\"crate\\\"\""), "NewCrate2 does not start from the initializer: " + init);
+        Object of = returned(funcByKey(doc, "of"));
+        check("call".equals(map(of).get("k")) && "NewCrate2".equals(map(of).get("name")), "of returns " + Json.write(of));
+    }
+
+    /** {@code Prices.Quote}, a static nested class, is the struct {@code Quote}; {@code new Quote(c)} calls {@code NewQuote}. */
+    private void quarkusAStaticNestedClassIsAStructOfTheModule() throws Exception {
+        Map<String, Object> doc = quarkus();
+        Map<String, Object> quote = byName(list(doc.get("types")), "Quote");
+        check("struct".equals(quote.get("k")), "Quote is " + quote.get("k"));
+        check(same(map(byName(list(quote.get("fields")), "cents")).get("t"), "{\"k\":\"int\",\"width\":\"64\",\"signed\":true}"), "Quote.cents");
+        Object r = returned(funcByKey(doc, "Prices.quote"));
+        check("call".equals(map(r).get("k")) && "NewQuote".equals(map(r).get("name")), "Prices.quote returns " + Json.write(r));
+        check(same(funcByKey(doc, "Prices.quote").get("results"), "[{\"k\":\"ptr\",\"elem\":{\"k\":\"named\",\"name\":\"Quote\"}}]"), "Prices.quote results");
+    }
+
+    /**
+     * {@code Audit.LOGGER = Logger.getLogger(Audit.class.getName())} is the module-level variable
+     * {@code LOGGER}, initialized by the extern call with the class's name as a literal; a read of it
+     * is the variable.
+     */
+    private void quarkusAStaticFinalFieldSetByAJarCallOfConstantsIsAModuleLevelVariable() throws Exception {
+        Map<String, Object> doc = quarkus();
+        String logger = "{\"k\":\"extern\",\"path\":\"org.jboss.logging.Logger\",\"name\":\"Logger\"}";
+        Map<String, Object> v = byName(list(doc.get("vars")), "LOGGER");
+        check(same(v.get("t"), logger), "LOGGER type " + Json.write(v.get("t")));
+        check(same(v.get("init"), "{\"k\":\"extern\",\"path\":\"org.jboss.logging.Logger\",\"name\":\"getLogger\",\"args\":[{\"k\":\"lit\","
+            + "\"value\":\"\\\"org.acme.Audit\\\"\",\"t\":{\"k\":\"string\"}}],\"t\":" + logger + "}"), "LOGGER init " + Json.write(v.get("init")));
+        Object r = returned(funcByKey(doc, "Audit.verbose"));
+        check(same(map(r).get("recv"), "{\"k\":\"global\",\"name\":\"LOGGER\",\"t\":" + logger + "}"), "Audit.verbose returns " + Json.write(r));
+    }
+
+    /**
+     * {@code Fruit extends PanacheEntity}: its struct holds the inherited {@code id}, a {@code Long}
+     * no constructor assigns, so a pointer that is nil until {@code persist()} sets it, and {@code
+     * f.id != null} compares it with nil.
+     */
+    private void quarkusPanacheEntityIdIsAFieldOfTheEntityNullUntilPersisted() throws Exception {
+        Map<String, Object> doc = quarkus();
+        List<Object> fields = list(byName(list(doc.get("types")), "Fruit").get("fields"));
+        check(same(fields.get(0), "{\"name\":\"id\",\"t\":{\"k\":\"ptr\",\"elem\":{\"k\":\"int\",\"width\":\"64\",\"signed\":true}}}"),
+            "Fruit fields " + Json.write(fields));
+        String stored = Json.write(returned(funcByKey(doc, "Stock.stored"))).replaceAll("\\s+", "");
+        check(stored.contains("\"op\":\"!=\"") && stored.contains("\"name\":\"id\"") && stored.contains("\"k\":\"nil\""), "Stock.stored " + stored);
+        String named = Json.write(returned(funcByKey(doc, "Stock.named"))).replaceAll("\\s+", "");
+        check(named.contains("\"name\":\"name\"") && named.contains("\"k\":\"nil\""), "Stock.named " + named);
+    }
+
+    private Map<String, Map<String, Object>> forms() throws Exception {
+        Map<String, Map<String, Object>> modules = Reader.readProject(testdata.resolve("project-forms"), classpath());
+        check(modules.keySet().equals(Set.of("forms", "forms.other")), "packages " + modules.keySet());
+        return modules;
+    }
+
+    /**
+     * {@code t.count} and {@code t.label} of {@code forms.other.Thing}: a field of the other package's
+     * struct, of the type that package gives it, {@code label} a pointer nil until assigned there and
+     * so here.
+     */
+    private void projectAFieldOfAClassOfAnotherPackageIsReadAsThatPackageReadsIt() throws Exception {
+        Map<String, Map<String, Object>> modules = forms();
+        Map<String, Object> doc = modules.get("forms");
+        String thing = "{\"k\":\"extern\",\"path\":\"forms.other\",\"name\":\"Thing\"}";
+        Object count = returned(funcByKey(doc, "Reach.count"));
+        check(same(count, "{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"t\",\"t\":" + thing + "},\"name\":\"count\","
+            + "\"t\":{\"k\":\"int\",\"width\":\"64\",\"signed\":true}}"), "Reach.count returns " + Json.write(count));
+        String labelled = Json.write(returned(funcByKey(doc, "Reach.labelled"))).replaceAll("\\s+", "");
+        check(labelled.contains("{\"k\":\"field\",\"x\":{\"k\":\"var\",\"name\":\"t\",\"t\":" + thing + "},\"name\":\"label\",\"t\":{\"k\":\"ptr\","
+            + "\"elem\":{\"k\":\"string\"}}}") && labelled.contains("\"k\":\"nil\""), "Reach.labelled " + labelled);
+        List<Object> there = list(byName(list(modules.get("forms.other").get("types")), "Thing").get("fields"));
+        check(same(map(byName(there, "label")).get("t"), "{\"k\":\"ptr\",\"elem\":{\"k\":\"string\"}}"), "Thing.label in forms.other");
+    }
+
+    /**
+     * {@code Chained()} calls {@code this("none")}: Java runs the field initializers once, in the
+     * constructor called. It is refused; {@code Chained(String)} is {@code NewChained2}, and no
+     * {@code NewChained} is made up for the refused one.
+     */
+    private void projectAConstructorCallingThisIsRefusedAndNoConstructorIsMadeUp() throws Exception {
+        formsRefused("Chained.java", "this(");
+        Map<String, Object> doc = forms().get("forms");
+        check(funcByKeyOrNull(doc, "NewChained") == null, "NewChained was made up");
+        check(funcByKeyOrNull(doc, "NewChained2") != null, "NewChained2 was not read");
+    }
+
+    /** Every line of {@code file} marked {@code // refused: <fragment>} has a refusal whose reason holds the fragment. */
+    private void formsRefused(String file, String fragment) throws Exception {
+        Map<String, Object> doc = forms().get("forms");
+        Map<String, String> markers = formsMarkers();
+        List<String> missing = new ArrayList<>();
+        int n = 0;
+        for (Map.Entry<String, String> m : markers.entrySet()) {
+            if (!m.getKey().startsWith(file + ":") || !m.getValue().equals(fragment)) {
+                continue;
+            }
+            n++;
+            boolean found = false;
+            for (Object r : list(doc.get("refusals"))) {
+                found |= m.getKey().equals(map(r).get("pos")) && String.valueOf(map(r).get("reason")).contains(fragment);
+            }
+            if (!found) {
+                missing.add(m.getKey());
+            }
+        }
+        check(n > 0, "no marker " + fragment + " in " + file);
+        check(missing.isEmpty(), "no refusal holding '" + fragment + "' at " + missing + "; refusals "
+            + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
+    }
+
+    /** The markers {@code // refused: <fragment>} of the fixture's package {@code forms}, by {@code <file>:<line>}. */
+    private Map<String, String> formsMarkers() throws IOException {
+        Map<String, String> out = new java.util.TreeMap<>();
+        Path dir = testdata.resolve("project-forms/src/main/java/forms");
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.filter(Files::isRegularFile).sorted().toList()) {
+                List<String> lines = Files.readAllLines(f);
+                for (int i = 0; i < lines.size(); i++) {
+                    int at = lines.get(i).indexOf("// refused: ");
+                    if (at >= 0) {
+                        out.put(f.getFileName() + ":" + (i + 1), lines.get(i).substring(at + "// refused: ".length()).strip());
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The fixture refuses at its markers and nowhere else, one refusal each; its other package
+     * refuses only the generic class {@code Bag}, which is what makes a field of it unread.
+     */
+    private void projectTheFormsFixtureRefusesExactlyAtItsMarkers() throws Exception {
+        Map<String, Map<String, Object>> modules = forms();
+        check(refusalPositions(modules.get("forms.other")).equals(List.of("Bag.java:3")), "forms.other refusals "
+            + modules.get("forms.other").get("refusals"));
+        List<String> got = refusalPositions(modules.get("forms"));
+        List<String> want = new ArrayList<>(formsMarkers().keySet());
+        got.sort(null);
+        check(got.equals(want), "refusals at " + got + ", markers at " + want);
     }
 
     private static Map<String, Object> funcByKeyInReport(Map<String, Object> report, String key) {
