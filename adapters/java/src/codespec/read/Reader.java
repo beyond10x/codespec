@@ -145,8 +145,11 @@ import javax.tools.ToolProvider;
  * an unbounded static generic method; the primitive functional interfaces of {@code
  * java.util.function} as function types, with lambdas, method references and calls of them;
  * variable arity methods and arrays as slices; an exception leaf whose constructor formats its
- * parameters as {@code errorf}; {@code System.out.println} of an integer, a boolean or a
- * String; a sealed interface whose permitted classes are records without members as a union.
+ * parameters as {@code errorf}; an exception leaf carrying fields with its own {@code getMessage()}
+ * as a struct with an {@code Error} method, thrown as {@code to_error}; {@code Map.get} of a value
+ * that is not a reference followed by an {@code if} on its null that leaves as {@code lookup_else};
+ * {@code System.out.println} of an integer, a boolean or a String; a sealed interface whose permitted
+ * classes are records without members as a union.
  *
  * <p>A project directory (one with {@code pom.xml}, {@code build.gradle} or {@code
  * build.gradle.kts}) is read with {@link #readProject}: every package under {@code src/main/java}
@@ -357,6 +360,12 @@ public final class Reader {
      * of its parameters, in order, to {@code super}: a throw is that format, {@code errorf}.
      */
     private final Map<TypeElement, String> formattedLeaves = new HashMap<>();
+    /**
+     * The exception leaves of a package read that carry fields ({@link #errorStructShape}): a struct
+     * of those fields whose {@code Error} method is the class's {@code getMessage()}; a throw is
+     * {@code to_error} of the struct literal of its arguments.
+     */
+    private final Set<TypeElement> errorStructs = new HashSet<>();
     private final List<Object> outInterfaces = new ArrayList<>();
     private final List<Object> outVars = new ArrayList<>();
     private TypeElement errorRoot;
@@ -1138,7 +1147,14 @@ public final class Reader {
                     formattedLeaves.put(te, format);
                     continue;
                 }
-                if (msg == null) {
+                String struct = msg == null && !project ? errorStructShape(p) : null;
+                if (msg == null && !project && struct == null) {
+                    errorStructs.add(te);
+                    continue;
+                }
+                if (msg == null && struct != null && declaresGetMessage(te)) {
+                    why = "exception class carrying fields: " + struct;
+                } else if (msg == null) {
                     why = "exception class other than one constructor without parameters calling super(\"<message>\")"
                         + " or one calling super(String.format(\"<format>\", <its parameters in order>))";
                 } else {
@@ -1788,6 +1804,120 @@ public final class Reader {
     }
 
     /**
+     * Why an exception leaf is no error struct, or null when it is one: final instance fields without
+     * an initializer, each of a primitive or String type, which hold their value; one constructor
+     * whose body is {@code super(m)} of a String literal or null, then {@code this.f = p;} for each
+     * field in declaration order from its parameter of the same position; and its own {@code
+     * getMessage()}, which gives the message Java prints and is read as the struct's {@code Error}
+     * method. Throwable reads the message passed to {@code super} only through {@code getMessage()},
+     * which the class replaces, and {@code super.getMessage()} is refused, so that literal is never
+     * read.
+     */
+    private String errorStructShape(TreePath p) {
+        ClassTree ct = classTree(p);
+        if (!ct.getImplementsClause().isEmpty() || !ct.getTypeParameters().isEmpty()) {
+            return "exception class with interfaces or type parameters";
+        }
+        List<VariableElement> fields = new ArrayList<>();
+        TreePath ctor = null;
+        boolean message = false;
+        for (Tree m : ct.getMembers()) {
+            if (isSerialVersionUid(p, m)) {
+                continue;
+            }
+            TreePath mp = new TreePath(p, m);
+            Element e = trees.getElement(mp);
+            if (m instanceof VariableTree) {
+                String name = e.getSimpleName().toString();
+                if (e.getModifiers().contains(Modifier.STATIC) || !e.getModifiers().contains(Modifier.FINAL)
+                    || ((VariableTree) m).getInitializer() != null) {
+                    return "field " + name + " other than a final instance field without an initializer";
+                }
+                TypeMirror t = e.asType();
+                if (!t.getKind().isPrimitive() && !qname(t).equals("java.lang.String")) {
+                    return "field " + name + " of " + t + ": the error struct copies the value, where Java's exception"
+                        + " holds the object, which can change after the throw";
+                }
+                try {
+                    typeOf(t);
+                } catch (Unsupported u) {
+                    return "field " + name + ": " + u.getMessage();
+                }
+                fields.add((VariableElement) e);
+            } else if (m instanceof MethodTree && e.getKind() == ElementKind.CONSTRUCTOR && !generated(e) && ctor == null) {
+                ctor = mp;
+            } else if (m instanceof MethodTree && isGetMessage((ExecutableElement) e) && ((MethodTree) m).getBody() != null) {
+                message = true;
+            } else {
+                return "exception class with a member other than final fields, one constructor and getMessage()";
+            }
+        }
+        if (!message) {
+            return "exception class with fields but without its own getMessage()";
+        }
+        String set = "exception constructor other than super(<a String literal or null>) followed by this.<field> ="
+            + " <parameter>; for each field in order";
+        if (ctor == null) {
+            return set;
+        }
+        MethodTree mt = (MethodTree) ctor.getLeaf();
+        List<? extends StatementTree> body = ctorStatements(mt);
+        ExpressionTree arg = body.isEmpty() ? null : superArgument(body.get(0));
+        if (arg == null || arg.getKind() != Tree.Kind.NULL_LITERAL && arg.getKind() != Tree.Kind.STRING_LITERAL
+            || mt.getParameters().size() != fields.size()
+            || body.size() != fields.size() + 1) {
+            return set;
+        }
+        TreePath bp = new TreePath(ctor, mt.getBody());
+        for (int i = 0; i < fields.size(); i++) {
+            StatementTree s = body.get(i + 1);
+            ExpressionTree se = s instanceof ExpressionStatementTree ? ((ExpressionStatementTree) s).getExpression() : null;
+            if (!(se instanceof AssignmentTree)) {
+                return set;
+            }
+            AssignmentTree at = (AssignmentTree) se;
+            TreePath ap = new TreePath(new TreePath(bp, s), at);
+            ExpressionTree lhs = at.getVariable();
+            boolean onThis = lhs instanceof IdentifierTree
+                || lhs instanceof MemberSelectTree && isThis(((MemberSelectTree) lhs).getExpression());
+            Element param = trees.getElement(new TreePath(ctor, mt.getParameters().get(i)));
+            if (!onThis || !fields.get(i).equals(trees.getElement(new TreePath(ap, lhs)))
+                || !(at.getExpression() instanceof IdentifierTree) || !param.equals(trees.getElement(new TreePath(ap, at.getExpression())))) {
+                return set;
+            }
+        }
+        return null;
+    }
+
+    /** Whether a method is {@code public String getMessage()} of an instance, overriding Throwable's. */
+    private static boolean isGetMessage(ExecutableElement m) {
+        return m.getKind() == ElementKind.METHOD && m.getSimpleName().contentEquals("getMessage") && m.getParameters().isEmpty()
+            && !m.getModifiers().contains(Modifier.STATIC) && m.getTypeParameters().isEmpty()
+            && m.getReturnType().toString().equals("java.lang.String");
+    }
+
+    /** Whether a class declares its own {@code getMessage()}. */
+    private static boolean declaresGetMessage(TypeElement te) {
+        for (Element e : te.getEnclosedElements()) {
+            if (e instanceof ExecutableElement && isGetMessage((ExecutableElement) e)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The {@code getMessage()} an error struct declares, the path of its method. */
+    private TreePath getMessagePath(TreePath p) {
+        for (Tree m : classTree(p).getMembers()) {
+            TreePath mp = new TreePath(p, m);
+            if (m instanceof MethodTree && isGetMessage((ExecutableElement) trees.getElement(mp))) {
+                return mp;
+            }
+        }
+        throw new IllegalStateException("an error struct without getMessage()");
+    }
+
+    /**
      * Instance fields of a reference type (anything but a primitive) without an initializer that some
      * constructor does not assign before it does anything else: on such a path a fresh object holds
      * null in the field, and cir/1's zero value of its type ({@code ""}, {@code 0}, an empty slice) is
@@ -2284,7 +2414,30 @@ public final class Reader {
             return false;
         }
         TypeElement te = (TypeElement) types.asElement(t);
-        return te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te);
+        return te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te) || errorStructs.contains(te);
+    }
+
+    /** The fields of an error struct, its instance fields in declaration order, each with its type. */
+    private List<Map<String, Object>> errorStructFields(TypeElement te) {
+        List<Map<String, Object>> fields = new ArrayList<>();
+        for (Element e : te.getEnclosedElements()) {
+            if (e.getKind() == ElementKind.FIELD && !e.getModifiers().contains(Modifier.STATIC)) {
+                Map<String, Object> f = Json.obj();
+                f.put("name", e.getSimpleName().toString());
+                f.put("t", typeOf(e.asType()));
+                fields.add(f);
+            }
+        }
+        return fields;
+    }
+
+    /**
+     * The type of {@code this} in a method of {@code cls}: an error struct's value, which nothing
+     * changes after the throw that makes it, else a pointer to the class's struct.
+     */
+    private Map<String, Object> selfType(TypeElement cls) {
+        Map<String, Object> t = tNamed(cls.getSimpleName().toString());
+        return errorStructs.contains(cls) ? t : tPtr(t);
     }
 
     // ---- emitting declarations ----
@@ -2323,6 +2476,25 @@ public final class Reader {
             d.put("pos", declPos(cu, ct, ct.getModifiers()));
             outErrors.add(d);
             layout.add("error:" + name);
+            return;
+        }
+        if (errorStructs.contains(te)) {
+            Map<String, Object> d = Json.obj();
+            d.put("k", "struct");
+            d.put("name", name);
+            d.put("exported", te.getModifiers().contains(Modifier.PUBLIC));
+            d.put("fields", new ArrayList<Object>(errorStructFields(te)));
+            putDoc(d, te);
+            d.put("pos", declPos(cu, ct, ct.getModifiers()));
+            outTypes.add(d);
+            layout.add("type:" + name);
+            Fn error = new Fn();
+            error.name = "Error";
+            error.exported = true;
+            error.cls = te;
+            error.path = getMessagePath(p);
+            error.values.add(tString());
+            emitFunc(error);
             return;
         }
         if (unions.containsKey(te)) {
@@ -2717,7 +2889,7 @@ public final class Reader {
         if (!fn.isStatic && !fn.isCtor) {
             Map<String, Object> recv = Json.obj();
             recv.put("name", "this");
-            recv.put("t", tPtr(tNamed(fn.cls.getSimpleName().toString())));
+            recv.put("t", selfType(fn.cls));
             f.put("recv", recv);
         }
         List<Object> params = new ArrayList<>();
@@ -2834,10 +3006,123 @@ public final class Reader {
 
     private List<Object> block(TreePath parent, List<? extends StatementTree> stmts, Ctx ctx) {
         List<Object> out = new ArrayList<>();
-        for (StatementTree s : stmts) {
-            out.addAll(stmt(new TreePath(parent, s), ctx));
+        for (int i = 0; i < stmts.size(); i++) {
+            TreePath sp = new TreePath(parent, stmts.get(i));
+            TreePath next = i + 1 < stmts.size() ? new TreePath(parent, stmts.get(i + 1)) : null;
+            if (next != null && isLookupElse(sp, next)) {
+                try {
+                    Map<String, Object> st = lookupElse(sp, next, ctx);
+                    checkTyped(st);
+                    out.add(st);
+                    i++;
+                } catch (Unsupported u) {
+                    out.add(foreign(ctx.cu, sp.getLeaf(), u.getMessage()));
+                }
+                continue;
+            }
+            out.addAll(stmt(sp, ctx));
         }
         return out;
+    }
+
+    /**
+     * Whether a statement and the next are, in a package read, a lookup that may miss: a local set by
+     * {@code m.get(k)} of a {@code java.util} map whose value is not a reference, then {@code if (v ==
+     * null)} without an
+     * else whose branch ends in a return or a throw and does not read the local. Java's {@code get}
+     * gives null for an absent key and nothing the module puts in such a map is null, so the branch
+     * runs exactly when the key is absent, and after it the local holds the value: a {@code
+     * lookup_else} ({@link #lookupElse}). Any other use of such a {@code get} stays refused.
+     */
+    private boolean isLookupElse(TreePath sp, TreePath next) {
+        if (project || !(sp.getLeaf() instanceof VariableTree) || !(next.getLeaf() instanceof IfTree)) {
+            return false;
+        }
+        VariableTree vt = (VariableTree) sp.getLeaf();
+        if (!(vt.getInitializer() instanceof MethodInvocationTree)) {
+            return false;
+        }
+        MethodInvocationTree mi = (MethodInvocationTree) vt.getInitializer();
+        Element m = trees.getElement(new TreePath(sp, mi));
+        if (!(m instanceof ExecutableElement) || !m.getSimpleName().contentEquals("get") || mi.getArguments().size() != 1
+            || !(mi.getMethodSelect() instanceof MemberSelectTree)
+            || !((TypeElement) m.getEnclosingElement()).getQualifiedName().toString().startsWith("java.util.")) {
+            return false;
+        }
+        // A map of references reads get as an index, whose nil is Java's null.
+        TypeMirror rt = trees.getTypeMirror(new TreePath(new TreePath(new TreePath(sp, mi), mi.getMethodSelect()),
+            ((MemberSelectTree) mi.getMethodSelect()).getExpression()));
+        if (!(rt instanceof DeclaredType) || ((DeclaredType) rt).getTypeArguments().size() != 2) {
+            return false;
+        }
+        try {
+            if ("ptr".equals(typeOf(((DeclaredType) rt).getTypeArguments().get(1)).get("k"))) {
+                return false;
+            }
+        } catch (Unsupported u) {
+            return false;
+        }
+        Element local = trees.getElement(sp);
+        IfTree it = (IfTree) next.getLeaf();
+        ExpressionTree cond = it.getCondition();
+        while (cond instanceof ParenthesizedTree) {
+            cond = ((ParenthesizedTree) cond).getExpression();
+        }
+        if (it.getElseStatement() != null || cond.getKind() != Tree.Kind.EQUAL_TO) {
+            return false;
+        }
+        BinaryTree b = (BinaryTree) cond;
+        ExpressionTree other = b.getLeftOperand().getKind() == Tree.Kind.NULL_LITERAL ? b.getRightOperand()
+            : b.getRightOperand().getKind() == Tree.Kind.NULL_LITERAL ? b.getLeftOperand() : null;
+        TreePath cp = new TreePath(new TreePath(next, it.getCondition()), cond);
+        if (!(other instanceof IdentifierTree) || !local.equals(trees.getElement(new TreePath(cp, other)))) {
+            return false;
+        }
+        StatementTree then = it.getThenStatement();
+        List<? extends StatementTree> branch = then instanceof BlockTree ? ((BlockTree) then).getStatements() : List.of(then);
+        StatementTree last = branch.isEmpty() ? null : branch.get(branch.size() - 1);
+        if (!(last instanceof ReturnTree) && !(last instanceof ThrowTree)) {
+            return false;
+        }
+        boolean[] reads = {false};
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitIdentifier(IdentifierTree id, Void x) {
+                reads[0] |= local.equals(trees.getElement(getCurrentPath()));
+                return null;
+            }
+        }.scan(new TreePath(next, then), null);
+        return !reads[0];
+    }
+
+    /**
+     * {@code T v = m.get(k); if (v == null) { … }} ({@link #isLookupElse}) as {@code lookup_else} at
+     * the local's line: {@code v} the map's value under {@code k}, the branch run when it is absent.
+     * The local's type must be the map's value type.
+     */
+    private Map<String, Object> lookupElse(TreePath sp, TreePath next, Ctx ctx) {
+        VariableTree vt = (VariableTree) sp.getLeaf();
+        MethodInvocationTree mi = (MethodInvocationTree) vt.getInitializer();
+        TreePath ip = new TreePath(sp, mi);
+        TreePath recvPath = new TreePath(new TreePath(ip, mi.getMethodSelect()), ((MemberSelectTree) mi.getMethodSelect()).getExpression());
+        Map<String, Object> recv = expr(recvPath, ctx);
+        Map<String, Object> rt = type(recv);
+        if (!"map".equals(rt.get("k"))) {
+            throw new Unsupported("get of something other than a map");
+        }
+        Map<String, Object> elem = sub(rt, "elem");
+        if ("ptr".equals(elem.get("k")) || !elem.equals(typeOf(trees.getElement(sp).asType()))) {
+            throw new Unsupported("Map.get into a local of another type than the map's value");
+        }
+        IfTree it = (IfTree) next.getLeaf();
+        Map<String, Object> st = Json.obj();
+        st.put("k", "lookup_else");
+        st.put("name", vt.getName().toString());
+        st.put("map", recv);
+        st.put("index", coerce(expr(new TreePath(ip, mi.getArguments().get(0)), ctx), sub(rt, "key")));
+        st.put("then", body(next, it.getThenStatement(), ctx));
+        st.put("pos", pos(ctx.cu, vt));
+        return st;
     }
 
     /** The statements of a loop, if or case body: a block's statements, or the one statement. */
@@ -3809,7 +4094,8 @@ public final class Reader {
         if (throwRaises(p)) {
             return List.of(raise(np, te, ctx, pos));
         }
-        if (!sentinel && !formattedLeaves.containsKey(te) || nc.getClassBody() != null) {
+        boolean struct = errorStructs.contains(te);
+        if (!sentinel && !formattedLeaves.containsKey(te) && !struct || nc.getClassBody() != null) {
             throw new Unsupported("throw of an exception outside the package's checked-exception hierarchy");
         }
         if (!ctx.fn.throwsErr) {
@@ -3825,10 +4111,44 @@ public final class Reader {
             ev.put("name", te.getSimpleName().toString());
             ev.put("t", tError());
             rs.add(ev);
+        } else if (struct) {
+            rs.add(toError(np, nc, te, ctx));
         } else {
             rs.add(errorf(np, nc, formattedLeaves.get(te), ctx));
         }
         return List.of(ret(rs, pos));
+    }
+
+    /**
+     * {@code new S(a1, …, an)} of an error struct: {@code to_error} of the struct literal whose i-th
+     * field is {@code ai}, which its constructor assigns it; Java evaluates the arguments in order, as
+     * the literal's fields are.
+     */
+    private Map<String, Object> toError(TreePath np, NewClassTree nc, TypeElement te, Ctx ctx) {
+        ExecutableElement ctor = (ExecutableElement) trees.getElement(np);
+        List<Map<String, Object>> params = new ArrayList<>();
+        for (VariableElement v : ctor.getParameters()) {
+            params.add(typeOf(v.asType()));
+        }
+        List<Object> values = args(np, nc.getArguments(), params, false, ctx);
+        List<Map<String, Object>> fields = errorStructFields(te);
+        List<Object> inits = new ArrayList<>();
+        for (int i = 0; i < fields.size(); i++) {
+            Map<String, Object> fi = Json.obj();
+            fi.put("name", fields.get(i).get("name"));
+            fi.put("value", values.get(i));
+            inits.add(fi);
+        }
+        Map<String, Object> lit = Json.obj();
+        lit.put("k", "struct");
+        lit.put("name", te.getSimpleName().toString());
+        lit.put("fields", inits);
+        lit.put("t", tNamed(te.getSimpleName().toString()));
+        Map<String, Object> x = Json.obj();
+        x.put("k", "to_error");
+        x.put("x", lit);
+        x.put("t", tError());
+        return x;
     }
 
     /** Whether {@code te} is an unchecked exception: a {@code RuntimeException} or an {@code Error}. */
@@ -4150,7 +4470,7 @@ public final class Reader {
         if (!ctx.hasThis) {
             throw new Unsupported("this where there is no object: a static method or a field initializer");
         }
-        return varRef("this", tPtr(tNamed(ctx.fn.cls.getSimpleName().toString())));
+        return varRef("this", selfType(ctx.fn.cls));
     }
 
     private Map<String, Object> ident(TreePath p, Ctx ctx) {
@@ -4246,8 +4566,14 @@ public final class Reader {
         }
         boolean inherited = project && el.equals(panacheId()) && holder != null && structs.contains(holder)
             && extendsPanacheEntity(holder);
-        if (!structs.contains(owner) && !inherited) {
+        if (!structs.contains(owner) && !inherited && !errorStructs.contains(owner)) {
             throw new Unsupported("field of " + owner.getQualifiedName() + ", which is not read");
+        }
+        boolean self = recv == null || "var".equals(recv.get("k")) && "this".equals(recv.get("name"));
+        if (errorStructs.contains(owner) && (!self || ctx == null || ctx.fn == null
+            || !owner.equals(ctx.fn.cls))) {
+            throw new Unsupported("field " + name + " of the exception " + owner.getSimpleName() + " outside its getMessage():"
+                + " anywhere else its value is an error, whose fields cir/1 does not reach");
         }
         if (project) {
             String accessor = managedAccessor(holder != null ? holder : owner, owner, el, ctx);
@@ -4570,7 +4896,9 @@ public final class Reader {
             }
             if (name.equals("get") && n == 1) {
                 if (!"ptr".equals(elem.get("k"))) {
-                    throw new Unsupported("Map.get of a value that is not a reference: an absent key gives null, not a zero value");
+                    throw new Unsupported("Map.get of a value that is not a reference: an absent key gives null, not a zero value;"
+                        + " it is read only into a local whose next statement is an if on its null that ends in a return or"
+                        + " throw and does not read it");
                 }
                 return index(recv, coerce(expr(new TreePath(p, mi.getArguments().get(0)), ctx), sub(rt, "key")), elem);
             }
@@ -4920,7 +5248,7 @@ public final class Reader {
             mk.put("t", typeOf(tm));
             return mk;
         }
-        if (errorLeaves.containsKey(te) || formattedLeaves.containsKey(te)) {
+        if (errorLeaves.containsKey(te) || formattedLeaves.containsKey(te) || errorStructs.contains(te)) {
             throw new Unsupported("an exception created other than by throw");
         }
         if (project && !inPackage(te) && trees.getElement(p) instanceof ExecutableElement) {
@@ -6062,6 +6390,7 @@ public final class Reader {
         own.addAll(impls.keySet());
         own.addAll(errorLeaves.keySet());
         own.addAll(formattedLeaves.keySet());
+        own.addAll(errorStructs);
         if (errorRoot != null) {
             own.add(errorRoot);
         }
@@ -6087,7 +6416,7 @@ public final class Reader {
         if (impls.containsKey(te)) {
             return tNamed(te.getSimpleName().toString());
         }
-        if (te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te)) {
+        if (te.equals(errorRoot) || errorLeaves.containsKey(te) || formattedLeaves.containsKey(te) || errorStructs.contains(te)) {
             return tError();
         }
         return null;

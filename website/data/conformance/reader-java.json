@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "java",
     "version": "0.7.0",
-    "manifest_sha256": "9316a685af420a3340d4e90626ee8ab2a5cca2f11a286c4ca12f84ab004d0170"
+    "manifest_sha256": "28d1ed4df01769e7a7d60fb29b8b3033a9ced615cac5132f58c91ee211efa65c"
   },
   "kit": {
     "version": "0.7.0",
-    "sha256": "8374d4522528008198e201c2d303b9ea00b5ada3b47aa0a7022ad1374cc9b5b9"
+    "sha256": "6bee30768bc00c868322d18305fd4b7967d573c04cd543c682e16061b2436b16"
   },
   "corpus": {
-    "sha256": "35dcdf26a50411670cc21d724913923cc5796c269c0d9cadb061c0de1703033c"
+    "sha256": "63f695919382b40416adad8ae7de196d1a441c105fe879d57c2d9b80e05a6441"
   },
   "codespec": "0.7.0",
   "features": [
@@ -352,9 +352,11 @@
     },
     {
       "id": "expr.to_error",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-to-error"
+      ]
     },
     {
       "id": "expr.to_iface",
@@ -771,9 +773,11 @@
     },
     {
       "id": "stmt.lookup_else",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-lookup-else"
+      ]
     },
     {
       "id": "stmt.raise",
@@ -994,12 +998,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 103,
-    "pass": 103,
+    "claimed": 105,
+    "pass": 105,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 25,
+    "untested": 23,
     "boundary_fail": 0
   },
   "conforms": true

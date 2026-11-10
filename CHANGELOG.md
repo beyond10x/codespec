@@ -14,6 +14,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   it was refused at its line. The Go writer refuses a union, and the reader check's evaluator step
   judges the kit case `decl-union` instead. A sealed interface one of whose records declares a
   member is still refused at its line, its records with it.
+- `codespec-read-java` claims `expr.to_error` and `stmt.lookup_else`, 105 features, up from 103,
+  each in a package read. An exception of the checked-exception hierarchy carrying final fields of
+  a primitive or `String` type, set by its one constructor after `super` of a literal, with its own
+  `getMessage()`, is a struct with an `Error` method, and a throw of it is `to_error` of the struct;
+  a field of another type is refused at the class. `T v = m.get(k);` of a map of values that are not
+  references, followed by `if (v == null)` whose branch ends in a return or a throw, is
+  `lookup_else`; any other `get` of such a map is still refused at its line. The kit cases
+  `expr-to-error` and `stmt-lookup-else` have Java sources.
 
 ### Fixed
 

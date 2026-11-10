@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.7.0",
-    "sha256": "8374d4522528008198e201c2d303b9ea00b5ada3b47aa0a7022ad1374cc9b5b9"
+    "sha256": "6bee30768bc00c868322d18305fd4b7967d573c04cd543c682e16061b2436b16"
   },
   "corpus": {
-    "sha256": "6c2751e6f6727d962413e60687531328518fa5a52def545593044942226719a1"
+    "sha256": "2e089a5d418ed33c63ac4cca5ef2563b76697c2bc9384943ac1b2325894be4c8"
   },
   "codespec": "0.7.0",
   "features": [
@@ -420,8 +420,14 @@
     {
       "id": "expr.to_error",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "expr-to-error"
+      ],
+      "case": "expr-to-error",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use expr.to_error outside a foreign statement"
     },
     {
       "id": "expr.to_iface",
@@ -871,8 +877,14 @@
     {
       "id": "stmt.lookup_else",
       "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "verdict": "refused",
+      "cases": [
+        "stmt-lookup-else"
+      ],
+      "case": "stmt-lookup-else",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use stmt.lookup_else outside a foreign statement"
     },
     {
       "id": "stmt.raise",
@@ -1120,9 +1132,9 @@
     "claimed": 72,
     "pass": 72,
     "fail": 0,
-    "refused_unclaimed": 31,
+    "refused_unclaimed": 33,
     "pass_unclaimed": 0,
-    "untested": 25,
+    "untested": 23,
     "boundary_fail": 0
   },
   "conforms": true

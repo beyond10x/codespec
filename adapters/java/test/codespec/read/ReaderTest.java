@@ -95,6 +95,14 @@ public final class ReaderTest {
         cases.add(t::aSealedInterfaceOfRecordsWithoutMembersIsACir1Union);
         names.add("a_sealed_interface_whose_record_declares_a_member_is_refused_at_its_line");
         cases.add(t::aSealedInterfaceWhoseRecordDeclaresAMemberIsRefusedAtItsLine);
+        names.add("an_exception_carrying_fields_with_its_own_get_message_is_an_error_struct_thrown_as_to_error");
+        cases.add(t::anExceptionCarryingFieldsWithItsOwnGetMessageIsAnErrorStructThrownAsToError);
+        names.add("an_exception_carrying_a_field_of_a_mutable_type_is_refused_at_its_line");
+        cases.add(() -> t.refusedAtMarkers("refuse/error-struct", 2, "field keys"));
+        names.add("a_map_get_followed_by_an_if_on_its_null_that_returns_is_lookup_else");
+        cases.add(t::aMapGetFollowedByAnIfOnItsNullThatReturnsIsLookupElse);
+        names.add("a_map_get_whose_if_on_its_null_goes_on_is_refused_at_its_line");
+        cases.add(() -> t.refusedAtMarkers("refuse/lookup-else", 2, "Map.get of a value that is not a reference"));
         names.add("the_edges_of_the_kit_constructs_are_refused_at_their_lines");
         cases.add(t::theEdgesOfTheKitConstructsAreRefusedAtTheirLines);
         names.add("a_float_literal_is_spelled_as_cir_1_spells_it");
@@ -571,6 +579,87 @@ public final class ReaderTest {
         for (Object t : list(doc.get("types"))) {
             check(!"union".equals(map(t).get("k")), "a union was read: " + Json.write(t).replaceAll("\\s+", " "));
         }
+        check(funcByKeyOrNull(doc, "one") != null, "the method beside them was not read");
+    }
+
+    /**
+     * The kit case {@code expr-to-error}'s Java source: a leaf of the checked-exception hierarchy with
+     * a final field its one constructor sets from its parameter after {@code super("")}, and its own
+     * {@code getMessage()}, is a struct of that field with an {@code Error} method on the value, and
+     * {@code throw new NotFound(k)} returns {@code to_error} of the struct literal; nothing is refused.
+     */
+    private void anExceptionCarryingFieldsWithItsOwnGetMessageIsAnErrorStructThrownAsToError() throws Exception {
+        Map<String, Object> doc = Reader.read(kit().resolve("expr-to-error/java"));
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> nf = byName(list(doc.get("types")), "NotFound");
+        check("struct".equals(nf.get("k")), "NotFound is " + nf.get("k"));
+        check(same(nf.get("fields"), "[{\"name\":\"key\",\"t\":{\"k\":\"string\"}}]"), "NotFound's fields " + Json.write(nf.get("fields")));
+        Map<String, Object> error = funcByKey(doc, "NotFound.Error");
+        check(same(map(error.get("recv")).get("t"), "{\"k\":\"named\",\"name\":\"NotFound\"}"),
+            "the receiver of Error " + Json.write(error.get("recv")));
+        check(same(error.get("results"), "[{\"k\":\"string\"}]"), "Error's results " + Json.write(error.get("results")));
+        check(byNameOrNull(list(doc.get("errors")), "NotFound") == null, "NotFound is a sentinel error");
+        check(same(returned(funcByKey(doc, "get")), "{\"k\":\"to_error\",\"x\":{\"k\":\"struct\",\"name\":\"NotFound\","
+            + "\"fields\":[{\"name\":\"key\",\"value\":{\"k\":\"var\",\"name\":\"k\",\"t\":{\"k\":\"string\"}}}],"
+            + "\"t\":{\"k\":\"named\",\"name\":\"NotFound\"}},\"t\":{\"k\":\"error\"}}"),
+            "get returns " + Json.write(returned(funcByKey(doc, "get"))).replaceAll("\\s+", " "));
+    }
+
+    /**
+     * The kit case {@code stmt-lookup-else}'s Java source: {@code Long v = m.get(k);} followed by
+     * {@code if (v == null)} whose block ends in a throw is one {@code lookup_else} at the local's
+     * line, its {@code then} the block; nothing is refused.
+     */
+    private void aMapGetFollowedByAnIfOnItsNullThatReturnsIsLookupElse() throws Exception {
+        Path dir = kit().resolve("stmt-lookup-else/java");
+        Map<String, Object> doc = Reader.read(dir);
+        check(!doc.containsKey("refusals"), "refusals: " + String.valueOf(doc.get("refusals")));
+        Map<String, Object> le = null;
+        int ifs = 0;
+        for (Object s : list(funcByKey(doc, "find").get("body"))) {
+            if ("lookup_else".equals(map(s).get("k"))) {
+                le = map(s);
+            }
+            if ("if".equals(map(s).get("k"))) {
+                ifs++;
+            }
+        }
+        check(le != null, "no lookup_else in find: " + Json.write(funcByKey(doc, "find").get("body")).replaceAll("\\s+", " "));
+        check(ifs == 0, "the if on the null is read beside the lookup_else");
+        check("v".equals(le.get("name")), "lookup_else binds " + le.get("name"));
+        check(("Case.java:" + lineOf(dir.resolve("Case.java"), "Long v = m.get(k);")).equals(le.get("pos")), "lookup_else at " + le.get("pos"));
+        check(same(le.get("index"), "{\"k\":\"var\",\"name\":\"k\",\"t\":{\"k\":\"string\"}}"), "index " + Json.write(le.get("index")));
+        List<Object> then = list(le.get("then"));
+        check(then.size() == 1 && "return".equals(map(then.get(0)).get("k")), "then " + Json.write(then).replaceAll("\\s+", " "));
+    }
+
+    /**
+     * Exactly the lines marked {@code // refused} in the fixture are refusals, {@code count} of them,
+     * one of whose reasons holds {@code reason}; the method {@code one} beside them is read.
+     */
+    private void refusedAtMarkers(String fixture, int count, String reason) throws Exception {
+        Path dir = testdata.resolve(fixture);
+        Map<String, Object> doc = Reader.read(dir);
+        List<String> want = new ArrayList<>();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.sorted().toList()) {
+                List<String> lines = Files.readAllLines(f);
+                for (int i = 0; i < lines.size(); i++) {
+                    if (lines.get(i).contains("// refused")) {
+                        want.add(f.getFileName() + ":" + (i + 1));
+                    }
+                }
+            }
+        }
+        check(want.size() == count, "markers in " + dir + ": " + want);
+        List<String> got = refusalPositions(doc);
+        check(new TreeSet<>(got).equals(new TreeSet<>(want)) && got.size() == want.size(),
+            "refusals at " + got + ", want " + want + ": " + String.valueOf(doc.get("refusals")));
+        boolean named = false;
+        for (Object r : list(doc.get("refusals"))) {
+            named |= String.valueOf(map(r).get("reason")).contains(reason);
+        }
+        check(named, "no refusal names " + reason + ": " + String.valueOf(doc.get("refusals")));
         check(funcByKeyOrNull(doc, "one") != null, "the method beside them was not read");
     }
 
