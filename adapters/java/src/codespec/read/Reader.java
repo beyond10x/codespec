@@ -43,6 +43,7 @@ import com.sun.source.util.TreeScanner;
 import com.sun.source.util.TreePathScanner;
 import codespec.jvm.JvmTypes;
 import com.sun.source.util.Trees;
+import java.math.BigInteger;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -2177,6 +2178,9 @@ public final class Reader {
                 return forEach(p, ctx, pos);
             case BREAK: {
                 if (((BreakTree) s).getLabel() != null) {
+                    if (project) {
+                        throw new Unsupported("labeled break is outside cir/1");
+                    }
                     innermostLoop(((BreakTree) s).getLabel().toString(), "break", ctx);
                     return List.of(simple("break", pos));
                 }
@@ -2187,10 +2191,16 @@ public final class Reader {
             }
             case CONTINUE:
                 if (((ContinueTree) s).getLabel() != null) {
+                    if (project) {
+                        throw new Unsupported("labeled continue is outside cir/1");
+                    }
                     innermostLoop(((ContinueTree) s).getLabel().toString(), "continue", ctx);
                 }
                 return List.of(simple("continue", pos));
             case LABELED_STATEMENT: {
+                if (project) {
+                    throw new Unsupported("labeled statement is outside cir/1");
+                }
                 LabeledStatementTree ls = (LabeledStatementTree) s;
                 Tree.Kind k = ls.getStatement().getKind();
                 if (k != Tree.Kind.WHILE_LOOP && k != Tree.Kind.FOR_LOOP && k != Tree.Kind.ENHANCED_FOR_LOOP) {
@@ -2299,6 +2309,12 @@ public final class Reader {
                     return assignUnassigned(target, new TreePath(ep, at.getVariable()), new TreePath(ep, at.getExpression()), ctx, pos);
                 }
                 refuseUnassigned(new TreePath(ep, at.getExpression()), "assigned", ESCAPES);
+                Element av = trees.getElement(new TreePath(ep, at.getVariable()));
+                if (av != null && av.getKind() == ElementKind.LOCAL_VARIABLE && av.asType().getKind() == TypeKind.DECLARED && impls.containsKey((TypeElement) types.asElement(av.asType()))) {
+                    throw new Unsupported("an assignment to " + av.getSimpleName() + ", a local of interface "
+                        + types.asElement(av.asType()).getSimpleName() + ": the Go writer declares a local with the type of the"
+                        + " value it starts with, so another implementation is not assignable to it");
+                }
                 Map<String, Object> lhs = place(new TreePath(ep, at.getVariable()), ctx);
                 Map<String, Object> rhs = coerce(expr(new TreePath(ep, at.getExpression()), ctx), type(lhs));
                 return List.of(assign("", lhs, rhs, pos));
@@ -2313,12 +2329,21 @@ public final class Reader {
             case XOR_ASSIGNMENT:
             case LEFT_SHIFT_ASSIGNMENT:
             case RIGHT_SHIFT_ASSIGNMENT: {
+                if (project && (e.getKind() == Tree.Kind.LEFT_SHIFT_ASSIGNMENT || e.getKind() == Tree.Kind.RIGHT_SHIFT_ASSIGNMENT)) {
+                    throw new Unsupported("expression statement " + e.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + " is outside cir/1");
+                }
                 CompoundAssignmentTree ct = (CompoundAssignmentTree) e;
                 refuseUnassigned(new TreePath(ep, ct.getVariable()), "the target of " + compoundOp(e.getKind()),
                     "Java unboxes or prints the null" + STOPS);
                 refuseUnassigned(new TreePath(ep, ct.getExpression()), "an operand of " + compoundOp(e.getKind()),
                     "Java unboxes or prints the null" + STOPS);
                 Map<String, Object> lhs = place(new TreePath(ep, ct.getVariable()), ctx);
+                String k = (String) lhs.get("k");
+                if (("index".equals(k) || "field".equals(k) || "global".equals(k)) && callsCode(new TreePath(ep, ct.getExpression()))) {
+                    throw new Unsupported(compoundOp(e.getKind()) + " on an array element, a field or a module-level variable with a"
+                        + " call in its right operand: Java reads the target before the call, cir/1 after it");
+                }
                 Map<String, Object> rhs = expr(new TreePath(ep, ct.getExpression()), ctx);
                 String op = compoundOp(e.getKind());
                 Map<String, Object> lt = type(lhs);
@@ -2364,6 +2389,44 @@ public final class Reader {
             default:
                 throw new Unsupported("expression statement " + e.getKind().toString().toLowerCase(Locale.ROOT).replace('_', ' ') + " is outside cir/1");
         }
+    }
+
+    /**
+     * Whether an expression calls code that may write what it names: a method or constructor of the
+     * package, or the abstract method of a functional interface, which runs a lambda of it.
+     */
+    private boolean callsCode(TreePath p) {
+        boolean[] found = {false};
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree mi, Void x) {
+                note(trees.getElement(getCurrentPath()));
+                return super.visitMethodInvocation(mi, x);
+            }
+
+            @Override
+            public Void visitNewClass(NewClassTree nc, Void x) {
+                note(trees.getElement(getCurrentPath()));
+                return super.visitNewClass(nc, x);
+            }
+
+            @Override
+            public Void visitLambdaExpression(LambdaExpressionTree l, Void x) {
+                return null;
+            }
+
+            private void note(Element e) {
+                if (e == null || !(e.getEnclosingElement() instanceof TypeElement)) {
+                    found[0] = true;
+                    return;
+                }
+                TypeElement owner = (TypeElement) e.getEnclosingElement();
+                if (inPackage(owner) || function(owner.getQualifiedName().toString()) != null) {
+                    found[0] = true;
+                }
+            }
+        }.scan(p, null);
+        return found[0];
     }
 
     private static String compoundOp(Tree.Kind k) {
@@ -3098,6 +3161,10 @@ public final class Reader {
 
     private Map<String, Object> expr(TreePath p, Ctx ctx) {
         ExpressionTree e = (ExpressionTree) p.getLeaf();
+        Map<String, Object> folded = wrappedConstant(p);
+        if (folded != null) {
+            return folded;
+        }
         switch (e.getKind()) {
             case PARENTHESIZED:
                 return expr(new TreePath(p, ((ParenthesizedTree) e).getExpression()), ctx);
@@ -3112,8 +3179,14 @@ public final class Reader {
             case NULL_LITERAL:
                 return nil(NULL);
             case FLOAT_LITERAL:
+                if (project) {
+                    throw new Unsupported("char and floating-point values are outside the reader's types");
+                }
                 return floatLit((double) (Float) ((LiteralTree) e).getValue(), "32");
             case DOUBLE_LITERAL:
+                if (project) {
+                    throw new Unsupported("char and floating-point values are outside the reader's types");
+                }
                 return floatLit((Double) ((LiteralTree) e).getValue(), "64");
             case CHAR_LITERAL:
                 throw new Unsupported("char values are outside the reader's types");
@@ -3143,6 +3216,9 @@ public final class Reader {
                 return binary(p, ctx);
             case LEFT_SHIFT:
             case RIGHT_SHIFT:
+                if (project) {
+                    throw new Unsupported("shift: Java masks the shift count, cir/1 does not say so");
+                }
                 return shift(p, ctx);
             case UNSIGNED_RIGHT_SHIFT:
                 throw new Unsupported(">>>: an unsigned shift of a signed integer is outside cir/1");
@@ -3153,6 +3229,9 @@ public final class Reader {
                 refuseUnassigned(new TreePath(p, ((UnaryTree) e).getExpression()), "an operand of a unary operator", "Java unboxes the null" + STOPS);
                 Map<String, Object> t = typeOf(trees.getTypeMirror(p));
                 Map<String, Object> x = coerce(expr(new TreePath(p, ((UnaryTree) e).getExpression()), ctx), t);
+                if (e.getKind() == Tree.Kind.UNARY_MINUS && isFloat(t) && constant(x)) {
+                    throw new Unsupported("- of a floating-point constant: a Go constant has no negative zero");
+                }
                 String op = e.getKind() == Tree.Kind.UNARY_MINUS ? "-"
                     : e.getKind() == Tree.Kind.UNARY_PLUS ? "+" : e.getKind() == Tree.Kind.LOGICAL_COMPLEMENT ? "!" : "^";
                 return unop(op, x, t);
@@ -3278,6 +3357,11 @@ public final class Reader {
                 return constRef(consts.get(el), typeOf(el.asType()));
             }
             if (vars.containsKey(el)) {
+                if (ctx != null && ctx.used.contains(vars.get(el))) {
+                    throw new Unsupported("static field " + owner.getSimpleName() + "." + name + " where a local or a parameter"
+                        + " is named " + vars.get(el) + ": a module-level variable and a local of one name are one name in"
+                        + " the written function");
+                }
                 Map<String, Object> g = kind("global");
                 g.put("name", vars.get(el));
                 g.put("t", typeOf(el.asType()));
@@ -4137,6 +4221,10 @@ public final class Reader {
         Map<String, Object> x = expr(lp, ctx);
         Map<String, Object> y = expr(rp, ctx);
         String op = binOp(b.getKind());
+        if ((isFloat(type(x)) || isFloat(type(y))) && constant(x) && constant(y)) {
+            throw new Unsupported(op + " of two floating-point constants: Go evaluates a constant expression exactly and"
+                + " rounds once, Java rounds each operation");
+        }
         switch (b.getKind()) {
             case CONDITIONAL_AND:
             case CONDITIONAL_OR:
@@ -4215,7 +4303,12 @@ public final class Reader {
             throw new Unsupported(op + " on a " + describe(t));
         }
         Map<String, Object> x = coerce(expr(lp, ctx), t);
-        return binop(op, x, shiftCount(expr(rp, ctx), t), t);
+        Map<String, Object> count = shiftCount(expr(rp, ctx), t);
+        if ("lit".equals(x.get("k")) && !"lit".equals(count.get("k"))) {
+            throw new Unsupported("a shift of a literal by a count that is not constant: Go gives the literal the type its context"
+                + " wants, Java an int or a long");
+        }
+        return binop(op, x, count, t);
     }
 
     /** A shift count as Java takes it for a shift of {@code t}: its low five bits for an int, six for a long. */
@@ -4233,6 +4326,156 @@ public final class Reader {
             return lit(String.valueOf(Long.parseLong((String) y.get("value")) & mask), yt);
         }
         return binop("&", y, lit(String.valueOf(mask), yt), yt);
+    }
+
+    /**
+     * Whether a read expression is a constant as Go writes it: a literal, a constant's name, or an
+     * operator or conversion of constants, which Go evaluates exactly at compile time.
+     */
+    private static boolean constant(Map<String, Object> e) {
+        Object k = e.get("k");
+        if ("lit".equals(k) || "float".equals(k) || "const".equals(k)) {
+            return true;
+        }
+        if ("binop".equals(k)) {
+            return constant(sub(e, "x")) && constant(sub(e, "y"));
+        }
+        if ("unop".equals(k) || "conv".equals(k)) {
+            return constant(sub(e, "x"));
+        }
+        return false;
+    }
+
+    /**
+     * An integer constant expression whose value wraps (or whose shift count is masked), as the
+     * literal of the value Java gives it: written as an operator of literals, Go would evaluate it
+     * exactly, with no int or long to wrap in. One that does not wrap is read as it is written.
+     */
+    private Map<String, Object> wrappedConstant(TreePath p) {
+        switch (p.getLeaf().getKind()) {
+            case PARENTHESIZED:
+            case INT_LITERAL:
+            case LONG_LITERAL:
+            case IDENTIFIER:
+            case MEMBER_SELECT:
+                return null;
+            default:
+                break;
+        }
+        BigInteger[] v = intConstant(p);
+        if (v == null || v[0].equals(v[1])) {
+            return null;
+        }
+        TypeKind k = trees.getTypeMirror(p).getKind();
+        return lit(v[1].toString(), tInt(k == TypeKind.LONG ? "64" : "32"));
+    }
+
+    /**
+     * An int or long constant expression's value: exact, and as Java computes it in its type; or
+     * {@code null} when the expression is not one this evaluates.
+     */
+    private BigInteger[] intConstant(TreePath p) {
+        Tree t = p.getLeaf();
+        TypeMirror tm = trees.getTypeMirror(p);
+        if (tm == null || tm.getKind() != TypeKind.INT && tm.getKind() != TypeKind.LONG) {
+            return null;
+        }
+        boolean wide = tm.getKind() == TypeKind.LONG;
+        switch (t.getKind()) {
+            case PARENTHESIZED:
+                return intConstant(new TreePath(p, ((ParenthesizedTree) t).getExpression()));
+            case INT_LITERAL:
+            case LONG_LITERAL: {
+                BigInteger b = BigInteger.valueOf(((Number) ((LiteralTree) t).getValue()).longValue());
+                return new BigInteger[] {b, b};
+            }
+            case IDENTIFIER:
+            case MEMBER_SELECT: {
+                Element el = trees.getElement(p);
+                if (!(el instanceof VariableElement) || !(((VariableElement) el).getConstantValue() instanceof Number)) {
+                    return null;
+                }
+                BigInteger b = BigInteger.valueOf(((Number) ((VariableElement) el).getConstantValue()).longValue());
+                return new BigInteger[] {b, b};
+            }
+            case UNARY_MINUS:
+            case UNARY_PLUS:
+            case BITWISE_COMPLEMENT: {
+                BigInteger[] x = intConstant(new TreePath(p, ((UnaryTree) t).getExpression()));
+                if (x == null) {
+                    return null;
+                }
+                switch (t.getKind()) {
+                    case UNARY_MINUS:
+                        return new BigInteger[] {x[0].negate(), wrap(x[1].negate(), wide)};
+                    case UNARY_PLUS:
+                        return x;
+                    default:
+                        return new BigInteger[] {x[0].not(), wrap(x[1].not(), wide)};
+                }
+            }
+            case PLUS:
+            case MINUS:
+            case MULTIPLY:
+            case DIVIDE:
+            case REMAINDER:
+            case AND:
+            case OR:
+            case XOR:
+            case LEFT_SHIFT:
+            case RIGHT_SHIFT: {
+                BinaryTree b = (BinaryTree) t;
+                BigInteger[] x = intConstant(new TreePath(p, b.getLeftOperand()));
+                BigInteger[] y = intConstant(new TreePath(p, b.getRightOperand()));
+                if (x == null || y == null) {
+                    return null;
+                }
+                switch (t.getKind()) {
+                    case PLUS:
+                        return new BigInteger[] {x[0].add(y[0]), wrap(x[1].add(y[1]), wide)};
+                    case MINUS:
+                        return new BigInteger[] {x[0].subtract(y[0]), wrap(x[1].subtract(y[1]), wide)};
+                    case MULTIPLY:
+                        return new BigInteger[] {x[0].multiply(y[0]), wrap(x[1].multiply(y[1]), wide)};
+                    case DIVIDE:
+                    case REMAINDER: {
+                        if (y[0].signum() == 0 || y[1].signum() == 0) {
+                            return null;
+                        }
+                        boolean div = t.getKind() == Tree.Kind.DIVIDE;
+                        return new BigInteger[] {div ? x[0].divide(y[0]) : x[0].remainder(y[0]),
+                            wrap(div ? x[1].divide(y[1]) : x[1].remainder(y[1]), wide)};
+                    }
+                    case AND:
+                        return new BigInteger[] {x[0].and(y[0]), wrap(x[1].and(y[1]), wide)};
+                    case OR:
+                        return new BigInteger[] {x[0].or(y[0]), wrap(x[1].or(y[1]), wide)};
+                    case XOR:
+                        return new BigInteger[] {x[0].xor(y[0]), wrap(x[1].xor(y[1]), wide)};
+                    default: {
+                        if (project) {
+                            return null;
+                        }
+                        int count = y[1].intValue() & (wide ? 63 : 31);
+                        boolean left = t.getKind() == Tree.Kind.LEFT_SHIFT;
+                        BigInteger java = wrap(left ? x[1].shiftLeft(count) : x[1].shiftRight(count), wide);
+                        if (y[0].signum() < 0 || y[0].bitLength() > 31) {
+                            // A count Java masks has no exact shift: the read takes Java's value.
+                            return new BigInteger[] {java.add(BigInteger.ONE.shiftLeft(64)), java};
+                        }
+                        int exactCount = y[0].intValue();
+                        return new BigInteger[] {left ? x[0].shiftLeft(exactCount) : x[0].shiftRight(exactCount), java};
+                    }
+                }
+            }
+            default:
+                return null;
+        }
+    }
+
+    /** {@code v} wrapped to a long or an int, as Java's arithmetic leaves it. */
+    private static BigInteger wrap(BigInteger v, boolean wide) {
+        return BigInteger.valueOf(wide ? v.longValue() : v.intValue());
     }
 
     private static boolean isIntLit(Map<String, Object> e) {

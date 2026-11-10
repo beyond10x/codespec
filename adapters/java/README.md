@@ -88,6 +88,28 @@ before):
 | `System.out.println` of an integer, a boolean or a `String` | `println` |
 | a sealed interface whose permitted classes are records without members | `union`, refused while `READ_UNIONS` is off |
 
+Refused at their line, since the written Go would print otherwise than Java
+(`testdata/refuse/kit-limits` and `testdata/adversary1`, run by `ReaderTest` and `AdversaryTest`):
+
+- a shift of a literal by a count that is not constant (`1 << n`): Go gives the literal the type its
+  context wants, 64 bits in a comparison or a `println`, where Java shifts an int;
+- an operator whose operands are all floating-point constants (`0.1 + 0.2`), and `-` of one
+  (`-0.0`): Go evaluates a constant expression exactly and rounds once, where Java rounds each
+  operation, and a Go constant has no negative zero;
+- a compound assignment (`+=` and the like) to an array element, a field or a module-level variable
+  whose right operand calls a method or constructor of the package or a function value: Java reads
+  the target before the call, the written Go after it;
+- a static field named through its class (`Case.count`) in a method with a local or parameter of
+  its name: the module-level variable and the local are one identifier in the written function;
+- an assignment to a local of an interface with several implementations after its declaration: the
+  Go writer declares the local with the type of the value it starts with, so another implementation
+  is not assignable to it.
+
+An integer constant expression that wraps (`2147483647 + 1`), or whose shift count Java masks, is
+read as the literal of Java's value: written as an operator of literals, Go would compute it exactly.
+In a project read, shifts, labeled statements and floating-point literals are refused as before
+the kit work.
+
 `ReaderTest` holds the claim against the kit: every claimed feature is the subject of at least one
 kit case with a Java source.
 

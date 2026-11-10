@@ -322,11 +322,10 @@ public final class ReaderTest {
         String int32 = "{\"k\":\"int\",\"width\":\"32\",\"signed\":true}";
         String int64 = "{\"k\":\"int\",\"width\":\"64\",\"signed\":true}";
         Object wrap = returned(funcByKey(doc, "wrap"));
-        check(same(wrap, "{\"k\":\"binop\",\"op\":\"+\",\"x\":{\"k\":\"lit\",\"value\":\"2147483647\",\"t\":" + int32
-            + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int32 + "},\"t\":" + int32 + "}"), "wrap returns " + Json.write(wrap));
+        // A constant expression that wraps is read as the literal of Java's value: Go would add exactly.
+        check(same(wrap, "{\"k\":\"lit\",\"value\":\"-2147483648\",\"t\":" + int32 + "}"), "wrap returns " + Json.write(wrap));
         Object wide = returned(funcByKey(doc, "wide"));
-        check(same(wide, "{\"k\":\"binop\",\"op\":\"+\",\"x\":{\"k\":\"lit\",\"value\":\"9223372036854775807\",\"t\":" + int64
-            + "},\"y\":{\"k\":\"lit\",\"value\":\"1\",\"t\":" + int64 + "},\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
+        check(same(wide, "{\"k\":\"lit\",\"value\":\"-9223372036854775808\",\"t\":" + int64 + "}"), "wide returns " + Json.write(wide));
     }
 
     // ---- fields that hold null until assigned ----
