@@ -1,39 +1,60 @@
-// int-from-text: in a read body, v := <parse>(…) (a let or an assign into a local) with no <, <=,
-// > or >= on v anywhere in the function, and either a conversion of v to an integer type
+// int-from-text: in a read body, an integer parsed from text (a let or an assign of one call
+// parse names) into a local or a field, with no <, <=, > or >= in the function on it or on a
+// local or field it is copied into, and either a conversion of the local to an integer type
 // narrower than what the parse can give (its result type, or its bit size argument when that is
-// a constant), or a word of v's name in ranged.
+// a constant), or a word of its name or of a copy's in ranged (its words, as names are split).
 
 names parse = ["strconv.Atoi", "strconv.ParseInt", "strconv.ParseUint"].
 names ranged = ["port", "status"].
 
-parse_into(F, V, X, S) :- stmt{id: S, kind: "let", func: F}, let_name{stmt: S, index: 0, name: V},
-                          V != "_", expr{parent: S, slot: "rhs", index: 0, id: X},
-                          call{site: X, callee: C}, C in @names.parse.
-parse_into(F, V, X, S) :- stmt{id: S, kind: "assign", op: "", func: F},
-                          expr{parent: S, slot: "lhs", index: 0, kind: "var", name: V}, V != "_",
-                          expr{parent: S, slot: "rhs", index: 0, id: X},
-                          call{site: X, callee: C}, C in @names.parse.
+// A statement with one value on its right, into a local (kind "var") or a field (kind "field"):
+// a let's first name, an assign's first target.
+into(S, F, "var", V, X) :- stmt{id: S, kind: "let", func: F}, let_name{stmt: S, index: 0, name: V},
+                           V != "_", expr{parent: S, slot: "rhs", index: 0, id: X},
+                           R = count{ expr{parent: S, slot: "rhs"} }, R == 1.
+into(S, F, K, V, X) :- stmt{id: S, kind: "assign", op: "", func: F},
+                       expr{parent: S, slot: "lhs", index: 0, kind: K, name: V},
+                       (K == "var", V != "_" or K == "field"),
+                       expr{parent: S, slot: "rhs", index: 0, id: X},
+                       R = count{ expr{parent: S, slot: "rhs"} }, R == 1.
+
+int_bits(T, B) :- type{id: T, kind: "int", bits: B}.
+int_bits(T, B) :- type{id: T, kind: "named", bits: B}, B > 0.
 
 // The bits the parse's integer result can hold.
-gives(X, B) :- parse_into(_, _, X, _), expr{id: X, t: T}, type_elem{type: T, index: 0, t: R},
-               type{id: R, bits: B}, B > 0.
-gives(X, B) :- parse_into(_, _, X, _), expr{id: X, t: T}, type{id: T, bits: B}, B > 0.
-size(X, N) :- parse_into(_, _, X, _),
-              expr{parent: X, slot: "args", index: 2, kind: "lit", value: V}, int(V, N), N > 0.
-smaller(X, N) :- gives(X, B), size(X, N), N < B.
-can_give(X, B) :- smaller(X, B).
-can_give(X, B) :- gives(X, B), !smaller(X, _).
+result_bits(X, B) :- expr{id: X, t: T}, type{id: T, kind: "tuple"},
+                     type_elem{type: T, index: 0, t: R}, int_bits(R, B).
+result_bits(X, B) :- expr{id: X, t: T}, int_bits(T, B).
+size(X, N) :- expr{parent: X, slot: "args", index: 2, kind: "lit", value: V}, int(V, N), N > 0.
+can_give(X, N) :- result_bits(X, B), size(X, N), N < B.
+can_give(X, B) :- result_bits(X, B), !smaller(X).
+smaller(X) :- result_bits(X, B), size(X, N), N < B.
 
-compared(F, V) :- expr{func: F, kind: "binop", op: ~"^(<|<=|>|>=)$", id: E}, contains(E, U),
-                  expr{id: U, kind: "var", name: V}.
+parsed(S, F, K, V, X) :- into(S, F, K, V, X), call{site: X, callee: C}, C in @names.parse,
+                         result_bits(X, _).
 
-narrowed(Pos, F, V) :- parse_into(F, V, X, _), can_give(X, B),
-                       expr{func: F, kind: "conv", x: Y, t: To, stmt: S},
-                       expr{id: Y, kind: "var", name: V}, To.bits > 0, To.bits < B,
-                       stmt{id: S, pos: Pos}.
+// What a parse lands in: its destination, and every local or field a local destination is
+// copied into in the function.
+lands(S, K, V) :- parsed(S, _, K, V, _).
+lands(S, K2, V2) :- parsed(S, F, "var", V, _), into(C, F, K2, V2, Y),
+                    expr{id: Y, kind: "var", name: V}.
 
-finding(Pos, F) :- narrowed(Pos, F, V), !compared(F, V).
-finding(Pos, F) :- parse_into(F, V, _, S), word(V, _, W), W in @names.ranged, !compared(F, V),
-                   !narrowed(_, F, V), stmt{id: S, pos: Pos}.
+// A comparison in the function reading a local (a variable) or a field (by name).
+compared(F, "var", V) :- cmp_side(F, U), expr{id: U, kind: "var", name: V}.
+compared(F, "field", N) :- cmp_side(F, U), expr{id: U, kind: "field", name: N}.
+cmp_side(F, U) :- expr{func: F, kind: "binop", op: ~"^(<|<=|>|>=)$", x: X, y: Y},
+                  (U = X or U = Y or contains(X, U) or contains(Y, U)).
+checked(S) :- parsed(S, F, _, _, _), lands(S, K, V), compared(F, K, V).
+
+narrowed(S, Pos) :- parsed(S, F, "var", V, X), !checked(S), can_give(X, B),
+                    expr{func: F, kind: "conv", x: Y, t: To, stmt: T}, int_bits(To, TB), TB < B,
+                    expr{id: Y, kind: "var", name: V}, stmt{id: T, pos: Pos}.
+
+ranged_word(W) :- E in @names.ranged, word(E, _, W).
+ranged(S) :- lands(S, _, V), word(V, _, W), ranged_word(W).
+
+finding(Pos, F) :- narrowed(S, Pos), parsed(S, F, _, _, _).
+finding(Pos, F) :- parsed(S, F, _, _, _), !checked(S), !narrowed(S, _), ranged(S),
+                   stmt{id: S, pos: Pos}.
 
 ?- finding(Pos, F).

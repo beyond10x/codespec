@@ -226,7 +226,9 @@ Usage: codespec query [OPTIONS] [ARGS]...
 | `--schema` | no | none | none | Print every relation of the fact base with its fields and their types, and exit. |
 | `--explain` | no | none | none | Print the query's rules in the order of their strata instead of its rows. |
 | `--format <FORMAT>` | no | `text` | none | text, one line per row (its values, then `possible: …` when it rests on code the fact base cannot see); or json, codespec-query-report/1. |
-| `--names <FILE>` | no | none | none | A JSON object of list name to an array of strings, each replacing a names list the module declares. |
+| `--names <FILE>` | no | none | none | A JSON object of list name to an array of strings, each replacing the names list of that name the module declares (a list it does not declare is left alone, so the file `codespec check --names` reads serves here too). |
+| `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the documents, for the effect and syscall relations; repeat for several. |
+| `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document, for the syscall and effect relations. |
 
 ## `codespec harness`
 

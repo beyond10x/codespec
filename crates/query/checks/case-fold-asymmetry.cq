@@ -1,23 +1,31 @@
 // case-fold-asymmetry: two sibling methods of one type, where one calls a fold and the other
 // calls none and compares two strings, neither a constant, with == or != in its read body. A
-// fold is a call fold names, or of a function of the set one of whose words is in fold_words,
-// or of a plain function from one string to a string that calls a fold, to a fixed point.
-// Siblings share a word of their names other than the first; methods of one word all do.
+// fold is a call fold names, or of a function of the set one of whose words is a word of
+// fold-words, or of a plain function from one string to a string that calls a fold, to a fixed
+// point. Siblings share a word of their names other than the first; methods of one word all do.
 
 names fold = [
   "strings.ToLower", "strings.ToUpper", "strings.EqualFold", "bytes.ToLower", "bytes.ToUpper",
   "bytes.EqualFold", "unicode.ToLower", "unicode.ToUpper",
   "net/textproto.CanonicalMIMEHeaderKey", "net/http.CanonicalHeaderKey"
 ].
-names fold_words = ["lower", "upper", "fold", "canonical"].
+names fold-words = ["lower", "upper", "fold", "canonical"].
+
+// The names a call goes by, as codespec check matches a list entry against it.
+call_name(S, Nm) :- call{site: S, name: Nm}, Nm != "".
+call_name(S, C) :- call{site: S, callee: C, name: Nm}, Nm != "".
+call_name(S, PN) :- call{site: S, path: P, name: Nm}, Nm != "", concat(P, ".", Q), concat(Q, Nm, PN).
+call_name(S, RN) :- call{site: S, path: P, type: T, name: Nm}, Nm != "", T != "",
+                    concat(P, ".", Q), replace(T, Q, "", R), concat(R, ".", R2), concat(R2, Nm, RN).
 
 plain(G) :- func{id: G, kind: "func"}, param{func: G, index: 0, t: "string"},
             !param{func: G, index: 1}, result{func: G, index: 0, t: "string"},
             !result{func: G, index: 1}.
 
-fold_fun(G) :- func{id: G, name: N}, word(N, _, W), W in @names.fold_words.
+fold_word(W) :- E in @names.fold-words, word(E, _, W).
+fold_fun(G) :- func{id: G, name: N}, word(N, _, W), fold_word(W).
 fold_fun(G) :- plain(G), calls_fold(G).
-calls_fold(F) :- call{func: F, callee: C}, C in @names.fold.
+calls_fold(F) :- call{func: F, site: S}, call_name(S, N), N in @names.fold.
 calls_fold(F) :- call{func: F, site: S}, calls{site: S, target: G}, fold_fun(G).
 
 stem(F, W) :- func{id: F, name: N}, word(N, I, W), I > 0.

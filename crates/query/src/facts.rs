@@ -321,6 +321,36 @@ pub const RELATIONS: &[Relation] = &[
         about: "codespec reach (rta) reaches func from every main.main and init",
         group: Group::Graph,
     },
+    Relation {
+        name: "scc",
+        fields: &[("func", N), ("comp", N)],
+        about: "the strongly connected components of the functions over calls; comp the least function id of func's component",
+        group: Group::Graph,
+    },
+    Relation {
+        name: "effect",
+        fields: &[("func", N), ("effect", S), ("pos", S)],
+        about: "codespec effects: func may have the effect through the call at pos (its own, or one leading there), from the summaries and the barrier given",
+        group: Group::Graph,
+    },
+    Relation {
+        name: "syscall",
+        fields: &[("func", N), ("name", S), ("pos", S)],
+        about: "codespec effects: func may make the syscall through the call at pos, from the barrier given",
+        group: Group::Graph,
+    },
+    Relation {
+        name: "makes",
+        fields: &[("func", N), ("t", T)],
+        about: "func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type",
+        group: Group::Graph,
+    },
+    Relation {
+        name: "implements",
+        fields: &[("t", T), ("iface", S)],
+        about: "the method set of t holds every method of the interface iface with an identical signature (the CHA test); iface a declared interface or one a call list names",
+        group: Group::Graph,
+    },
 ];
 
 /// The relations computed when a query names them, not stored or cached.
@@ -328,6 +358,25 @@ pub const ON_DEMAND: &[&str] = &["reaches"];
 
 pub fn relation(name: &str) -> Option<&'static Relation> {
     RELATIONS.iter().find(|r| r.name == name)
+}
+
+/// A relation of `docs/query-language.md` § 4.2 the fact base does not build yet.
+pub struct Waiting {
+    pub name: &'static str,
+    pub fields: &'static str,
+    /// Why, completing "<name> …".
+    pub why: &'static str,
+}
+
+/// The relations of § 4.2 that wait for a construct cq does not run yet.
+pub const WAITING: &[Waiting] = &[Waiting {
+    name: "reaches_path",
+    fields: "from, to, path",
+    why: "is the witness of a path pattern (§ 5.2 of docs/query-language.md), which cq does not run yet",
+}];
+
+pub fn waiting(name: &str) -> Option<&'static Waiting> {
+    WAITING.iter().find(|w| w.name == name)
 }
 
 /// The text `codespec query --schema` prints.
@@ -352,6 +401,10 @@ pub fn schema_text() -> String {
             .map(|(f, t)| format!("{f}: {}", t.name()))
             .collect();
         out += &format!("{}{{{}}}\n    {}\n", r.name, fields.join(", "), r.about);
+    }
+    out += "\n// Not built yet: a query naming one is refused.\n\n";
+    for w in WAITING {
+        out += &format!("{}({})\n    {} {}\n", w.name, w.fields, w.name, w.why);
     }
     out
 }
@@ -550,13 +603,87 @@ fn spell(l: &str, t: &Type) -> String {
     }
 }
 
+/// The Go reader's spelling of a signature, as the method sets and the call lists hold it (and
+/// as `codespec effects` spells a declared interface's methods for its CHA test): every named
+/// type qualified by its module's path, `byte` and `rune` for the unsigned 8-bit and signed
+/// 32-bit integers.
+fn go_sig(m: &Module, t: &Type) -> String {
+    let list = |ts: &[Type]| {
+        ts.iter()
+            .map(|t| go_sig(m, t))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let targs = |ts: &[Type]| {
+        if ts.is_empty() {
+            String::new()
+        } else {
+            format!("[{}]", list(ts))
+        }
+    };
+    match t {
+        Type::Int {
+            width: IntWidth::W8,
+            signed: false,
+        } => "byte".into(),
+        Type::Int {
+            width: IntWidth::W32,
+            signed: true,
+        } => "rune".into(),
+        Type::Int { width, signed } => {
+            let w = match width {
+                IntWidth::Platform => String::new(),
+                w => width_bits(*w).to_string(),
+            };
+            format!("{}int{w}", if *signed { "" } else { "u" })
+        }
+        Type::Float { bits } => match bits {
+            FloatBits::W32 => "float32".into(),
+            FloatBits::W64 => "float64".into(),
+        },
+        Type::Bool => "bool".into(),
+        Type::String => "string".into(),
+        Type::Error => "error".into(),
+        Type::Any => "any".into(),
+        Type::Unit => String::new(),
+        Type::Named { name, targs: ta } => format!("{}.{name}{}", label(m), targs(ta)),
+        Type::Param { name } => name.clone(),
+        Type::Ptr { elem } => format!("*{}", go_sig(m, elem)),
+        Type::Slice { elem } => format!("[]{}", go_sig(m, elem)),
+        Type::Array { len, elem } => format!("[{len}]{}", go_sig(m, elem)),
+        Type::Map { key: k, elem } => format!("map[{}]{}", go_sig(m, k), go_sig(m, elem)),
+        Type::Chan { elem, dir } => match dir {
+            ChanDir::Both => format!("chan {}", go_sig(m, elem)),
+            ChanDir::Send => format!("chan<- {}", go_sig(m, elem)),
+            ChanDir::Recv => format!("<-chan {}", go_sig(m, elem)),
+        },
+        Type::Tuple { elems } => format!("({})", list(elems)),
+        Type::Extern {
+            path,
+            name,
+            targs: ta,
+        } => format!("{path}.{name}{}", targs(ta)),
+        Type::Func { params, results } => {
+            let r = match results.as_slice() {
+                [] => String::new(),
+                [one] => format!(" {}", go_sig(m, one)),
+                more => format!(" ({})", list(more)),
+            };
+            format!("func({}){r}", list(params))
+        }
+    }
+}
+
 /// The relations and wild facts as they are collected.
 #[derive(Default)]
 struct Builder {
     rels: BTreeMap<&'static str, BTreeSet<Vec<Value>>>,
     wild: BTreeMap<&'static str, BTreeSet<WildRow>>,
     sites: Vec<Site>,
+    site_index: HashMap<(String, String, String), usize>,
     types: BTreeSet<String>,
+    /// Each interface's methods as (name, signature), by its id.
+    ifaces: BTreeMap<String, BTreeSet<(String, String)>>,
 }
 
 impl Builder {
@@ -579,18 +706,85 @@ impl Builder {
         self.wild.entry(rel).or_default().insert((row, site));
     }
 
-    /// A place the fact base cannot see.
+    /// A place the fact base cannot see; the same place twice (a document given twice) is one.
     fn unknown(&mut self, func: &str, site: &str, pos: String, reason: String) -> usize {
         self.add(
             "unknown",
             vec![s(func), s(site), s(pos.clone()), s(reason.clone())],
         );
-        self.sites.push(Site {
+        let x = Site {
             site: site.to_string(),
             pos,
             reason,
-        });
+        };
+        if let Some(&k) = self
+            .site_index
+            .get(&(x.site.clone(), x.pos.clone(), x.reason.clone()))
+        {
+            return k;
+        }
+        self.site_index.insert(
+            (x.site.clone(), x.pos.clone(), x.reason.clone()),
+            self.sites.len(),
+        );
+        self.sites.push(x);
         self.sites.len() - 1
+    }
+
+    /// `scc`: the components of the functions over the linked calls, each named by its least
+    /// function id.
+    fn scc(&mut self) {
+        let funcs: Vec<String> = self
+            .rels
+            .get("func")
+            .into_iter()
+            .flatten()
+            .filter_map(|r| match &r[0] {
+                Value::Str(id) => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let at: HashMap<&str, usize> = funcs
+            .iter()
+            .enumerate()
+            .map(|(k, f)| (f.as_str(), k))
+            .collect();
+        let mut func_of: HashMap<&str, &str> = HashMap::new();
+        for r in self.rels.get("call").into_iter().flatten() {
+            if let (Value::Str(site), Value::Str(f)) = (&r[0], &r[1]) {
+                func_of.insert(site, f);
+            }
+        }
+        let mut edges: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); funcs.len()];
+        for r in self.rels.get("calls").into_iter().flatten() {
+            if let (Value::Str(site), Value::Str(t)) = (&r[0], &r[1])
+                && let Some(f) = func_of.get(site.as_str())
+                && let (Some(&a), Some(&b2)) = (at.get(f), at.get(t.as_str()))
+            {
+                edges[a].insert(b2);
+            }
+        }
+        let edges: Vec<Vec<usize>> = edges.into_iter().map(|e| e.into_iter().collect()).collect();
+        let mut rows = Vec::new();
+        for comp in crate::graph::components(&edges) {
+            let least = comp.iter().map(|&k| &funcs[k]).min().expect("a component");
+            for &k in &comp {
+                rows.push(vec![s(&funcs[k]), s(least)]);
+            }
+        }
+        for r in rows {
+            self.add("scc", r);
+        }
+    }
+
+    /// `func` makes a value of `t` when `t` is a named type.
+    fn makes(&mut self, m: &Module, func: &str, t: &Type) {
+        if matches!(t, Type::Named { .. } | Type::Extern { .. }) {
+            let id = self.ty(m, t);
+            self.add("makes", vec![s(func), s(id)]);
+        }
     }
 
     /// The id of `t`, with a `type` row for it and every type inside it.
@@ -735,6 +929,44 @@ impl Builder {
         );
         id
     }
+}
+
+/// The `effect` and `syscall` rows `codespec effects` gives the set: (function, relation, effect
+/// or syscall, position of the call leading there).
+fn effects(
+    modules: &[Module],
+    summaries: &[codespec_effects::Summary],
+    barrier: Option<&codespec_effects::Barrier>,
+) -> Vec<(String, &'static str, String, String)> {
+    let opts = codespec_effects::Options {
+        barrier,
+        ..Default::default()
+    };
+    let report = codespec_effects::analyze_set(modules, summaries, &opts);
+    let mut out = Vec::new();
+    for fe in &report.funcs {
+        let Some(m) = modules.iter().find(|m| {
+            m.path == fe.path
+                && (m
+                    .funcs
+                    .iter()
+                    .any(|f| f.key() == fe.name && f.pos == fe.pos)
+                    || m.opaque
+                        .iter()
+                        .any(|o| o.key() == fe.name && o.pos == fe.pos))
+        }) else {
+            continue;
+        };
+        let id = format!("{}.{}", label(m), fe.name);
+        for (rel, sites) in [("effect", &fe.effect_sites), ("syscall", &fe.syscalls)] {
+            for site in sites {
+                for p in &site.at {
+                    out.push((id.clone(), rel, site.name.clone(), at(m, p)));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The integer type `t` is, a declared newtype or enum resolved: (bits, signed).
@@ -1262,6 +1494,7 @@ impl Walker<'_> {
             }
             Stmt::Var { name, t, .. } => {
                 self.b.ty(self.m, t);
+                self.b.makes(self.m, &self.func, t);
                 self.def(name, &id);
             }
             Stmt::Assign { op, lhs, rhs, .. } => {
@@ -1418,7 +1651,17 @@ impl Walker<'_> {
                 CallRef::Method {
                     path, recv, name, ..
                 } => ("method", self.own(path), recv.clone(), name.clone()),
-                CallRef::Iface { iface, name, .. } => {
+                CallRef::Iface {
+                    iface,
+                    name,
+                    methods,
+                    ..
+                } => {
+                    self.b
+                        .ifaces
+                        .entry(iface.clone())
+                        .or_default()
+                        .extend(methods.iter().map(|x| (x.name.clone(), x.sig.clone())));
                     let (p, r) = iface.rsplit_once('.').unwrap_or(("", iface));
                     ("iface", self.own(p), r.to_string(), name.clone())
                 }
@@ -1430,7 +1673,16 @@ impl Walker<'_> {
                     self.call_list(calls, &format!("{site}.calls."));
                     continue;
                 }
-                CallRef::New { .. } => continue,
+                CallRef::New { path, name, .. } => {
+                    let p = if path.is_empty() {
+                        label(self.m).to_string()
+                    } else {
+                        path.clone()
+                    };
+                    self.b
+                        .add("makes", vec![s(&self.func), s(key(&p, "", name))]);
+                    continue;
+                }
             };
             let pos = at(self.m, c.pos());
             self.call_row(
@@ -1536,6 +1788,15 @@ impl Walker<'_> {
     ) {
         let id = format!("{}#{path}", self.func);
         let t = self.b.ty(self.m, x.t());
+        match x {
+            Expr::Struct { .. }
+            | Expr::Conv { .. }
+            | Expr::Zero { .. }
+            | Expr::Lit { .. }
+            | Expr::Const { .. } => self.b.makes(self.m, &self.func, x.t()),
+            Expr::ToError { x: a, .. } => self.b.makes(self.m, &self.func, a.t()),
+            _ => {}
+        }
         let (mut op, mut name, mut value) = ("", String::new(), String::new());
         let (mut xid, mut yid) = (String::new(), String::new());
         let sub = |field: &str| format!("{path}.{field}");
@@ -1815,14 +2076,26 @@ impl Walker<'_> {
 }
 
 impl FactBase {
-    /// The fact base of `modules`, read as one program. The order of the modules does not matter.
+    /// The fact base of `modules`, read as one program, with no effect summaries and no barrier.
+    /// The order of the modules does not matter.
     pub fn build(modules: &[Module]) -> FactBase {
+        FactBase::build_with(modules, &[], None)
+    }
+
+    /// The fact base of `modules`, `effect` and `syscall` from `summaries` and `barrier` as
+    /// `codespec effects` reads them.
+    pub fn build_with(
+        modules: &[Module],
+        summaries: &[codespec_effects::Summary],
+        barrier: Option<&codespec_effects::Barrier>,
+    ) -> FactBase {
         let mut order: Vec<&Module> = modules.iter().collect();
         order.sort_by(|a, b| (label(a), &a.name).cmp(&(label(b), &b.name)));
         let mut b = Builder::default();
         let mut links = Vec::new();
         let mut index: HashMap<(String, String, String), String> = HashMap::new();
         let mut has: BTreeSet<(String, &str)> = BTreeSet::new();
+        let mut method_sets: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
         for m in &order {
             let l = label(m).to_string();
             let lang = m.reader.language.clone();
@@ -1862,6 +2135,22 @@ impl FactBase {
                         },
                     );
                 }
+                let id = key(if f.path.is_empty() { &l } else { &f.path }, "", &f.name);
+                let methods: Vec<(String, String)> = f
+                    .methods
+                    .iter()
+                    .map(|x| {
+                        let sig = go_sig(
+                            m,
+                            &Type::Func {
+                                params: x.params.clone(),
+                                results: x.results.clone(),
+                            },
+                        );
+                        (x.name.clone(), sig)
+                    })
+                    .collect();
+                b.ifaces.entry(id).or_default().extend(methods);
             }
             for f in &m.funcs {
                 let id = format!("{l}.{}", f.key());
@@ -1893,6 +2182,9 @@ impl FactBase {
                         Value::Int(line(&f.pos)),
                     ],
                 );
+                if !recv.is_empty() {
+                    b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
+                }
                 let mut w = Walker {
                     b: &mut b,
                     m,
@@ -1932,6 +2224,9 @@ impl FactBase {
                         Value::Int(line(&o.pos)),
                     ],
                 );
+                if !recv.is_empty() {
+                    b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
+                }
                 let site = b.unknown(
                     &id,
                     &id,
@@ -1986,6 +2281,10 @@ impl FactBase {
             }
             for ms in &m.methods {
                 let t = key(&l, "", &ms.t);
+                method_sets
+                    .entry(t.clone())
+                    .or_default()
+                    .extend(ms.methods.iter().map(|x| (x.name.clone(), x.sig.clone())));
                 for me in &ms.methods {
                     let target = match &me.target {
                         CallRef::Method {
@@ -2011,6 +2310,21 @@ impl FactBase {
             if let Some(target) = index.get(&(k.path, k.recv, k.name)) {
                 b.add("calls", vec![s(k.site), s(target)]);
             }
+        }
+        // implements: the CHA test, every method of the interface in the type's method set.
+        for (iface, methods) in &b.ifaces.clone() {
+            if methods.is_empty() {
+                continue;
+            }
+            for (t, set) in &method_sets {
+                if methods.is_subset(set) {
+                    b.add("implements", vec![s(t), s(iface)]);
+                }
+            }
+        }
+        b.scc();
+        for (func, rel, name, pos) in effects(modules, summaries, barrier) {
+            b.add(rel, vec![s(func), s(name), s(pos)]);
         }
         let opts = codespec_effects::Options {
             dispatch: codespec_effects::DispatchMode::Rta,

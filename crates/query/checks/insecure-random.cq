@@ -8,7 +8,8 @@ names token = [
   "otp", "csrf", "mask", "challenge"
 ].
 
-root(F) :- func{id: F, name: N}, word(N, _, W), W in @names.token.
+token_word(W) :- E in @names.token, word(E, _, W).
+root(F) :- func{id: F, name: N}, word(N, _, W), token_word(W).
 
 from_root(F) :- root(F).
 from_root(G) :- from_root(F), call{func: F, site: S}, calls{site: S, target: G}.

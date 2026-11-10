@@ -73,3 +73,18 @@ reaches{from: node, to: node}
     to is reached from from by one or more calls
 reached{func: node}
     codespec reach (rta) reaches func from every main.main and init
+scc{func: node, comp: node}
+    the strongly connected components of the functions over calls; comp the least function id of func's component
+effect{func: node, effect: string, pos: string}
+    codespec effects: func may have the effect through the call at pos (its own, or one leading there), from the summaries and the barrier given
+syscall{func: node, name: string, pos: string}
+    codespec effects: func may make the syscall through the call at pos, from the barrier given
+makes{func: node, t: type}
+    func's body makes a value of the named type t: a struct literal, a conversion, a zero value, a literal or constant, a var, an error wrapped, a listed new; a method makes its receiver's type
+implements{t: type, iface: string}
+    the method set of t holds every method of the interface iface with an identical signature (the CHA test); iface a declared interface or one a call list names
+
+// Not built yet: a query naming one is refused.
+
+reaches_path(from, to, path)
+    reaches_path is the witness of a path pattern (§ 5.2 of docs/query-language.md), which cq does not run yet

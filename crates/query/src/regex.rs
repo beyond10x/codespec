@@ -1,8 +1,19 @@
-//! The regular expressions of `~"…"`: a backtracking matcher over characters, searching anywhere
-//! in the string unless anchored. Literals, `.`, `^`, `$`, classes `[a-z]` and `[^…]`, the escapes
-//! `\d \w \s \D \W \S` and any escaped punctuation, groups `(…)` and `(?:…)`, alternation `|` and
-//! the quantifiers `* + ? {n} {n,} {n,m}` (a trailing `?` is accepted; only whether a match
-//! exists is asked).
+//! The regular expressions of `~"…"`, searching anywhere in the string unless anchored.
+//! Literals, `.`, `^`, `$`, classes `[a-z]` and `[^…]`, the escapes `\d \w \s \D \W \S` and any
+//! escaped punctuation, groups `(…)` and `(?:…)`, alternation `|` and the quantifiers
+//! `* + ? {n} {n,} {n,m}` (a trailing `?` is accepted; only whether a match exists is asked).
+//!
+//! An expression compiles to a program of at most [`MAX_PROGRAM`] instructions, groups nest at
+//! most [`MAX_GROUPS`] deep and a count is at most [`MAX_COUNT`]; it runs as a Pike VM, every
+//! thread advanced one character at a time, so matching takes time linear in the string and
+//! never recurses.
+
+/// How deep groups may nest.
+pub const MAX_GROUPS: usize = 64;
+/// The largest count `{n,m}` takes.
+pub const MAX_COUNT: usize = 1000;
+/// The most instructions an expression compiles to.
+pub const MAX_PROGRAM: usize = 100_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Atom {
@@ -21,16 +32,29 @@ struct Piece {
     max: Option<usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Inst {
+    Char(char),
+    Any,
+    Class(Vec<(char, char)>, bool),
+    Start,
+    End,
+    Split(usize, usize),
+    Jmp(usize),
+    Match,
+}
+
 /// A compiled regular expression.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Regex {
-    alts: Vec<Vec<Piece>>,
+    prog: Vec<Inst>,
 }
 
 struct Parser<'a> {
     src: &'a str,
     chars: Vec<char>,
     i: usize,
+    depth: usize,
 }
 
 const DIGIT: &[(char, char)] = &[('0', '9')];
@@ -71,16 +95,23 @@ impl Parser<'_> {
         Ok(seq)
     }
 
-    fn number(&mut self) -> Option<usize> {
+    fn number(&mut self) -> Result<Option<usize>, String> {
         let start = self.i;
         while self.peek().is_some_and(|c| c.is_ascii_digit()) {
             self.i += 1;
         }
-        self.chars[start..self.i]
+        if start == self.i {
+            return Ok(None);
+        }
+        let n: Option<usize> = self.chars[start..self.i]
             .iter()
             .collect::<String>()
             .parse()
-            .ok()
+            .ok();
+        match n {
+            Some(n) if n <= MAX_COUNT => Ok(Some(n)),
+            _ => Err(self.err(&format!("a count above {MAX_COUNT}, the limit of cq"))),
+        }
     }
 
     fn quantifier(&mut self) -> Result<(usize, Option<usize>), String> {
@@ -90,10 +121,10 @@ impl Parser<'_> {
             Some('?') => (0, Some(1)),
             Some('{') => {
                 self.i += 1;
-                let min = self.number().ok_or_else(|| self.err("a count"))?;
+                let min = self.number()?.ok_or_else(|| self.err("a count"))?;
                 let max = if self.peek() == Some(',') {
                     self.i += 1;
-                    self.number()
+                    self.number()?
                 } else {
                     Some(min)
                 };
@@ -140,10 +171,17 @@ impl Parser<'_> {
             '$' => Atom::End,
             '\\' => self.escape()?,
             '(' => {
+                if self.depth == MAX_GROUPS {
+                    return Err(self.err(&format!(
+                        "groups nested deeper than {MAX_GROUPS}, the limit of cq"
+                    )));
+                }
                 if self.chars[self.i..].starts_with(&['?', ':']) {
                     self.i += 2;
                 }
+                self.depth += 1;
                 let alts = self.alts()?;
+                self.depth -= 1;
                 if self.peek() != Some(')') {
                     return Err(self.err("an unclosed ("));
                 }
@@ -204,66 +242,178 @@ impl Parser<'_> {
     }
 }
 
+/// Compiles parsed alternatives into instructions; recursion follows the nesting of groups,
+/// which the parser bounds.
+struct Compiler {
+    prog: Vec<Inst>,
+}
+
+impl Compiler {
+    fn emit(&mut self, i: Inst) -> Result<usize, String> {
+        if self.prog.len() == MAX_PROGRAM {
+            return Err(format!(
+                "regex: more than {MAX_PROGRAM} instructions, the limit of cq"
+            ));
+        }
+        self.prog.push(i);
+        Ok(self.prog.len() - 1)
+    }
+
+    fn alts(&mut self, alts: &[Vec<Piece>]) -> Result<(), String> {
+        let mut jumps = Vec::new();
+        for (k, seq) in alts.iter().enumerate() {
+            if k + 1 < alts.len() {
+                let split = self.emit(Inst::Split(0, 0))?;
+                self.seq(seq)?;
+                jumps.push(self.emit(Inst::Jmp(0))?);
+                let next = self.prog.len();
+                self.prog[split] = Inst::Split(split + 1, next);
+            } else {
+                self.seq(seq)?;
+            }
+        }
+        let end = self.prog.len();
+        for j in jumps {
+            self.prog[j] = Inst::Jmp(end);
+        }
+        Ok(())
+    }
+
+    fn seq(&mut self, seq: &[Piece]) -> Result<(), String> {
+        for p in seq {
+            for _ in 0..p.min {
+                self.atom(&p.atom)?;
+            }
+            match p.max {
+                None => {
+                    let split = self.emit(Inst::Split(0, 0))?;
+                    self.atom(&p.atom)?;
+                    self.emit(Inst::Jmp(split))?;
+                    let out = self.prog.len();
+                    self.prog[split] = Inst::Split(split + 1, out);
+                }
+                Some(max) => {
+                    let mut splits = Vec::new();
+                    for _ in p.min..max {
+                        splits.push(self.emit(Inst::Split(0, 0))?);
+                        self.atom(&p.atom)?;
+                    }
+                    let out = self.prog.len();
+                    for s in splits {
+                        self.prog[s] = Inst::Split(s + 1, out);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn atom(&mut self, a: &Atom) -> Result<(), String> {
+        match a {
+            Atom::Char(c) => self.emit(Inst::Char(*c)).map(|_| ()),
+            Atom::Any => self.emit(Inst::Any).map(|_| ()),
+            Atom::Class(r, n) => self.emit(Inst::Class(r.clone(), *n)).map(|_| ()),
+            Atom::Start => self.emit(Inst::Start).map(|_| ()),
+            Atom::End => self.emit(Inst::End).map(|_| ()),
+            Atom::Group(g) => self.alts(g),
+        }
+    }
+}
+
 impl Regex {
     pub fn new(src: &str) -> Result<Regex, String> {
         let mut p = Parser {
             src,
             chars: src.chars().collect(),
             i: 0,
+            depth: 0,
         };
         let alts = p.alts()?;
         if p.i != p.chars.len() {
             return Err(p.err("an unopened )"));
         }
-        Ok(Regex { alts })
+        let mut c = Compiler { prog: Vec::new() };
+        c.alts(&alts)
+            .map_err(|e| format!("regex {src:?}: {}", e.trim_start_matches("regex: ")))?;
+        c.emit(Inst::Match)?;
+        Ok(Regex { prog: c.prog })
     }
 
     /// Whether the expression matches somewhere in `s`.
     pub fn is_match(&self, s: &str) -> bool {
         let chars: Vec<char> = s.chars().collect();
-        (0..=chars.len()).any(|start| alts(&self.alts, &chars, start, &|_| true))
-    }
-}
-
-fn alts(alts: &[Vec<Piece>], s: &[char], pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-    alts.iter().any(|seq| sequence(seq, s, pos, k))
-}
-
-fn sequence(seq: &[Piece], s: &[char], pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-    match seq.split_first() {
-        None => k(pos),
-        Some((p, rest)) => piece(p, 0, s, pos, &|next| sequence(rest, s, next, k)),
-    }
-}
-
-fn piece(p: &Piece, count: usize, s: &[char], pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-    if p.max.is_none_or(|m| count < m)
-        && atom(&p.atom, s, pos, &|next| {
-            (next != pos || count < p.min) && piece(p, count + 1, s, next, k)
-        })
-    {
-        return true;
-    }
-    count >= p.min && k(pos)
-}
-
-fn atom(a: &Atom, s: &[char], pos: usize, k: &dyn Fn(usize) -> bool) -> bool {
-    match a {
-        Atom::Start => pos == 0 && k(pos),
-        Atom::End => pos == s.len() && k(pos),
-        Atom::Group(g) => alts(g, s, pos, k),
-        _ => {
-            let Some(&c) = s.get(pos) else { return false };
-            let hit = match a {
-                Atom::Char(x) => c == *x,
-                Atom::Any => true,
-                Atom::Class(ranges, negated) => {
-                    ranges.iter().any(|&(lo, hi)| lo <= c && c <= hi) != *negated
-                }
-                _ => unreachable!("handled above"),
-            };
-            hit && k(pos + 1)
+        let n = chars.len();
+        let mut mark = vec![usize::MAX; self.prog.len()];
+        let mut stack = Vec::new();
+        let mut cur: Vec<usize> = Vec::new();
+        if self.add(&mut cur, &mut mark, &mut stack, 0, 0, n) {
+            return true;
         }
+        for (pos, &c) in chars.iter().enumerate() {
+            let mut next = Vec::new();
+            let step = pos + 1;
+            for &pc in &cur {
+                let hit = match &self.prog[pc] {
+                    Inst::Char(x) => c == *x,
+                    Inst::Any => true,
+                    Inst::Class(ranges, negated) => {
+                        ranges.iter().any(|&(lo, hi)| lo <= c && c <= hi) != *negated
+                    }
+                    _ => false,
+                };
+                if hit && self.add(&mut next, &mut mark, &mut stack, pc + 1, step, n) {
+                    return true;
+                }
+            }
+            // A match may also start here.
+            if self.add(&mut next, &mut mark, &mut stack, 0, step, n) {
+                return true;
+            }
+            cur = next;
+        }
+        false
+    }
+
+    /// Adds the thread at `pc` to `list` at `pos`, following jumps, splits and anchors with an
+    /// explicit stack; whether it reaches `Match`. `mark` holds the position each instruction was
+    /// last added at, so each is added once per position.
+    fn add(
+        &self,
+        list: &mut Vec<usize>,
+        mark: &mut [usize],
+        stack: &mut Vec<usize>,
+        pc: usize,
+        pos: usize,
+        len: usize,
+    ) -> bool {
+        stack.clear();
+        stack.push(pc);
+        while let Some(pc) = stack.pop() {
+            if mark[pc] == pos {
+                continue;
+            }
+            mark[pc] = pos;
+            match &self.prog[pc] {
+                Inst::Match => return true,
+                Inst::Jmp(x) => stack.push(*x),
+                Inst::Split(a, b) => {
+                    stack.push(*b);
+                    stack.push(*a);
+                }
+                Inst::Start => {
+                    if pos == 0 {
+                        stack.push(pc + 1);
+                    }
+                }
+                Inst::End => {
+                    if pos == len {
+                        stack.push(pc + 1);
+                    }
+                }
+                _ => list.push(pc),
+            }
+        }
+        false
     }
 }
 
@@ -294,18 +444,34 @@ mod tests {
         assert!(!m(r"\.pb\.go:[0-9]+$", "x/apb.go:12"));
         assert!(m("^a{2,3}$", "aaa"));
         assert!(!m("^a{2,3}$", "aaaa"));
+        assert!(m("^a{2,}$", "aaaaa"));
+        assert!(!m("^a{2,}$", "a"));
         assert!(m("^(a*)*b$", "aaab"));
         assert!(!m("^(a*)*b$", "aaac"));
         assert!(m(r"^\w+\s\d$", "abc_1 7"));
         assert!(m("^[^a-c]$", "d"));
         assert!(!m("^[^a-c]$", "b"));
         assert!(m("^$", ""));
+        assert!(m("", "x"));
+        assert!(m("(^|/)zz", "a/zz"));
+        assert!(m("(^|/)zz", "zz"));
+        assert!(!m("(^|/)zz", "azz"));
     }
 
     #[test]
     fn a_broken_expression_is_refused() {
-        for re in ["(a", "a)", "[a", "*a", r"\q", "a{3,1}"] {
+        for re in ["(a", "a)", "[a", "*a", r"\q", "a{3,1}", "a{1001}"] {
             assert!(Regex::new(re).is_err(), "{re}");
         }
+        let deep = format!("{}a{}", "(".repeat(65), ")".repeat(65));
+        assert!(Regex::new(&deep).unwrap_err().contains("limit of cq"));
+    }
+
+    #[test]
+    fn a_long_string_is_matched_without_recursion() {
+        let long = "a".repeat(200_000);
+        assert!(m("^a*$", &long));
+        assert!(!m("^a*b$", &long));
+        assert!(m("^(a|aa)*$", &long));
     }
 }

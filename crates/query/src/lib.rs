@@ -16,19 +16,25 @@
 //! [`load`] caches the fact base next to the first document as `.cq/<digest>.facts`, the digest
 //! the SHA-256 of the codespec version and the SHA-256 of each document, sorted: the same
 //! documents in any order give the same file, a changed one another. A second run reads the file
-//! instead of the documents.
+//! instead of the documents. [`load_with`] adds `codespec effects`' summaries and barrier, for
+//! `effect` and `syscall`, to the input and to the digest.
+//!
+//! `reaches_path` ([`WAITING`]) is the witness of a path pattern: the schema names it as not
+//! built yet, and a query naming it is refused.
 //!
 //! # Unknown
 //!
 //! What the fact base cannot see is a [`Site`] in `unknown`: an opaque function, a `foreign`
 //! statement without a call list, a call of a function value or through an interface (`calls`
-//! links neither). Each site comes with the facts it could hold: an opaque function could make
-//! any call, hold any statement and expression; a foreign statement without a call list any call
-//! and expression; an unlinked call could reach any function. A negated atom that no fact
-//! satisfies holds definitely unless one of those facts would satisfy it (the relation is
-//! evaluated a second time over them); then it holds with those sites, and so does every row that
-//! rests on it, printed `possible: <site> at <pos> (<reason>)`. An aggregate over facts that rest
-//! on sites rests on them too.
+//! links neither); the same place in a document given twice is one site. Each site comes with
+//! the facts it could hold: an opaque function could make any call, hold any statement and
+//! expression; a foreign statement without a call list any call and expression; an unlinked call
+//! could reach any function. A negated atom holds definitely when no fact satisfies it and none
+//! of those facts would (the relation is evaluated a second time over them); when one of those
+//! would, or when every fact that satisfies it only possibly holds, it holds possibly, resting on
+//! those sites, and so does every row that rests on it, printed `possible: <site> at <pos>
+//! (<reason>)`. A definite fact refutes it. An aggregate over facts that rest on sites rests on
+//! them too.
 //!
 //! # The language
 //!
@@ -40,27 +46,55 @@
 //! `!(cond)`), arithmetic on integers (`+`, `-`, `*`), disjunctions `(a or b)`, a type's fields
 //! as `T.bits`, aggregates `N = count{body}` and `M = min{X : body}` (`max`, `sum`, `collect`),
 //! grouped by the variables the body shares with the rest of the rule (the body binds them
-//! itself: it is evaluated on its own, `_` in it a variable of its own), and the builtins
+//! itself: it is evaluated on its own, `_` and every field a record pattern leaves out a variable
+//! of its own, so `count{call{func: F, callee: C}}` counts the calls), and the builtins
 //! `word(S, I, W)` (the words of a name as `codespec check` splits them), `int(S, N)`,
-//! `replace(S, From, To, R)` and `concat(A, B, R)`. `names l = ["…", …].` declares a names list
-//! that [`Names`] (`--names`) may replace. One `?- body.` is the query: its rows are the
-//! bindings of its variables outside aggregates and negations, in the order they first occur,
-//! sorted.
+//! `replace(S, From, To, R)` and `concat(A, B, R)`. `names never-fail = ["…", …].` declares a
+//! names list that [`Names`] (`--names`, the file `codespec check --names` reads) may replace;
+//! `X in @names.l` holds for an entry equal to `X`, one ending in `*` that `X` starts with, or one
+//! starting with `*` that `X` ends with, and with `X` unbound gives each entry as written. One
+//! `?- body.` is the query: its rows are the bindings of its variables outside aggregates and
+//! negations, in the order they first occur, sorted.
 //!
 //! Evaluation is bottom-up and semi-naive, stratum by stratum; a negation or an aggregate inside
 //! a recursion is refused. [`explain`] prints the rules under the stratum of their heads.
+//!
+//! # Limits
+//!
+//! Hostile input ends in an error, never in a crash: parentheses, negated conditions,
+//! aggregates and the operators of a term nest at most [`MAX_NESTING`] deep; a body holds at most
+//! [`MAX_BODY`] literals; the disjunctions of one rule expand into at most [`MAX_BODIES`]
+//! bodies; a regular expression's groups nest at most [`MAX_GROUPS`] deep, its counts are at most
+//! [`MAX_COUNT`] and it compiles to at most [`MAX_PROGRAM`] instructions, matched by a Pike VM in
+//! time linear in the string. Strata come from an SCC computed without recursion, so a chain of
+//! rules of any length is safe; an index key holds any number of columns.
+//!
+//! # Gaps
+//!
+//! - `calls` links the static calls only: no dispatch candidates under CHA or RTA. `reached` is
+//!   `codespec reach` with `rta` from every `main.main` and `init`.
+//! - `--explain` prints the rules by stratum, not one derivation tree per finding (§ 7).
+//! - The checks under `checks/` give `codespec check`'s findings on every fixture of
+//!   `crates/check` they run on, but: `insecure-random` takes neither `--strict` nor `--report`;
+//!   `unreached` neither `--entry` nor `--exported`, and its generated-file names are fixed in
+//!   the check, not the list `generated`; `case-fold-asymmetry` and `clone-aliasing` do not
+//!   follow an accessor of an opaque or foreign function. `lock-without-unlock` waits for
+//!   properties (§ 5.3) and the `defer` statement (§ 8), as `checks/waiting.json` says.
 
 mod engine;
 mod facts;
+mod graph;
 mod regex;
 mod sha256;
 mod syntax;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, schema_text};
-pub use syntax::Program;
+pub use engine::MAX_BODIES;
+pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, WAITING, schema_text};
+pub use regex::{MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
+pub use syntax::{MAX_BODY, MAX_NESTING, Program};
 
 /// The format of the JSON report.
 pub const REPORT_FORMAT: &str = "codespec-query-report/1";
@@ -114,12 +148,26 @@ pub struct Loaded {
 /// The cache key of a set of documents: the SHA-256 of the codespec version and each document's
 /// SHA-256, sorted.
 pub fn digest(documents: &[Vec<u8>]) -> String {
+    digest_with(documents, &[], None)
+}
+
+/// The cache key of a set of documents read with effect summaries and a barrier: as [`digest`],
+/// then `summary <SHA-256>` for each summary, sorted, and `barrier <SHA-256>`.
+pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option<&[u8]>) -> String {
     let mut each: Vec<String> = documents.iter().map(|d| sha256::hex(d)).collect();
     each.sort();
     let mut key = format!("{}\n{}\n", FACTS_FORMAT, env!("CARGO_PKG_VERSION"));
     for e in each {
         key += &e;
         key.push('\n');
+    }
+    let mut sums: Vec<String> = summaries.iter().map(|d| sha256::hex(d)).collect();
+    sums.sort();
+    for e in sums {
+        key += &format!("summary {e}\n");
+    }
+    if let Some(b) = barrier {
+        key += &format!("barrier {}\n", sha256::hex(b));
     }
     sha256::hex(key.as_bytes())
 }
@@ -128,12 +176,42 @@ pub fn digest(documents: &[Vec<u8>]) -> String {
 /// when it is there and current, else built from the documents (each read strictly) and written
 /// there. A cache that cannot be written is left out.
 pub fn load(paths: &[PathBuf]) -> Result<Loaded, String> {
+    load_with(paths, &[], None)
+}
+
+/// [`load`], `effect` and `syscall` from the `codespec-effects/1` summaries at `summaries` and
+/// the `codespec-barrier/1` barrier at `barrier`, each part of the cache key.
+pub fn load_with(
+    paths: &[PathBuf],
+    summaries: &[PathBuf],
+    barrier: Option<&Path>,
+) -> Result<Loaded, String> {
     let first = paths.first().ok_or("no documents")?;
+    let read = |p: &Path| std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()));
     let mut docs = Vec::with_capacity(paths.len());
     for p in paths {
-        docs.push(std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?);
+        docs.push(read(p)?);
     }
-    let digest = digest(&docs);
+    let mut sums = Vec::with_capacity(summaries.len());
+    let mut sum_bytes = Vec::with_capacity(summaries.len());
+    for p in summaries {
+        let bytes = read(p)?;
+        sums.push(
+            codespec_effects::summary_from_json(&bytes)
+                .map_err(|e| format!("{}: {e}", p.display()))?,
+        );
+        sum_bytes.push(bytes);
+    }
+    let (bar, bar_bytes) = match barrier {
+        Some(p) => {
+            let bytes = read(p)?;
+            let b = codespec_effects::barrier_from_json(&bytes)
+                .map_err(|e| format!("{}: {e}", p.display()))?;
+            (Some(b), Some(bytes))
+        }
+        None => (None, None),
+    };
+    let digest = digest_with(&docs, &sum_bytes, bar_bytes.as_deref());
     let dir = first
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
@@ -156,7 +234,7 @@ pub fn load(paths: &[PathBuf]) -> Result<Loaded, String> {
             codespec_model::Module::from_json(d).map_err(|e| format!("{}: {e}", p.display()))?,
         );
     }
-    let facts = FactBase::build(&modules);
+    let facts = FactBase::build_with(&modules, &sums, bar.as_ref());
     if std::fs::create_dir_all(&dir).is_ok() {
         let tmp = dir.join(format!("{digest}.facts.{}", std::process::id()));
         if std::fs::write(&tmp, facts.to_bytes()).is_ok() && std::fs::rename(&tmp, &cache).is_err()
@@ -179,8 +257,9 @@ pub struct Names {
 }
 
 impl Names {
-    /// A names file: a JSON object of list name to an array of strings. A list the module does not
-    /// declare is refused when the query is compiled.
+    /// A names file: a JSON object of list name to an array of strings, as `codespec check --names`
+    /// reads it. Each replaces the list of that name a module declares; a list the module does not
+    /// declare is left alone, so one file serves every check.
     pub fn from_json(bytes: &[u8]) -> Result<Names, String> {
         let lists: BTreeMap<String, Vec<String>> = serde_json::from_slice(bytes)
             .map_err(|e| format!("names: an object of list name to an array of strings: {e}"))?;

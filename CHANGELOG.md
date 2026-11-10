@@ -10,13 +10,20 @@ Every change a user of `codespec` or of `cir/1` would notice.
   Datalog with named-field record patterns (`call{func: F, callee: C}`), recursion, stratified
   negation and aggregates (crate `b10x-codespec-query`). `--schema` prints the fact base's
   relations: functions, statements, expressions and calls, each node with the id
-  `<module path>.<function key>#<index path>`, types, facts, control flow, dominance, def-use and
-  the call graph. The fact base is cached as `.cq/<digest>.facts` next to the first document. A
-  row whose negation crosses an opaque function, a foreign statement without a call list or an
-  unlinked call is marked `possible`, with those sites. `--explain` prints the rules by stratum.
-  Path patterns and properties are refused by name. Seven of the eight checks of the first plan
-  item are written in cq in `crates/query/checks` and give the findings `codespec check` gives on
-  their fixtures; `lock-without-unlock` waits for properties and the `defer` statement.
+  `<module path>.<function key>#<index path>`, types, facts, control flow, dominance, def-use, the
+  call graph with its strongly connected components, the types each function makes, the CHA
+  `implements` test, and `codespec effects`' effects and syscalls (from `--summaries` and
+  `--barrier`); `reaches_path` is named as not built yet. The fact base is cached as
+  `.cq/<digest>.facts` next to the first document. A row whose negation crosses an opaque
+  function, a foreign statement without a call list or an unlinked call, or negates a fact that
+  only possibly holds, is marked `possible`, with those sites. `--explain` prints the rules by
+  stratum. Path patterns and properties are refused by name; nesting, body length, disjunction
+  expansion and regular expressions have stated limits, past which a query is refused. `--names`
+  reads the file `codespec check --names` reads. Seven of the eight checks of the first plan item
+  are written in cq in `crates/query/checks` and give the findings `codespec check` gives on 21
+  of the 22 fixtures of those checks in `crates/check/tests/fixtures`; the 22nd,
+  `unreached/library`, needs `--exported`, which the cq check does not take. `lock-without-unlock`
+  waits for properties and the `defer` statement.
 
 ## 0.6.1
 

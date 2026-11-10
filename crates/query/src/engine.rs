@@ -110,7 +110,8 @@ pub fn words(name: &str) -> Vec<String> {
 /// The tuples of a relation by the values of some of their columns.
 type Index = HashMap<Vec<V>, Vec<usize>>;
 
-/// The facts of one relation, with an index per set of bound columns, built when first asked.
+/// The facts of one relation, with an index per set of bound columns (the columns, ascending),
+/// built when first asked.
 #[derive(Default)]
 struct Store {
     tuples: Vec<Vec<V>>,
@@ -118,7 +119,7 @@ struct Store {
     at: HashMap<Vec<V>, usize>,
     /// The tuples with a wild field; never in an index.
     tops: Vec<usize>,
-    indexes: RefCell<HashMap<u64, Index>>,
+    indexes: RefCell<HashMap<Vec<usize>, Index>>,
 }
 
 impl Store {
@@ -141,8 +142,8 @@ impl Store {
         if t.iter().any(V::has_top) {
             self.tops.push(k);
         } else {
-            for (mask, index) in self.indexes.get_mut().iter_mut() {
-                index.entry(key_of(*mask, &t)).or_default().push(k);
+            for (cols, index) in self.indexes.get_mut().iter_mut() {
+                index.entry(key_of(cols, &t)).or_default().push(k);
             }
         }
         self.at.insert(t.clone(), k);
@@ -152,16 +153,16 @@ impl Store {
     }
 
     /// The tuples whose columns in `mask` hold `key`, with every tuple holding a wild field.
-    fn candidates(&self, mask: u64, key: &[V]) -> Vec<usize> {
-        if mask == 0 || key.iter().any(V::has_top) {
+    fn candidates(&self, cols: &[usize], key: &[V]) -> Vec<usize> {
+        if cols.is_empty() || key.iter().any(V::has_top) {
             return (0..self.tuples.len()).collect();
         }
         let mut indexes = self.indexes.borrow_mut();
-        let index = indexes.entry(mask).or_insert_with(|| {
+        let index = indexes.entry(cols.to_vec()).or_insert_with(|| {
             let mut ix: HashMap<Vec<V>, Vec<usize>> = HashMap::new();
             for (k, t) in self.tuples.iter().enumerate() {
                 if !t.iter().any(V::has_top) {
-                    ix.entry(key_of(mask, t)).or_default().push(k);
+                    ix.entry(key_of(cols, t)).or_default().push(k);
                 }
             }
             ix
@@ -172,12 +173,8 @@ impl Store {
     }
 }
 
-fn key_of(mask: u64, t: &[V]) -> Vec<V> {
-    t.iter()
-        .enumerate()
-        .filter(|(c, _)| mask & (1 << c) != 0)
-        .map(|(_, v)| v.clone())
-        .collect()
+fn key_of(cols: &[usize], t: &[V]) -> Vec<V> {
+    cols.iter().map(|&c| t[c].clone()).collect()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -218,13 +215,44 @@ impl Builtin {
     }
 }
 
+/// A names list: an entry ending in `*` names every string starting with the rest, one starting
+/// with `*` every string ending in it, as `codespec check` reads its lists.
+#[derive(Debug)]
+struct NameList {
+    entries: Vec<String>,
+    exact: BTreeSet<String>,
+}
+
+impl NameList {
+    fn new(entries: &[String]) -> NameList {
+        NameList {
+            entries: entries.to_vec(),
+            exact: entries.iter().cloned().collect(),
+        }
+    }
+
+    fn holds(&self, s: &str) -> bool {
+        self.exact.contains(s)
+            || self.entries.iter().any(|e| {
+                if let Some(prefix) = e.strip_suffix('*') {
+                    s.starts_with(prefix)
+                } else if let Some(suffix) = e.strip_prefix('*') {
+                    s.ends_with(suffix)
+                } else {
+                    false
+                }
+            })
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Step {
     Scan(Rel, Vec<Arg>),
     Neg(Rel, Vec<Arg>),
     Cmp(Arg, Op, Arg),
     Match(Arg, Regex, bool),
-    In(Arg, Rc<BTreeSet<String>>, bool),
+    /// Membership in a names list; with the variable unbound, each entry as written.
+    In(Arg, Rc<NameList>, bool),
     Builtin(Builtin, Vec<Arg>),
     Agg {
         var: usize,
@@ -252,7 +280,10 @@ struct Derived {
 
 pub struct Compiled {
     derived: Vec<Derived>,
+    by_name: HashMap<String, usize>,
     rules: Vec<CRule>,
+    /// The rules of each derived relation.
+    by_head: Vec<Vec<usize>>,
     query: usize,
     vars: Vec<String>,
     /// Each derived relation's stratum, from 1.
@@ -323,6 +354,20 @@ fn lit_vars(l: &Lit, out: &mut Vec<String>) {
     }
 }
 
+/// The most bodies the disjunctions of one rule expand into.
+pub const MAX_BODIES: usize = 1024;
+
+/// How many bodies `body` expands into, counted without expanding, saturating.
+fn bodies(body: &[Lit]) -> usize {
+    body.iter().fold(1usize, |n, l| match l {
+        Lit::Or(alts) => n.saturating_mul(
+            alts.iter()
+                .fold(0usize, |m, alt| m.saturating_add(bodies(alt))),
+        ),
+        _ => n,
+    })
+}
+
 /// The bodies a body with disjunctions stands for.
 fn expand(body: &[Lit]) -> Vec<Vec<Lit>> {
     let mut out: Vec<Vec<Lit>> = vec![Vec::new()];
@@ -352,7 +397,7 @@ struct Compiler<'a> {
     by_name: HashMap<String, usize>,
     rules: Vec<CRule>,
     names: &'a BTreeMap<String, Vec<String>>,
-    lists: HashMap<String, Rc<BTreeSet<String>>>,
+    lists: HashMap<String, Rc<NameList>>,
     fresh: usize,
 }
 
@@ -393,7 +438,7 @@ impl Compiler<'_> {
         Ok(self.derived.len() - 1)
     }
 
-    fn list(&mut self, name: &str) -> Result<Rc<BTreeSet<String>>, String> {
+    fn list(&mut self, name: &str) -> Result<Rc<NameList>, String> {
         if let Some(l) = self.lists.get(name) {
             return Ok(l.clone());
         }
@@ -402,7 +447,7 @@ impl Compiler<'_> {
                 "no names list {name}: declare it with names {name} = [\"…\"]."
             ));
         };
-        let l = Rc::new(items.iter().cloned().collect::<BTreeSet<_>>());
+        let l = Rc::new(NameList::new(items));
         self.lists.insert(name.to_string(), l.clone());
         Ok(l)
     }
@@ -462,6 +507,11 @@ impl Compiler<'_> {
                 }
             }
             return Ok((Rel::Base(r.name), terms));
+        }
+        if !self.by_name.contains_key(&a.rel)
+            && let Some(w) = crate::facts::waiting(&a.rel)
+        {
+            return Err(format!("{a}: {} {}", a.rel, w.why));
         }
         let Args::Positional(ts) = &a.args else {
             return Err(format!(
@@ -702,6 +752,8 @@ impl Compiler<'_> {
         Ok(())
     }
 
+    /// An atom of an aggregate's body with a variable of its own for every `_` and every field
+    /// a record pattern leaves out, so the aggregate counts the matching tuples themselves.
     fn name_anys(&mut self, l: &Lit) -> Lit {
         let t = |t: &Term, c: &mut Self| match t {
             Term::Any => Term::Var(c.fresh().replacen('_', "_any", 1)),
@@ -713,8 +765,9 @@ impl Compiler<'_> {
                     Args::Positional(ts) => {
                         Args::Positional(ts.iter().map(|x| t(x, self)).collect())
                     }
-                    Args::Named(fs) => Args::Named(
-                        fs.iter()
+                    Args::Named(fs) => {
+                        let mut named: Vec<(String, Field)> = fs
+                            .iter()
                             .map(|(n, f)| {
                                 (
                                     n.clone(),
@@ -724,8 +777,16 @@ impl Compiler<'_> {
                                     },
                                 )
                             })
-                            .collect(),
-                    ),
+                            .collect();
+                        if let Some(r) = relation(&a.rel) {
+                            for (f, _) in r.fields {
+                                if !fs.iter().any(|(n, _)| n == f) {
+                                    named.push((f.to_string(), Field::Term(t(&Term::Any, self))));
+                                }
+                            }
+                        }
+                        Args::Named(named)
+                    }
                 };
                 Lit::Atom(Atom {
                     rel: a.rel.clone(),
@@ -744,6 +805,22 @@ impl Compiler<'_> {
                 r.head
             ));
         };
+        let n = bodies(&r.body);
+        if n > MAX_BODIES {
+            return Err(format!(
+                "{}: its disjunctions expand into {} bodies, more than {MAX_BODIES}, the limit of cq; split it into rules",
+                if r.head.rel == "__query" {
+                    "the query".to_string()
+                } else {
+                    r.head.to_string()
+                },
+                if n == usize::MAX {
+                    "too many".to_string()
+                } else {
+                    n.to_string()
+                }
+            ));
+        }
         for body in expand(&r.body) {
             let mut lows = Vec::new();
             for (k, l) in body.iter().enumerate() {
@@ -803,7 +880,11 @@ impl Compiler<'_> {
                         || all_bound(&[a, b], &bound)
                 }
                 Low::Cmp(a, _, b) => all_bound(&[a, b], &bound),
-                Low::Match(t, ..) | Low::In(t, ..) => all_bound(&[t], &bound),
+                Low::Match(t, ..) => all_bound(&[t], &bound),
+                Low::In(t, _, neg) => {
+                    all_bound(&[t], &bound)
+                        || (!neg && matches!(t, Term::Var(v) if !bound.contains(v)))
+                }
                 Low::Builtin(b, ts) => {
                     let n = Builtin::of(match b {
                         Builtin::Word => "word",
@@ -892,7 +973,11 @@ impl Compiler<'_> {
                     s
                 }
                 Low::Match(t, re, neg) => Step::Match(arg(&t, &mut slots), Regex::new(&re)?, neg),
-                Low::In(t, l, neg) => Step::In(arg(&t, &mut slots), self.list(&l)?, neg),
+                Low::In(t, l, neg) => {
+                    let s = Step::In(arg(&t, &mut slots), self.list(&l)?, neg);
+                    bind(&t, &mut bound);
+                    s
+                }
                 Low::Builtin(b, ts) => {
                     let args = ts.iter().map(|t| arg(t, &mut slots)).collect();
                     ts.iter().for_each(|t| bind(t, &mut bound));
@@ -973,20 +1058,13 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
     let Some(query) = &p.query else {
         return Err("the module has no query: add one, ?- …".into());
     };
+    // A names file serves several modules (and codespec check): a list this module does not
+    // declare is left alone.
     let mut lists: BTreeMap<String, Vec<String>> = p.names.iter().cloned().collect();
     for (name, items) in &names.lists {
-        if !lists.contains_key(name) {
-            let declared: Vec<&str> = p.names.iter().map(|(n, _)| n.as_str()).collect();
-            return Err(format!(
-                "names: the module declares no list {name}; it declares {}",
-                if declared.is_empty() {
-                    "none".to_string()
-                } else {
-                    declared.join(", ")
-                }
-            ));
+        if let Some(l) = lists.get_mut(name) {
+            *l = items.clone();
         }
-        lists.insert(name.clone(), items.clone());
     }
     let mut c = Compiler {
         derived: Vec::new(),
@@ -1031,7 +1109,13 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         q,
     )?;
     let strata = stratify(&c.derived, &c.rules)?;
+    let mut by_head: Vec<Vec<usize>> = vec![Vec::new(); c.derived.len()];
+    for (k, r) in c.rules.iter().enumerate() {
+        by_head[r.head].push(k);
+    }
     Ok(Compiled {
+        by_name: c.by_name,
+        by_head,
         derived: c.derived,
         rules: c.rules,
         query: q,
@@ -1062,67 +1146,20 @@ fn stratify(derived: &[Derived], rules: &[CRule]) -> Result<Vec<usize>, String> 
             }
         }
     }
-    // Tarjan's strongly connected components, dependencies first.
-    struct T<'a> {
-        edges: &'a [BTreeSet<(usize, bool)>],
-        index: Vec<Option<usize>>,
-        low: Vec<usize>,
-        on: Vec<bool>,
-        stack: Vec<usize>,
-        next: usize,
-        comps: Vec<Vec<usize>>,
-    }
-    fn visit(t: &mut T, v: usize) {
-        t.index[v] = Some(t.next);
-        t.low[v] = t.next;
-        t.next += 1;
-        t.stack.push(v);
-        t.on[v] = true;
-        let es: Vec<usize> = t.edges[v].iter().map(|(w, _)| *w).collect();
-        for w in es {
-            match t.index[w] {
-                None => {
-                    visit(t, w);
-                    t.low[v] = t.low[v].min(t.low[w]);
-                }
-                Some(i) if t.on[w] => t.low[v] = t.low[v].min(i),
-                _ => {}
-            }
-        }
-        if Some(t.low[v]) == t.index[v] {
-            let mut comp = Vec::new();
-            while let Some(w) = t.stack.pop() {
-                t.on[w] = false;
-                comp.push(w);
-                if w == v {
-                    break;
-                }
-            }
-            t.comps.push(comp);
-        }
-    }
-    let mut t = T {
-        edges: &edges,
-        index: vec![None; n],
-        low: vec![0; n],
-        on: vec![false; n],
-        stack: Vec::new(),
-        next: 0,
-        comps: Vec::new(),
-    };
-    for v in 0..n {
-        if t.index[v].is_none() {
-            visit(&mut t, v);
-        }
-    }
+    // Strongly connected components, dependencies first.
+    let succ: Vec<Vec<usize>> = edges
+        .iter()
+        .map(|es| es.iter().map(|(w, _)| *w).collect())
+        .collect();
+    let comps = crate::graph::components(&succ);
     let mut comp_of = vec![0; n];
-    for (k, comp) in t.comps.iter().enumerate() {
+    for (k, comp) in comps.iter().enumerate() {
         for &v in comp {
             comp_of[v] = k;
         }
     }
     let mut strata = vec![1; n];
-    for (k, comp) in t.comps.iter().enumerate() {
+    for (k, comp) in comps.iter().enumerate() {
         let mut s = 1;
         for &v in comp {
             for &(w, neg) in &edges[v] {
@@ -1173,10 +1210,7 @@ pub fn explain(p: &Program) -> Result<String, String> {
 
 impl Compiled {
     fn by_name(&self, name: &str) -> usize {
-        self.derived
-            .iter()
-            .position(|d| d.name == name)
-            .expect("a compiled relation")
+        *self.by_name.get(name).expect("a compiled relation")
     }
 }
 
@@ -1350,7 +1384,7 @@ impl<'a> Eval<'a> {
         only: Option<&[usize]>,
         mode: Mode,
     ) -> Vec<usize> {
-        let mut mask = 0u64;
+        let mut cols = Vec::new();
         let mut key = Vec::new();
         for (c, a) in args.iter().enumerate() {
             let v = match a {
@@ -1360,28 +1394,19 @@ impl<'a> Eval<'a> {
                 Arg::Any => None,
             };
             if let Some(v) = v {
-                mask |= 1 << c;
+                cols.push(c);
                 key.push(v);
             }
         }
         let cands = match only {
             Some(d) => d.to_vec(),
-            None => store.candidates(mask, &key),
+            None => store.candidates(&cols, &key),
         };
         cands
             .into_iter()
             .filter(|&k| {
                 let t = &store.tuples[k];
-                let mut j = 0;
-                for (c, _) in args.iter().enumerate() {
-                    if mask & (1 << c) != 0 {
-                        if !eqv(&key[j], &t[c], mode) {
-                            return false;
-                        }
-                        j += 1;
-                    }
-                }
-                true
+                cols.iter().zip(&key).all(|(&c, v)| eqv(v, &t[c], mode))
             })
             .collect()
     }
@@ -1442,8 +1467,13 @@ impl<'a> Eval<'a> {
                 let mut a2 = ann.clone();
                 match mode {
                     Mode::Lower => {
-                        if !found.is_empty() {
+                        // A definite fact refutes the negation; one that only possibly holds
+                        // leaves it possible, resting on the sites that fact rests on.
+                        if found.iter().any(|&t| low.anns[t].is_empty()) {
                             return;
+                        }
+                        for &t in &found {
+                            union(&mut a2, &low.anns[t]);
                         }
                         if self.has_upper(*rel) {
                             let up = self.store(*rel, Mode::Upper);
@@ -1523,9 +1553,18 @@ impl<'a> Eval<'a> {
                     self.steps(r, k + 1, b, ann, delta, mode, out);
                 }
             }
-            Step::In(x, set, neg) => {
-                let holds = match value_of(x, b) {
-                    Some(V::Str(s)) => set.contains(&*s) != *neg,
+            Step::In(x, list, neg) => {
+                let v = value_of(x, b);
+                if let (Arg::Var(s), None) = (x, &v) {
+                    for e in &list.entries {
+                        b[*s] = Some(V::Str(Rc::from(e.as_str())));
+                        self.steps(r, k + 1, b, ann, delta, mode, out);
+                    }
+                    b[*s] = None;
+                    return;
+                }
+                let holds = match v {
+                    Some(V::Str(s)) => list.holds(&s) != *neg,
                     Some(V::Top) => true,
                     _ => *neg,
                 };
@@ -1668,11 +1707,9 @@ impl<'a> Eval<'a> {
 
     /// One stratum to its fixed point in `mode`.
     fn stratum(&mut self, heads: &BTreeSet<usize>, mode: Mode) {
-        let rules: Vec<&CRule> = self
-            .c
-            .rules
+        let rules: Vec<&CRule> = heads
             .iter()
-            .filter(|r| heads.contains(&r.head))
+            .flat_map(|&h| self.c.by_head[h].iter().map(|&k| &self.c.rules[k]))
             .collect();
         let recursive = |r: &CRule| -> Vec<usize> {
             r.steps
@@ -1752,7 +1789,7 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         if std::mem::replace(&mut need[d], true) {
             continue;
         }
-        for r in c.rules.iter().filter(|r| r.head == d) {
+        for r in c.by_head[d].iter().map(|&k| &c.rules[k]) {
             for s in &r.steps {
                 if let Step::Scan(Rel::Derived(e), _)
                 | Step::Neg(Rel::Derived(e), _)
@@ -1784,7 +1821,7 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         if std::mem::replace(&mut in_upper[d], true) {
             continue;
         }
-        for r in c.rules.iter().filter(|r| r.head == d) {
+        for r in c.by_head[d].iter().map(|&k| &c.rules[k]) {
             for s in &r.steps {
                 if let Step::Scan(Rel::Derived(e), _)
                 | Step::Agg {

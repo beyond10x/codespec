@@ -3,7 +3,7 @@
 //! ```text
 //! module  = item*
 //! item    = names | rule | fact | query
-//! names   = "names" ident "=" "[" string ("," string)* ","? "]" "."
+//! names   = "names" lname "=" "[" string ("," string)* ","? "]" "."
 //! rule    = atom ":-" body "."         fact = atom "."         query = "?-" body "."
 //! body    = lit ("," lit)*
 //! lit     = atom | "!" atom | "!" "(" cond ")" | "(" body ("or" body)* ")" | cond
@@ -12,15 +12,25 @@
 //! cond    = term op term | term "~" string | term "in" list | Var "=" agg
 //! agg     = ("count" | "min" | "max" | "sum" | "collect") "{" (term ":")? body "}"
 //! term    = Var | "_" | string | int | "true" | "false" | Var "." ident | term ("+" | "-" | "*") term
-//! list    = "@names." ident
-//! op      = "==" | "!=" | "<" | "<=" | ">" | ">=" | "="
+//! list    = "@names." lname          lname = ident ("-" ident)*
+//! op     = "==" | "!=" | "<" | "<=" | ">" | ">=" | "="
 //! ```
 //!
 //! A variable starts with an upper-case letter, a relation with a lower-case one; `//` starts a
 //! comment. In a string `\"` is a quote and `\\` a backslash; any other backslash stays, so a
-//! regular expression is written as it reads (`"^strconv\.Atoi$"`).
+//! regular expression is written as it reads (`"^strconv\.Atoi$"`). A names list's name may hold
+//! `-` between its words (`@names.never-fail`), as `codespec check` names its lists.
+//!
+//! Limits: parentheses, negated conditions, aggregates and the operators of a term nest at most
+//! [`MAX_NESTING`] deep (`1 + 2 + 3` is two deep), and a body holds at most [`MAX_BODY`]
+//! literals; a module past either is refused, naming the limit.
 
 use std::fmt;
+
+/// How deep parentheses, negated conditions, aggregates and the operators of a term may nest.
+pub const MAX_NESTING: usize = 256;
+/// The most literals one body holds.
+pub const MAX_BODY: usize = 1000;
 
 /// A parsed cq module.
 #[derive(Debug, Clone, PartialEq)]
@@ -371,11 +381,39 @@ fn lex(src: &str) -> Result<Vec<Token>, String> {
 struct Parser {
     toks: Vec<Token>,
     k: usize,
+    depth: usize,
 }
 
 const DESIGN: &str = "docs/query-language.md";
 
 impl Parser {
+    /// One level deeper; refused past [`MAX_NESTING`].
+    fn enter(&mut self) -> Result<(), String> {
+        if self.depth == MAX_NESTING {
+            return Err(format!(
+                "{}: nested deeper than {MAX_NESTING} (parentheses, negations, aggregates and operators together), the limit of cq",
+                self.here()
+            ));
+        }
+        self.depth += 1;
+        Ok(())
+    }
+
+    /// A names list's name: words joined by `-` with no space around it.
+    fn list_name(&mut self) -> Result<String, String> {
+        let mut name = self.ident()?;
+        while self.is("-")
+            && !self.toks[self.k].spaced
+            && matches!(self.peek_at(1), Some(Tok::Ident(_)))
+            && !self.toks[self.k + 1].spaced
+        {
+            self.k += 1;
+            name.push('-');
+            name += &self.ident()?;
+        }
+        Ok(name)
+    }
+
     fn peek(&self) -> Option<&Tok> {
         self.toks.get(self.k).map(|t| &t.tok)
     }
@@ -513,7 +551,7 @@ impl Parser {
                 }
                 (Some(Tok::Ident(w)), Some(Tok::Ident(_))) if w == "names" => {
                     self.k += 1;
-                    let name = self.ident()?;
+                    let name = self.list_name()?;
                     self.expect("=")?;
                     self.expect("[")?;
                     let mut items = Vec::new();
@@ -551,6 +589,12 @@ impl Parser {
     fn body(&mut self) -> Result<Vec<Lit>, String> {
         let mut lits = vec![self.lit()?];
         while self.eat(",") {
+            if lits.len() == MAX_BODY {
+                return Err(format!(
+                    "{}: a body of more than {MAX_BODY} literals, the limit of cq",
+                    self.here()
+                ));
+            }
             lits.push(self.lit()?);
         }
         Ok(lits)
@@ -559,7 +603,9 @@ impl Parser {
     fn lit(&mut self) -> Result<Lit, String> {
         if self.eat("!") {
             if self.eat("(") {
+                self.enter()?;
                 let c = self.cond()?;
+                self.depth -= 1;
                 self.expect(")")?;
                 return Ok(Lit::NotCond(Box::new(c)));
             }
@@ -569,11 +615,13 @@ impl Parser {
             return self.err("a relation or a parenthesised condition after !");
         }
         if self.eat("(") {
+            self.enter()?;
             let mut alts = vec![self.body()?];
             while matches!(self.peek(), Some(Tok::Ident(w)) if w == "or") {
                 self.k += 1;
                 alts.push(self.body()?);
             }
+            self.depth -= 1;
             self.expect(")")?;
             return Ok(Lit::Or(alts));
         }
@@ -630,7 +678,9 @@ impl Parser {
                     func.text()
                 ));
             }
+            self.enter()?;
             let body = self.body()?;
+            self.depth -= 1;
             self.expect("}")?;
             return Ok(Lit::Agg {
                 var,
@@ -650,18 +700,27 @@ impl Parser {
             _ => return self.err("@names.<list>"),
         }
         self.expect(".")?;
-        self.ident()
+        self.list_name()
     }
 
+    /// A term; each operator nests it one level deeper (`1 + 2 + 3` is `(1 + 2) + 3`).
     fn term(&mut self) -> Result<Term, String> {
         let mut t = self.simple()?;
+        let outer = self.depth;
         loop {
             let op = match self.peek() {
                 Some(Tok::Punct("+")) => '+',
                 Some(Tok::Punct("-")) => '-',
                 Some(Tok::Punct("*")) => '*',
-                _ => return Ok(t),
+                _ => {
+                    self.depth = outer;
+                    return Ok(t);
+                }
             };
+            if let Err(e) = self.enter() {
+                self.depth = outer;
+                return Err(e);
+            }
             self.k += 1;
             let r = self.simple()?;
             t = Term::Arith(Box::new(t), op, Box::new(r));
@@ -783,7 +842,12 @@ fn agg_fn(w: &str) -> Option<AggFn> {
 /// Parse a cq module. A path pattern (§ 5.2) or a property (§ 5.3) is refused, naming it.
 pub fn parse(src: &str) -> Result<Program, String> {
     let toks = lex(src)?;
-    Parser { toks, k: 0 }.program()
+    Parser {
+        toks,
+        k: 0,
+        depth: 0,
+    }
+    .program()
 }
 
 #[cfg(test)]
@@ -805,6 +869,50 @@ mod tests {
         assert_eq!(
             p.rules[0].to_string(),
             "r(X) :- let_name{index: -1, stmt: X}, Y = X - 1."
+        );
+    }
+
+    #[test]
+    fn a_list_name_holds_hyphens_and_prints_back() {
+        let p = parse("names never-fail = [\"a\"].\nr(X) :- func{id: X, name: in @names.never-fail}, X in @names.fold-words.").unwrap();
+        assert_eq!(p.names[0].0, "never-fail");
+        assert_eq!(
+            p.rules[0].to_string(),
+            "r(X) :- func{id: X, name: in @names.never-fail}, X in @names.fold-words."
+        );
+        let p = parse("r(X) :- s(X), Y = X - Z.").unwrap();
+        assert_eq!(p.rules[0].to_string(), "r(X) :- s(X), Y = X - Z.");
+    }
+
+    #[test]
+    fn nesting_past_the_limit_is_refused_naming_it() {
+        let ok = format!(
+            "?- {}a(X){}.",
+            "(".repeat(MAX_NESTING),
+            ")".repeat(MAX_NESTING)
+        );
+        assert!(parse(&ok).is_ok());
+        let deep = format!(
+            "?- {}a(X){}.",
+            "(".repeat(MAX_NESTING + 1),
+            ")".repeat(MAX_NESTING + 1)
+        );
+        let e = parse(&deep).unwrap_err();
+        assert!(
+            e.contains(&format!("nested deeper than {MAX_NESTING}")),
+            "{e}"
+        );
+        let sum = format!("?- a(X), N = 1{}.", " + 1".repeat(MAX_NESTING));
+        assert!(parse(&sum).is_ok());
+        let sum = format!("?- a(X), N = 1{}.", " + 1".repeat(MAX_NESTING + 1));
+        assert!(parse(&sum).unwrap_err().contains("the limit of cq"));
+        let long = format!("?- a(X){}.", ", a(X)".repeat(MAX_BODY - 1));
+        assert!(parse(&long).is_ok());
+        let long = format!("?- a(X){}.", ", a(X)".repeat(MAX_BODY));
+        assert!(
+            parse(&long)
+                .unwrap_err()
+                .contains(&format!("more than {MAX_BODY} literals"))
         );
     }
 }

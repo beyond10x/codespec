@@ -6,8 +6,9 @@
 names clone = ["clone", "copy", "dup", "duplicate"].
 names copy = ["slices.Clone", "bytes.Clone", "maps.Clone", "Clone", "clone"].
 
+clone_word(W) :- E in @names.clone, word(E, _, W).
 clone_fn(F, M, N) :- func{id: F, module: M, name: N, kind: K}, K != "lambda",
-                     word(N, _, W), W in @names.clone.
+                     word(N, _, W), clone_word(W).
 module_type(M, T) :- type{kind: "named", path: M, name: T, decl: D}, D != "".
 module_type(M, T) :- func{module: M, kind: "opaque", recv: T}, T != "".
 
@@ -16,8 +17,13 @@ shape(F, M, K) :- typed_shape(F, M, K).
 shape(F, M, N) :- clone_fn(F, M, N), !typed_shape(F, M, _).
 siblings(A, B) :- shape(A, M, K), shape(B, M, K), A != B.
 
-copies(F) :- call{func: F, callee: C}, C in @names.copy.
-copies(F) :- call{func: F, name: N}, N in @names.copy.
+// The names a call goes by, as codespec check matches a list entry against it.
+call_name(S, Nm) :- call{site: S, name: Nm}, Nm != "".
+call_name(S, C) :- call{site: S, callee: C, name: Nm}, Nm != "".
+call_name(S, PN) :- call{site: S, path: P, name: Nm}, Nm != "", concat(P, ".", Q), concat(Q, Nm, PN).
+call_name(S, RN) :- call{site: S, path: P, type: T, name: Nm}, Nm != "", T != "",
+                    concat(P, ".", Q), replace(T, Q, "", R), concat(R, ".", R2), concat(R2, Nm, RN).
+copies(F) :- call{func: F, site: S}, call_name(S, N), N in @names.copy.
 
 passed_slice(V) :- expr{id: V, kind: ~"^(field|method|extern_method|iface_call)$", t: T},
                    type{id: T, kind: "slice"}.

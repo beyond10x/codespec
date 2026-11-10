@@ -221,6 +221,179 @@ fn negation_through_recursion_is_refused() {
     assert!(err.contains("stratif"), "{err}");
 }
 
+/// The relation names of `docs/query-language.md` § 4.2, read from its tables: each backticked
+/// name of a row's first cell (`cfg_next(a, b)` names cfg_next), and a relation the meaning cell
+/// names as "with `x` for".
+fn design_relations() -> BTreeSet<String> {
+    let design = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/query-language.md"),
+    )
+    .unwrap();
+    let start = design.find("### 4.2 Relations").expect("§ 4.2");
+    let end = start + design[start..].find("### 4.3").expect("§ 4.3");
+    let mut names = BTreeSet::new();
+    for line in design[start..end].lines() {
+        let Some(row) = line.strip_prefix('|') else {
+            continue;
+        };
+        let cells: Vec<&str> = row.split('|').collect();
+        if cells.len() < 2 {
+            continue;
+        }
+        let first: Vec<&str> = cells[0].split('`').collect();
+        for code in first.iter().skip(1).step_by(2) {
+            let name = code.split('(').next().unwrap().trim();
+            if !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+                names.insert(name.to_string());
+            }
+        }
+        let second: Vec<&str> = cells[1].split('`').collect();
+        for k in (1..second.len()).step_by(2) {
+            if second[k - 1].ends_with("with ") {
+                names.insert(second[k].to_string());
+            }
+        }
+    }
+    names
+}
+
+#[test]
+fn the_schema_lists_every_relation_of_the_design_or_names_it_as_waiting() {
+    let names = design_relations();
+    assert!(
+        names.len() >= 30 && names.contains("reaches_path") && names.contains("implements"),
+        "{names:?}"
+    );
+    let schema = schema_text();
+    for name in &names {
+        if schema.contains(&format!("\n{name}{{")) {
+            continue;
+        }
+        let w = codespec_query::WAITING
+            .iter()
+            .find(|w| w.name == name)
+            .unwrap_or_else(|| panic!("{name}: neither in the schema nor waiting"));
+        assert!(
+            schema.contains(&format!("\n{name}({})", w.fields)),
+            "{name}"
+        );
+        let arity = w.fields.split(", ").count();
+        let args = vec!["_"; arity].join(", ");
+        for q in [
+            format!("?- {name}({args})."),
+            format!("r(X) :- func{{id: X}}, {name}{{from: X}}.\n?- r(X)."),
+        ] {
+            let err = run(
+                &parse(&q).unwrap(),
+                &FactBase::build(&[]),
+                &Names::default(),
+            )
+            .unwrap_err();
+            assert!(
+                err.contains("path pattern") && err.contains("§ 5.2"),
+                "{q}: {err}"
+            );
+        }
+    }
+}
+
+/// A module with a cycle of calls, a struct literal, a method set and an interface, and a
+/// println: scc, makes, implements and effect hold their rows.
+#[test]
+fn scc_makes_implements_and_effect_hold_their_rows() {
+    let pos = |l: u32| format!("m.go:{l}");
+    let call = |name: &str, l: u32| {
+        serde_json::json!({"k": "expr", "pos": pos(l),
+            "x": {"k": "call", "name": name, "args": [], "t": {"k": "unit"}}})
+    };
+    let t = serde_json::json!({"k": "named", "name": "T"});
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "go", "name": "hand-written", "version": "0"},
+        "layout": [],
+        "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": pos(1)}],
+        "interfaces": [{"name": "I", "exported": true,
+            "methods": [{"name": "M", "params": [], "results": []}], "pos": pos(2)}],
+        "methods": [{"t": "T", "methods": [{"name": "M", "sig": "func()",
+            "target": {"k": "method", "recv": "T", "name": "M", "pos": pos(3)}}]}],
+        "funcs": [
+            {"name": "main", "exported": false, "params": [], "results": [], "pos": pos(4),
+             "body": [
+                call("a", 5),
+                {"k": "let", "names": ["v"], "pos": pos(6),
+                 "rhs": [{"k": "struct", "name": "T", "fields": [], "t": t}]},
+                {"k": "expr", "pos": pos(7),
+                 "x": {"k": "intrinsic", "name": "println", "args": [], "t": {"k": "unit"}}}
+             ]},
+            {"name": "a", "exported": false, "params": [], "results": [], "pos": pos(8),
+             "body": [call("b", 9)]},
+            {"name": "b", "exported": false, "params": [], "results": [], "pos": pos(10),
+             "body": [call("a", 11)]},
+            {"name": "M", "exported": true, "params": [], "results": [], "pos": pos(12),
+             "recv": {"name": "t", "t": t}, "body": []}
+        ]
+    });
+    let m = Module::from_json(serde_json::to_string(&doc).unwrap().as_bytes())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let rows = |q: &str| answer(q, std::slice::from_ref(&m));
+    assert_eq!(
+        rows("?- scc(F, C), F != C."),
+        "example.com/m.b\texample.com/m.a\n"
+    );
+    assert_eq!(
+        rows("?- scc(F, F), func{id: F, name: \"main\"}."),
+        "example.com/m.main\n"
+    );
+    assert_eq!(
+        rows("?- makes(F, T)."),
+        "example.com/m.T.M\texample.com/m.T\nexample.com/m.main\texample.com/m.T\n"
+    );
+    assert_eq!(
+        rows("?- implements(T, I)."),
+        "example.com/m.T\texample.com/m.I\n"
+    );
+    assert_eq!(
+        rows("?- effect(F, E, P)."),
+        "example.com/m.main\tstdout\texample.com/m/m.go:7\n"
+    );
+}
+
+/// Disjunctions expand into bodies: 2^10 is within the limit, 2^11 is past it and refused,
+/// naming the count and the limit.
+#[test]
+fn a_rule_whose_disjunctions_expand_past_the_limit_is_refused() {
+    let rule = |n: usize| {
+        format!(
+            "?- func{{id: F}}{}.",
+            ", (F == \"a\" or F != \"a\")".repeat(n)
+        )
+    };
+    assert_eq!(codespec_query::MAX_BODIES, 1024);
+    let fine = run(
+        &parse(&rule(10)).unwrap(),
+        &FactBase::build(&[]),
+        &Names::default(),
+    );
+    assert!(fine.is_ok(), "{fine:?}");
+    let err = run(
+        &parse(&rule(11)).unwrap(),
+        &FactBase::build(&[]),
+        &Names::default(),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("2048 bodies") && err.contains("1024") && err.contains("limit of cq"),
+        "{err}"
+    );
+    let err = run(
+        &parse(&rule(200)).unwrap(),
+        &FactBase::build(&[]),
+        &Names::default(),
+    )
+    .unwrap_err();
+    assert!(err.contains("limit of cq"), "{err}");
+}
+
 #[test]
 fn json_output_is_a_query_report() {
     let q = std::fs::read_to_string(fixture("unknown/query.cq")).unwrap();

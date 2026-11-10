@@ -21,10 +21,18 @@ pub struct Args {
     /// base cannot see); or json, codespec-query-report/1.
     #[arg(long, value_parser = ["text", "json"], default_value = "text")]
     pub format: String,
-    /// A JSON object of list name to an array of strings, each replacing a names list the
-    /// module declares.
+    /// A JSON object of list name to an array of strings, each replacing the names list of that
+    /// name the module declares (a list it does not declare is left alone, so the file
+    /// `codespec check --names` reads serves here too).
     #[arg(long, value_name = "FILE")]
     pub names: Option<PathBuf>,
+    /// A codespec-effects/1 summary of functions outside the documents, for the effect and
+    /// syscall relations; repeat for several.
+    #[arg(long = "summaries", value_name = "FILE")]
+    pub summaries: Vec<PathBuf>,
+    /// A codespec-barrier/1 document, for the syscall and effect relations.
+    #[arg(long, value_name = "FILE")]
+    pub barrier: Option<PathBuf>,
 }
 
 /// Run `codespec query`: exit 0 with no row, 1 with rows; an error is the caller's 2.
@@ -60,7 +68,7 @@ pub fn run(a: &Args) -> Result<ExitCode, String> {
         None => codespec_query::Names::default(),
     };
     let paths: Vec<PathBuf> = documents.iter().map(PathBuf::from).collect();
-    let loaded = codespec_query::load(&paths)?;
+    let loaded = codespec_query::load_with(&paths, &a.summaries, a.barrier.as_deref())?;
     let answer = codespec_query::run(&program, &loaded.facts, &names)?;
     if a.format == "json" {
         print!("{}", answer.to_json());

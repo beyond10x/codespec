@@ -86,10 +86,13 @@ fn checked(check: &str, m: &Module) -> BTreeSet<(String, String)> {
 
 /// The cq check's rows as (position, function): its query's first two columns.
 fn queried(check: &str, src: &str, m: &Module) -> BTreeSet<(String, String)> {
+    queried_with(check, src, m, &Names::default())
+}
+
+fn queried_with(check: &str, src: &str, m: &Module, names: &Names) -> BTreeSet<(String, String)> {
     let program = parse(src).unwrap_or_else(|e| panic!("{check}.cq: {e}"));
     let facts = FactBase::build(std::slice::from_ref(m));
-    let answer =
-        run(&program, &facts, &Names::default()).unwrap_or_else(|e| panic!("{check}.cq: {e}"));
+    let answer = run(&program, &facts, names).unwrap_or_else(|e| panic!("{check}.cq: {e}"));
     assert_eq!(
         answer.vars.len(),
         2,
@@ -162,4 +165,101 @@ fn every_check_is_written_in_cq_with_the_same_findings_or_waits_for_a_named_sect
         written += 1;
     }
     assert_eq!(written + waiting.len(), CHECKS.len());
+}
+
+/// Every fixture directory `crates/check` has for a check written in cq, not only hit and miss;
+/// a fixture `codespec check` runs only with options (`unreached/library`, without a
+/// `main.main`, needs `--exported`, which the cq check does not take) is left out.
+#[test]
+fn every_fixture_of_a_written_check_gives_the_findings_of_codespec_check() {
+    let (mut cases, mut skipped) = (0, Vec::new());
+    for check in CHECKS {
+        let file = checks_dir().join(format!("{check}.cq"));
+        let Ok(src) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let mut dirs: Vec<String> = std::fs::read_dir(fixtures().join(check))
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        dirs.sort();
+        for case in dirs {
+            let m = read(check, &case);
+            let Ok(report) = codespec_check::run(
+                check,
+                std::slice::from_ref(&m),
+                &codespec_check::Options::default(),
+            ) else {
+                skipped.push(format!("{check}/{case}"));
+                continue;
+            };
+            let want: BTreeSet<(String, String)> = report
+                .findings
+                .into_iter()
+                .map(|f| (f.pos, f.function))
+                .collect();
+            assert_eq!(queried(check, &src, &m), want, "{check}/{case}");
+            cases += 1;
+        }
+    }
+    assert_eq!(
+        (cases, skipped),
+        (21, vec!["unreached/library".to_string()]),
+        "the fixtures the CHANGELOG names"
+    );
+}
+
+/// One names file serves `codespec check --names` and the cq checks: the same list keys
+/// (`never-fail`, `fold-words`, …), entries read the same way (words split as names are, a
+/// trailing `*` a prefix), the same findings.
+#[test]
+fn one_names_file_serves_codespec_check_and_the_cq_checks() {
+    let file = br#"{
+        "never-fail": [],
+        "fold-words": ["Folding"],
+        "ranged": ["Statuses"],
+        "token": ["Sessions"],
+        "remove": ["Nothing*"],
+        "receive-wrappers": ["Read*"]
+    }"#;
+    let check_names = codespec_check::Names::from_json(file).unwrap();
+    let query_names = Names::from_json(file).unwrap();
+    let mut changed = 0;
+    for (check, case) in [
+        ("dropped-error", "writer"),
+        ("dropped-error", "anywriter"),
+        ("case-fold-asymmetry", "wrapper"),
+        ("case-fold-asymmetry", "hit"),
+        ("int-from-text", "ranged"),
+        ("insecure-random", "hit"),
+        ("unbounded-growth", "hit"),
+    ] {
+        let src = std::fs::read_to_string(checks_dir().join(format!("{check}.cq"))).unwrap();
+        let m = read(check, case);
+        let opts = codespec_check::Options {
+            names: check_names.clone(),
+            ..Default::default()
+        };
+        let want: BTreeSet<(String, String)> =
+            codespec_check::run(check, std::slice::from_ref(&m), &opts)
+                .unwrap_or_else(|e| panic!("{check}: {e}"))
+                .findings
+                .into_iter()
+                .map(|f| (f.pos, f.function))
+                .collect();
+        assert_eq!(
+            queried_with(check, &src, &m, &query_names),
+            want,
+            "{check}/{case} with the names file"
+        );
+        if want != checked(check, &m) {
+            changed += 1;
+        }
+    }
+    assert!(
+        changed >= 2,
+        "the names file changes the findings of {changed} cases"
+    );
 }

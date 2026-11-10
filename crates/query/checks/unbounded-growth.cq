@@ -1,6 +1,8 @@
 // unbounded-growth: a function that receives from the network, then at a later line calls an
 // insert method of a type, with no remove method of that type called after the receive, in the
-// function or in any function the calls after the receive reach. Name based, as codespec check.
+// function or in any function the calls after the receive reach. Name based, as codespec check;
+// a list entry names a call as codespec check reads it (its name, <type>.<name>, <path>.<name>
+// or its callee; ending in *, a prefix of one).
 
 names receive = [
   "net.Conn.Read", "net.PacketConn.ReadFrom", "net.Listener.Accept", "net.TCPConn.Read",
@@ -11,35 +13,51 @@ names receive = [
   "net.IPConn.ReadMsgIP", "net.TCPListener.Accept", "net.TCPListener.AcceptTCP",
   "net.UnixListener.Accept", "net.UnixListener.AcceptUnix", "crypto/tls.Conn.Read"
 ].
+names receive-wrappers = ["Read*", "Accept*", "Recv*"].
 names insert = [
   "Add", "Put", "Store", "Set", "Insert", "LoadOrStore", "Push",
   "add", "put", "store", "set", "insert", "push"
 ].
+names remove = [
+  "Delete*", "Remove*", "Evict*", "Clear*", "Drop*", "Pop*", "LoadAndDelete", "CompareAndDelete",
+  "Done", "delete*", "remove*", "evict*", "clear*", "drop*", "pop*"
+].
+names not-containers = [
+  "sync.WaitGroup.*", "sync.Pool.*", "sync/atomic.*", "net/http.Header.*", "net/url.Values.*",
+  "net/textproto.MIMEHeader.*"
+].
+
+call_name(S, Nm) :- call{site: S, name: Nm}, Nm != "".
+call_name(S, C) :- call{site: S, callee: C, name: Nm}, Nm != "".
+call_name(S, PN) :- call{site: S, path: P, name: Nm}, Nm != "", concat(P, ".", Q), concat(Q, Nm, PN).
+call_name(S, RN) :- call{site: S, path: P, type: T, name: Nm}, Nm != "", T != "",
+                    concat(P, ".", Q), replace(T, Q, "", R), concat(R, ".", R2), concat(R2, Nm, RN).
+receive_call(S) :- call_name(S, N), N in @names.receive.
 
 // A function of the set named as a receive that calls a receive receives, to a fixed point.
-receive_wrapper(F) :- func{id: F, name: ~"^(Read|Accept|Recv)"}.
-receives(F) :- receive_wrapper(F), call{func: F, callee: C}, C in @names.receive.
+receive_wrapper(F) :- func{id: F, name: N}, N in @names.receive-wrappers.
+receives(F) :- receive_wrapper(F), call{func: F, site: S}, receive_call(S).
 receives(F) :- receive_wrapper(F), call{func: F, site: S}, calls{site: S, target: G}, receives(G).
 
-receive_line(F, L) :- call{func: F, callee: C, line: L}, C in @names.receive.
+receive_line(F, L) :- call{func: F, site: S, line: L}, receive_call(S).
 receive_line(F, L) :- call{func: F, site: S, line: L}, calls{site: S, target: G}, receives(G).
 first_receive(F, L) :- receive_line(F, L), L = min{ L2 : receive_line(F, L2) }.
 
 after(F, S) :- first_receive(F, L0), call{func: F, site: S, line: L}, L > L0.
-method_call(S, T, N) :- call{site: S, kind: ~"^(method|iface)$", type: T, name: N}.
+method_call(S, T) :- call{site: S, kind: ~"^(method|iface)$", type: T}.
+named(S, "insert") :- call_name(S, N), N in @names.insert.
+named(S, "remove") :- call_name(S, N), N in @names.remove.
+named(S, "not-containers") :- call_name(S, N), N in @names.not-containers.
 
-inserts(F, S, T) :- after(F, S), method_call(S, T, N), N in @names.insert,
-                    call{site: S, callee: C},
-                    !(C ~ "^(sync\.WaitGroup|sync\.Pool|sync/atomic|net/http\.Header|net/url\.Values|net/textproto\.MIMEHeader)\.").
-
-removing(N) :- method_call(_, _, N), N ~ "^([Dd]elete|[Rr]emove|[Ee]vict|[Cc]lear|[Dd]rop|[Pp]op)".
-removing(N) :- method_call(_, _, N), N ~ "^(LoadAndDelete|CompareAndDelete|Done)$".
+inserts(F, S, T) :- after(F, S), method_call(S, T), named(S, "insert"),
+                    !named(S, "not-containers").
 
 reached_after(F, G) :- after(F, S), calls{site: S, target: G}.
 reached_after(F, H) :- reached_after(F, G), call{func: G, site: S}, calls{site: S, target: H}.
 
-removes(F, T) :- after(F, S), method_call(S, T, N), removing(N).
-removes(F, T) :- reached_after(F, G), call{func: G, site: S}, method_call(S, T, N), removing(N).
+removes(F, T) :- after(F, S), method_call(S, T), named(S, "remove").
+removes(F, T) :- reached_after(F, G), call{func: G, site: S}, method_call(S, T),
+                 named(S, "remove").
 
 growth(Pos, F) :- inserts(F, S, T), call{site: S, pos: Pos}, !removes(F, T).
 
