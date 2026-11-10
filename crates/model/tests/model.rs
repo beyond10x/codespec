@@ -147,6 +147,49 @@ fn a_dollar_a_raw_rust_prefix_and_a_parameter_named_underscore_are_admitted() {
     }
 }
 
+/// A position or an extern's name reaches the writers' messages; strict reading refuses one that
+/// holds a control character, and its own message carries none.
+#[test]
+fn a_position_or_extern_name_holding_a_control_character_is_refused() {
+    let mut v = orders();
+    v["funcs"][0]["body"][0]["pos"] = serde_json::json!("orders.go:9\u{1b}[2J");
+    let err = refused(&v);
+    assert!(err.contains("\\u{1b}"), "{err}");
+    assert!(!err.chars().any(char::is_control), "{err:?}");
+    let bytes =
+        std::fs::read(root().join("conformance/cases/expr-extern/case.cir.json")).expect("read");
+    let mut v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    v["externs"][0]["name"] = serde_json::json!("Itoa\u{7}");
+    let err = refused(&v);
+    assert!(err.contains("\\u{7}"), "{err}");
+    assert!(!err.chars().any(char::is_control), "{err:?}");
+}
+
+/// Java identifier parts beyond letters and digits are names; control and format characters,
+/// which no writer can spell and a terminal or editor may act on, are not.
+#[test]
+fn currency_signs_connectors_and_marks_are_names_control_and_format_characters_are_not() {
+    for good in ["total€", "£pence", "a‿b", "नमस्ते", "x\u{301}", "Ⅻ"] {
+        let mut v = orders();
+        v["types"][2]["fields"][1]["name"] = serde_json::json!(good);
+        if let Err(e) = Module::from_json(&serde_json::to_vec(&v).expect("json")) {
+            panic!("{good:?} refused: {e}");
+        }
+    }
+    for bad in [
+        "a\u{200d}b",
+        "a\u{202e}b",
+        "a\u{feff}",
+        "a\u{7f}",
+        "a\u{85}b",
+        "a-b",
+    ] {
+        let mut v = orders();
+        v["types"][2]["fields"][1]["name"] = serde_json::json!(bad);
+        refused(&v);
+    }
+}
+
 #[test]
 fn a_module_path_is_segments_of_letters_digits_and_dot_dash_tilde_underscore() {
     for good in [

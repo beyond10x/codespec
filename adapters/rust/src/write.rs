@@ -57,7 +57,8 @@
 //! Names: every item is named before anything is written, exported items first, and a name
 //! already held (by an earlier item, by the writer's own `Error` and `Message`, or by a trait
 //! method such as `clone`) gets a suffix. Bindings the writer introduces start with `__` and are
-//! lengthened until no local holds them.
+//! lengthened until no local holds them. A blank parameter (`_`) is `_cs_p<index>`, lengthened
+//! with `_` until no other parameter or local holds it.
 //!
 //! The document is untrusted input. Every name reaches `lib.rs` as an identifier token (a raw
 //! identifier's `r#`, which `codespec-read-rust` keeps, is dropped and a keyword made raw again):
@@ -65,7 +66,8 @@
 //! naming it, as does a module name that is not an identifier or is a keyword, since it is the
 //! package name of `Cargo.toml`. String literals are written as escaped Rust string tokens,
 //! integers as parsed numbers, each doc line as its own doc attribute; `foreign` statements are
-//! refused, never written.
+//! refused, never written. A message printed to stderr writes the document's control characters
+//! as escapes.
 //!
 //! The crate starts with `#![allow(dead_code, unused_assignments, unused_mut)]`: Go compiles an
 //! unexported function nobody calls (or whose only caller is refused), a `var` assigned on every
@@ -1658,9 +1660,42 @@ impl<'a> Writer<'a> {
                 p.name
             )));
         }
-        for p in &f.params {
+        // A blank parameter is numbered by its place, `_cs_p<i>`, with `_` added until it is no
+        // other parameter's or local's name, so two blanks, or a blank beside `__`, stay distinct.
+        let mut taken: BTreeSet<String> = f
+            .params
+            .iter()
+            .filter(|p| p.name != "_")
+            .map(|p| {
+                if used.contains(&p.name) {
+                    self.names.local_str(&p.name)
+                } else {
+                    format!("_{}", snake(&p.name))
+                }
+            })
+            .collect();
+        walk_stmts(&f.body, &mut |s| {
+            let names: Vec<&String> = match s {
+                Stmt::Let { names, .. } => names.iter().collect(),
+                Stmt::Var { name, .. } | Stmt::LookupElse { name, .. } => vec![name],
+                Stmt::ForRange { key, val, .. } => vec![key, val],
+                _ => vec![],
+            };
+            for n in names {
+                taken.insert(self.names.local_str(n));
+            }
+        });
+        let mut blanks = Vec::new();
+        for (i, p) in f.params.iter().enumerate() {
             let t = self.ty(&p.t).map_err(at)?;
-            let n = if p.name == "_" || !used.contains(&p.name) {
+            let n = if p.name == "_" {
+                let mut s = format!("_cs_p{i}");
+                while !taken.insert(s.clone()) {
+                    s.push('_');
+                }
+                blanks.push(s.clone());
+                checked_ident(&s)
+            } else if !used.contains(&p.name) {
                 checked_ident(&format!("_{}", snake(&p.name)))
             } else {
                 self.names.local(&p.name)
@@ -1678,6 +1713,7 @@ impl<'a> Writer<'a> {
             .params
             .iter()
             .map(|p| self.names.local_str(&p.name))
+            .chain(blanks)
             .collect();
         walk_stmts(&f.body, &mut |s| {
             let names: Vec<&String> = match s {

@@ -14,3 +14,4 @@ name = "codespec_model"
 schemars.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["unbounded_depth"] }
+unicode-ident.workspace = true

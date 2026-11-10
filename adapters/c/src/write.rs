@@ -48,8 +48,10 @@
 //! declarations, fields, variants, parameters and locals, where declared and where used) must be
 //! an ASCII C identifier, `[A-Za-z_][A-Za-z0-9_]*`, or the module is refused whole, naming it:
 //! exit 1, nothing written. String literals and error messages are written as escaped C string
-//! literals ([`c_str`]), integer literals as parsed numbers, doc comments with `*/` broken
-//! ([`comment`]). A `foreign` statement is refused, never written.
+//! literals ([`c_str`]), integer literals as parsed numbers, doc comments with every `\` written
+//! as `/` and every `*/`, `/*` and `??` broken, so no line join, trigraph or nested comment can
+//! end the comment ([`comment`]). A `foreign` statement is refused, never written. A refusal
+//! printed to stderr writes the document's text with its control characters escaped.
 //!
 //! # Refusals
 //!
@@ -327,9 +329,24 @@ fn c_str(bytes: &[u8]) -> String {
     s
 }
 
-/// A comment's text with `*/` broken.
+/// A doc's text as the inside of a C block comment that nothing in it can end or forge. C reads
+/// trigraphs (`??/` is `\`) and joins a line ending in `\` with the next before it looks for
+/// comments, so every `\` is written as `/`, and a space breaks every `*/`, `/*` and `??` the
+/// text then holds. `codespec:` is written `codespec :`, so no doc line reads as one of the
+/// header's `/* codespec: … */` lines.
 fn comment(text: &str) -> String {
-    text.replace("*/", "* /")
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        let c = if c == '\\' { '/' } else { c };
+        if matches!(
+            (out.chars().next_back(), c),
+            (Some('*'), '/') | (Some('/'), '*') | (Some('?'), '?')
+        ) {
+            out.push(' ');
+        }
+        out.push(c);
+    }
+    out.replace("codespec:", "codespec :")
 }
 
 /// A pointer to `ct`: `T *`, or `T **` when `ct` is a pointer already.

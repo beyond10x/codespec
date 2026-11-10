@@ -30,7 +30,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module};
+use codespec_model::{ADAPTER_FORMAT, AdapterManifest, Module, printable};
 
 /// The claim: the features whose kit cases the acceptance test of `adapters/c-run` runs to their
 /// expected output.
@@ -92,7 +92,7 @@ fn main() -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
-            eprintln!("codespec-write-c: {e}");
+            eprintln!("codespec-write-c: {}", printable(&e));
             ExitCode::FAILURE
         }
     }
@@ -126,7 +126,9 @@ fn run(out: &Path) -> Result<bool, String> {
     for r in &written.refusals {
         eprintln!(
             "codespec-write-c: refused {} ({}): {}",
-            r.name, r.pos, r.reason
+            printable(&r.name),
+            printable(&r.pos),
+            printable(&r.reason)
         );
     }
     Ok(written.refusals.is_empty())

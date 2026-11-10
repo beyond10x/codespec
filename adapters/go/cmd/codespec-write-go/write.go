@@ -5,16 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/build"
+	"go/build/constraint"
 	"go/format"
 	"go/parser"
 	"go/printer"
 	"go/scanner"
 	"go/token"
 	"go/types"
+	"io"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // The writer: a cir/1 module to one go/ast file. Every node is built without source positions;
@@ -69,17 +73,23 @@ var stdPackages = map[string]string{
 
 func write(m *Module) (src []byte, err error) {
 	// The document is read here without the strict reader's checks, so a part it lacks reaches
-	// the writer as a nil pointer: that is a refusal like any other, never a panic.
+	// the writer as a nil pointer: that is a refusal like any other, never a panic, and it names
+	// the position of the declaration or statement being written.
+	var w *writer
 	defer func() {
 		if r := recover(); r != nil {
 			src, err = nil, fmt.Errorf("the document cannot be written: %v", r)
+			if w != nil && w.pos != "" {
+				err = fmt.Errorf("%s: %w", w.pos, err)
+			}
 		}
 	}()
-	// The name is the package clause and the file name: an identifier, never a path.
-	if !token.IsIdentifier(m.Name) || m.Name == "_" {
-		return nil, fmt.Errorf("module name %q is not a Go package name", m.Name)
+	// The name is the package clause and the file name: an identifier, never a path, and never
+	// a file name the go command skips or reads as a build constraint or a test file.
+	if !token.IsIdentifier(m.Name) || m.Name == "_" || !plainGoFile(m.Name+".go") {
+		return nil, fmt.Errorf("module name %q is not a Go package name the go command builds as %s.go", m.Name, m.Name)
 	}
-	w := &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
+	w = &writer{m: m, types: map[string]*TypeDecl{}, imports: map[string]bool{}, untyped: map[string]Type{}, names: newGoNames(m), aliases: map[string]string{}}
 	for i := range m.Types {
 		w.types[m.Types[i].Name] = &m.Types[i]
 	}
@@ -207,13 +217,52 @@ func (w *writer) render(pieces []piece) ([]byte, error) {
 	return out, nil
 }
 
+// comment writes doc as one // line per line. A line the go command would read as a build
+// constraint (go/format moves every // +build line to the top of the file) is written in
+// parentheses, so it stays text.
 func comment(doc string) string {
 	var b strings.Builder
 	for _, line := range strings.Split(doc, "\n") {
+		c := "// " + line
 		if line == "" {
-			b.WriteString("//\n")
+			c = "//"
+		} else if constraint.IsPlusBuild(c) || constraint.IsGoBuild(c) {
+			c = "// (" + line + ")"
+		}
+		b.WriteString(c + "\n")
+	}
+	return b.String()
+}
+
+// plainGoFile reports whether the go command compiles a file of this name on every platform:
+// no leading _ or ., no _test suffix, and no _GOOS or _GOARCH suffix it reads as a constraint.
+// The context names no real platform, so every known GOOS and GOARCH suffix fails to match.
+func plainGoFile(name string) bool {
+	if strings.HasSuffix(name, "_test.go") {
+		return false
+	}
+	ctx := build.Default
+	ctx.GOOS, ctx.GOARCH = "codespec", "codespec"
+	ctx.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("package p\n")), nil
+	}
+	ok, err := ctx.MatchFile(".", name)
+	return err == nil && ok
+}
+
+// printable is s with every character that is not printable written as its Go escape, so a
+// refusal message never carries a control character from the document to a terminal.
+func printable(s string) string {
+	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsPrint(r) {
+			b.WriteRune(r)
 		} else {
-			b.WriteString("// " + line + "\n")
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
 		}
 	}
 	return b.String()
@@ -836,6 +885,10 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 				w.refuse("assignment operator %q has no Go form", s.Op)
 			}
 			tok = t
+		}
+		if len(s.Lhs) == 0 || len(s.Rhs) == 0 {
+			w.refuse("assignment of %d values to %d targets", len(s.Rhs), len(s.Lhs))
+			return nil
 		}
 		return []ast.Stmt{&ast.AssignStmt{Lhs: w.exprs(s.Lhs), Tok: tok, Rhs: w.exprs(s.Rhs)}}
 	case "incr":

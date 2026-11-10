@@ -253,16 +253,60 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// Whether `name` is a name strict reading admits for a module, a declaration, a field, a
-/// parameter or a local: one or more letters of any script, digits, `_` and `$` (Java), after an
-/// optional `r#` (a Rust raw identifier, as `codespec-read-rust` keeps it). A writer puts names
-/// into source text and file names, where any other character could end the name and begin code
-/// or a path; each writer applies its own language's stricter rule on top.
+/// parameter or a local: one or more characters a Java or Rust identifier may hold after its
+/// first, after an optional `r#` (a Rust raw identifier, as `codespec-read-rust` keeps it). Those
+/// are letters and digits of any script, `_`, combining marks, connector punctuation and letter
+/// numbers (Unicode `XID_Continue`), and currency signs such as `$` and `€` (Java), but never a
+/// control or format character. A writer puts names into source text and file names, where any
+/// other character could end the name and begin code or a path; each writer applies its own
+/// language's stricter rule on top.
 pub fn is_name(name: &str) -> bool {
     let name = name.strip_prefix("r#").unwrap_or(name);
     !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+        && name.chars().all(|c| {
+            (c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || is_currency_sign(c))
+                && !c.is_control()
+                && !is_format_char(c)
+        })
+}
+
+/// Whether `c` is a currency sign (Unicode general category `Sc`), a Java identifier part.
+fn is_currency_sign(c: char) -> bool {
+    matches!(c,
+        '$' | '\u{a2}'..='\u{a5}' | '\u{58f}' | '\u{60b}' | '\u{7fe}'..='\u{7ff}'
+        | '\u{9f2}'..='\u{9f3}' | '\u{9fb}' | '\u{af1}' | '\u{bf9}' | '\u{e3f}' | '\u{17db}'
+        | '\u{20a0}'..='\u{20c0}' | '\u{a838}' | '\u{fdfc}' | '\u{fe69}' | '\u{ff04}'
+        | '\u{ffe0}'..='\u{ffe1}' | '\u{ffe5}'..='\u{ffe6}' | '\u{11fdd}'..='\u{11fe0}'
+        | '\u{1e2ff}' | '\u{1ecb0}')
+}
+
+/// Whether `c` is a format character that changes how text shows without showing itself:
+/// zero-width characters, joiners, bidirectional controls, the byte order mark, soft hyphen,
+/// invisible operators, interlinear annotation marks and tags (Unicode general category `Cf`).
+fn is_format_char(c: char) -> bool {
+    matches!(c,
+        '\u{ad}' | '\u{600}'..='\u{605}' | '\u{61c}' | '\u{6dd}' | '\u{70f}' | '\u{890}'..='\u{891}'
+        | '\u{8e2}' | '\u{180e}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}'
+        | '\u{110bd}' | '\u{110cd}' | '\u{13430}'..='\u{1343f}' | '\u{1bca0}'..='\u{1bca3}'
+        | '\u{1d173}'..='\u{1d17a}' | '\u{e0001}' | '\u{e0020}'..='\u{e007f}')
+}
+
+/// `text` with every control and format character written as its Rust escape (`\u{1b}`), so a
+/// message that quotes a document's text carries none of them to a terminal.
+pub fn printable(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.chars().any(|c| c.is_control() || is_format_char(c)) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        if c.is_control() || is_format_char(c) {
+            out.extend(c.escape_unicode());
+        } else {
+            out.push(c);
+        }
+    }
+    std::borrow::Cow::Owned(out)
 }
 
 /// Whether `path` is a module path strict reading admits: empty, or `/`-separated segments, none
@@ -1412,15 +1456,53 @@ pub enum ReadError {
     Invalid(String),
 }
 
+/// A message quotes the document's text; [`printable`] keeps its control and format characters
+/// out of the terminal it is printed to.
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReadError::Json(e) => write!(f, "not a cir/1 module: {e}"),
+            ReadError::Json(e) => write!(f, "not a cir/1 module: {}", printable(&e.to_string())),
             ReadError::Format(found) => {
                 write!(f, "format is {found:?}, this reader reads {FORMAT:?}")
             }
-            ReadError::Invalid(why) => write!(f, "not a cir/1 module: {why}"),
+            ReadError::Invalid(why) => write!(f, "not a cir/1 module: {}", printable(why)),
         }
+    }
+}
+
+/// Refuse a position (`pos`, `unordered_iteration`) or an extern's path or name (a module
+/// `externs` entry, an `extern` or `extern_method` type or call) holding a control or format
+/// character: writers print positions and extern names in their messages and source text.
+fn check_text(v: &serde_json::Value, extern_decl: bool) -> Result<(), String> {
+    use serde_json::Value;
+    let bad = |s: &str| s.chars().any(|c| c.is_control() || is_format_char(c));
+    match v {
+        Value::Array(a) => a.iter().try_for_each(|x| check_text(x, extern_decl)),
+        Value::Object(o) => {
+            let ext = extern_decl
+                || matches!(
+                    o.get("k").and_then(Value::as_str),
+                    Some("extern" | "extern_method")
+                );
+            for (k, x) in o {
+                let what = match k.as_str() {
+                    "pos" | "unordered_iteration" => Some("position"),
+                    "path" | "name" | "type" if ext => Some("extern name"),
+                    _ => None,
+                };
+                if let Some(what) = what {
+                    let texts = x.as_array().map_or_else(|| vec![x], |a| a.iter().collect());
+                    if let Some(s) = texts.into_iter().filter_map(Value::as_str).find(|s| bad(s)) {
+                        return Err(format!(
+                            "the {what} {s:?} holds a control or format character"
+                        ));
+                    }
+                }
+                check_text(x, k == "externs")?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }
 
@@ -1460,11 +1542,13 @@ impl Module {
         if format != FORMAT {
             return Err(ReadError::Format(format.to_string()));
         }
+        check_text(&probe, false).map_err(ReadError::Invalid)?;
         let m: Module = serde_json::from_value(probe).map_err(ReadError::Json)?;
         m.check_names().map_err(ReadError::Invalid)?;
         m.check_variadic().map_err(ReadError::Invalid)?;
         m.check_externs().map_err(ReadError::Invalid)?;
         m.check_vars().map_err(ReadError::Invalid)?;
+        m.check_assigns().map_err(ReadError::Invalid)?;
         m.check_captures().map_err(ReadError::Invalid)?;
         m.check_opaque().map_err(ReadError::Invalid)?;
         m.check_embedded().map_err(ReadError::Invalid)?;
@@ -1554,7 +1638,7 @@ impl Module {
         self.each_name(&mut |what, name| {
             if bad.is_none() && !is_name(name) {
                 bad = Some(format!(
-                    "the {what} name {name:?} is empty or holds a character other than a letter, a digit, `_` or `$` (after an optional `r#`)"
+                    "the {what} name {name:?} is empty or holds a character no Java or Rust identifier holds after its first, or a control or format character (after an optional `r#`)"
                 ));
             }
         });
@@ -2169,6 +2253,33 @@ impl Module {
         for func in &self.funcs {
             walk::body_exprs(&func.body, &mut check);
         }
+        bad.map_or(Ok(()), Err)
+    }
+
+    /// Every assignment, in a function or a lambda, assigns at least one value to at least one
+    /// target.
+    fn check_assigns(&self) -> Result<(), String> {
+        let mut bad = None;
+        let mut check = |s: &Stmt| {
+            if let Stmt::Assign { lhs, rhs, pos, .. } = s
+                && bad.is_none()
+                && (lhs.is_empty() || rhs.is_empty())
+            {
+                bad = Some(format!(
+                    "{pos}: an assignment of {} values to {} targets",
+                    rhs.len(),
+                    lhs.len()
+                ));
+            }
+        };
+        for func in &self.funcs {
+            walk::walk_stmts(&func.body, &mut check);
+        }
+        self.each_expr(&mut |e| {
+            if let Expr::Lambda { body, .. } = e {
+                walk::walk_stmts(body, &mut check);
+            }
+        });
         bad.map_or(Ok(()), Err)
     }
 

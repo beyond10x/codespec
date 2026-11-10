@@ -241,7 +241,7 @@ fn a_parameter_named_underscore_is_written() {
         .unwrap()
         .push(serde_json::json!({"name": "_", "t": int}));
     let (_, lib) = write_ok(&doc, "underscore-param");
-    assert!(squash(&lib).contains("b:i64,__:i64)"), "{lib}");
+    assert!(squash(&lib).contains("b:i64,_cs_p2:i64)"), "{lib}");
 }
 
 #[test]

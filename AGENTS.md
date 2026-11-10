@@ -146,12 +146,20 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 
 - The schema is what the model generates:
   `crates/model/tests/model.rs::the_checked_in_schema_is_the_one_the_model_generates`.
-- Reading refuses a name that is empty or holds other than letters, digits, `_` and `$` (after an optional `r#`):
-  `crates/model/tests/model.rs::a_name_holding_other_than_letters_digits_and_underscores_is_refused_naming_it`;
+- Reading refuses a name that is empty or holds a character no Java or Rust identifier part is, or a control or
+  format character (after an optional `r#`):
+  `crates/model/tests/model.rs::a_name_holding_other_than_letters_digits_and_underscores_is_refused_naming_it`,
+  `crates/model/tests/model.rs::currency_signs_connectors_and_marks_are_names_control_and_format_characters_are_not`;
+  a position or extern name holding a control character, and no message carries one:
+  `crates/model/tests/model.rs::a_position_or_extern_name_holding_a_control_character_is_refused`;
   each writer refuses a name that is not an identifier of its language and writes nothing:
   `adapters/rust/tests/writer.rs::a_module_name_that_is_not_a_package_name_is_refused_and_no_cargo_toml_is_written`,
   `adapters/c/tests/writer.rs::a_name_that_is_not_a_c_identifier_is_refused_naming_it`,
   `adapters/go/cmd/codespec-write-go/names_test.go::TestANameThatIsNotAGoIdentifierIsRefusedAndNothingIsWritten`.
+- A doc comment stays a comment: the C writer's cannot end its block comment or forge a header line
+  (`adapters/c/tests/secreview1.rs`, `adapters/c/tests/writer.rs::a_doc_comment_never_reads_as_a_codespec_header_line`),
+  the Go writer's is never a build constraint and its module file is one the go command always builds
+  (`adapters/go/cmd/codespec-write-go/secreview1_test.go`).
 - Reading refuses unknown fields and kinds, untyped expressions and other formats:
   `crates/model/tests/model.rs::an_unknown_field_inside_a_statement_is_refused`,
   `crates/model/tests/model.rs::an_unknown_statement_kind_is_refused`,

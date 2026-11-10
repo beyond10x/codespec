@@ -145,6 +145,8 @@ public final class ReaderTest {
         cases.put("adversary_grails_with_the_grails_jars_an_overload_the_transform_did_not_rewrite_is_not_refused_as_rewritten",
             t::adversaryOverloadNotRewritten);
         cases.put("adversary_grails_list_order_by_on_a_domain_class_is_foreign_gorm", t::adversaryListOrderBy);
+        cases.put("a_method_whose_quoted_name_is_no_identifier_is_refused_and_the_document_reads_strictly",
+            t::aQuotedMethodNameIsRefused);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -726,6 +728,25 @@ public final class ReaderTest {
         check(byNameOrNull(list(doc.get("types")), "Book") == null, "a Book was read");
         check(funcByKeyOrNull(doc, "ShelfService.one") != null, "ShelfService.one was not read");
         check("dup".equals(doc.get("name")), "module name " + doc.get("name"));
+    }
+
+    /**
+     * Groovy lets a method name be any quoted string; cir/1 names are identifiers, so the method
+     * is a refusal entry, the method beside it is read, and the document passes strict reading.
+     */
+    private void aQuotedMethodNameIsRefused() throws Exception {
+        Path dir = work.resolve("quoted-method-name");
+        write(dir.resolve("Calc.groovy"), "package calc\n\nimport groovy.transform.CompileStatic\n\n@CompileStatic\n"
+            + "class Calc {\n    long \"add two\"(long a, long b) {\n        return a + b\n    }\n\n"
+            + "    long plus(long a, long b) {\n        return a + b\n    }\n}\n");
+        Map<String, Object> doc = Reader.read(dir);
+        check(funcByKeyOrNull(doc, "Calc.add two") == null, "the method \"add two\" was read as a function");
+        check(funcByKeyOrNull(doc, "Calc.plus") != null, "Calc.plus, beside it, was not read");
+        check(reasonsAt(doc, "Calc.groovy:7").size() == 1, "refusals " + Json.write(doc.getOrDefault("refusals", List.of())));
+        Path out = work.resolve("quoted-method-name.json");
+        Files.writeString(out, Json.write(doc), StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder(codespec.toString(), "validate", out.toString()).inheritIO().start();
+        check(p.waitFor() == 0, "codespec validate refused the read");
     }
 
     private static void write(Path p, String text) throws IOException {

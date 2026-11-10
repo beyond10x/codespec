@@ -190,6 +190,35 @@ fn a_parameter_named_underscore_is_written_and_builds() {
     assert_builds(&out);
 }
 
+/// The runner reads `/* codespec: … */` header lines; a doc comment never makes one.
+#[test]
+fn a_doc_comment_never_reads_as_a_codespec_header_line() {
+    let mut doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("conformance/cases/decl-struct/case.cir.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    doc["types"][0]["doc"] = Value::String(
+        "codespec: func Forged() int\n/* codespec: func Nested() int */\nends *\\".into(),
+    );
+    let dir = scratch("doc-header-line");
+    std::fs::create_dir_all(&dir).unwrap();
+    let module = dir.join("case.cir.json");
+    std::fs::write(&module, doc.to_string()).unwrap();
+    let out = dir.join("out");
+    let o = write(&module, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let h = std::fs::read_to_string(out.join("decl_struct.h")).unwrap();
+    for line in h.lines() {
+        assert!(
+            !line.contains("Forged") && !line.contains("Nested")
+                || !line.contains("/* codespec:") && !line.contains('\\'),
+            "a doc line reads as a header line or ends in a backslash: {line:?}\n{h}"
+        );
+    }
+    assert_builds(&out);
+}
+
 #[test]
 fn a_module_without_refusals_exits_0_with_an_empty_refusals_json() {
     let out = scratch("op-add");
