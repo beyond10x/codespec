@@ -1049,13 +1049,17 @@ impl<'a> Body<'a> {
             for (j, later) in lhs.iter().enumerate() {
                 let (mut vars, mut mem) = (BTreeSet::new(), false);
                 place_reads(later, &mut vars, &mut mem);
+                // A read or a write through a pointer may touch any variable whose address is
+                // taken: such a pair is refused whatever the names.
+                let later_ptr = place_through_pointer(later);
                 for earlier in &lhs[..j] {
                     let hit = match earlier {
-                        Expr::Var { name, .. } => vars.contains(name.as_str()),
+                        Expr::Var { name, .. } => vars.contains(name.as_str()) || later_ptr,
                         Expr::Global { name, .. } => {
-                            vars.contains(format!("global {name}").as_str())
+                            vars.contains(format!("global {name}").as_str()) || later_ptr
                         }
-                        _ => mem,
+                        e if writes_through_pointer(e) => mem || !vars.is_empty(),
+                        _ => mem || later_ptr,
                     };
                     if hit {
                         return Err(
@@ -1825,13 +1829,56 @@ fn order_free(body: &[Stmt], names: &(String, String)) -> bool {
     parts.iter().all(|p| {
         let (mut vars, mut mem) = (BTreeSet::new(), false);
         value_reads(p, &mut vars, &mut mem);
-        !crate::body::has_call(p) && !accs.iter().any(|a| vars.contains(*a))
+        // A part reading through a pointer may read an accumulator under another name.
+        !crate::body::has_call(p) && !through_pointer(p) && !accs.iter().any(|a| vars.contains(*a))
     })
+}
+
+/// Whether evaluating `e` reads through a pointer (`*p`, `p.f` of a pointer `p`), which may
+/// alias any variable whose address is taken.
+fn through_pointer(e: &Expr) -> bool {
+    let mut found = false;
+    codespec_model::walk::walk_expr(e, &mut |x| {
+        found |= match x {
+            Expr::Unop { op, .. } => op == "*",
+            Expr::Field { x, .. } => matches!(x.t(), Type::Ptr { .. }),
+            _ => false,
+        };
+    });
+    found
+}
+
+/// Whether assigning to the place `e` writes through a pointer.
+fn writes_through_pointer(e: &Expr) -> bool {
+    match e {
+        Expr::Unop { op, .. } => op == "*",
+        Expr::Field { x, .. } => matches!(x.t(), Type::Ptr { .. }) || writes_through_pointer(x),
+        Expr::Index { x, .. } => matches!(x.t(), Type::Array { .. }) && writes_through_pointer(x),
+        _ => false,
+    }
+}
+
+/// Whether evaluating the operands of the place `e` reads through a pointer.
+fn place_through_pointer(e: &Expr) -> bool {
+    match e {
+        Expr::Var { .. } | Expr::Global { .. } => false,
+        Expr::Unop { op, x, .. } if op == "*" => through_pointer(x),
+        Expr::Field { x, .. } if matches!(x.t(), Type::Ptr { .. }) => through_pointer(x),
+        Expr::Field { x, .. } => place_through_pointer(x),
+        Expr::Index { x, index, .. } => {
+            (if matches!(x.t(), Type::Array { .. }) {
+                place_through_pointer(x)
+            } else {
+                through_pointer(x)
+            }) || through_pointer(index)
+        }
+        other => through_pointer(other),
+    }
 }
 
 /// What assigning to the place `e` reads before it writes: the variables (globals as `global
 /// <name>`), and `mem` when it reads memory through an index, a pointer or a field of one.
-fn place_reads(e: &Expr, vars: &mut BTreeSet<String>, mem: &mut bool) {
+pub(crate) fn place_reads(e: &Expr, vars: &mut BTreeSet<String>, mem: &mut bool) {
     match e {
         Expr::Var { .. } | Expr::Global { .. } => {}
         Expr::Index { x, index, .. } => {

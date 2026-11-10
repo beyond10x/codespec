@@ -390,6 +390,25 @@ int64_t Echo(cs_chan *ch, int64_t n) {
 }
 "#;
 
+const RECV_ONLY: &str = r#"#include "codespec_rt.h"
+
+/* codespec: func Take(<-chan int) int */
+int64_t Take(cs_chan *ch) {
+    return *(int64_t *)cs_chan_recv(ch);
+}
+"#;
+
+#[test]
+fn a_send_on_a_channel_its_line_makes_receive_only_is_refused() {
+    near_miss(
+        "rt_send_recv_only",
+        RECV_ONLY,
+        "return *(int64_t *)cs_chan_recv(ch);",
+        "int64_t n = 1;\n    cs_chan_send(ch, &n);\n    return n;",
+        "a send on a receive-only channel",
+    );
+}
+
 #[test]
 fn a_receive_cast_to_a_type_its_channel_does_not_hold_is_refused() {
     near_miss(

@@ -167,18 +167,25 @@
 //!
 //! **Order.** C leaves the order of a call's arguments and an operator's operands unspecified (gcc
 //! goes right to left), Go goes left to right. A call, an operator, an assignment, a `return`, a
-//! `send` or a lookup with more than one operand that makes a call (`&&` and `||` aside, which
-//! C orders) is refused, as the C writer refuses to write one. So is a multiple assignment whose
-//! later target reads what an earlier one assigns (C reads it after, Go before), and an
+//! `send` or a lookup with more than one operand that makes a call, an `append`, or an operation
+//! that can panic (an integer `/` or `%`, an index of anything but a map, a shift by a signed
+//! count: `cs_div_*`, `cs_rem_*`, `cs_slice_at`, `cs_shift_count` in runtime form) is refused
+//! (`&&` and `||` aside, which C orders); the C writer refuses the same for calls. So is an
+//! assignment to a place whose operands read a global, memory or a local whose address the
+//! function takes, from a value that makes a call (the call may write it), and a multiple
+//! assignment whose later target reads what an earlier one assigns (C reads it after, Go before;
+//! a target written or read through a pointer counts as touching every variable), and an
 //! assignment or `++` through `*cs_map_get` or `*cs_chan_recv`, whose value is no place of the
 //! map or channel. A call of a module function whose `codespec: func` line types its parameters
-//! and results checks each argument and the returned value against it; a receive from a
+//! and results checks each argument and the returned value against it, a call of any other
+//! function each argument against its C parameter type; a receive from a
 //! send-only channel and a send on a receive-only one are refused.
 //!
 //! **Maps.** The runtime walks a map in insertion order, `cir/1` in none. A loop over a map is read
 //! as `range` only when no order of its entries changes its result: each statement accumulates
 //! into its own integer variable, neither key nor value, with `+ * & | ^` (or `++`, `--`), from
-//! a value that makes no call and reads no accumulator. Any other loop over a map is refused,
+//! a value that makes no call and reads no accumulator and nothing through a pointer (which may be an
+//! accumulator under another name). Any other loop over a map is refused,
 //! and so is a `cs_map_put` in it, through the map or another variable holding it.
 //!
 //! **Widths.** `int64_t` holds `int` and `int64`, `uint64_t` `uint` and `uint64`: the `codespec:
@@ -189,7 +196,9 @@
 //! the kit reads back (`task c-round-trip`). A directory with one header beside `codespec_rt.h`
 //! holding `codespec:` lines is the writer's module `<m>`: its functions are `<m>_<Name>`, read
 //! as `<Name>`, the module is named `<m>`, and a function without a line is unexported and typed
-//! by its C types (an exported one, with an upper-case first letter, needs its line). Besides the
+//! by its C types (an exported one, with an upper-case first letter, needs its line). A name
+//! whose form without the prefix already names another declaration, a parameter or a local keeps
+//! its prefix, with a refusal. Besides the
 //! forms above it writes, and the reader reads:
 //!
 //! | the C writer | cir/1 |
@@ -301,6 +310,54 @@ fn unprefix(m: Module, px: &str) -> Module {
     names.extend(m.funcs.iter().map(|d| d.name.clone()));
     names.extend(m.opaque.iter().map(|d| d.name.clone()));
     names.retain(|n| n.len() > px.len() && n.starts_with(px));
+    let Ok(mut v) = serde_json::to_value(&m) else {
+        return m;
+    };
+    // A name without the prefix that is already the name of a declaration, a parameter or a
+    // local would name two things: such a name keeps its prefix, with a refusal.
+    fn idents(v: &serde_json::Value, out: &mut BTreeSet<String>) {
+        match v {
+            serde_json::Value::Object(o) => {
+                if o.get("k").and_then(|k| k.as_str()) == Some("field") {
+                    return o
+                        .iter()
+                        .filter(|(k, _)| k.as_str() != "name")
+                        .for_each(|(_, x)| idents(x, out));
+                }
+                for (k, x) in o {
+                    match (k.as_str(), x) {
+                        ("fields", _) => {}
+                        ("name" | "key" | "val", serde_json::Value::String(s)) => {
+                            out.insert(s.clone());
+                        }
+                        ("names", serde_json::Value::Array(a)) => {
+                            out.extend(a.iter().filter_map(|s| s.as_str().map(String::from)));
+                        }
+                        _ => idents(x, out),
+                    }
+                }
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| idents(x, out)),
+            _ => {}
+        }
+    }
+    let mut taken = BTreeSet::new();
+    idents(&v, &mut taken);
+    let mut refusals = Vec::new();
+    names.retain(|n| {
+        let bare = &n[px.len()..];
+        let free = !taken.contains(bare);
+        if !free {
+            refusals.push(Refusal {
+                pos: decl_pos(&v, n).unwrap_or_default(),
+                what: n.clone(),
+                reason: format!(
+                    "{n} without the C writer's prefix {px} is {bare}, which names another declaration, a parameter or a local: it keeps its prefix"
+                ),
+            });
+        }
+        free
+    });
     fn walk(v: &mut serde_json::Value, px: &str, names: &BTreeSet<String>) {
         match v {
             serde_json::Value::String(s) => {
@@ -317,11 +374,19 @@ fn unprefix(m: Module, px: &str) -> Module {
             _ => {}
         }
     }
-    let Ok(mut v) = serde_json::to_value(&m) else {
-        return m;
-    };
     walk(&mut v, px, &names);
-    serde_json::from_value(v).unwrap_or(m)
+    let mut out: Module = serde_json::from_value(v).unwrap_or(m);
+    out.refusals.extend(refusals);
+    out
+}
+
+/// The position of the declaration of the module named `n`.
+fn decl_pos(v: &serde_json::Value, n: &str) -> Option<String> {
+    ["types", "consts", "errors", "vars", "funcs", "opaque"]
+        .iter()
+        .flat_map(|k| v[*k].as_array().into_iter().flatten())
+        .find(|d| d["name"] == n)
+        .and_then(|d| d["pos"].as_str().map(String::from))
 }
 
 /// A null pointer constant in an initializer: `NULL`, `0`, `(T *)0`, or a field left out.
@@ -1322,6 +1387,7 @@ impl<'s> Assembly<'s> {
             (Some(_), _) => None,
         };
         let mut b = Body::new(&self.tables, unit, self.src, decls, params.clone());
+        b.addressed = body::addressed(n);
         b.results = match (&sig_results, &result) {
             (Some(rs), _) => rs.clone(),
             (None, Some(Type::Unit) | None) => Vec::new(),

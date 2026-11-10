@@ -42,6 +42,8 @@ pub struct Body<'a> {
     pub(crate) local_types: BTreeMap<String, R<Type>>,
     /// The results of the function being read.
     pub(crate) results: Vec<Type>,
+    /// The names of the variables whose address the function takes.
+    pub(crate) addressed: BTreeSet<String>,
 }
 
 /// A floating-point constant: a literal, under unary `-`, `+`, a conversion or an operator on
@@ -159,6 +161,25 @@ pub(crate) fn fits(v: i128, t: &Type) -> bool {
     }
 }
 
+/// The names of the variables whose address `n` takes anywhere (`&x`, `&x.f`, `&x[i]`): a call or
+/// a write through a pointer may change them.
+pub(crate) fn addressed(n: &J) -> BTreeSet<String> {
+    fn walk(n: &J, out: &mut BTreeSet<String>) {
+        if n.kind() == "UnaryOperator"
+            && n.s("opcode") == "&"
+            && let Some(v) = n.inner().first().and_then(base_var)
+        {
+            out.insert(v.get("referencedDecl").s("name").to_string());
+        }
+        for k in n.inner() {
+            walk(k, out);
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(n, &mut out);
+    out
+}
+
 /// Whether `n`, under parentheses, is a call.
 fn bare_call(n: &J) -> bool {
     strip(n).kind() == "CallExpr"
@@ -182,14 +203,57 @@ pub(crate) fn has_call(e: &Expr) -> bool {
     found
 }
 
-/// Refuse statements holding an expression of which two operands make calls: C leaves the
-/// order of a call's arguments, of an operator's operands (but `&&`, `||`), of an initializer's
-/// values and of an assignment's sides unspecified, and `cir/1` evaluates left to right. The C
-/// writer refuses the same.
-pub(crate) fn ordered(stmts: &[Stmt]) -> R<()> {
-    let two = |es: &mut dyn Iterator<Item = &Expr>| es.filter(|e| has_call(e)).count() > 1;
+/// Whether evaluating `e` has an effect whose order shows: a call as `has_call` counts one, an
+/// `append` (it writes the slice's array), or an operation that can panic, which the runtime form
+/// writes as a call (`cs_div_*`, `cs_rem_*`, `cs_slice_at`, `cs_shift_count`): an integer `/` or
+/// `%`, an index of anything but a map, a shift by a signed count.
+pub(crate) fn has_effect(e: &Expr) -> bool {
+    if has_call(e) {
+        return true;
+    }
+    let mut found = false;
+    codespec_model::walk::walk_expr(e, &mut |x| {
+        found |= match x {
+            Expr::Intrinsic { name, .. } => !matches!(name.as_str(), "len" | "cap"),
+            Expr::Binop { op, t, .. } if op == "/" || op == "%" => !matches!(t, Type::Float { .. }),
+            Expr::Binop { op, y, .. } if op == "<<" || op == ">>" => {
+                !matches!(y.t(), Type::Int { signed: false, .. })
+            }
+            // A constant index of an array is checked when Go compiles it.
+            Expr::Index { x, index, .. } => match x.t() {
+                Type::Map { .. } => false,
+                Type::Array { .. } => !matches!(index.as_ref(), Expr::Lit { .. }),
+                _ => true,
+            },
+            _ => false,
+        };
+    });
+    found
+}
+
+/// Refuse statements holding an expression of which two operands have an effect (`has_effect`):
+/// C leaves the order of a call's arguments, of an operator's operands (but `&&`, `||`), of an
+/// initializer's values and of an assignment's sides unspecified, and `cir/1` evaluates left to
+/// right. The C writer refuses the same for calls. An assignment to a place whose operands read a
+/// global, memory or a local whose address the function takes (`addressed`), from a value that
+/// makes a call, is refused too: the call may write what the place reads.
+pub(crate) fn ordered(stmts: &[Stmt], addressed: &BTreeSet<String>) -> R<()> {
+    let two = |es: &mut dyn Iterator<Item = &Expr>| es.filter(|e| has_effect(e)).count() > 1;
     let mut bad = false;
+    let mut written = false;
     codespec_model::walk::walk_stmts(stmts, &mut |s| {
+        if let Stmt::Assign { lhs, rhs, .. } = s
+            && lhs.len() == 1
+            && !matches!(lhs[0], Expr::Var { .. } | Expr::Global { .. })
+            && rhs.iter().any(has_call)
+        {
+            let (mut vars, mut mem) = (BTreeSet::new(), false);
+            crate::rtbody::place_reads(&lhs[0], &mut vars, &mut mem);
+            written |= mem
+                || vars
+                    .iter()
+                    .any(|v| v.starts_with("global ") || addressed.contains(v));
+        }
         bad |= match s {
             // Several targets are the runtime form's temporaries, each its own C statement.
             Stmt::Assign { lhs, rhs, .. } if lhs.len() == 1 => two(&mut lhs.iter().chain(rhs)),
@@ -211,7 +275,13 @@ pub(crate) fn ordered(stmts: &[Stmt]) -> R<()> {
     });
     if bad {
         return Err(
-            "two operands of one expression make calls, and C leaves their order unspecified"
+            "two operands of one expression make calls or can panic, and C leaves their order unspecified"
+                .into(),
+        );
+    }
+    if written {
+        return Err(
+            "an assignment to a place that reads a global, memory or a local whose address is taken, from a call that may write it: C leaves their order unspecified"
                 .into(),
         );
     }
@@ -266,6 +336,7 @@ impl<'a> Body<'a> {
             for_vars: BTreeSet::new(),
             local_types: BTreeMap::new(),
             results: Vec::new(),
+            addressed: BTreeSet::new(),
         }
     }
 
@@ -310,7 +381,7 @@ impl<'a> Body<'a> {
             let run = self.rt_run(&kids[i..]).map(|(n, r)| {
                 (
                     n,
-                    r.and_then(|s| ordered(std::slice::from_ref(&s)).map(|()| s)),
+                    r.and_then(|s| ordered(std::slice::from_ref(&s), &self.addressed).map(|()| s)),
                 )
             });
             match run {
@@ -351,7 +422,9 @@ impl<'a> Body<'a> {
     /// Read one statement into `out`; one it cannot read is kept as `foreign` with a refusal.
     fn stmt(&mut self, n: &J, out: &mut Vec<Stmt>) {
         let mark = out.len();
-        let r = self.try_stmt(n, out).and_then(|()| ordered(&out[mark..]));
+        let r = self
+            .try_stmt(n, out)
+            .and_then(|()| ordered(&out[mark..], &self.addressed));
         if let Err(reason) = r {
             out.truncate(mark);
             self.foreign(n, reason, out);
@@ -1349,6 +1422,24 @@ impl<'a> Body<'a> {
                 "a call of {name} with another number of arguments than its codespec: func line"
             ));
         }
+        // Without a line, the C declaration's parameter types: each argument is of its type, as
+        // Go requires (`int64_t` reads as `int` here and may be `int64` in the argument).
+        let typed = match typed {
+            Some(ps) => Some(ps),
+            None => self.decls.get(id.as_str()).and_then(|d| {
+                let ps: Vec<&J> = d
+                    .inner()
+                    .iter()
+                    .filter(|p| p.kind() == "ParmVarDecl")
+                    .collect();
+                if ps.len() != kids.len() - 1 {
+                    return None;
+                }
+                ps.iter()
+                    .map(|p| self.tables.ty(self.unit, p.get("type")).ok())
+                    .collect::<Option<Vec<Type>>>()
+            }),
+        };
         for (i, a) in kids[1..].iter().enumerate() {
             match typed.as_ref().map(|ps| &ps[i]) {
                 Some(p) => {

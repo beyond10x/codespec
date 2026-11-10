@@ -238,6 +238,12 @@ impl Tables {
                 dir: ChanDir::Send,
             });
         }
+        if let Some(e) = s.strip_prefix("<-chan ") {
+            return Ok(Type::Chan {
+                elem: Box::new(self.go(e)?),
+                dir: ChanDir::Recv,
+            });
+        }
         if let Some(e) = s.strip_prefix("chan ") {
             return Ok(Type::Chan {
                 elem: Box::new(self.go(e)?),

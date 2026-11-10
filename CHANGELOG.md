@@ -27,6 +27,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `cs_chan_recv`, an argument or result of another type than the `codespec: func` line's, a
   receive or send against a channel's direction, and a loop over a map whose result depends on
   the order of its entries. `int64_t` and `uint64_t` take their width from the line.
+- `codespec-read-c` refuses more orders C leaves open: two operands of which one is an `append`
+  or an operation that can panic (an integer `/` or `%`, an index, a shift by a signed count)
+  beside a call; an assignment to a place reading a global, memory or a local whose address is
+  taken, from a call; a multiple assignment or a loop over a map that reads or writes through a
+  pointer where a name may be aliased. A call of a function without a `codespec: func` line
+  checks each argument against its C parameter type. A name of the C writer's that would lose
+  its prefix onto the name of another declaration, a parameter or a local keeps it, with a
+  refusal. A `codespec: func` line spells a receive-only channel `<-chan T`.
 - `codespec-run-c` compiles each `.c` file as its own translation unit, as the reader reads it.
 - `codespec-run-c` runs C written by hand in runtime form, typed by its `codespec: func` lines;
   a call of a function without one is refused. The C row of the reader corpus holds
