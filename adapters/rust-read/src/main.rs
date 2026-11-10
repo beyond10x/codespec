@@ -42,15 +42,12 @@ fn manifest() -> AdapterManifest {
         not: list(&[
             "decl.embedded",
             "decl.union",
-            "decl.type_params",
             "decl.variadic",
             "expr.extern",
             "expr.extern_method",
-            "expr.instantiate",
             "expr.spread",
             "stmt.foreign",
             "type.extern",
-            "type.param",
             "unop.plus",
         ]),
     }

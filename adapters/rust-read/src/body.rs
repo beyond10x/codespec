@@ -88,6 +88,108 @@ fn ident_of(e: &syn::Expr) -> Option<String> {
     }
 }
 
+/// `t` with each type parameter `map` names replaced by its type argument.
+fn subst(t: &Type, map: &BTreeMap<String, Type>) -> Type {
+    let each = |ts: &[Type]| ts.iter().map(|t| subst(t, map)).collect::<Vec<_>>();
+    let one = |t: &Type| Box::new(subst(t, map));
+    match t {
+        Type::Param { name } => map.get(name).cloned().unwrap_or_else(|| t.clone()),
+        Type::Named { name, targs } => Type::Named {
+            name: name.clone(),
+            targs: each(targs),
+        },
+        Type::Ptr { elem } => Type::Ptr { elem: one(elem) },
+        Type::Slice { elem } => Type::Slice { elem: one(elem) },
+        Type::Array { len, elem } => Type::Array {
+            len: *len,
+            elem: one(elem),
+        },
+        Type::Chan { elem, dir } => Type::Chan {
+            elem: one(elem),
+            dir: *dir,
+        },
+        Type::Map { key, elem } => Type::Map {
+            key: one(key),
+            elem: one(elem),
+        },
+        Type::Tuple { elems } => Type::Tuple { elems: each(elems) },
+        Type::Func { params, results } => Type::Func {
+            params: each(params),
+            results: each(results),
+        },
+        _ => t.clone(),
+    }
+}
+
+/// Whether `t` names one of the type parameters `vars`.
+fn mentions(t: &Type, vars: &[&str]) -> bool {
+    let each = |ts: &[Type]| ts.iter().any(|t| mentions(t, vars));
+    match t {
+        Type::Param { name } => vars.contains(&name.as_str()),
+        Type::Named { targs, .. } => each(targs),
+        Type::Ptr { elem }
+        | Type::Slice { elem }
+        | Type::Array { elem, .. }
+        | Type::Chan { elem, .. } => mentions(elem, vars),
+        Type::Map { key, elem } => mentions(key, vars) || mentions(elem, vars),
+        Type::Tuple { elems } => each(elems),
+        Type::Func { params, results } => each(params) || each(results),
+        _ => false,
+    }
+}
+
+/// Binds the type parameters `vars` in `pattern` so that it is `actual`, as Rust infers a call's
+/// type arguments from its arguments; false when no binding makes them equal.
+fn unify(pattern: &Type, actual: &Type, vars: &[&str], map: &mut BTreeMap<String, Type>) -> bool {
+    let all = |ps: &[Type], xs: &[Type], map: &mut BTreeMap<String, Type>| {
+        ps.len() == xs.len() && ps.iter().zip(xs).all(|(p, x)| unify(p, x, vars, map))
+    };
+    match (pattern, actual) {
+        (Type::Param { name }, _) if vars.contains(&name.as_str()) => match map.get(name) {
+            Some(bound) => bound == actual,
+            None => {
+                map.insert(name.clone(), actual.clone());
+                true
+            }
+        },
+        (Type::Named { name: a, targs: x }, Type::Named { name: b, targs: y }) => {
+            a == b && all(x, y, map)
+        }
+        (Type::Ptr { elem: a }, Type::Ptr { elem: b })
+        | (Type::Slice { elem: a }, Type::Slice { elem: b }) => unify(a, b, vars, map),
+        (Type::Array { len: m, elem: a }, Type::Array { len: n, elem: b }) => {
+            m == n && unify(a, b, vars, map)
+        }
+        (Type::Chan { elem: a, dir: d }, Type::Chan { elem: b, dir: e }) => {
+            d == e && unify(a, b, vars, map)
+        }
+        (Type::Map { key: k, elem: a }, Type::Map { key: l, elem: b }) => {
+            unify(k, l, vars, map) && unify(a, b, vars, map)
+        }
+        (Type::Tuple { elems: a }, Type::Tuple { elems: b }) => all(a, b, map),
+        (
+            Type::Func {
+                params: p,
+                results: r,
+            },
+            Type::Func {
+                params: q,
+                results: s,
+            },
+        ) => all(p, q, map) && all(r, s, map),
+        _ => pattern == actual,
+    }
+}
+
+/// The type arguments of a value of a generic struct, through one pointer.
+fn targs_of(t: &Type) -> &[Type] {
+    match t {
+        Type::Ptr { elem } => targs_of(elem),
+        Type::Named { targs, .. } => targs,
+        _ => &[],
+    }
+}
+
 fn is_type(t: &syn::Type, name: &str) -> bool {
     matches!(t, syn::Type::Path(p) if p.qself.is_none() && p.path.is_ident(name))
 }
@@ -1018,7 +1120,7 @@ impl<'r> Fx<'r> {
         let r = match s {
             syn::Stmt::Local(l) => self.local(l),
             syn::Stmt::Item(syn::Item::Fn(f)) if !f.sig.generics.params.is_empty() => {
-                Err("a generic function is outside cir/1".into())
+                Err("a generic function inside a function: cir/1 declares functions, generic ones among them, at module level only".into())
             }
             syn::Stmt::Item(_) => Err("an item inside a function is outside cir/1".into()),
             syn::Stmt::Expr(e, None) if tail => self.tail(e),
@@ -2663,6 +2765,11 @@ impl<'r> Fx<'r> {
                 if let Some(sig) = self.r.sigs.get(&(None, x.clone()))
                     && sig.recv.is_none()
                 {
+                    if !sig.tparams.is_empty() {
+                        return Err(format!(
+                            "the generic function {x} used as a value: a cir/1 function value names no instantiation"
+                        ));
+                    }
                     if sig.shape != Shape::Plain {
                         return Err(format!(
                             "the function {x}, which gives a `Result` or `Option`, used as a value"
@@ -2754,7 +2861,7 @@ impl<'r> Fx<'r> {
                     _ => return Err("a field of an Option or Result".into()),
                 };
                 let tn = receiver_type_name(base.t()).to_string();
-                let Some(Decl::Struct(fields)) = self.r.decls.get(&tn) else {
+                let Some(fields) = self.fields_of(base.t()) else {
                     return Err(format!("field {name} of a value that is not a struct"));
                 };
                 let fi = fields
@@ -2840,7 +2947,7 @@ impl<'r> Fx<'r> {
             },
             syn::Expr::Call(c) => self.call(c, want),
             syn::Expr::MethodCall(mc) => self.method(mc, want),
-            syn::Expr::Struct(s) => self.struct_lit(s).map(V::E),
+            syn::Expr::Struct(s) => self.struct_lit(s, want).map(V::E),
             syn::Expr::Macro(m) => self.macro_expr(&m.mac, want).map(V::E),
             syn::Expr::Index(ix) => {
                 let x = self.val(&ix.expr, None)?;
@@ -3050,14 +3157,8 @@ impl<'r> Fx<'r> {
             }
             [n] => {
                 if let Some(sig) = self.r.sigs.get(&(None, n.clone())).cloned() {
-                    let args = self.args(&sig, &c.args)?;
-                    let x = Expr::Call {
-                        targs: Vec::new(),
-                        name: sig.go.clone(),
-                        args,
-                        t: sig.value_type(),
-                    };
-                    return Ok(self.sig_value(&sig, x));
+                    let written = self.seg_targs(&p.path.segments[0])?;
+                    return self.call_fn(&sig, written, &c.args, want);
                 }
                 if let Some(Decl::Newtype(under)) = self.r.decls.get(n).cloned() {
                     let a = arg(0)
@@ -3217,14 +3318,19 @@ impl<'r> Fx<'r> {
                 if let Some(sig) = self.r.sigs.get(&(Some(t.clone()), f.clone())).cloned()
                     && sig.recv.is_none()
                 {
-                    let args = self.args(&sig, &c.args)?;
-                    let x = Expr::Call {
-                        targs: Vec::new(),
-                        name: sig.go.clone(),
-                        args,
-                        t: sig.value_type(),
+                    // The type arguments of the struct (`Pair::<Item>::new`, or those `Self`
+                    // stands for), then the function's own.
+                    let by_self = segs[0] == "Self";
+                    let mut written = if by_self {
+                        self.r.scope.borrow().self_targs.clone()
+                    } else {
+                        self.seg_targs(&p.path.segments[0])?
                     };
-                    return Ok(self.sig_value(&sig, x));
+                    written.extend(self.seg_targs(&p.path.segments[1])?);
+                    if by_self && written.len() != sig.tparams.len() {
+                        written.clear();
+                    }
+                    return self.call_fn(&sig, written, &c.args, want);
                 }
                 Err(format!("a call of `{t}::{f}`, outside the reader's table"))
             }
@@ -3232,12 +3338,54 @@ impl<'r> Fx<'r> {
         }
     }
 
+    /// A call of the crate's function `sig`: of a generic one with its type arguments, written or
+    /// inferred.
+    fn call_fn(
+        &mut self,
+        sig: &Sig,
+        written: Vec<Type>,
+        args: &Punctuated<syn::Expr, syn::Token![,]>,
+        want: Option<&Type>,
+    ) -> R<V> {
+        if sig.tparams.is_empty() {
+            if !written.is_empty() {
+                return Err(format!(
+                    "type arguments on {}, which has no type parameters",
+                    sig.go
+                ));
+            }
+            let args = self.args(sig, args)?;
+            let x = Expr::Call {
+                targs: Vec::new(),
+                name: sig.go.clone(),
+                args,
+                t: sig.value_type(),
+            };
+            return Ok(self.sig_value(sig, x));
+        }
+        let (targs, args, inst) = self.instantiate(sig, written, args, want)?;
+        let x = Expr::Call {
+            targs,
+            name: sig.go.clone(),
+            args,
+            t: inst.value_type(),
+        };
+        Ok(self.sig_value(&inst, x))
+    }
+
     /// Whether a value of `t` holds a slice or a map other than through a pointer: a Go copy of it
     /// would share storage that a Rust clone does not.
     fn shares_storage(&self, t: &Type, seen: &mut Vec<String>) -> bool {
         match t {
-            Type::Slice { .. } | Type::Map { .. } => true,
-            Type::Named { name, .. } => {
+            // A value of a type parameter may be of any type, a slice among them.
+            Type::Slice { .. } | Type::Map { .. } | Type::Param { .. } => true,
+            Type::Named { name, targs } => {
+                if targs
+                    .iter()
+                    .any(|t| self.shares_storage(t, &mut seen.clone()))
+                {
+                    return true;
+                }
                 if seen.contains(name) {
                     return false;
                 }
@@ -3334,12 +3482,19 @@ impl<'r> Fx<'r> {
             args: vec![x],
             t: platform_int(),
         };
-        // A method of a crate trait through its trait object: Go's call through the interface.
-        if let Some(info) = self.r.is_iface(&t) {
+        // A method of a crate trait through its trait object, or on a value of a type parameter
+        // the trait constrains: Go's call through the interface.
+        let iface = match &t {
+            Type::Param { name } => self.r.constraint_of(name),
+            t => Some(t.clone()),
+        };
+        if let Some(it) = iface
+            && let Some(info) = self.r.is_iface(&it)
+        {
             let Some((go, params, results)) = info.methods.get(&m).cloned() else {
                 return Err(format!(
                     "the trait {} has no method {m}",
-                    receiver_type_name(&t)
+                    receiver_type_name(&it)
                 ));
             };
             if n != params.len() {
@@ -3358,7 +3513,7 @@ impl<'r> Fx<'r> {
             };
             return Ok(V::E(Expr::IfaceCall {
                 path: String::new(),
-                iface: receiver_type_name(&t).to_string(),
+                iface: receiver_type_name(&it).to_string(),
                 name: go,
                 recv: Box::new(x),
                 args,
@@ -3371,6 +3526,29 @@ impl<'r> Fx<'r> {
             && let Some(sig) = self.r.sigs.get(&(Some(tn.clone()), m.clone())).cloned()
             && sig.recv.is_some()
         {
+            // A method of a generic struct: its receiver's type parameters stand for the
+            // value's type arguments.
+            let map: BTreeMap<String, Type> = sig
+                .recv
+                .as_ref()
+                .map(targs_of)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|p| match p {
+                    Type::Param { name } => Some(name.clone()),
+                    _ => None,
+                })
+                .zip(targs_of(&t).iter().cloned())
+                .collect();
+            let sig = Sig {
+                params: sig
+                    .params
+                    .iter()
+                    .map(|(r, g, pt)| (r.clone(), g.clone(), subst(pt, &map)))
+                    .collect(),
+                results: sig.results.iter().map(|rt| subst(rt, &map)).collect(),
+                ..sig
+            };
             let args = self.args(&sig, &mc.args)?;
             let call = Expr::Method {
                 x: Box::new(x),
@@ -3493,7 +3671,7 @@ impl<'r> Fx<'r> {
         }
     }
 
-    fn struct_lit(&mut self, s: &syn::ExprStruct) -> R<Expr> {
+    fn struct_lit(&mut self, s: &syn::ExprStruct, want: Option<&Type>) -> R<Expr> {
         if s.rest.is_some() || s.dot2_token.is_some() {
             return Err("a struct literal with `..`".into());
         }
@@ -3509,6 +3687,35 @@ impl<'r> Fx<'r> {
         let Some(Decl::Struct(decl)) = self.r.decls.get(&name).cloned() else {
             return Err(format!("a struct literal of {name}, which is not a struct"));
         };
+        // A generic struct's type arguments: written (`Boxed::<i64> { … }`), those of the type
+        // expected, or inferred from the fields' values as Rust infers them.
+        let tps: Vec<String> = self
+            .r
+            .type_params
+            .get(&name)
+            .map(|ps| ps.iter().map(|p| p.name.clone()).collect())
+            .unwrap_or_default();
+        let vars: Vec<&str> = tps.iter().map(String::as_str).collect();
+        let written = match s.path.segments.last() {
+            Some(seg) => self.seg_targs(seg)?,
+            None => Vec::new(),
+        };
+        let mut map = BTreeMap::new();
+        if !written.is_empty() {
+            if written.len() != tps.len() {
+                return Err(format!(
+                    "{name} with {} type arguments, where it declares {}",
+                    written.len(),
+                    tps.len()
+                ));
+            }
+            map = tps.iter().cloned().zip(written).collect();
+        } else if let Some(Type::Named { name: w, targs }) = want
+            && *w == name
+            && targs.len() == tps.len()
+        {
+            map = tps.iter().cloned().zip(targs.iter().cloned()).collect();
+        }
         let mut fields = Vec::new();
         for fv in &s.fields {
             let syn::Member::Named(id) = &fv.member else {
@@ -3518,8 +3725,25 @@ impl<'r> Fx<'r> {
                 .iter()
                 .find(|f| *id == f.rust)
                 .ok_or_else(|| format!("{name} has no field {id}"))?;
-            let value = self.val(&fv.expr, Some(&fi.t))?;
-            if is_zero_lit(&value) && *value.t() == fi.t {
+            let free: Vec<&str> = vars
+                .iter()
+                .copied()
+                .filter(|v| !map.contains_key(*v))
+                .collect();
+            let (value, ft) = if mentions(&fi.t, &free) {
+                let value = self.val(&fv.expr, None)?;
+                if !unify(&fi.t, value.t(), &vars, &mut map) {
+                    return Err(format!(
+                        "field {id} of {name} given a value of another type than it declares"
+                    ));
+                }
+                let ft = subst(&fi.t, &map);
+                (value, ft)
+            } else {
+                let ft = subst(&fi.t, &map);
+                (self.val(&fv.expr, Some(&ft))?, ft)
+            };
+            if is_zero_lit(&value) && *value.t() == ft {
                 continue;
             }
             fields.push(FieldInit {
@@ -3527,14 +3751,174 @@ impl<'r> Fx<'r> {
                 value,
             });
         }
+        if map.len() != tps.len() {
+            return Err(format!(
+                "a struct literal of {name} whose type arguments its fields do not fix: write them (`{name}::<…> {{ … }}`)"
+            ));
+        }
         Ok(Expr::Struct {
             name: name.clone(),
             fields,
             t: Type::Named {
-                targs: Vec::new(),
+                targs: tps.iter().map(|n| map[n].clone()).collect(),
                 name,
             },
         })
+    }
+
+    /// The type arguments written on a path segment (`f::<i64>`, `Pair::<Item>`), read as types.
+    fn seg_targs(&self, seg: &syn::PathSegment) -> R<Vec<Type>> {
+        match &seg.arguments {
+            syn::PathArguments::None => Ok(Vec::new()),
+            syn::PathArguments::AngleBracketed(a) => a
+                .args
+                .iter()
+                .map(|g| match g {
+                    syn::GenericArgument::Type(t) => self.r.ty(t, self.impl_ty.as_deref()),
+                    _ => Err(format!("the generic argument `{}`", src_of(g))),
+                })
+                .collect(),
+            syn::PathArguments::Parenthesized(_) => {
+                Err("parenthesized generic arguments are outside cir/1".into())
+            }
+        }
+    }
+
+    /// The fields of a value of type `t`, a struct or a pointer to one, each typed with the
+    /// value's type arguments in place of the struct's type parameters.
+    fn fields_of(&self, t: &Type) -> Option<Vec<crate::FieldInfo>> {
+        let tn = receiver_type_name(t);
+        let Some(Decl::Struct(fs)) = self.r.decls.get(tn) else {
+            return None;
+        };
+        let map: BTreeMap<String, Type> = match self.r.type_params.get(tn) {
+            Some(ps) => ps
+                .iter()
+                .map(|p| p.name.clone())
+                .zip(targs_of(t).iter().cloned())
+                .collect(),
+            None => BTreeMap::new(),
+        };
+        Some(
+            fs.iter()
+                .map(|f| crate::FieldInfo {
+                    t: subst(&f.t, &map),
+                    ..f.clone()
+                })
+                .collect(),
+        )
+    }
+
+    /// A call of the generic function `sig` with `args`: its type arguments `written`, or inferred
+    /// from the arguments and then the type `want`ed, as Rust infers them; each satisfies its
+    /// constraint in Go. Gives the type arguments, the arguments, and `sig` instantiated.
+    fn instantiate(
+        &mut self,
+        sig: &Sig,
+        written: Vec<Type>,
+        args: &Punctuated<syn::Expr, syn::Token![,]>,
+        want: Option<&Type>,
+    ) -> R<(Vec<Type>, Vec<Expr>, Sig)> {
+        let names: Vec<String> = sig.tparams.iter().map(|p| p.name.clone()).collect();
+        let vars: Vec<&str> = names.iter().map(String::as_str).collect();
+        if args.len() != sig.params.len() {
+            return Err(format!("{} called with {} arguments", sig.go, args.len()));
+        }
+        let mut map = BTreeMap::new();
+        if !written.is_empty() {
+            if written.len() != names.len() {
+                return Err(format!(
+                    "{} with {} type arguments, where it declares {}",
+                    sig.go,
+                    written.len(),
+                    names.len()
+                ));
+            }
+            map = names.iter().cloned().zip(written).collect();
+        }
+        let mut out = Vec::new();
+        for (a, (_, _, pt)) in args.iter().zip(&sig.params) {
+            let free: Vec<&str> = vars
+                .iter()
+                .copied()
+                .filter(|v| !map.contains_key(*v))
+                .collect();
+            if mentions(pt, &free) {
+                let x = self.val(strip_ref(a), None)?;
+                if !unify(pt, x.t(), &vars, &mut map) {
+                    return Err(format!(
+                        "an argument of {} of another type than its parameter",
+                        sig.go
+                    ));
+                }
+                out.push(x);
+            } else {
+                out.push(self.val(strip_ref(a), Some(&subst(pt, &map)))?);
+            }
+        }
+        if map.len() < names.len()
+            && let Some(w) = want
+        {
+            let mut tried = map.clone();
+            if unify(&sig.value_type(), w, &vars, &mut tried) {
+                map = tried;
+            }
+        }
+        if map.len() < names.len() {
+            return Err(format!(
+                "a call of {} whose type arguments neither its arguments nor the expected type fix: write them (`::<…>`)",
+                sig.go
+            ));
+        }
+        let targs: Vec<Type> = names.iter().map(|n| map[n].clone()).collect();
+        for (p, t) in sig.tparams.iter().zip(&targs) {
+            self.satisfies(&p.constraint, t)?;
+        }
+        let inst = Sig {
+            tparams: Vec::new(),
+            params: sig
+                .params
+                .iter()
+                .map(|(r, g, t)| (r.clone(), g.clone(), subst(t, &map)))
+                .collect(),
+            results: sig.results.iter().map(|t| subst(t, &map)).collect(),
+            ..sig.clone()
+        };
+        for (x, (_, _, pt)) in out.iter().zip(&inst.params) {
+            if x.t() != pt {
+                return Err(format!(
+                    "an argument of {} of another type than its parameter",
+                    sig.go
+                ));
+            }
+        }
+        Ok((targs, out, inst))
+    }
+
+    /// Whether the type argument `t` satisfies `constraint` in Go: `any`, or the interface of a
+    /// crate trait `t` implements with value receivers, or a type parameter constrained by it.
+    fn satisfies(&self, constraint: &Type, t: &Type) -> R<()> {
+        let Type::Named { name: tr, .. } = constraint else {
+            return Ok(());
+        };
+        match t {
+            Type::Param { name } if self.r.constraint_of(name).as_ref() == Some(constraint) => {
+                Ok(())
+            }
+            Type::Named { name, targs }
+                if targs.is_empty() && self.r.impls.contains(&(name.clone(), tr.clone())) =>
+            {
+                if self.r.ptr_types.contains(name) {
+                    return Err(format!(
+                        "{name} as a type argument constrained by {tr}: its methods have pointer receivers in Go, so its value does not implement {tr}"
+                    ));
+                }
+                Ok(())
+            }
+            t => Err(format!(
+                "{t:?} as a type argument constrained by {tr}, which it does not implement"
+            )),
+        }
     }
 
     fn macro_expr(&mut self, m: &syn::Macro, want: Option<&Type>) -> R<Expr> {
@@ -3785,7 +4169,7 @@ pub(crate) fn func(
     let body = fx.block(&block.stmts, true);
     (
         Func {
-            tparams: Vec::new(),
+            tparams: sig.tparams.clone(),
             name: sig.go.clone(),
             exported: sig.go.chars().next().is_some_and(|c| c.is_uppercase()),
             recv,

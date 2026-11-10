@@ -22,12 +22,12 @@ What codespec does not do is on the [overview](/docs/#what-it-is-not).
 
 ## Known limitations
 
-- **The Rust reader reads a subset.** One file, `src/lib.rs`; no generics, traits other than
-  `Display` and the crate's own with `&self` methods, closures other than `|x: T| -> R { … }`,
-  `?` other than on a fallible call of the same crate, or integer and float literals nothing
-  types. Each is kept as a
-  `foreign` statement with a refusal inside a body; an item outside it (a generic function, a trait
-  impl) is listed as a refusal and left out. Go's `int` and `int64` both come back from Rust as `int64`.
+- **The Rust reader reads a subset.** One file, `src/lib.rs`; no type parameter bounds other than
+  one trait of the crate, traits other than `Display` and the crate's own with `&self` methods,
+  closures other than `|x: T| -> R { … }`, `?` other than on a fallible call of the same crate,
+  or integer and float literals nothing types. Each is kept as a
+  `foreign` statement with a refusal inside a body; an item outside it (a function bound by
+  `Clone`, a trait impl) is listed as a refusal and left out. Go's `int` and `int64` both come back from Rust as `int64`.
 - **The harness speaks two programs.** Its trace generators are the `orders` and `inventory`
   examples' (`trace` in `harness.toml`); `greeter` is checked by equality with its checked-in
   outputs and its builds.

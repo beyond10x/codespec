@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "rust",
     "version": "0.6.1",
-    "manifest_sha256": "dc61a821fb8adcd3f721aed0172875af5355e162fafe872d2052ac6f16ca6dec"
+    "manifest_sha256": "7f474747c22d7c117d51d23765378398c77ae1f58776cc33f3e899cfdc712c6b"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "91f01865861032738899fb6e4ebe9f2d4bd9d0a1fcee19c1af03995dd596d27f"
+    "sha256": "218fb3807b65ddd64cfcaaa2f9be4c12965652c890e07f818fd13e50cdc190c8"
   },
   "corpus": {
-    "sha256": "ff2452128ef972347e1936926b78880ce9bcfb1018a605ae0ce0887908e031d7"
+    "sha256": "6b9149c1f48320d08de0a267bf494c00f854f60bd50324eb0a5791674e20de62"
   },
   "codespec": "0.6.1",
   "features": [
@@ -143,9 +143,11 @@
     },
     {
       "id": "decl.type_params",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "decl-generic"
+      ]
     },
     {
       "id": "decl.union",
@@ -277,9 +279,11 @@
     },
     {
       "id": "expr.instantiate",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-instantiate"
+      ]
     },
     {
       "id": "expr.intrinsic",
@@ -895,9 +899,11 @@
     },
     {
       "id": "type.param",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-param"
+      ]
     },
     {
       "id": "type.ptr",
@@ -996,12 +1002,12 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 108,
-    "pass": 108,
+    "claimed": 111,
+    "pass": 111,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 19,
+    "untested": 16,
     "boundary_fail": 0
   },
   "conforms": true

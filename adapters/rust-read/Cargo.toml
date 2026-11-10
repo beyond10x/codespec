@@ -19,7 +19,7 @@ path = "src/main.rs"
 b10x-codespec-model = { path = "../../crates/model" }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde.workspace = true
-syn.workspace = true
+syn = { workspace = true, features = ["visit-mut"] }
 toml.workspace = true
 
 [dev-dependencies]

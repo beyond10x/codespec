@@ -1,8 +1,9 @@
 //! The Rust reader: one crate's `src/lib.rs` to one `cir/1` module, parsed with `syn`, every name
 //! and type resolved by the reader itself for the subset of Rust `cir/1` expresses. Nothing is
 //! guessed: a construct the reader cannot type or map is kept as a `foreign` statement in `rust`
-//! (its source and the reason), with a refusal at its position; an item it cannot map (a generic
-//! function, a trait outside the subset, a type outside it) is listed as a refusal and left out.
+//! (its source and the reason), with a refusal at its position; an item it cannot map (a function
+//! with a bound `cir/1` has no constraint for, a trait outside the subset, a type outside it) is
+//! listed as a refusal and left out.
 //!
 //! `cir/1` is Go-shaped: the passes and writers expect `(T, error)` results, `(T, bool)` comma-ok
 //! results, pointer receivers, sentinel errors and channels of `any`. The reader maps Rust's idioms
@@ -29,6 +30,11 @@
 //! | `#[derive(Default)] struct T` whose every field's default is Go's zero value (an integer, float, `bool`, `String`, `Vec`, map, such a struct, an array of these) | `T::default()` is `zero` of `T`; another `T::default()` is `foreign` |
 //! | `trait Tr { fn m(&self, …) -> R; }` | `interface`, its methods sorted by name; a generic or `unsafe` trait, a supertrait, an item other than a method, a default body, a receiver other than `&self` or a result other than a plain value refuses the trait and every `dyn Tr` |
 //! | `impl Tr for T`, `Tr` a trait of the crate | the methods of `T`, exported as the trait is; a method an inherent impl of `T` also declares is refused |
+//! | `fn f<T, U: Tr>(…)`, `fn f<T>(…) where T: Tr` | a function with `tparams`: `T` constrained by `any`, `U` by the interface `Tr`, a trait of the crate |
+//! | `struct S<T> { … }` | a `struct` with `tparams`, its fields of type `param` |
+//! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
+//! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
+//! | a raw identifier (`r#type`) | its name without `r#` everywhere, a Go keyword with `_` added; a type or trait the crate declares under one is named by its visibility (`pub struct r#match` → `Match`, `enum r#type` → `type_`) |
 //! | `use` | nothing: names resolve by their last path segment |
 //!
 //! # Types
@@ -51,7 +57,9 @@
 //! | result `Result<T, Error>` | `(T, error)`; `Result<(), Error>` is `error`, `Result<(A, B), Error>` `(A, B, error)` |
 //! | result `Option<T>` | `(T, bool)` |
 //! | result `(A, B)` | `(A, B)` |
-//! | other `dyn` and `impl` traits, generics, `&mut T` elsewhere, other `Box`es, other paths | refused |
+//! | `T`, a type parameter in scope | `param` |
+//! | `S<A>`, `S` a generic struct | `named` `S` with type arguments `A` |
+//! | other `dyn` and `impl` traits, `&mut T` elsewhere, other `Box`es, other paths | refused |
 //!
 //! # Statements
 //!
@@ -99,7 +107,10 @@
 //! | `1.5f64`, `0.25` where a float is expected | `lit` of that `float`, spelled as `cir/1` spells the value at its width |
 //! | `T::V` (unit variant), `CONST` | `const` |
 //! | `X`, `unsafe { X }`, `X` a `static` | `global` |
-//! | `f`, a function of the crate as a value | `func_ref` |
+//! | `f`, a function of the crate as a value | `func_ref`; a generic function as a value is refused, as `cir/1`'s `func_ref` names no instantiation |
+//! | `f::<A>(x)`, `S::<A>::g(x)`, `S::<A> { … }` | `call` or `struct` with type arguments `A` |
+//! | `f(x)`, `S { … }` of a generic function or struct | the same, its type arguments inferred from the arguments' or fields' types and then the type expected, as Rust infers them, and written out; one nothing fixes is refused. Each satisfies its constraint in Go: a type whose methods have pointer receivers there does not |
+//! | `x.m(…)`, `x` of a type parameter bound by `Tr` | `iface_call` through `Tr` |
 //! | `f(x)`, `f` a local of a `fn` type; `(s.f)(x)` | `call_value` |
 //! | `\|x: T\| -> R { … }` | `lambda`; its captures are the locals of the enclosing function it reads or writes, sorted. A `move` closure (it copies what it captures, where Go shares it), an untyped parameter or result, or a body other than a block is `foreign` |
 //! | `x.m(…)`, `x` of a crate trait's `dyn` | `iface_call` |
@@ -150,30 +161,32 @@
 //! whose conformance case has a hand-written Rust source, `conformance/cases/<case>/rust/case.rs`.
 //! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
 //! refusal and with its subject, and passed and written as Go runs as the reference does. It claims
-//! 108 of the 120; these stay unclaimed:
+//! 111 of the 120; these stay unclaimed. Each reason says whether it holds of Rust or of this
+//! reader only:
 //!
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | facts are computed by `codespec pass`, never read |
 //! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
-//! | `unop.plus` | Rust has no unary `+` |
-//! | `decl.embedded` | Rust has no struct embedding: a field is always named, and its methods are not promoted |
-//! | `decl.variadic`, `expr.spread` | Rust functions take a fixed number of arguments; a slice parameter is a `slice`, not a variadic one |
-//! | `decl.type_params`, `type.param`, `expr.instantiate` | the reader refuses a generic item at its line, and a test holds that refusal; reading generics is a change to that rule, not a mapping added under it |
-//! | `expr.extern`, `expr.extern_method`, `type.extern` | the reader refuses a call into another crate and a type of one; the cases' subjects are calls into a Go package, and a module read from Rust would name a Rust crate, which the Go program written at step 4 has no package for |
-//! | `decl.union` | an enum of struct variants reads as a `union`, but step 4 cannot run it: the Go writer has no form for a union. A case source would make the case fail at step 4 rather than be refused, so the kit has none for it yet |
+//! | `unop.plus` | Rust: the language has no unary `+` |
+//! | `decl.embedded` | Rust has no struct embedding: every field is named. Its nearest form, `impl Deref<Target = Inner> for Outer`, lets one field's fields and methods be reached through the outer value by auto-deref; this reader refuses an impl of a std trait other than `Display` and so does not read it. Reading it as `embedded` would take mapping that impl and writing each access it makes possible as the explicit path `cir/1` records |
+//! | `decl.variadic`, `expr.spread` | Rust: a function takes a fixed number of arguments (C-variadic `...` exists only on `extern "C"` declarations, and a variadic-looking `println!` is a macro); a slice parameter is a `slice` |
+//! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |
+//! | `decl.union` | this conformance run, not Rust: an enum of struct variants reads as a `union`, but step 4 cannot run it, as the Go writer has no form for a union. A case source would make the case fail at step 4 rather than be refused, so the kit has none for it yet |
 
 mod body;
 mod names;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use codespec_model::{
     ConstDecl, ErrorVar, Expr, Field, FloatBits, IfaceMethod, IntWidth, Interface, Module,
-    Reader as ReaderInfo, Refusal, Type, TypeDecl, UnionVariant, VarDecl, Variant,
+    Reader as ReaderInfo, Refusal, Type, TypeDecl, TypeParam, UnionVariant, VarDecl, Variant,
 };
 use syn::spanned::Spanned;
+use syn::visit_mut::VisitMut;
 
 /// This reader's version, recorded in every module it reads.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -198,13 +211,102 @@ pub fn read_crate(dir: &Path) -> Result<Module, String> {
 
 /// Read one source file as the module `name`; positions are `<file>:<line>`.
 pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> {
-    let ast = syn::parse_file(src).map_err(|e| {
+    let mut ast = syn::parse_file(src).map_err(|e| {
         let at = e.span().start();
         format!("{file}:{}: {e}", at.line)
     })?;
+    Unraw::of(&ast).visit_file_mut(&mut ast);
     let mut r = Reader::new(file);
     r.scan(&ast);
     Ok(r.module(name, &ast))
+}
+
+/// Every raw identifier (`r#match`) renamed without its prefix before anything reads a name, so
+/// that every position of it (declaration, type, path, pattern, field, macro argument) agrees. A
+/// type or trait the crate declares under a raw name is named by its visibility as a function is
+/// (`pub struct r#match` → `Match`, `enum r#type` → `type_`); any other raw identifier is the
+/// bare word, a Go keyword with `_` added (`r#loop` → `loop`, `r#for` → `for_`), which the Go
+/// spelling of functions, fields and locals then starts from. Spans are kept: positions and
+/// kept source stay the source's.
+struct Unraw {
+    decls: BTreeMap<String, String>,
+}
+
+impl Unraw {
+    fn of(f: &syn::File) -> Unraw {
+        // The names declared without `r#`: a raw name that would read as one of them (`struct
+        // r#match` beside `struct Match`) gets `_` added until it does not.
+        let taken: BTreeSet<String> = f
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                syn::Item::Struct(s) => Some(s.ident.to_string()),
+                syn::Item::Enum(e) => Some(e.ident.to_string()),
+                syn::Item::Trait(t) => Some(t.ident.to_string()),
+                _ => None,
+            })
+            .filter(|n| !n.starts_with("r#"))
+            .collect();
+        let mut decls = BTreeMap::new();
+        for item in &f.items {
+            let (ident, vis) = match item {
+                syn::Item::Struct(s) => (&s.ident, &s.vis),
+                syn::Item::Enum(e) => (&e.ident, &e.vis),
+                syn::Item::Trait(t) => (&t.ident, &t.vis),
+                _ => continue,
+            };
+            if let Some(bare) = ident.to_string().strip_prefix("r#") {
+                let mut go = if is_pub(vis) {
+                    names::exported(bare)
+                } else {
+                    names::unexported(bare)
+                };
+                while taken.contains(&go) {
+                    go.push('_');
+                }
+                decls.insert(bare.to_string(), go);
+            }
+        }
+        Unraw { decls }
+    }
+
+    fn name(&self, i: &proc_macro2::Ident) -> Option<proc_macro2::Ident> {
+        let s = i.to_string();
+        let bare = s.strip_prefix("r#")?;
+        let n = match self.decls.get(bare) {
+            Some(go) => go.clone(),
+            None => names::guard(bare.to_string()),
+        };
+        Some(proc_macro2::Ident::new(&n, i.span()))
+    }
+
+    fn tokens(&self, ts: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        use proc_macro2::{Group, TokenTree};
+        ts.into_iter()
+            .map(|tt| match tt {
+                TokenTree::Ident(i) => TokenTree::Ident(self.name(&i).unwrap_or(i)),
+                TokenTree::Group(g) => {
+                    let mut ng = Group::new(g.delimiter(), self.tokens(g.stream()));
+                    ng.set_span(g.span());
+                    TokenTree::Group(ng)
+                }
+                t => t,
+            })
+            .collect()
+    }
+}
+
+impl VisitMut for Unraw {
+    fn visit_ident_mut(&mut self, i: &mut proc_macro2::Ident) {
+        if let Some(n) = self.name(i) {
+            *i = n;
+        }
+    }
+
+    fn visit_macro_mut(&mut self, m: &mut syn::Macro) {
+        syn::visit_mut::visit_macro_mut(self, m);
+        m.tokens = self.tokens(std::mem::take(&mut m.tokens));
+    }
 }
 
 /// What a declared type is, by its Rust name (which is its Go name).
@@ -240,6 +342,9 @@ pub(crate) enum Shape {
 #[derive(Debug, Clone)]
 pub(crate) struct Sig {
     pub go: String,
+    /// A function's type parameters: its own, after those of a generic struct's impl for one
+    /// without a receiver. A method's come from its receiver.
+    pub tparams: Vec<TypeParam>,
     pub recv: Option<Type>,
     pub params: Vec<(String, String, Type)>,
     pub results: Vec<Type>,
@@ -284,7 +389,29 @@ pub(crate) struct Reader {
     pub impls: BTreeSet<(String, String)>,
     /// `static` and `static mut` items by Rust name: their Go name and type.
     pub statics: BTreeMap<String, (String, Type)>,
+    /// The type parameters of each generic struct, by name.
+    pub type_params: BTreeMap<String, Vec<TypeParam>>,
+    /// The type parameters in scope while an item is read.
+    pub scope: RefCell<Scope>,
     pub refusals: Vec<Refusal>,
+}
+
+/// The type parameters in scope while an item is read, a generic function's or impl's, and the
+/// type arguments `Self` stands for in an impl of a generic struct (`impl<T> Pair<T>`: `Pair[T]`).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Scope {
+    pub params: Vec<TypeParam>,
+    pub self_targs: Vec<Type>,
+}
+
+impl Scope {
+    /// A scope of `params`, `Self` none of them.
+    fn of(params: Vec<TypeParam>) -> Scope {
+        Scope {
+            params,
+            self_targs: Vec::new(),
+        }
+    }
 }
 
 /// A trait of the crate read as an interface: its methods, each taking `&self`.
@@ -479,8 +606,220 @@ impl Reader {
             traits: BTreeMap::new(),
             impls: BTreeSet::new(),
             statics: BTreeMap::new(),
+            type_params: BTreeMap::new(),
+            scope: RefCell::new(Scope::default()),
             refusals: Vec::new(),
         }
+    }
+
+    /// `f` run with `scope` the type parameters in scope.
+    pub fn in_scope<T>(&self, scope: Scope, f: impl FnOnce() -> T) -> T {
+        let outer = self.scope.replace(scope);
+        let out = f();
+        self.scope.replace(outer);
+        out
+    }
+
+    /// The constraint of the type parameter `name` in scope.
+    pub fn constraint_of(&self, name: &str) -> Option<Type> {
+        self.scope
+            .borrow()
+            .params
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.constraint.clone())
+    }
+
+    fn param_in_scope(&self, name: &str) -> bool {
+        self.scope.borrow().params.iter().any(|p| p.name == name)
+    }
+
+    /// The names of the type parameters `g` declares: a lifetime or const parameter, or a default,
+    /// is refused.
+    fn tparam_names(&self, g: &syn::Generics) -> Result<Vec<String>, String> {
+        let mut names = Vec::new();
+        for p in &g.params {
+            match p {
+                syn::GenericParam::Lifetime(l) => {
+                    return Err(format!(
+                        "a lifetime parameter ({}) is outside cir/1: a Go value has no lifetime",
+                        l.lifetime
+                    ));
+                }
+                syn::GenericParam::Const(c) => {
+                    return Err(format!(
+                        "a const parameter ({}) is outside cir/1: Go's type parameters are types",
+                        c.ident
+                    ));
+                }
+                syn::GenericParam::Type(t) => {
+                    if t.default.is_some() {
+                        return Err(format!(
+                            "the type parameter {} has a default, which Go's has no form for",
+                            t.ident
+                        ));
+                    }
+                    names.push(t.ident.to_string());
+                }
+            }
+        }
+        Ok(names)
+    }
+
+    /// The constraint one bound list makes: none is `any`, one trait of the crate read as an
+    /// interface is that interface. Anything else (a std trait such as `Clone`, `Copy`,
+    /// `PartialEq` or `Ord`, two bounds, a lifetime, `?Sized`, an associated type binding) has no
+    /// `cir/1` constraint: `cir/1` constrains a type parameter by `any` or one interface.
+    fn bound(
+        &self,
+        param: &str,
+        bounds: &syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>,
+    ) -> Result<Type, String> {
+        let mut it = bounds.iter();
+        let (b, None) = (it.next(), it.next()) else {
+            return Err(format!(
+                "the bound `{}` on {param}: cir/1 constrains a type parameter by `any` or one interface, not by several bounds",
+                src_of(bounds)
+            ));
+        };
+        let Some(b) = b else { return Ok(Type::Any) };
+        let no_form = || {
+            format!(
+                "the bound `{}` on {param}, which cir/1 has no constraint for: it constrains a type parameter by `any` or one of the crate's traits read as an interface",
+                src_of(b)
+            )
+        };
+        let syn::TypeParamBound::Trait(tb) = b else {
+            return Err(no_form());
+        };
+        if tb.lifetimes.is_some() || tb.maybe.is_some() || tb.path.segments.len() != 1 {
+            return Err(no_form());
+        }
+        let seg = &tb.path.segments[0];
+        match &seg.arguments {
+            syn::PathArguments::None => {}
+            syn::PathArguments::AngleBracketed(a)
+                if a.args.iter().any(|g| {
+                    matches!(
+                        g,
+                        syn::GenericArgument::AssocType(_) | syn::GenericArgument::AssocConst(_)
+                    )
+                }) =>
+            {
+                return Err(format!(
+                    "the bound `{}` on {param} binds an associated type, which cir/1 has no form for",
+                    src_of(b)
+                ));
+            }
+            _ => return Err(no_form()),
+        }
+        let name = seg.ident.to_string();
+        match self.traits.get(&name) {
+            Some(Some(_)) => Ok(Type::Named {
+                name,
+                targs: Vec::new(),
+            }),
+            _ => Err(no_form()),
+        }
+    }
+
+    /// The type parameters of `g`, named `names`, each with its constraint: from its inline bound
+    /// or one `where T: Trait` of a parameter without an inline bound.
+    fn constraints(&self, g: &syn::Generics, names: &[String]) -> Result<Vec<TypeParam>, String> {
+        let mut out = Vec::new();
+        let mut bounded = BTreeSet::new();
+        for p in &g.params {
+            if let syn::GenericParam::Type(t) = p {
+                let name = t.ident.to_string();
+                if !t.bounds.is_empty() {
+                    bounded.insert(name.clone());
+                }
+                out.push(TypeParam {
+                    constraint: self.bound(&name, &t.bounds)?,
+                    name,
+                });
+            }
+        }
+        if let Some(w) = &g.where_clause {
+            for pred in &w.predicates {
+                let simple = match pred {
+                    syn::WherePredicate::Type(pt) if pt.lifetimes.is_none() => match &pt.bounded_ty
+                    {
+                        syn::Type::Path(p) if p.qself.is_none() => p
+                            .path
+                            .get_ident()
+                            .map(|i| i.to_string())
+                            .filter(|n| names.contains(n) && !bounded.contains(n))
+                            .map(|n| (n, &pt.bounds)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let Some((name, bounds)) = simple else {
+                    return Err(format!(
+                        "the `where` clause `{}`: the reader reads only `T: Trait` of a type parameter with no other bound",
+                        src_of(pred)
+                    ));
+                };
+                bounded.insert(name.clone());
+                let c = self.bound(&name, bounds)?;
+                if let Some(tp) = out.iter_mut().find(|tp| tp.name == name) {
+                    tp.constraint = c;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The type of an impl and the scope its items are read in: a generic struct's impl names
+    /// each of the struct's type parameters once, in order, with the struct's constraints, as a
+    /// Go method's receiver `Pair[T]` binds them.
+    fn impl_scope(&self, im: &syn::ItemImpl) -> Result<(String, Scope), String> {
+        let not_declared = || "an impl for a type other than a declared one".to_string();
+        let (id, args) = last_seg(&im.self_ty).ok_or_else(not_declared)?;
+        let name = id.to_string();
+        let Some(tps) = self.type_params.get(&name) else {
+            if !args.is_empty() || !im.generics.params.is_empty() {
+                return Err(if self.decls.contains_key(&name) {
+                    format!("an impl with type parameters of {name}, which has none")
+                } else {
+                    not_declared()
+                });
+            }
+            return Ok((name, Scope::default()));
+        };
+        if im.trait_.is_some() {
+            return Err(format!(
+                "an impl of a trait for the generic struct {name}: the reader reads inherent impls of a generic struct only"
+            ));
+        }
+        let names = self.tparam_names(&im.generics)?;
+        let given: Vec<Option<String>> = args.iter().map(|a| plain_ident(a)).collect();
+        if given.len() != tps.len()
+            || names.len() != tps.len()
+            || given.iter().zip(&names).any(|(g, n)| g.as_ref() != Some(n))
+        {
+            return Err(format!(
+                "impl {}: a Go method of {name} binds each of its type parameters once, in order",
+                src_of(&im.self_ty)
+            ));
+        }
+        let params = self.constraints(&im.generics, &names)?;
+        if params
+            .iter()
+            .zip(tps)
+            .any(|(p, d)| p.constraint != d.constraint)
+        {
+            return Err(format!(
+                "impl {}: bounds other than {name}'s own, which a Go method has no form for",
+                src_of(&im.self_ty)
+            ));
+        }
+        let self_targs = names
+            .iter()
+            .map(|n| Type::Param { name: n.clone() })
+            .collect();
+        Ok((name, Scope { params, self_targs }))
     }
 
     /// Whether `t` is a crate trait read as an interface.
@@ -608,7 +947,25 @@ impl Reader {
                 Ok(Type::Func { params, results })
             }
             syn::Type::ImplTrait(_) => Err("an `impl Trait` type is outside cir/1".into()),
-            syn::Type::Path(_) => {
+            syn::Type::Path(p) => {
+                // A type parameter in scope; `T::Item` or `<T as Trait>::Item`, an associated
+                // type, has no `cir/1` form.
+                let first = p.path.segments.first().map(|s| s.ident.to_string());
+                if p.qself.is_some()
+                    || (p.path.segments.len() > 1
+                        && first.as_deref().is_some_and(|f| self.param_in_scope(f)))
+                {
+                    return Err(format!(
+                        "the associated type `{}` is outside cir/1",
+                        src_of(t)
+                    ));
+                }
+                if p.path.segments.len() == 1
+                    && p.path.segments[0].arguments.is_none()
+                    && let Some(f) = first.filter(|f| self.param_in_scope(f))
+                {
+                    return Ok(Type::Param { name: f });
+                }
                 let Some((id, args)) = last_seg(t) else {
                     return Err(format!("type `{}` is outside cir/1", src_of(t)));
                 };
@@ -704,7 +1061,7 @@ impl Reader {
                     }
                     ("Self", []) => match self_ty {
                         Some(s) => Ok(Type::Named {
-                            targs: Vec::new(),
+                            targs: self.scope.borrow().self_targs.clone(),
                             name: s.into(),
                         }),
                         None => Err("`Self` outside an impl".into()),
@@ -714,6 +1071,23 @@ impl Reader {
                     )),
                     (n, []) if self.error_enum.as_ref().is_some_and(|(e, _)| e == n) => {
                         Ok(Type::Error)
+                    }
+                    // A generic struct, with as many type arguments as it declares parameters.
+                    (n, a) if self.type_params.contains_key(n) => {
+                        let declared = self.type_params[n].len();
+                        if a.len() != declared {
+                            return Err(format!(
+                                "the generic struct {n} with {} type arguments, where it declares {declared}",
+                                a.len()
+                            ));
+                        }
+                        Ok(Type::Named {
+                            targs: a
+                                .iter()
+                                .map(|x| self.ty(x, self_ty))
+                                .collect::<Result<Vec<_>, _>>()?,
+                            name: n.into(),
+                        })
                     }
                     (n, []) if self.decls.contains_key(n) => Ok(Type::Named {
                         targs: Vec::new(),
@@ -863,9 +1237,41 @@ impl Reader {
         public: bool,
         impl_ty: Option<&str>,
     ) -> Result<Sig, String> {
-        if !sig.generics.params.is_empty() {
-            return Err("a generic function is outside cir/1".into());
+        let names = self.tparam_names(&sig.generics)?;
+        let generic = !names.is_empty() || sig.generics.where_clause.is_some();
+        let has_self = matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_)));
+        if generic && has_self {
+            return Err(
+                "a method with its own type parameters, which Go's methods cannot have".into(),
+            );
         }
+        // The parameter and result types with the names in scope, then the constraints: an
+        // associated type in a type is refused as that, before its bound is.
+        let outer = self.scope.borrow().clone();
+        let mut scope = outer.clone();
+        scope.params.extend(names.iter().map(|n| TypeParam {
+            name: n.clone(),
+            constraint: Type::Any,
+        }));
+        let mut s = self.in_scope(scope, || self.plain_sig(sig, public, impl_ty))?;
+        if generic {
+            s.tparams = self.constraints(&sig.generics, &names)?;
+        }
+        if !has_self && impl_ty.is_some() && !outer.params.is_empty() {
+            let mut all = outer.params;
+            all.append(&mut s.tparams);
+            s.tparams = all;
+        }
+        Ok(s)
+    }
+
+    /// `sig` without its type parameters, which are in scope.
+    fn plain_sig(
+        &self,
+        sig: &syn::Signature,
+        public: bool,
+        impl_ty: Option<&str>,
+    ) -> Result<Sig, String> {
         if sig.asyncness.is_some() {
             return Err("an async function is outside cir/1".into());
         }
@@ -879,7 +1285,7 @@ impl Reader {
                 syn::FnArg::Receiver(r) => {
                     let ty = impl_ty.ok_or("`self` outside an impl")?;
                     let named = Type::Named {
-                        targs: Vec::new(),
+                        targs: self.scope.borrow().self_targs.clone(),
                         name: ty.into(),
                     };
                     recv = Some(match &r.kind {
@@ -923,6 +1329,7 @@ impl Reader {
         }
         Ok(Sig {
             go,
+            tparams: Vec::new(),
             recv,
             params,
             results,
@@ -1024,7 +1431,9 @@ impl Reader {
                 && let syn::Fields::Unnamed(u) = &s.fields
             {
                 let name = s.ident.to_string();
-                let under = if u.unnamed.len() == 1 {
+                let under = if !s.generics.params.is_empty() {
+                    Err("a generic tuple struct: the reader reads type parameters on a struct with named fields and on functions".into())
+                } else if u.unnamed.len() == 1 {
                     self.ty(&u.unnamed[0].ty, Some(&name))
                 } else {
                     Err("a tuple struct of more than one field is outside cir/1".into())
@@ -1120,24 +1529,53 @@ impl Reader {
                 }
             }
         }
+        // The type parameters of generic structs, before any field names one: each constrained
+        // by `any` or a trait of the crate.
+        for item in &pending {
+            if let syn::Item::Struct(s) = item
+                && !matches!(s.fields, syn::Fields::Unnamed(_))
+                && (!s.generics.params.is_empty() || s.generics.where_clause.is_some())
+            {
+                let name = s.ident.to_string();
+                match self
+                    .tparam_names(&s.generics)
+                    .and_then(|n| self.constraints(&s.generics, &n))
+                {
+                    Ok(tps) => {
+                        self.type_params.insert(name, tps);
+                    }
+                    Err(e) => {
+                        self.decls.remove(&name);
+                        deferred.push((s.span(), name, e));
+                    }
+                }
+            }
+        }
         // Struct fields.
         for item in &pending {
             if let syn::Item::Struct(s) = item {
                 let name = s.ident.to_string();
-                if matches!(s.fields, syn::Fields::Unnamed(_)) {
+                if matches!(s.fields, syn::Fields::Unnamed(_)) || !self.decls.contains_key(&name) {
                     continue;
                 }
-                if !s.generics.params.is_empty() {
-                    self.decls.remove(&name);
-                    deferred.push((s.span(), name, "a generic struct is outside cir/1".into()));
-                    continue;
-                }
+                let scope = match self.type_params.get(&name) {
+                    Some(tps) => Scope {
+                        self_targs: tps
+                            .iter()
+                            .map(|p| Type::Param {
+                                name: p.name.clone(),
+                            })
+                            .collect(),
+                        params: tps.clone(),
+                    },
+                    None => Scope::default(),
+                };
                 let mut fields = Vec::new();
                 let mut bad = None;
                 if let syn::Fields::Named(n) = &s.fields {
                     for fl in &n.named {
                         let rust = fl.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
-                        match self.ty(&fl.ty, Some(&name)) {
+                        match self.in_scope(scope.clone(), || self.ty(&fl.ty, Some(&name))) {
                             Ok(t) => fields.push(FieldInfo {
                                 go: if is_pub(&fl.vis) {
                                     names::exported(&rust)
@@ -1201,7 +1639,7 @@ impl Reader {
             if im.trait_.is_some() {
                 continue;
             }
-            let Some(t) = plain_ident(&im.self_ty) else {
+            let Some(t) = last_seg(&im.self_ty).map(|(i, _)| i.to_string()) else {
                 continue;
             };
             for ii in &im.items {
@@ -1294,7 +1732,7 @@ impl Reader {
                     }
                 }
                 syn::Item::Impl(im) => {
-                    let Some(t) = plain_ident(&im.self_ty) else {
+                    let Ok((t, scope)) = self.impl_scope(im) else {
                         continue;
                     };
                     // The methods of a crate trait's impl are the type's methods, named as the
@@ -1311,11 +1749,13 @@ impl Reader {
                     for ii in &im.items {
                         if let syn::ImplItem::Fn(func) = ii
                             && (public.is_none() || !inherent_method(f, &t, &func.sig.ident))
-                            && let Ok(s) = self.sig(
-                                &func.sig,
-                                public.unwrap_or_else(|| is_pub(&func.vis)),
-                                Some(&t),
-                            )
+                            && let Ok(s) = self.in_scope(scope.clone(), || {
+                                self.sig(
+                                    &func.sig,
+                                    public.unwrap_or_else(|| is_pub(&func.vis)),
+                                    Some(&t),
+                                )
+                            })
                         {
                             self.sigs
                                 .insert((Some(t.clone()), func.sig.ident.to_string()), s);
@@ -1350,7 +1790,7 @@ impl Reader {
                     let exported = is_pub(&s.vis);
                     match self.decls.get(&n) {
                         Some(Decl::Struct(fields)) => types.push(TypeDecl::Struct {
-                            tparams: Vec::new(),
+                            tparams: self.type_params.get(&n).cloned().unwrap_or_default(),
                             name: n.clone(),
                             exported,
                             fields: fields
@@ -1482,15 +1922,17 @@ impl Reader {
                     let key = (None, func.sig.ident.to_string());
                     match self.sigs.get(&key).cloned() {
                         Some(sig) => {
-                            let (fu, rs) = body::func(
-                                &self,
-                                &sig,
-                                &func.sig,
-                                &func.block,
-                                None,
-                                doc(&func.attrs),
-                                self.pos(func.sig.ident.span()),
-                            );
+                            let (fu, rs) = self.in_scope(Scope::of(sig.tparams.clone()), || {
+                                body::func(
+                                    &self,
+                                    &sig,
+                                    &func.sig,
+                                    &func.block,
+                                    None,
+                                    doc(&func.attrs),
+                                    self.pos(func.sig.ident.span()),
+                                )
+                            });
                             late_refusals.extend(rs);
                             layout.push(format!("func:{}", fu.key()));
                             funcs.push(fu);
@@ -1509,13 +1951,16 @@ impl Reader {
                     }
                 }
                 syn::Item::Impl(im) => {
-                    let Some(t) = plain_ident(&im.self_ty) else {
-                        late_refusals.push(Refusal {
-                            pos: self.pos(im.span()),
-                            what: format!("impl {}", src_of(&im.self_ty)),
-                            reason: "an impl for a type other than a declared one".into(),
-                        });
-                        continue;
+                    let (t, scope) = match self.impl_scope(im) {
+                        Ok(ts) => ts,
+                        Err(reason) => {
+                            late_refusals.push(Refusal {
+                                pos: self.pos(im.span()),
+                                what: format!("impl {}", src_of(&im.self_ty)),
+                                reason,
+                            });
+                            continue;
+                        }
                     };
                     let crate_trait = im.trait_.as_ref().and_then(|(p, _)| {
                         let n = p.get_ident()?.to_string();
@@ -1555,22 +2000,36 @@ impl Reader {
                                 let key = (Some(t.clone()), func.sig.ident.to_string());
                                 match self.sigs.get(&key).cloned() {
                                     Some(sig) => {
-                                        let (fu, rs) = body::func(
-                                            &self,
-                                            &sig,
-                                            &func.sig,
-                                            &func.block,
-                                            Some(&t),
-                                            doc(&func.attrs),
-                                            self.pos(func.sig.ident.span()),
-                                        );
+                                        // A method's type parameters are its receiver's; a
+                                        // function's its own, the impl's first.
+                                        let body_scope = Scope {
+                                            params: if sig.recv.is_some() {
+                                                scope.params.clone()
+                                            } else {
+                                                sig.tparams.clone()
+                                            },
+                                            self_targs: scope.self_targs.clone(),
+                                        };
+                                        let (fu, rs) = self.in_scope(body_scope, || {
+                                            body::func(
+                                                &self,
+                                                &sig,
+                                                &func.sig,
+                                                &func.block,
+                                                Some(&t),
+                                                doc(&func.attrs),
+                                                self.pos(func.sig.ident.span()),
+                                            )
+                                        });
                                         late_refusals.extend(rs);
                                         layout.push(format!("func:{}", fu.key()));
                                         funcs.push(fu);
                                     }
                                     None => {
                                         let reason = self
-                                            .sig(&func.sig, is_pub(&func.vis), Some(&t))
+                                            .in_scope(scope.clone(), || {
+                                                self.sig(&func.sig, is_pub(&func.vis), Some(&t))
+                                            })
                                             .err()
                                             .unwrap_or_default();
                                         late_refusals.push(Refusal {

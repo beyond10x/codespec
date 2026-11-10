@@ -51,7 +51,8 @@ fn word(w: &str) -> String {
     }
 }
 
-fn guard(s: String) -> String {
+/// `s` with a trailing `_` when it is a Go keyword.
+pub fn guard(s: String) -> String {
     if GO_KEYWORDS.contains(&s.as_str()) {
         format!("{s}_")
     } else {
