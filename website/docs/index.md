@@ -11,12 +11,7 @@ lede: codespec is a typed code intermediate representation, cir/1, and the tools
 A **reader** lifts a source language into `cir/1`, **passes** rewrite it and compute facts about the
 whole module, and a **writer** emits a source language from it. A **harness** runs the original
 and every output on the same seeded inputs and compares what they print, byte for byte.
-
-```text
-source ──reader──▶ cir/1 ──passes──▶ cir/1 ──writer──▶ source
-                                                         │
-original ───────────────── harness: byte-equal? ─────────┘
-```
+[Readers, passes and writers](/docs/concepts/pipeline) draws the pipeline.
 
 This tree reads Go, Rust, Java, Groovy and C, writes Go, Rust and C
 ([Language support](/docs/reference/support) gives each feature), and runs the

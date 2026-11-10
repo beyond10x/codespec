@@ -30,7 +30,7 @@ The pipeline is on [Readers, passes and writers](/docs/concepts/pipeline) and
 
 | rule | what it means |
 |---|---|
-| deterministic, no model | No step is a language model or a heuristic. The same source read twice gives the same bytes, and a pass run on its own output gives the same bytes. |
+| deterministic, no model | No step is a heuristic ([what codespec is not](/docs/#what-it-is-not)). The same source read twice gives the same bytes, and a pass run on its own output gives the same bytes. |
 | refuse what cannot be expressed | What `cir/1` cannot express becomes a `foreign` statement holding the source text and a reason, plus a refusal. What a writer cannot write is left out and listed. |
 | one definition | The Rust model is the format. The schema, every adapter and every document follow it. A change in meaning is a new format version, `cir/2`, not an edit to `cir/1`. |
 | evidence by running | A translation is checked by running the original and the output on the same inputs. |
@@ -59,7 +59,7 @@ Two questions decide each adapter, and the harness answers both:
 | | Content | Done when | Status |
 |---|---|---|---|
 | M0 | model, schema, CLI (`validate`, `schema`, `read`, `write`), Go reader, `orders` | `task check` green; `orders` read twice gives the same bytes | shipped in 0.1.0 |
-| M1 | passes, Go writer, Rust writer, harness | `orders`: original Go, Go output and Rust output byte-equal on 200 × 300 traces | shipped in 0.1.0 |
+| M1 | passes, Go writer, Rust writer, harness | `orders`: original Go, Go output and Rust output byte-equal under the harness | shipped in 0.1.0 |
 | M2 | a tree-sitter Go reader | — | dropped ([Not used](#not-used)) |
 | M3 | a second, algorithmic example: loops, `switch`, slices, arithmetic | the M1 criteria on both examples | done in 0.2.0 (`series`) |
 | M4 | Rust reader on `syn`; Rust → `cir/1` → Go | harness green on a Rust example | shipped in 0.1.0 (`inventory`) |

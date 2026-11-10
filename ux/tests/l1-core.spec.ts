@@ -9,6 +9,7 @@ import { checkAlwaysVisible, keyboardWalk, measureOverflow } from '../core/layou
 import { compare, update, type Baseline } from '../core/ratchet.ts';
 import { runScreenOnly, score, wordMatches } from '../core/screen-only.ts';
 import { resolveFile } from '../core/site.ts';
+import { assetResults, specPattern } from '../core/specs.ts';
 import { FINDINGS, REPO, SITE_ROOT, UX } from './env.ts';
 
 test.describe('core', () => {
@@ -204,5 +205,31 @@ test.describe('break-tests: each layout check can fail', () => {
     expect(r.reached).toBe(true);
     expect(r.actions).toBe(3);
     expect(r.trace.map((s) => s.action)).toEqual(['click searchbox "Search"', 'type "install"', 'click option "Install codespec" (search)']);
+  });
+});
+
+// UXF-026: the round runs the regression assets and reports each one, so the next triage can say
+// whether the last change set held.
+test.describe('round runs the regression assets', () => {
+  test('a round runs the L1 specs and l2-findings beside the layout, screen-only and contact-sheet specs', () => {
+    for (const f of ['l1-core.spec.ts', 'l2-findings.spec.ts', 'l2-layout.spec.ts', 'l3-screen-only.spec.ts', 'round-shots.spec.ts'])
+      expect(specPattern('round').test(f), f).toBe(true);
+    expect(specPattern('check').test('round-shots.spec.ts')).toBe(false);
+  });
+
+  test('assetResults reads every l1 and l2-findings test from a Playwright report, nested suites included', () => {
+    const t = (title: string, status: string) => ({ title, tests: [{ status }] });
+    const report = {
+      suites: [
+        { file: 'l2-layout.spec.ts', specs: [t('L2 page-home 1366x768 light', 'expected')], suites: [] },
+        { file: 'l2-findings.spec.ts', specs: [t('UXF-015 a', 'expected'), t('UXF-020 b', 'unexpected')] },
+        { file: 'l1-core.spec.ts', specs: [], suites: [{ title: 'core', file: 'l1-core.spec.ts', specs: [t('c', 'expected')] }] },
+      ],
+    };
+    expect(assetResults(report)).toEqual([
+      { file: 'l2-findings.spec.ts', title: 'UXF-015 a', ok: true },
+      { file: 'l2-findings.spec.ts', title: 'UXF-020 b', ok: false },
+      { file: 'l1-core.spec.ts', title: 'core › c', ok: true },
+    ]);
   });
 });

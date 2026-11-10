@@ -9,6 +9,7 @@ import type { Baseline } from './ratchet.ts';
 import { gateCounts, readResults, toMeasured, type PageResult, type TaskResult } from './results.ts';
 import { loadScenarios } from './scenarios.ts';
 import { loadFindings } from './findings.ts';
+import { assetResults } from './specs.ts';
 
 export function nextRound(roundsDir: string): string {
   const n = existsSync(roundsDir)
@@ -65,6 +66,8 @@ export function writeRound(i: RoundInput): void {
   const roundNo = Number(id.slice(2));
   const rotatingCard = rotating.length ? rotating[(roundNo - 1) % rotating.length] : null;
   const findings = loadFindings(join(i.ux, adapter.dirs.findings));
+  const pwFile = join(i.out, 'playwright.json');
+  const assets = existsSync(pwFile) ? assetResults(JSON.parse(readFileSync(pwFile, 'utf8'))) : [];
 
   // Worst moments: gating results with the most failures, then the most serious/critical axe nodes.
   const worst = gating
@@ -127,6 +130,12 @@ export function writeRound(i: RoundInput): void {
     failure_kinds: [...failureKinds.entries()].map(([k, v]) => ({ kind: k, count: v.count, waived_by: [...v.waivedBy].sort(), pages: v.pages.size })),
     worst: worstOut,
     screen_only: tasks.map((t) => ({ scenario: t.scenario, ...t.result })),
+    regression_assets: {
+      passed: assets.filter((a) => a.ok).length,
+      failed: assets.filter((a) => !a.ok).length,
+      failing: assets.filter((a) => !a.ok).map((a) => `${a.file}::${a.title}`),
+      findings_tests: assets.filter((a) => a.file === 'l2-findings.spec.ts').map((a) => ({ title: a.title, ok: a.ok })),
+    },
     findings: findings.map((f) => ({ id: f.header.id, severity: f.header.severity, status: f.header.status, title: f.header.title })),
     missing_inputs: [
       'L6 trial sessions and their rrweb recordings: none recorded in this round',
@@ -190,6 +199,12 @@ export function writeRound(i: RoundInput): void {
     const f = `shots/sheet-${s.name}.jpg`;
     if (existsSync(join(dir, f))) L.push(`- [${s.page!.path}](${f})`);
   }
+  L.push('');
+  L.push('## Regression assets', '');
+  L.push(`L1 and \`l2-findings.spec.ts\` in this run: ${round.regression_assets.passed} passed, ${round.regression_assets.failed} failed. The Rust assets in \`crates/docs\` run under \`cargo test -p codespec-docs\`, not here.`, '');
+  L.push('| finding test | result |', '|---|---|');
+  for (const a of round.regression_assets.findings_tests) L.push(`| ${a.title} | ${a.ok ? 'pass' : '**fail**'} |`);
+  for (const a of round.regression_assets.failing.filter((x) => !x.startsWith('l2-findings'))) L.push(`| ${a} | **fail** |`);
   L.push('');
   L.push('## Findings', '', '| id | severity | status | title |', '|---|---|---|---|');
   for (const f of round.findings) L.push(`| ${f.id} | ${f.severity} | ${f.status} | ${f.title} |`);

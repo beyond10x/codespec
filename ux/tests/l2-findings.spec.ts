@@ -103,6 +103,22 @@ test('UXF-020 sidebar group names are at least 14 px', async ({ browser }) => {
   await page.context().close();
 });
 
+// UXF-024: in reference tables the field names, types and commands (inline code) and the column
+// headers are 14 px or more.
+test('UXF-024 table code and table headers are at least 14 px', async ({ browser }) => {
+  const page = await open(browser, '/codespec/docs/reference/cir-1', 1366, 768);
+  const sizes = await page.evaluate(() => {
+    const px = (sel: string) => {
+      const e = document.querySelector(sel);
+      return e ? parseFloat(getComputedStyle(e).fontSize) : -1;
+    };
+    return { 'td code': px('.markdown td code'), th: px('.markdown th') };
+  });
+  expect(sizes['td code'], 'inline code in a table cell').toBeGreaterThanOrEqual(14);
+  expect(sizes.th, 'table header').toBeGreaterThanOrEqual(14);
+  await page.context().close();
+});
+
 // UXF-014: commands and the page outline are set at 14 px or more.
 test('UXF-014 code blocks and the table of contents are at least 14 px', async ({ browser }) => {
   const page = await open(browser, '/codespec/docs/getting-started', 1366, 768);

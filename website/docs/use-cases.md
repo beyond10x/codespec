@@ -3,14 +3,13 @@ title: Use cases
 sidebar_position: 2
 description: Why use codespec. Translate code with evidence, know what a dependency can do, find defects on one representation.
 lede: Three problems codespec answers, the commands for each and what you get.
-source: examples/orders, examples/netcheck; run with an installed codespec 0.6.1 at tag 0.6.1 on 2026-11-09
+source: examples/orders, examples/netcheck; run with an installed codespec 0.6.1 in a clone at tag 0.6.1 on 2026-11-09
 ---
 
 # Use cases
 
-Every command on this page was run with an installed `codespec` 0.6.1
-([Getting started](/docs/getting-started#install)) in a clone at tag `0.6.1`. Output is pasted
-from that run.
+Output is pasted from the run the header names. To run the commands,
+[install codespec](/docs/getting-started#install).
 
 ## 1. Translate between languages with evidence
 

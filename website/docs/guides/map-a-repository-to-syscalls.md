@@ -10,9 +10,8 @@ source: scripts/read-repo.sh, crates/cli/src/lib.rs, crates/effects/src/lib.rs, 
 
 This guide runs [static analysis](/docs/concepts/static-analysis) on Go code: first one package
 with hand-written summaries, then a whole module with every package it imports, down to the
-syscall barrier. Every command was run in a clone of the repository with an installed codespec
-0.6.1 ([Getting started](/docs/getting-started#install)) and Go 1.27.1 on linux/amd64. Output is
-pasted from that run. The `jq` lines shorten the JSON reports.
+syscall barrier. Output is pasted from the run the header names
+([install codespec](/docs/getting-started#install)). The `jq` lines shorten the JSON reports.
 
 ## What you need
 

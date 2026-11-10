@@ -1,10 +1,11 @@
 import { defineConfig } from '@playwright/test';
+import { specPattern } from './core/specs.ts';
 
 const round = process.env.UX_MODE === 'round';
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: round ? /(l2-layout|l3-screen-only|round-shots)\.spec\.ts$/ : /(l1-.*|l2-layout|l2-findings|l3-screen-only)\.spec\.ts$/,
+  testMatch: specPattern(round ? 'round' : 'check'),
   globalSetup: './tests/global-setup.ts',
   fullyParallel: true,
   workers: process.env.UX_WORKERS ? Number(process.env.UX_WORKERS) : 4,

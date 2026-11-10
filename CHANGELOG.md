@@ -123,6 +123,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
   (Go, Rust, Java, Groovy and C readers; Go, Rust and C writers), and Status lists the conformance
   of the C reader and the C writer. Use cases links Getting started for the orders run instead of
   repeating it, and the overview links pages by their sidebar names.
+- The documentation site: field names, types and commands in tables, and table headers, are 14 px,
+  headers in sentence case. The pipeline diagram is on Readers, passes and writers only, the orders
+  harness run on Getting started only, and pages whose header names the run no longer say it again
+  in their first paragraph.
 - The Rust writer names blank parameters `_cs_p<index>`, distinct from each other and from every
   other parameter and local; two Go parameters `_`, or `_` beside `__`, no longer give Rust that
   does not compile.
