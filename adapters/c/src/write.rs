@@ -53,14 +53,14 @@
 //! String literals and error messages are written as escaped C string literals ([`c_str`]),
 //! integer literals as parsed numbers, doc comments with every `\` written as `/` and every `*/`,
 //! `/*` and `??` broken, so no line join, trigraph or nested comment can end the comment
-//! ([`comment`]). A `foreign` statement is refused, never written. A refusal printed to stderr or
+//! ([`comment`]). A `foreign` statement and a `raise` are refused, never written. A refusal printed to stderr or
 //! listed in `refusals.json` writes the document's text with its control and format characters
 //! escaped.
 //!
 //! # Refusals
 //!
-//! A function the writer cannot express (a `foreign` statement, a construct or type without a
-//! mapping, a call of a refused function) is left out and listed in `refusals.json` with its key,
+//! A function the writer cannot express (a `foreign` statement, a `raise`, a construct or type
+//! without a mapping, a call of a refused function) is left out and listed in `refusals.json` with its key,
 //! its position and the reason; so is a module-level variable whose initializer is not a literal.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -1327,6 +1327,13 @@ impl<'w, 'm> Fx<'w, 'm> {
         if let Some(s @ Stmt::Foreign { lang, reason, .. }) = first_foreign(&f.body) {
             self.pos = stmt_pos(s).to_string();
             return Err(format!("foreign {lang} statement: {reason}"));
+        }
+        if let Some(s) = first_raise(&f.body) {
+            self.pos = stmt_pos(s).to_string();
+            return Err(
+                "raise: the C writer has no mapping for leaving a function by a raised value"
+                    .into(),
+            );
         }
         if !f.tparams.is_empty() {
             return Err("decl.type_params: this writer has no C form for type parameters".into());
@@ -2709,6 +2716,10 @@ impl<'w, 'm> Fx<'w, 'm> {
             Stmt::Foreign { lang, reason, .. } => {
                 Err(format!("foreign {lang} statement: {reason}"))
             }
+            Stmt::Raise { .. } => Err(
+                "raise: the C writer has no mapping for leaving a function by a raised value"
+                    .into(),
+            ),
         }
     }
 
@@ -2900,11 +2911,22 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
     }
+}
+
+fn first_raise(body: &[Stmt]) -> Option<&Stmt> {
+    let mut found = None;
+    codespec_model::walk::walk_stmts(body, &mut |s| {
+        if found.is_none() && matches!(s, Stmt::Raise { .. }) {
+            found = Some(s);
+        }
+    });
+    found
 }
 
 fn first_foreign(body: &[Stmt]) -> Option<&Stmt> {

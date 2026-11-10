@@ -693,19 +693,34 @@ mod tests {
             (
                 "orders run",
                 "codespec write --lang rust try/orders.cir.json",
-                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                [
+                    "docs/index.md",
+                    "docs/use-cases.md",
+                    "docs/vision.md",
+                    "docs/getting-started.md",
+                ],
                 false,
             ),
             (
                 "trace counts",
                 "300 commands",
-                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                [
+                    "docs/index.md",
+                    "docs/use-cases.md",
+                    "docs/vision.md",
+                    "docs/getting-started.md",
+                ],
                 true,
             ),
             (
                 "ESS oracle",
                 "equivalence oracle",
-                ["docs/index.md", "docs/use-cases.md", "docs/vision.md", "docs/getting-started.md"],
+                [
+                    "docs/index.md",
+                    "docs/use-cases.md",
+                    "docs/vision.md",
+                    "docs/getting-started.md",
+                ],
                 true,
             ),
         ] {

@@ -108,3 +108,22 @@ fn a_planted_one_token_difference_is_named_by_runner_function_and_seed() {
         "{e}"
     );
 }
+
+/// `Check` of the kit case `stmt-raise` lists what it raises: a call that reaches the raise leaves
+/// every caller up to a framework none of the runners is, and the writers refuse the function, so
+/// the plan skips it with the reason instead of making it an entry.
+#[test]
+fn a_function_that_raises_is_skipped_with_the_reason() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/cases/stmt-raise/case.cir.json");
+    let m = Module::from_json(&std::fs::read(&path).unwrap()).unwrap();
+    let plan = diff::plan(&m).expect("a plan");
+    assert!(
+        plan.entries.is_empty(),
+        "{:?}",
+        plan.entries.iter().map(|e| &e.func).collect::<Vec<_>>()
+    );
+    assert_eq!(plan.skipped.len(), 1, "{:?}", plan.skipped);
+    assert_eq!(plan.skipped[0].0, "Check");
+    assert!(plan.skipped[0].1.contains("raises"), "{:?}", plan.skipped);
+}

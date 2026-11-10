@@ -26,7 +26,7 @@ drift-checked by `task check` the way `schemas/cir-1.schema.json` is.
 
 | family | ids (examples) | source in the model |
 |---|---|---|
-| statement | `stmt.for`, `stmt.break`, `stmt.switch`, `stmt.lookup_else` | `Stmt` variants (16) |
+| statement | `stmt.for`, `stmt.break`, `stmt.switch`, `stmt.lookup_else` | `Stmt` variants (17) |
 | expression | `expr.binop`, `expr.make`, `expr.intrinsic` | `Expr` variants (18) |
 | operator | `op.add`, `op.rem`, `op.shl`, `unop.neg`, `assign.add` (`+=`), `assign.and_not` (`&^=`) | the `op` strings `Binop`, `Unop` and `Assign` document; each operator id carries its operator string in an `op` field |
 | intrinsic | `intrinsic.sprintf`, `intrinsic.append`, `intrinsic.len` | the names `Intrinsic` documents |
@@ -151,14 +151,15 @@ A reader is checked by what it produces, run through a writer this repository tr
    the Go writer writes does not; a case that needs them while they are missing is an error of
    the run, never a verdict). Its output equal to `expected.txt` is a pass, a different one
    fails with the first differing line. A stop is never a pass, and its kind decides the rest:
-   - `foreign`, `no handler`, `no body` and `unsupported` say that `cir/1` or the evaluator does
-     not give the program's meaning (`docs/evaluator.md` E4): `refused`, with the stop as the
+   - `foreign`, `raise`, `no handler`, `no body` and `unsupported` say that `cir/1` or the
+     evaluator does not give the program's meaning (`docs/evaluator.md` E4; a `raise` leaves
+     every caller up to a framework the evaluator does not run): `refused`, with the stop as the
      reason, unless a line printed before it differs from `expected.txt`, which fails;
    - `panic`, `blocked` and `step budget` are the program running wrong, as a Go runner that
      crashes is: `run_failed`, claimed or not.
 
-   `codespec-write-cir` refusing the module (a `foreign` statement) is `refused` with its
-   message. The feature's entry then names the evaluator's program that judged it:
+   `codespec-write-cir` refusing the module (a `foreign` statement or a `raise`) is `refused`
+   with its message. The feature's entry then names the evaluator's program that judged it:
    `"runner": "codespec-run-cir"` when it ran, `"runner": "codespec-write-cir"` when the writer
    refused, so nothing ran.
 

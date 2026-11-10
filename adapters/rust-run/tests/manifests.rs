@@ -47,23 +47,34 @@ fn cases() -> Vec<Case> {
 }
 
 /// Each claimed feature must be the subject of a case whose module, as `read` produced it, uses
-/// it outside a `foreign` statement.
+/// it outside a `foreign` statement. A feature can be the subject of several cases (variants with
+/// their own sources); it is read when any one of them is.
 fn assert_read(name: &str, claimed: &BTreeSet<String>, read: impl Fn(&Case) -> Option<Module>) {
     let cases = cases();
     let mut failures = Vec::new();
     for id in claimed {
-        let Some(case) = cases.iter().find(|c| c.subject() == id) else {
+        let subjects: Vec<&Case> = cases.iter().filter(|c| c.subject() == id).collect();
+        if subjects.is_empty() {
             failures.push(format!("{id}: claimed, and no case has it as subject"));
             continue;
-        };
-        match read(case) {
-            None => failures.push(format!("{id}: {} was not read", case.name)),
-            Some(m) => {
-                let used = features_used(&m).unwrap_or_else(|e| panic!("{e}"));
-                if !used.contains(id) {
-                    failures.push(format!("{id}: {} read without it: {used:?}", case.name));
+        }
+        let mut tried = Vec::new();
+        let mut uses = false;
+        for case in subjects {
+            match read(case) {
+                None => tried.push(format!("{} was not read", case.name)),
+                Some(m) => {
+                    let used = features_used(&m).unwrap_or_else(|e| panic!("{e}"));
+                    if used.contains(id) {
+                        uses = true;
+                        break;
+                    }
+                    tried.push(format!("{} read without it: {used:?}", case.name));
                 }
             }
+        }
+        if !uses {
+            failures.push(format!("{id}: {}", tried.join("; ")));
         }
     }
     assert!(failures.is_empty(), "{name}:\n{}", failures.join("\n"));

@@ -26,9 +26,9 @@ stacks grow as the reader recurses, up to the runtime's 1 GB. Size is not limite
 
 ## Features left unclaimed
 
-The reader does not read the kit case of these five to its feature. For the first four the case is
-written by hand from another reader's output (`crates/conformance/src/lib.rs` § Cases written by
-hand).
+The reader does not read the kit case of these six to its feature. For the first four and
+`stmt.raise` the case is written by hand from another reader's output
+(`crates/conformance/src/lib.rs` § Cases written by hand).
 
 | feature | why |
 |---|---|
@@ -36,6 +36,7 @@ hand).
 | `expr.zero` | the reader never writes `zero`: it reads a zero value as the Go source writes it, a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T` |
 | `intrinsic.sorted_keys` | the reader reads `slices.Sorted(maps.Keys(m))` as `sorted_keys` over integer keys only: Go orders strings by byte, `sorted_keys` by UTF-16 code unit. The kit case's Go source collects the keys in a loop and sorts them with `sort.Strings` and `sort.Ints`, which the reader does not read as `sorted_keys` |
 | `type.unit` | Go gives a call of a function without results no type; the reader types it as an empty tuple |
+| `stmt.raise` | Go has no statement that leaves a function, and every caller up to the framework that started it, with a value of another package's type; the case's Go source panics there, which the reader does not read as `raise` |
 | `stmt.lookup_else` | the reader writes a comma-ok `let` and an `if`; only the lookup-guard pass of `codespec pass` makes them a `lookup_else`, and a reader's claim covers only what the reader prints (`docs/conformance.md` § 5) |
 
 ## Refused

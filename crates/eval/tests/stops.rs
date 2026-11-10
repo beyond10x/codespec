@@ -233,3 +233,46 @@ fn a_key_stub_answers_where_no_node_stub_does_and_one_left_no_call_is_refused() 
     let e = run_calls(&m, &calls(&[("Pair", &[])]), &twice).unwrap_err();
     assert!(e.contains("given twice"), "{e}");
 }
+
+/// The kit case stmt-raise, written by hand: `Check` raises for a negative argument.
+fn raising() -> Module {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/cases/stmt-raise/case.cir.json");
+    Module::from_json(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn a_raise_the_run_does_not_reach_does_not_stop_it() {
+    let run = run_calls(
+        &raising(),
+        &calls(&[("Check", &["7"]), ("Check", &["0"])]),
+        &Options::default(),
+    )
+    .unwrap();
+    assert_eq!(run.stop, None);
+    assert_eq!(run.stdout, "ok 7\nok 0\n");
+}
+
+#[test]
+fn a_run_that_reaches_a_raise_stops_there_by_name_before_making_its_value() {
+    let run = run_calls(
+        &raising(),
+        &calls(&[("Check", &["7"]), ("Check", &["-1"]), ("Check", &["3"])]),
+        &Options::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        run.stdout, "ok 7\n",
+        "the call before the stop prints, none after"
+    );
+    let stop = run.stop.expect("the second call stops");
+    assert_eq!(stop.kind, StopKind::Raise, "{stop}");
+    assert_eq!(stop.node, "stmt_raise.Check#0.then.0");
+    assert_eq!(stop.pos, "case.go:12");
+    assert!(
+        stop.reason.contains("java.lang.IllegalArgumentException"),
+        "{}",
+        stop.reason
+    );
+    assert!(stop.to_string().contains(": raise: "), "{stop}");
+}

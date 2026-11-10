@@ -421,3 +421,33 @@ fn reaches_path_gives_the_witness_of_reaches() {
         "example.com/calls.EntryB\texample.com/calls.write\t[example.com/calls.EntryB, example.com/calls.authorize, example.com/calls.write]\n"
     );
 }
+
+/// A `raise` is an exit of the body: with the early `return` of `Early` a `raise` instead (an http
+/// entry names `Early`, which lists what it raises), the Lock is held where the function leaves,
+/// and the property reports it at the raise as it did at the return.
+#[test]
+fn a_property_over_a_body_reports_a_lock_held_at_a_raise() {
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture("properties/locks.cir.json")).unwrap())
+            .unwrap();
+    let failure = serde_json::json!({"k": "extern", "path": "example.com/web", "name": "Failure"});
+    let early = v["funcs"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|f| f["name"] == "Early")
+        .unwrap();
+    early["params"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"name": "e", "t": failure}));
+    early["raises"] = serde_json::json!([failure]);
+    early["body"][1]["then"][0] = serde_json::json!({
+        "k": "raise", "x": {"k": "var", "name": "e", "t": failure}, "pos": "locks.go:14"
+    });
+    v["entries"] =
+        serde_json::json!([{"kind": "http", "func": "Early", "method": "GET", "on": "/early"}]);
+    let m = Module::from_json(serde_json::to_string(&v).unwrap().as_bytes()).unwrap();
+    let q = std::fs::read_to_string(fixture("properties/lock.cq")).unwrap();
+    assert_eq!(answer(&q, &[m]), expected("properties-lock.txt"));
+}

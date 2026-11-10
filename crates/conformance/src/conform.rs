@@ -73,11 +73,11 @@
 //!    `calls.json`. Exit 0 is compared with `expected.txt` like any runner's output. Exit 1 with a
 //!    stop (`stopped at <node> (<pos>): <kind>: <reason>` on standard error) of a kind that says
 //!    `cir/1` or the evaluator does not give the program's meaning, [`EVAL_REFUSING_STOPS`]
-//!    (`foreign`, `no handler`, `no body`, `unsupported`; `docs/evaluator.md` E4), is `refused`
-//!    with that stop as the detail, or `wrong_output` when what it printed before differs from
+//!    (`foreign`, `raise`, `no handler`, `no body`, `unsupported`; `docs/evaluator.md` E4), is
+//!    `refused` with that stop as the detail, or `wrong_output` when what it printed before differs from
 //!    `expected.txt`; a stop is never a pass. A stop of another kind (`panic`, `blocked`,
 //!    `step budget`) or an exit 1 without a stop is `run_failed`, as a Go runner that crashes is.
-//!    [`EVAL_WRITER`] refusing (a `foreign` statement) is `refused` with its message; exit 2 is
+//!    [`EVAL_WRITER`] refusing (a `foreign` statement or a `raise`) is `refused` with its message; exit 2 is
 //!    `run_refused`, another exit `run_failed`. The two programs are looked up in `--adapters`
 //!    when a case first needs them: a run whose every case the Go writer writes does not need
 //!    them, and a case that needs them while they are missing ends the run with an error.
@@ -859,10 +859,11 @@ fn refused(reason: Reason, detail: Option<String>) -> Outcome {
 }
 
 /// The kinds of an evaluator stop that say `cir/1` or the evaluator does not give the program's
-/// meaning (`docs/evaluator.md` E4, the stops of `codespec_eval`): a stop of one of them is a
-/// refusal. Any other stop, `panic`, `blocked` or `step budget` among them, is the program
+/// meaning (`docs/evaluator.md` E4, the stops of `codespec_eval`; a `raise` leaves every caller
+/// up to a framework the evaluator does not run): a stop of one of them is a refusal. Any other stop, `panic`, `blocked` or `step budget` among them, is the program
 /// running wrong, and fails.
-pub const EVAL_REFUSING_STOPS: &[&str] = &["foreign", "no handler", "no body", "unsupported"];
+pub const EVAL_REFUSING_STOPS: &[&str] =
+    &["foreign", "raise", "no handler", "no body", "unsupported"];
 
 /// The kind of the stop the evaluator's standard error names, `stopped at <node> (<pos>): <kind>:
 /// <reason>`.

@@ -124,6 +124,7 @@ fn func(name: &str, params: Vec<Param>, results: Vec<Type>, body: Vec<Stmt>) -> 
         recv: None,
         params,
         results,
+        raises: vec![],
         body,
         doc: String::new(),
         pos: p(1),

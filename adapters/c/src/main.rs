@@ -69,6 +69,7 @@ fn manifest() -> AdapterManifest {
             "expr.spread",
             "expr.to_iface",
             "stmt.foreign",
+            "stmt.raise",
             "type.array",
             "type.extern",
             "type.float",

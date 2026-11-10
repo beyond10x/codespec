@@ -32,6 +32,7 @@
 //! | `conv` to a built-in integer type (`int32(len(xs))`) | `as`, which truncates and sign-extends as a Go conversion does | — |
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
+//! | `raise` | refused: the function leaves every caller up to the framework with the raised value, which no Rust form here hands on; the function is listed in `refusals.json` and `stmt.raise` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
 //! | an embedded field (`decl.embedded`) read, written or set in a struct literal | the function refused; the struct is written with it as an ordinary field | — |
 //! | type parameters (`decl.type_params`), a type parameter (`type.param`) or type arguments (`expr.instantiate`) in a function | the function refused, naming the feature; a module declaring a generic type refused whole | — |
@@ -2111,7 +2112,12 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
     match s {
         Stmt::Let { rhs, .. } => rhs.iter().collect(),
         Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).collect(),
-        Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => vec![x],
+        Stmt::Incr { x, .. }
+        | Stmt::Decr { x, .. }
+        | Stmt::Expr { x, .. }
+        | Stmt::Raise { x, .. } => {
+            vec![x]
+        }
         Stmt::If { cond, .. } => vec![cond],
         Stmt::ForRange { over, .. } => vec![over],
         Stmt::Switch { tag, cases, .. } => tag
@@ -2897,6 +2903,12 @@ impl Fx<'_, '_> {
             } => Err(Refuse {
                 pos: pos.clone(),
                 reason: format!("foreign {lang} statement: {reason}"),
+            }),
+            Stmt::Raise { pos, .. } => Err(Refuse {
+                pos: pos.clone(),
+                reason:
+                    "raise: the Rust writer has no mapping for leaving a function by a raised value"
+                        .to_string(),
             }),
         }
     }
@@ -4266,6 +4278,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }

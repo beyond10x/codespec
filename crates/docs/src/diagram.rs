@@ -291,6 +291,7 @@ fn stmt_parts(s: &Stmt) -> (String, Vec<&Expr>, Vec<&Stmt>) {
         ),
         Stmt::Return { results, .. } => ("return".to_owned(), results.iter().collect(), vec![]),
         Stmt::Expr { x, .. } => ("expr".to_owned(), vec![x], vec![]),
+        Stmt::Raise { x, .. } => ("raise".to_owned(), vec![x], vec![]),
         Stmt::Send { chan, x, .. } => (format!("send on {}", spell(chan, 1)), vec![x], vec![]),
         Stmt::LookupElse {
             name,

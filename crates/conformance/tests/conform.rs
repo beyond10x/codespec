@@ -123,12 +123,12 @@ fn feature<'a>(r: &'a Report, id: &str) -> &'a codespec_conformance::conform::Fe
 }
 
 #[test]
-fn a_family_wildcard_less_one_id_expands_to_the_other_fifteen_statement_ids() {
+fn a_family_wildcard_less_one_id_expands_to_the_other_sixteen_statement_ids() {
     let kit = read_kit(&kit()).unwrap();
     let bytes = br#"{"format":"codespec-adapter/1","role":"writer","lang":"x","version":"1",
         "cir":"cir/1","features":["stmt.*"],"not":["stmt.send"]}"#;
     let (_, claimed) = claim(bytes, &kit).unwrap();
-    assert_eq!(claimed.len(), 15, "{claimed:?}");
+    assert_eq!(claimed.len(), 16, "{claimed:?}");
     assert!(claimed.iter().all(|id| id.starts_with("stmt.")));
     assert!(!claimed.contains("stmt.send"));
     let all_statements = kit
@@ -136,7 +136,7 @@ fn a_family_wildcard_less_one_id_expands_to_the_other_fifteen_statement_ids() {
         .iter()
         .filter(|f| f.id.starts_with("stmt."))
         .count();
-    assert_eq!(all_statements, 16);
+    assert_eq!(all_statements, 17);
 }
 
 /// The Go writer and runner, built once with `go build`.
@@ -719,6 +719,58 @@ fn a_case_the_go_writer_refuses_is_judged_by_the_evaluator_pass_fail_or_refused_
     assert_eq!(report.summary.pass, 2);
     assert_eq!(report.summary.fail, 3);
     assert_eq!(report.summary.refused_unclaimed, 2);
+}
+
+/// A `raise` stop of the evaluator after a prefix of `expected.txt` is `refused` with the stop as
+/// the detail, as a `foreign` stop is: the value leaves every caller up to a framework the
+/// evaluator does not run, so the run says nothing about what the program prints after it.
+#[test]
+fn an_evaluator_stop_at_a_raise_is_refused_at_its_stop() {
+    let w = work("stub-reader-evaluator-raise");
+    let corpus = stub_corpus_of(&w, &["stmt-if"]);
+    let m = manifest("reader", &[]);
+    let go_writer =
+        stub_writer(|_| Some(exec(1, "", "codespec-write-go: case.go:3: no form for it")));
+    let cir_writer = stub_writer(|_| None);
+    let cir_runner = |_: &[OsString], _: Option<&[u8]>| {
+        exec(
+            1,
+            "ok 1\n",
+            "codespec-run-cir: stopped at stmt_if.Pick#0.then.0 (case.go:4): raise: raise of x.E: it leaves every caller up to the framework, which the evaluator does not run",
+        )
+    };
+    let runner = stub_runner(|_| None);
+    let go_runner = stub_runner(|_| None);
+    let report = conform_reader(
+        &Run {
+            manifest: &m,
+            kit: kit(),
+            work: w.join("work"),
+        },
+        &corpus,
+        &ReaderPrograms {
+            reader: &kit_module_reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &go_runner,
+            cir_writer: &cir_writer,
+            cir_runner: &cir_runner,
+        },
+    )
+    .unwrap();
+    let json = report_json(&report);
+    let stop = feature(&report, "stmt.if");
+    assert_eq!(
+        (stop.verdict, stop.step, stop.reason),
+        (Verdict::Refused, Some(4), Some(Reason::Refused)),
+        "{json}"
+    );
+    assert!(
+        stop.detail
+            .as_deref()
+            .is_some_and(|d| d.contains(": raise: raise of x.E")),
+        "{json}"
+    );
 }
 
 /// `dir/name`, an executable shell script of `body`.

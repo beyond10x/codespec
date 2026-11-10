@@ -22,8 +22,9 @@ outputs only. An evaluator sees every node, and every effect passes through a ha
 - **E1.** Faithful: on every kit case, the evaluator prints the case's `expected.txt`.
 - **E2.** Deterministic: the same module, inputs, seed and fault plan give the same bytes.
 - **E3.** Effects at a named boundary, supplied by the host, replaceable per call site.
-- **E4.** Never past the unknown: a `foreign` statement or an extern with no handler stops the
-  run with a reason, or is replaced by a stub the user names. The result says which.
+- **E4.** Never past the unknown: a `foreign` statement, a `raise` (it leaves every caller up to a
+  framework the evaluator does not run) or an extern with no handler stops the run with a reason,
+  or is replaced by a stub the user names. The result says which.
 - **E5.** Sites named by the `cq` node id `<module>.<funckey>#<index path>`.
 - **E6.** Rust, in this workspace, minimal dependencies. A solver is an optional external program.
 
@@ -115,7 +116,7 @@ entries in insertion order with a `BTreeMap` index. Iteration order is a policy:
 runs `post` (`sem.continue.post`). A multi-target `assign` reads every value first
 (`sem.multi_assign.order`). `break` leaves the innermost loop (`sem.switch.break`). A step budget
 ends a run that does not return (wasmi's fuel). `Stop` carries the node id and reason of the
-`foreign` statement or unhandled extern that ended it.
+`foreign` statement, `raise` or unhandled extern that ended it.
 
 ### 5.4 How the semantics are pinned
 
@@ -193,7 +194,9 @@ per site and call count up to `--max-nth`. Every call of an extern that writes t
 ]}
 ```
 
-A panic ends its call, not the session, which models a caller that recovers per request.
+A panic ends its call, not the session, which models a caller that recovers per request. Any other
+stop (E4, a `raise` among them) ends the session: its later calls do not run, and the `stop` event
+is the trace's last line.
 
 ### 6.4 The trace
 

@@ -172,8 +172,12 @@ import javax.tools.ToolProvider;
  * method called on an entity as an extern call with the entity as its type argument. It records the
  * JPA annotations {@code @Entity}, {@code @Cacheable}, {@code @Id}, {@code @GeneratedValue} and
  * {@code @Column} on a struct or its instance field in {@code persistence}, each with what it marks
- * and its arguments on one line. A class implementing {@code ExceptionMapper} is refused at its
- * line, and so is a field of a class of another package, whose object is an opaque extern here, a
+ * and its arguments on one line. A {@code @Provider} class implementing {@code ExceptionMapper} of
+ * a jar's exception is an {@code exception-mapper} entry naming its {@code toResponse}; any other
+ * is refused at its line. A {@code throw new X(…)} of a jar's unchecked exception in a method an
+ * entry names is a {@code raise}, listed in the function's {@code raises} ({@link #raise}); a call
+ * of such a method is refused. A path parameter only the framework passes is printed as it is
+ * ({@link #pathParameter}). Refused too: a field of a class of another package, whose object is an opaque extern here, a
  * call of another package's method or constructor that package's module does not declare in a form
  * this module can call ({@link #declaredFn}; the extern takes that module's signature), and an
  * access of a managed class's field that Quarkus turns into a call of code ({@link
@@ -242,6 +246,9 @@ public final class Reader {
     private static final String INCOMING = "org.eclipse.microprofile.reactive.messaging.Incoming";
     private static final List<String> HTTP_METHODS = List.of("GET", "POST", "PUT", "DELETE", "PATCH");
     private static final String EXCEPTION_MAPPER = "jakarta.ws.rs.ext.ExceptionMapper";
+    /** The registration of an {@link #EXCEPTION_MAPPER}: on one, an {@code exception-mapper} entry, elsewhere a refusal. */
+    private static final String PROVIDER = "jakarta.ws.rs.ext.Provider";
+    private static final String PATH_PARAM = "jakarta.ws.rs.PathParam";
     /** The Panache superclass whose one field, {@code id}, a project read gives every entity extending it. */
     private static final String PANACHE_ENTITY = "io.quarkus.hibernate.orm.panache.PanacheEntity";
     private static final List<String> PANACHE_ENTITY_BASES = List.of(
@@ -461,6 +468,10 @@ public final class Reader {
          */
         final Map<String, List<CompilationUnitTree>> packages = new TreeMap<>();
         final Map<String, Reader> classified = new HashMap<>();
+        /** {@link #mayRaise} of each method asked about, once for the read. */
+        final Map<ExecutableElement, Boolean> mayRaise = new HashMap<>();
+        /** The methods some source of the project calls or references, made once ({@link #calledInProject}). */
+        Set<Element> called;
 
         Analysis(JavacTask task, List<CompilationUnitTree> units) {
             this.task = task;
@@ -1044,14 +1055,14 @@ public final class Reader {
             TypeElement te = element(p);
             ClassTree ct = classTree(p);
             CompilationUnitTree cu = p.getCompilationUnit();
-            if (project && te.getKind() == ElementKind.CLASS && exceptionMapper(te)) {
-                refuseDecl(cu, ct, ct.getModifiers(), te.getSimpleName().toString(), "a class implementing ExceptionMapper:"
-                    + " the framework calls it with an exception a resource method throws, and cir/1 has no thrown exception"
-                    + " to hand it");
+            boolean mapper = project && te.getKind() == ElementKind.CLASS && exceptionMapper(te);
+            if (mapper && mapperShape(te) != null) {
+                refuseDecl(cu, ct, ct.getModifiers(), te.getSimpleName().toString(), "a class implementing ExceptionMapper "
+                    + mapperShape(te));
                 refused.add(te);
                 continue;
             }
-            refuseAnnotations(cu, ct.getModifiers(), te.getKind() == ElementKind.CLASS);
+            refuseAnnotations(cu, ct.getModifiers(), te.getKind() == ElementKind.CLASS, mapper ? Set.of(PROVIDER) : Set.of());
             String why = null;
             switch (te.getKind()) {
                 case ANNOTATION_TYPE:
@@ -1260,6 +1271,152 @@ public final class Reader {
     private boolean exceptionMapper(TypeElement te) {
         TypeElement em = elements.getTypeElement(EXCEPTION_MAPPER);
         return em != null && types.isAssignable(types.erasure(te.asType()), types.erasure(em.asType()));
+    }
+
+    /**
+     * Why an {@code ExceptionMapper} is no {@code exception-mapper} entry, or null when it is one:
+     * registered by {@code @Provider}, declaring its own {@code toResponse}, whose parameter is a
+     * jar's class, an extern type the module can name in {@code raises}.
+     */
+    private String mapperShape(TypeElement te) {
+        if (annotation(te, PROVIDER) == null) {
+            return "without @Provider: nothing in the source registers it, so the module cannot name the framework's call of"
+                + " it as an entry";
+        }
+        ExecutableElement m = mapperMethod(te);
+        if (m == null) {
+            return "without its own toResponse(e): the entry names a function of the class";
+        }
+        TypeMirror t = m.getParameters().get(0).asType();
+        if (t.getKind() != TypeKind.DECLARED || isProjectClass((TypeElement) types.asElement(t))) {
+            return "of " + t + ", a class of the project: what a function raises, and so what the entry takes, is a jar's class";
+        }
+        return null;
+    }
+
+    /** The {@code toResponse(e)} an {@code ExceptionMapper} declares itself, or null. */
+    private ExecutableElement mapperMethod(TypeElement te) {
+        for (Element e : te.getEnclosedElements()) {
+            if (e.getKind() == ElementKind.METHOD && e.getSimpleName().contentEquals("toResponse")
+                && !e.getModifiers().contains(Modifier.STATIC) && ((ExecutableElement) e).getParameters().size() == 1) {
+                return (ExecutableElement) e;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether an entry names the method: an http method of a {@code @Path} class, a {@code @Scheduled}
+     * or {@code @Incoming} method, the {@code toResponse} of a registered {@code ExceptionMapper}.
+     * {@link #framework} makes the entries.
+     */
+    private boolean entryMethod(ExecutableElement m) {
+        if (!(m.getEnclosingElement() instanceof TypeElement) || m.getKind() != ElementKind.METHOD) {
+            return false;
+        }
+        TypeElement te = (TypeElement) m.getEnclosingElement();
+        if (annotation(m, SCHEDULED) != null || annotation(m, INCOMING) != null) {
+            return true;
+        }
+        if (annotation(te, PATH) != null) {
+            for (String verb : HTTP_METHODS) {
+                if (annotation(m, "jakarta.ws.rs." + verb) != null) {
+                    return true;
+                }
+            }
+        }
+        return te.getKind() == ElementKind.CLASS && exceptionMapper(te) && mapperShape(te) == null && m.equals(mapperMethod(te));
+    }
+
+    /**
+     * Whether a method of the project may hold a {@code raise}: an entry names it and its body holds,
+     * outside a lambda or a class body, a {@code throw} that {@link #throwStmt} reads as a {@code raise}
+     * ({@link #throwRaises}); a {@code throw} of the package's checked exceptions is a return. A call of it is refused: what it raises leaves
+     * every caller up to the framework, and only a function the framework calls lists it.
+     */
+    private boolean mayRaise(ExecutableElement m) {
+        Boolean known = analysis.mayRaise.get(m);
+        if (known != null) {
+            return known;
+        }
+        boolean[] found = {false};
+        TreePath mp = trees.getPath(m);
+        if (mp != null && mp.getLeaf() instanceof MethodTree && ((MethodTree) mp.getLeaf()).getBody() != null && entryMethod(m)) {
+            new TreePathScanner<Void, Void>() {
+                @Override
+                public Void visitThrow(ThrowTree t, Void x) {
+                    found[0] |= throwRaises(getCurrentPath());
+                    return null;
+                }
+
+                @Override
+                public Void visitLambdaExpression(LambdaExpressionTree l, Void x) {
+                    return null;
+                }
+
+                @Override
+                public Void visitClass(ClassTree c, Void x) {
+                    return null;
+                }
+            }.scan(new TreePath(mp, ((MethodTree) mp.getLeaf()).getBody()), null);
+        }
+        analysis.mayRaise.put(m, found[0]);
+        return found[0];
+    }
+
+    /** Whether a method of the project's sources calls {@code m} or names it by a method reference. */
+    private boolean calledInProject(ExecutableElement m) {
+        if (analysis.called == null) {
+            Set<Element> called = new HashSet<>();
+            for (CompilationUnitTree cu : analysis.units) {
+                new TreePathScanner<Void, Void>() {
+                    @Override
+                    public Void visitMethodInvocation(MethodInvocationTree t, Void x) {
+                        called.add(trees.getElement(getCurrentPath()));
+                        return super.visitMethodInvocation(t, x);
+                    }
+
+                    @Override
+                    public Void visitMemberReference(MemberReferenceTree t, Void x) {
+                        called.add(trees.getElement(getCurrentPath()));
+                        return super.visitMemberReference(t, x);
+                    }
+                }.scan(cu, null);
+            }
+            analysis.called = called;
+        }
+        return analysis.called.contains(m);
+    }
+
+    /**
+     * Whether a parameter of an http entry is a path parameter the framework alone passes: no
+     * annotation, or {@code @PathParam} of its own name, a template variable {@code {name}} without a
+     * regular expression in the entry's joined path, and no call of the method in the project's
+     * sources. The framework hands it the non-empty segment it matched, converted, never null.
+     */
+    private boolean pathParameter(VariableElement v) {
+        if (!project || !(v.getEnclosingElement() instanceof ExecutableElement)) {
+            return false;
+        }
+        ExecutableElement m = (ExecutableElement) v.getEnclosingElement();
+        TypeElement te = (TypeElement) m.getEnclosingElement();
+        AnnotationMirror classPath = annotation(te, PATH);
+        boolean http = false;
+        for (String verb : HTTP_METHODS) {
+            http |= annotation(m, "jakarta.ws.rs." + verb) != null;
+        }
+        if (classPath == null || !http) {
+            return false;
+        }
+        String name = v.getSimpleName().toString();
+        List<? extends AnnotationMirror> anns = v.getAnnotationMirrors();
+        if (!anns.isEmpty() && !(anns.size() == 1 && name.equals(attribute(anns.get(0), "value"))
+            && annotation(v, PATH_PARAM) != null)) {
+            return false;
+        }
+        AnnotationMirror methodPath = annotation(m, PATH);
+        String path = joinPaths(attribute(classPath, "value"), methodPath == null ? null : attribute(methodPath, "value"));
+        return List.of(path.split("/")).contains("{" + name + "}") && !calledInProject(m);
     }
 
     /**
@@ -2426,6 +2583,11 @@ public final class Reader {
                     String channel = attribute(incoming, "value");
                     entry("incoming", fn.key(), "", channel == null ? "" : channel);
                 }
+                Map<String, Object> taken = fn.params.size() == 1 ? fn.params.get(0) : null;
+                if (te.getKind() == ElementKind.CLASS && exceptionMapper(te) && mapperShape(te) == null && ee.equals(mapperMethod(te))
+                    && "extern".equals(taken.get("k")) && !taken.containsKey("targs")) {
+                    entry("exception-mapper", fn.key(), "", taken.get("path") + "." + taken.get("name"));
+                }
             }
         }
     }
@@ -2611,6 +2773,10 @@ public final class Reader {
             pos = declPos(cu, ct, ct.getModifiers());
             body.add(thisAlloc(fn, ctx, pos));
             body.add(ret(successResults(ctx, null), pos));
+        }
+        List<Object> raises = raisesOf(body);
+        if (!raises.isEmpty()) {
+            f.put("raises", raises);
         }
         f.put("body", body);
         if (fn.path.getLeaf() instanceof MethodTree) {
@@ -3108,7 +3274,8 @@ public final class Reader {
      * Refuse a String or boxed parameter printed as it is, by concatenation or {@code String.format},
      * in a method that never compares it with {@code null}: Java prints a null one as {@code null},
      * and a cir/1 string or integer has no null. Every other use of a parameter assumes it is not
-     * null (README.md, Assumptions).
+     * null (README.md, Assumptions). A path parameter only the framework passes ({@link
+     * #pathParameter}) is never null.
      */
     private void refusePrintedNullable(TreePath part, Ctx ctx) {
         part = unparen(part);
@@ -3117,7 +3284,8 @@ public final class Reader {
             return;
         }
         String q = qname(e.asType());
-        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)) {
+        if (!q.equals("java.lang.String") && !q.equals("java.lang.Boolean") && !JvmTypes.isIntegerBox(q)
+            || pathParameter((VariableElement) e)) {
             return;
         }
         boolean[] checked = {false};
@@ -3624,6 +3792,23 @@ public final class Reader {
         return st;
     }
 
+    /**
+     * Whether {@link #throwStmt} reads the {@code throw} at {@code p} as a {@code raise}: in project mode,
+     * {@code throw new X(…)} of a jar's unchecked exception, not a sentinel or formatted error of the
+     * package's checked-exception hierarchy, without a class body.
+     */
+    private boolean throwRaises(TreePath p) {
+        ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
+        if (!project || !(e instanceof NewClassTree)) {
+            return false;
+        }
+        NewClassTree nc = (NewClassTree) e;
+        TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(new TreePath(p, e)));
+        boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
+        return !sentinel && !formattedLeaves.containsKey(te) && nc.getClassBody() == null && !isProjectClass(te)
+            && unchecked(te);
+    }
+
     private List<Object> throwStmt(TreePath p, Ctx ctx, String pos) {
         ExpressionTree e = ((ThrowTree) p.getLeaf()).getExpression();
         if (!(e instanceof NewClassTree)) {
@@ -3633,6 +3818,9 @@ public final class Reader {
         TreePath np = new TreePath(p, e);
         TypeElement te = (TypeElement) types.asElement(trees.getTypeMirror(np));
         boolean sentinel = errorLeaves.containsKey(te) && nc.getArguments().isEmpty();
+        if (throwRaises(p)) {
+            return List.of(raise(np, te, ctx, pos));
+        }
         if (!sentinel && !formattedLeaves.containsKey(te) || nc.getClassBody() != null) {
             throw new Unsupported("throw of an exception outside the package's checked-exception hierarchy");
         }
@@ -3653,6 +3841,90 @@ public final class Reader {
             rs.add(errorf(np, nc, formattedLeaves.get(te), ctx));
         }
         return List.of(ret(rs, pos));
+    }
+
+    /** Whether {@code te} is an unchecked exception: a {@code RuntimeException} or an {@code Error}. */
+    private boolean unchecked(TypeElement te) {
+        for (String base : List.of("java.lang.RuntimeException", "java.lang.Error")) {
+            TypeElement b = elements.getTypeElement(base);
+            if (b != null && types.isSubtype(te.asType(), b.asType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@code throw new X(…)} of a jar's unchecked exception in a method an entry names: {@code raise}
+     * of the constructed value. Java leaves the method and every caller up to the framework, which
+     * hands the exception to its mapper; {@link #emitFunc} lists the type in {@code raises}. In any
+     * other method it is refused: a caller would have to list what it raises, and so its callers.
+     */
+    private Map<String, Object> raise(TreePath np, TypeElement te, Ctx ctx, String pos) {
+        Element m = ctx.fn.inLambda || !(ctx.fn.path.getLeaf() instanceof MethodTree) ? null : trees.getElement(ctx.fn.path);
+        if (!(m instanceof ExecutableElement) || !entryMethod((ExecutableElement) m)) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + " in a method no entry names: it leaves every caller up"
+                + " to the framework, and cir/1 raises only out of a function an entry names");
+        }
+        if (overridesProjectMethod((ExecutableElement) m)) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + " in a method overriding one of the project's: a call"
+                + " through the type it overrides would not list what it raises");
+        }
+        Map<String, Object> x = expr(np, ctx);
+        Map<String, Object> t = type(x);
+        if (!"extern".equals(t.get("k")) || t.containsKey("targs")) {
+            throw new Unsupported("throw of " + te.getQualifiedName() + ", whose value is not of an extern type");
+        }
+        Map<String, Object> st = Json.obj();
+        st.put("k", "raise");
+        st.put("x", x);
+        st.put("pos", pos);
+        return st;
+    }
+
+    /** Whether {@code m} overrides a method a class or interface of the project's sources declares. */
+    private boolean overridesProjectMethod(ExecutableElement m) {
+        TypeElement owner = (TypeElement) m.getEnclosingElement();
+        Deque<TypeMirror> todo = new ArrayDeque<>(types.directSupertypes(owner.asType()));
+        while (!todo.isEmpty()) {
+            TypeElement s = (TypeElement) types.asElement(todo.pop());
+            if (s == null) {
+                continue;
+            }
+            if (isProjectClass(s)) {
+                for (Element e : s.getEnclosedElements()) {
+                    if (e.getKind() == ElementKind.METHOD && elements.overrides(m, (ExecutableElement) e, owner)) {
+                        return true;
+                    }
+                }
+            }
+            todo.addAll(types.directSupertypes(s.asType()));
+        }
+        return false;
+    }
+
+    /**
+     * The extern types the statements raise, sorted by path, then name, each once: the {@code raises}
+     * of the function. A refused statement is {@code foreign} and raises nothing here.
+     */
+    private static List<Object> raisesOf(Object body) {
+        TreeMap<String, Object> out = new TreeMap<>();
+        Deque<Object> todo = new ArrayDeque<>(List.of(body));
+        while (!todo.isEmpty()) {
+            Object o = todo.pop();
+            if (o instanceof Map) {
+                Map<?, ?> m = (Map<?, ?>) o;
+                if ("raise".equals(m.get("k"))) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> t = (Map<String, Object>) ((Map<String, Object>) m.get("x")).get("t");
+                    out.put(t.get("path") + "\u0000" + t.get("name"), t);
+                }
+                todo.addAll(m.values());
+            } else if (o instanceof List) {
+                todo.addAll((List<?>) o);
+            }
+        }
+        return new ArrayList<>(out.values());
     }
 
     /**
@@ -4181,6 +4453,10 @@ public final class Reader {
         }
         MethodInvocationTree mi = (MethodInvocationTree) t;
         ExecutableElement m = (ExecutableElement) trees.getElement(p);
+        if (project && mayRaise(m)) {
+            throw new Unsupported("call of " + m.getEnclosingElement().getSimpleName() + "." + m.getSimpleName() + ", which raises:"
+                + " a raise leaves every caller up to the framework, and only a function an entry names raises here");
+        }
         if (!mi.getTypeArguments().isEmpty() && !genericMethods.contains(m)) {
             throw new Unsupported("explicit type arguments: generics are outside cir/1");
         }
@@ -6194,10 +6470,15 @@ public final class Reader {
 
     /** With {@code persistence}, a class or instance field of a project read, whose JPA annotations {@link #persistence} records. */
     private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods, boolean persistence) {
+        refuseAnnotations(cu, mods, persistence, Set.of());
+    }
+
+    /** With {@code mapped}, the annotations the declaration maps besides the Quarkus ones ({@code @Provider} on an exception mapper). */
+    private void refuseAnnotations(CompilationUnitTree cu, ModifiersTree mods, boolean persistence, Set<String> mapped) {
         for (AnnotationTree a : mods.getAnnotations()) {
             TypeMirror at = trees.getTypeMirror(new TreePath(new TreePath(cu), a.getAnnotationType()));
             String qn = at == null ? "" : qname(at);
-            if (project && persistence && PERSISTENCE.contains(qn)) {
+            if (project && persistence && PERSISTENCE.contains(qn) || mapped.contains(qn)) {
                 continue;
             }
             if (!HARMLESS_ANNOTATIONS.contains(qn) && !(project && QUARKUS_ANNOTATIONS.contains(qn))) {

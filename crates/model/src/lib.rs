@@ -128,15 +128,17 @@ pub struct Persistence {
 }
 
 /// The kinds of [`Entry`] a document may hold.
-pub const ENTRY_KINDS: &[&str] = &["http", "scheduled", "incoming"];
+pub const ENTRY_KINDS: &[&str] = &["http", "scheduled", "incoming", "exception-mapper"];
 
 /// A function a framework starts, not the program: a reader recognised it from the framework's
-/// annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`).
+/// annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider`
+/// class implementing `ExceptionMapper`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
-    /// One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer)
-    /// or `incoming` (a message consumer).
+    /// One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer),
+    /// `incoming` (a message consumer) or `exception-mapper` (a function the framework calls with
+    /// what an entry raised, when it is of the type `on` names; it takes that one value).
     pub kind: String,
     /// The key of the function in `funcs`: `F` or `T.m`.
     pub func: String,
@@ -145,6 +147,8 @@ pub struct Entry {
     pub method: String,
     /// `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:
     /// `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.
+    /// `exception-mapper`: the extern type the function takes, `<path>.<name>` (the Java reader's
+    /// `java.lang.Exception.Exception`, a jar class's path being its qualified name).
     pub on: String,
     /// `http`: the media types the method accepts, as written; empty when it declares none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -501,6 +505,7 @@ fn stmt_names<'a>(body: &'a [Stmt], f: NameFn<'_, 'a>) {
                 }
             }
             Stmt::Return { results, .. } => results.iter().for_each(|e| expr_names(e, f)),
+            Stmt::Raise { x, .. } => expr_names(x, f),
             Stmt::Send { chan, x, .. } => {
                 expr_names(chan, f);
                 expr_names(x, f);
@@ -1110,6 +1115,12 @@ pub struct Func {
     pub recv: Option<Param>,
     pub params: Vec<Param>,
     pub results: Vec<Type>,
+    /// The extern types the function can raise, outside its results: those of its own `raise`
+    /// statements and those every function of the module it calls lists, sorted by `path`, then
+    /// `name`, each once. Strict reading computes them from the bodies and refuses any other list;
+    /// a function that lists any is one an entry names, or one only such functions call.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<Type>,
     pub body: Vec<Stmt>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub doc: String,
@@ -1221,6 +1232,13 @@ pub enum Stmt {
     },
     Return {
         results: Vec<Expr>,
+        pos: Pos,
+    },
+    /// Leaves the function, and every caller up to the framework that started it, with `x`, a
+    /// value of an extern type (Java: `throw` of a jar's unchecked exception): no result is
+    /// returned. The function lists the type in `raises`.
+    Raise {
+        x: Expr,
         pos: Pos,
     },
     Expr {
@@ -1618,6 +1636,7 @@ impl Module {
         m.check_interfaces().map_err(ReadError::Invalid)?;
         m.check_generics().map_err(ReadError::Invalid)?;
         m.check_framework().map_err(ReadError::Invalid)?;
+        m.check_raises().map_err(ReadError::Invalid)?;
         Ok(m)
     }
 
@@ -2403,6 +2422,24 @@ impl Module {
                     e.func
                 ));
             }
+            if e.kind == "exception-mapper" {
+                let f = self.funcs.iter().find(|f| f.key() == e.func);
+                let takes = f.and_then(|f| match f.params.as_slice() {
+                    [p] => match &p.t {
+                        Type::Extern { path, name, targs } if targs.is_empty() => {
+                            Some(format!("{path}.{name}"))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                });
+                if takes.as_deref() != Some(e.on.as_str()) {
+                    return Err(format!(
+                        "exception-mapper entry {} on {}: the function takes one parameter, of the extern type `on` names",
+                        e.func, e.on
+                    ));
+                }
+            }
         }
         for t in &self.transactional {
             if !funcs.contains(t) {
@@ -2463,6 +2500,357 @@ impl Module {
             }
         }
         Ok(())
+    }
+
+    /// `raise` and `raises`: every raised value of an extern type without type arguments, and no
+    /// `raise` inside a lambda; every function's `raises` what its own `raise` statements raise
+    /// and every function of the module it calls lists (by a `call` or `method` outside a lambda,
+    /// or in a `foreign` statement's call list), to a fixed point, sorted by `path`, then `name`,
+    /// each once. A function that raises is named by an entry or unexported, and is never used as
+    /// a value, called inside a lambda, called through an interface (a method of its name), nor
+    /// called by an opaque function or a variable's initializer (its `inits` list or its `init`
+    /// expression), and is not `init`, which the module runs when it loads: only callers that
+    /// list what it raises reach it, up to an entry.
+    fn check_raises(&self) -> Result<(), String> {
+        use std::collections::{BTreeMap, BTreeSet};
+        let index: BTreeMap<String, usize> = self
+            .funcs
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.key(), i))
+            .collect();
+        let own_module = |path: &str| path.is_empty() || path == self.path;
+        let mut own: Vec<BTreeSet<(String, String)>> = vec![BTreeSet::new(); self.funcs.len()];
+        let mut callees: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); self.funcs.len()];
+        // Uses that let a raise escape past a caller that lists it: (callee, how).
+        let mut escapes: Vec<(usize, String)> = Vec::new();
+        for (i, f) in self.funcs.iter().enumerate() {
+            let key = f.key();
+            let mut err = None;
+            walk::walk_stmts(&f.body, &mut |s| {
+                if let Stmt::Raise { x, pos } = s {
+                    match x.t() {
+                        Type::Extern { path, name, targs } if targs.is_empty() => {
+                            own[i].insert((path.clone(), name.clone()));
+                        }
+                        _ => {
+                            err.get_or_insert(format!(
+                                "raise at {pos} in {key}: the value is not of an extern type without type arguments"
+                            ));
+                        }
+                    }
+                }
+                if let Stmt::Foreign {
+                    calls: Some(calls), ..
+                } = s
+                {
+                    self.foreign_callees(calls, &index, &own_module, &mut |j, in_lambda, how| {
+                        if in_lambda || how != "call" {
+                            escapes.push((j, format!("{how} in a foreign statement of {key}")));
+                        } else {
+                            callees[i].insert(j);
+                        }
+                    });
+                }
+                walk::stmt_exprs(s, &mut |e| {
+                    self.expr_callees(e, &index, false, &mut |j, in_lambda, how| {
+                        if in_lambda || how != "call" {
+                            escapes.push((j, format!("{how} in {key}")));
+                        } else {
+                            callees[i].insert(j);
+                        }
+                    });
+                    walk::walk_expr(e, &mut |x| {
+                        if let Expr::Lambda { body, .. } = x {
+                            walk::walk_stmts(body, &mut |s| {
+                                if let Stmt::Raise { pos, .. } = s {
+                                    err.get_or_insert(format!(
+                                        "raise at {pos} in {key}: inside a lambda, which runs wherever its value is called"
+                                    ));
+                                }
+                            });
+                        }
+                    });
+                });
+            });
+            if let Some(e) = err {
+                return Err(e);
+            }
+        }
+        for o in &self.opaque {
+            self.foreign_callees(&o.calls, &index, &own_module, &mut |j, _, how| {
+                escapes.push((j, format!("{how} in the opaque function {}", o.key())));
+            });
+        }
+        self.foreign_callees(&self.inits, &index, &own_module, &mut |j, _, how| {
+            escapes.push((j, format!("{how} in a variable's initializer")));
+        });
+        // A variable's initializer runs when the module loads, before any entry: what its
+        // expression calls or uses as a value counts as well as what `inits` lists.
+        for v in &self.vars {
+            let Some(init) = &v.init else { continue };
+            let name = &v.name;
+            let mut err = None;
+            walk::walk_expr(init, &mut |x| {
+                if let Expr::Lambda { body, .. } = x {
+                    walk::walk_stmts(body, &mut |s| {
+                        if let Stmt::Raise { pos, .. } = s {
+                            err.get_or_insert(format!(
+                                "raise at {pos} in the initializer of the variable {name}: inside a lambda, which runs wherever its value is called"
+                            ));
+                        }
+                    });
+                }
+            });
+            if let Some(e) = err {
+                return Err(e);
+            }
+            self.expr_callees(init, &index, false, &mut |j, _, how| {
+                escapes.push((
+                    j,
+                    format!("{how} in the initializer of the variable {name}"),
+                ));
+            });
+        }
+        let mut raises = own;
+        loop {
+            let mut changed = false;
+            for i in 0..self.funcs.len() {
+                for &j in &callees[i] {
+                    if j != i {
+                        let add: Vec<_> = raises[j].difference(&raises[i]).cloned().collect();
+                        changed |= !add.is_empty();
+                        raises[i].extend(add);
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let entries: BTreeSet<&str> = self.entries.iter().map(|e| e.func.as_str()).collect();
+        let iface_names: BTreeSet<&str> = self.iface_call_names();
+        for (i, f) in self.funcs.iter().enumerate() {
+            let key = f.key();
+            let mut listed = Vec::new();
+            for t in &f.raises {
+                match t {
+                    Type::Extern { path, name, targs } if targs.is_empty() => {
+                        listed.push((path.clone(), name.clone()))
+                    }
+                    _ => {
+                        return Err(format!(
+                            "function {key} raises a type that is not an extern type without type arguments"
+                        ));
+                    }
+                }
+            }
+            if listed.windows(2).any(|w| w[0] >= w[1]) {
+                return Err(format!(
+                    "function {key} raises types not sorted by path, then name, each once"
+                ));
+            }
+            let want: Vec<_> = raises[i].iter().cloned().collect();
+            if listed != want {
+                let show = |v: &[(String, String)]| {
+                    v.iter()
+                        .map(|(p, n)| format!("{p}.{n}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                return Err(format!(
+                    "function {key} raises [{}], but its body and the functions it calls raise [{}]",
+                    show(&listed),
+                    show(&want)
+                ));
+            }
+            if want.is_empty() {
+                continue;
+            }
+            let what = format!("{key} raises {}.{}", want[0].0, want[0].1);
+            if f.exported && !entries.contains(key.as_str()) {
+                return Err(format!(
+                    "function {what}, no entry names it and it is exported: a caller outside the module would not see the raise"
+                ));
+            }
+            if f.name == "init" && f.recv.is_none() && f.params.is_empty() {
+                return Err(format!(
+                    "function {what}, and the module runs init when it loads, before any entry: no caller lists what it raises"
+                ));
+            }
+            if let Some((_, how)) = escapes.iter().find(|(j, _)| *j == i) {
+                return Err(format!(
+                    "function {what}, and it is {how}: only callers that list what it raises may reach it"
+                ));
+            }
+            if f.recv.is_some() && iface_names.contains(f.name.as_str()) {
+                return Err(format!(
+                    "function {what}, and a call through an interface may reach it: only callers that list what it raises may reach it"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The names of the methods every `iface_call` of the module's bodies, and every call
+    /// through an interface its `foreign` statements and opaque functions list, calls.
+    fn iface_call_names(&self) -> std::collections::BTreeSet<&str> {
+        let mut out = std::collections::BTreeSet::new();
+        fn listed<'a>(calls: &'a [CallRef], out: &mut std::collections::BTreeSet<&'a str>) {
+            for c in calls {
+                match c {
+                    CallRef::Iface { name, .. } => {
+                        out.insert(name.as_str());
+                    }
+                    CallRef::Lambda { calls, .. } => listed(calls, out),
+                    _ => {}
+                }
+            }
+        }
+        for f in &self.funcs {
+            walk::walk_stmts(&f.body, &mut |s| {
+                if let Stmt::Foreign {
+                    calls: Some(calls), ..
+                } = s
+                {
+                    listed(calls, &mut out);
+                }
+            });
+            walk::body_exprs(&f.body, &mut |e| {
+                if let Expr::IfaceCall { name, .. } = e {
+                    out.insert(name.as_str());
+                }
+                if let Expr::Lambda { body, .. } = e {
+                    walk::walk_stmts(body, &mut |s| {
+                        if let Stmt::Foreign {
+                            calls: Some(calls), ..
+                        } = s
+                        {
+                            listed(calls, &mut out);
+                        }
+                    });
+                }
+            });
+        }
+        for o in &self.opaque {
+            listed(&o.calls, &mut out);
+        }
+        listed(&self.inits, &mut out);
+        out
+    }
+
+    /// Each function of `funcs` `e` calls or uses as a value, with whether it stands inside a
+    /// lambda and how: `call`, `use as a value`, `call inside a lambda`.
+    fn expr_callees(
+        &self,
+        e: &Expr,
+        index: &std::collections::BTreeMap<String, usize>,
+        in_lambda: bool,
+        f: &mut dyn FnMut(usize, bool, &'static str),
+    ) {
+        let found = match e {
+            Expr::Call { name, .. } => index.get(name).map(|&j| (j, "call")),
+            Expr::Method { x, name, .. } => index
+                .get(&format!("{}.{name}", receiver_type_name(x.t())))
+                .map(|&j| (j, "call")),
+            Expr::FuncRef { name, recv, .. } => {
+                let key = match recv {
+                    Some(r) => format!("{}.{name}", receiver_type_name(r.t())),
+                    None => name.clone(),
+                };
+                index.get(&key).map(|&j| (j, "use as a value"))
+            }
+            _ => None,
+        };
+        if let Some((j, how)) = found {
+            let how = if in_lambda && how == "call" {
+                "call inside a lambda"
+            } else {
+                how
+            };
+            f(j, in_lambda, how);
+        }
+        if let Expr::Lambda { body, .. } = e {
+            walk::walk_stmts(body, &mut |s| {
+                if let Stmt::Foreign {
+                    calls: Some(calls), ..
+                } = s
+                {
+                    self.foreign_callees(
+                        calls,
+                        index,
+                        &|p| p.is_empty() || p == self.path,
+                        &mut |j, _, how| {
+                            f(
+                                j,
+                                true,
+                                if how == "call" {
+                                    "call inside a lambda"
+                                } else {
+                                    how
+                                },
+                            )
+                        },
+                    );
+                }
+                walk::stmt_exprs(s, &mut |x| self.expr_callees(x, index, true, f));
+            });
+            return;
+        }
+        walk::children(e, &mut |x| self.expr_callees(x, index, in_lambda, f));
+    }
+
+    /// Each function of `funcs` a call list names, with whether it stands inside a lambda and
+    /// how: `call`, `use as a value`, `call inside a lambda`.
+    fn foreign_callees(
+        &self,
+        calls: &[CallRef],
+        index: &std::collections::BTreeMap<String, usize>,
+        own_module: &dyn Fn(&str) -> bool,
+        f: &mut dyn FnMut(usize, bool, &'static str),
+    ) {
+        for c in calls {
+            match c {
+                CallRef::Func { path, name, .. } if own_module(path) => {
+                    if let Some(&j) = index.get(name) {
+                        f(j, false, "call");
+                    }
+                }
+                CallRef::Method {
+                    path, recv, name, ..
+                } if own_module(path) => {
+                    if let Some(&j) = index.get(&format!("{recv}.{name}")) {
+                        f(j, false, "call");
+                    }
+                }
+                CallRef::Ref {
+                    path, recv, name, ..
+                } if own_module(path) => {
+                    let key = if recv.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{recv}.{name}")
+                    };
+                    if let Some(&j) = index.get(&key) {
+                        f(j, false, "use as a value");
+                    }
+                }
+                CallRef::Lambda { calls, .. } => {
+                    self.foreign_callees(calls, index, own_module, &mut |j, _, how| {
+                        f(
+                            j,
+                            true,
+                            if how == "call" {
+                                "call inside a lambda"
+                            } else {
+                                how
+                            },
+                        )
+                    })
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Every opaque function named once, and by no function of `funcs`.

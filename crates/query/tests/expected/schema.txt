@@ -11,6 +11,8 @@ param{func: node, index: int, name: string, t: type}
     every parameter; the receiver of a method at index -1
 result{func: node, index: int, name: string, t: type}
     every result type
+raises{func: node, t: type}
+    every extern type a function lists in raises: what its raise statements and the functions it calls raise, outside its results
 stmt{id: node, func: node, kind: string, op: string, pos: string, line: int, parent: node}
     every statement; func the declared function holding it, parent the node it sits in, op an assign's operator
 expr{id: node, func: node, kind: string, t: type, stmt: node, parent: node, slot: string, index: int, op: string, name: string, value: string, x: node, y: node}
@@ -49,7 +51,7 @@ cfg_next{from: node, to: node}
 entry{func: node, node: node}
     the first statement of a body (a function or a function literal)
 exit{func: node, node: node}
-    every return of a body and every statement that falls off its end
+    every return or raise of a body, every statement calling a function that lists raises, and every statement that falls off its end
 dominates{a: node, b: node}
     every path from the entry to b passes a; a dominates itself
 postdominates{a: node, b: node}

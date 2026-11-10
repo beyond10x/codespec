@@ -35,6 +35,7 @@ handles its target best:
 | `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
 | `codespec-read-c` | Rust | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
 | `codespec-write-c` | Rust | C11 with the header-only runtime `codespec_rt.h` | shipped |
+| `codespec-write-cir` | Rust | a copy of the module, which `codespec-run-cir` runs with the `cir/1` evaluator | shipped |
 | `codespec-read-java` | Java | javac's attributed trees | shipped |
 | `codespec-read-groovy` | Java | the Groovy 2.4 compiler and its static type checker | shipped |
 

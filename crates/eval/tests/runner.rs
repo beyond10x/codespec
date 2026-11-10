@@ -157,6 +157,24 @@ fn a_module_holding_a_foreign_statement_is_refused_naming_the_function_and_nothi
     );
 }
 
+/// The kit case `stmt-raise` holds `raise` in `Check`: the evaluator stops at a raise as at a
+/// `foreign` statement, so the writer refuses the function by name at the raise's position, and
+/// `stmt.raise` is left out of the claim.
+#[test]
+fn a_module_holding_a_raise_is_refused_naming_the_function_and_stmt_raise_is_unclaimed() {
+    let bytes = std::fs::read(kit().join("cases/stmt-raise/case.cir.json")).unwrap();
+    let out = work("write-raise");
+    let o = write(&bytes, &out);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(!out.exists(), "nothing is written");
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        err.contains("Check (case.go:12)") && err.contains("raise"),
+        "{err}"
+    );
+    assert!(UNCLAIMED.iter().any(|(id, _)| *id == "stmt.raise"));
+}
+
 #[test]
 fn the_runner_exits_1_with_the_stop_and_2_on_calls_that_do_not_fit() {
     let foreign = kit().join("cases/stmt-foreign");

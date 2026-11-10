@@ -171,6 +171,38 @@ fn a_block_fault_stops_the_run_blocked_with_no_receiver() {
     );
 }
 
+/// A session call that reaches a `raise` stops the run like any stop that is not a panic: the
+/// session's later calls never run, a fault the run never reached is summarized before the stop,
+/// and the stop of kind `raise` stays the last line.
+#[test]
+fn a_session_call_that_reaches_a_raise_stops_the_run_with_summaries_before_the_stop() {
+    let m = Module::from_json(
+        &std::fs::read(repo("conformance/cases/stmt-raise/case.cir.json")).unwrap(),
+    )
+    .unwrap();
+    let s = session(
+        r#"{"format": "codespec-session/1", "calls": [
+            {"func": "Check", "args": ["7"]},
+            {"func": "Check", "args": ["-1"]},
+            {"func": "Check", "args": ["0"]}
+        ]}"#,
+    );
+    let run = trace(&m, &s, &[r#"stmt_raise.Check#0.then.0.x:1=panic "boom""#]);
+    let stop = run.stop.expect("a raise stops the run");
+    assert_eq!(stop.kind.name(), "raise");
+    assert_eq!(
+        lines(&run.stdout),
+        [
+            r#"{"format":"codespec-eval-trace/1","module":"stmt_raise"}"#,
+            r#"{"event":"call","n":1,"func":"Check","args":["7"]}"#,
+            r#"{"event":"return","n":1,"results":["7"]}"#,
+            r#"{"event":"call","n":2,"func":"Check","args":["-1"]}"#,
+            r#"{"event":"summary","fault":"stmt_raise.Check#0.then.0.x","nth":1,"do":"panic","outcome":"not reached","updates":0}"#,
+            r#"{"event":"stop","n":2,"kind":"raise","node":"stmt_raise.Check#0.then.0","pos":"case.go:12","reason":"raise of java.lang.IllegalArgumentException.IllegalArgumentException: it leaves every caller up to the framework, which the evaluator does not run"}"#,
+        ]
+    );
+}
+
 /// The acceptance fixture: `Count` binds the error of `strconv.Atoi` to `_`; with that call
 /// faulted, the trace reports `dropped at` the statement that drops it.
 #[test]

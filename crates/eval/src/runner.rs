@@ -9,7 +9,7 @@
 //!
 //! The writer reads one `cir/1` module on standard input strictly and writes it unchanged, in its
 //! canonical encoding, to `<out dir>/module.cir.json` ([`MODULE_FILE`]). It refuses a module
-//! holding a `foreign` statement or a variable with a foreign initializer: exit 1, nothing
+//! holding a `foreign` statement, a `raise` or a variable with a foreign initializer: exit 1, nothing
 //! written, one line per refusal on standard error, `<function> (<pos>): <reason>` ([`refusals`]).
 //! A module it cannot read is refused the same way. It reads no facts: a module with or without
 //! them is copied as it is.
@@ -52,6 +52,12 @@ pub const UNCLAIMED: &[(&str, &str)] = &[
         "stmt.foreign",
         "A foreign statement keeps source whose meaning cir/1 does not give; the evaluator stops \
          when it reaches one, so the writer refuses a function holding one.",
+    ),
+    (
+        "stmt.raise",
+        "A raise leaves the function and every caller up to the framework that started it, which \
+         the evaluator does not run; it stops when it reaches one, so the writer refuses a \
+         function holding one, and the kit case's calls never reach it.",
     ),
 ];
 
@@ -100,12 +106,17 @@ impl std::fmt::Display for Refusal {
     }
 }
 
+/// Each `foreign` statement under `v` as (pos, lang, reason), and each `raise` as (pos, "", "").
 fn foreign_in(v: &Value, out: &mut Vec<(String, String, String)>) {
     match v {
         Value::Object(o) => {
-            if o.get("k").and_then(Value::as_str) == Some("foreign") {
-                let s = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-                out.push((s("pos"), s("lang"), s("reason")));
+            let s = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            match o.get("k").and_then(Value::as_str) {
+                Some("foreign") => out.push((s("pos"), s("lang"), s("reason"))),
+                Some("raise") if o.contains_key("x") => {
+                    out.push((s("pos"), String::new(), String::new()))
+                }
+                _ => {}
             }
             for x in o.values() {
                 foreign_in(x, out);
@@ -118,7 +129,8 @@ fn foreign_in(v: &Value, out: &mut Vec<(String, String, String)>) {
 
 const STOPS: &str = "the evaluator stops there";
 
-/// What the writer refuses in `m`: each `foreign` statement, by the function holding it, and each
+/// What the writer refuses in `m`: each `foreign` statement and each `raise`, by the function
+/// holding it, and each
 /// variable whose initializer is foreign source, in module order.
 pub fn refusals(m: &Module) -> Vec<Refusal> {
     let doc: Value = serde_json::from_str(&m.to_json()).expect("a module is JSON");
@@ -128,10 +140,18 @@ pub fn refusals(m: &Module) -> Vec<Refusal> {
         let mut found = Vec::new();
         foreign_in(&v["body"], &mut found);
         for (pos, lang, reason) in found {
+            let reason = if lang.is_empty() {
+                format!(
+                    "raise: it leaves every caller up to the framework, which the evaluator \
+                     does not run; {STOPS}"
+                )
+            } else {
+                format!("foreign {lang} statement: {reason}; {STOPS}")
+            };
             out.push(Refusal {
                 name: f.key(),
                 pos,
-                reason: format!("foreign {lang} statement: {reason}; {STOPS}"),
+                reason,
             });
         }
     }

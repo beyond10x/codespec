@@ -4,13 +4,13 @@ import "strings"
 
 // The writer's claim: every feature whose conformance case it writes and codespec-run-go runs to
 // the case's expected output (the acceptance test of adapters/rust-run); less the features whose
-// case it refuses: a union, which Go has no form for.
+// case it refuses: a union, which Go has no form for, and a raise, which it has no mapping for.
 var (
 	claimFeatures = []string{
 		"assign.*", "decl.*", "expr.*", "fact.*", "intrinsic.*", "op.*", "sem.*", "stmt.*", "type.*",
 		"unop.*",
 	}
-	claimNot = []string{"decl.union"}
+	claimNot = []string{"decl.union", "stmt.raise"}
 )
 
 // describe is the writer's codespec-adapter/1 manifest, written by hand in the canonical

@@ -285,7 +285,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Conformance",
-        label: "Evaluator conforms to the kit",
+        label: "Evaluator writer conforms to the kit",
         detail: "codespec conform --lang cir --role writer copies every case of the kit with codespec-write-cir and runs it with the evaluator through codespec-run-cir; it claims every feature but the two it gives a reason for, stmt.foreign, which it refuses, and intrinsic.append, whose case passes.",
         status: "shipped",
         evidence: Some("website/data/conformance/writer-cir.json::conforms"),
@@ -481,7 +481,11 @@ mod tests {
         };
         for key in ["lede", "description"] {
             let text = product["product"][key].as_str().unwrap();
-            check(&format!("product.json {key} writers"), &written(text), &writers);
+            check(
+                &format!("product.json {key} writers"),
+                &written(text),
+                &writers,
+            );
         }
         let steps = product["sections"][0]["steps"].as_array().unwrap();
         let write_step = steps.iter().find(|s| s["label"] == "write").unwrap();
@@ -503,7 +507,13 @@ mod tests {
         let labels: Vec<&str> = CAPABILITIES.iter().map(|c| c.label).collect();
         for (role, noun, names) in [("read", "reader", &readers), ("write", "writer", &writers)] {
             for n in names {
-                let program = format!("`codespec-{role}-{}`", n.to_lowercase());
+                // The adapter's program is named by its `lang`, not the column's display name.
+                let lang = crate::support::LANGUAGES
+                    .iter()
+                    .find(|(name, _)| name == n)
+                    .map(|(_, lang)| *lang)
+                    .unwrap_or_else(|| panic!("{n}: not a language of the support matrix"));
+                let program = format!("`codespec-{role}-{lang}`");
                 for (place, text) in [
                     ("docs/index.md", &index),
                     ("docs/concepts/pipeline.md", &pipeline),

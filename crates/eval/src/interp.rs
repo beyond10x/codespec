@@ -1472,6 +1472,19 @@ impl<'m> Interp<'m> {
                     format!("{reason} ({lang}: `{src}`)"),
                 ));
             }
+            Stmt::Raise { x, .. } => {
+                let what = match x.t() {
+                    Type::Extern { path, name, .. } => format!("{path}.{name}"),
+                    _ => "a value".to_string(),
+                };
+                return Err(self.halt(
+                    StopKind::Raise,
+                    node,
+                    format!(
+                        "raise of {what}: it leaves every caller up to the framework, which the evaluator does not run"
+                    ),
+                ));
+            }
         }
         Ok(Flow::Next)
     }

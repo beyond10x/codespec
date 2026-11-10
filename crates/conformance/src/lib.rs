@@ -37,6 +37,7 @@
 //! |---|---|---|
 //! | `decl.union` | nothing: Go has no tagged union | the Rust reader, for an enum whose variants carry fields |
 //! | `expr.zero` | a literal, `0` or `""`; a struct literal that sets no field | the Java reader beside an error or a false comma-ok; the Rust reader for a type without a literal; the C reader for a struct literal of zeros, `(struct T){0}` (`expr-zero-struct`) |
+//! | `stmt.raise` | nothing it reads as one: Go has no statement that leaves a function with a value of another package's type to the framework that started it; the case's `panic` is a reference only, and its calls never reach it | the Java reader, for a `throw` of a jar's unchecked exception in a method an entry names |
 //! | `intrinsic.sorted_keys` | a loop and `sort.Strings` or `sort.Ints`, as the case's Go source sorts; the reader reads `slices.Sorted(maps.Keys(m))` as `sorted_keys` over integer keys only, since Go orders strings by byte and `sorted_keys` by UTF-16 code unit | the Java reader, for a loop over a TreeMap's keySet |
 //! | `type.unit` | an empty tuple for a call of a function without results | the Rust and Java readers |
 //!
@@ -775,7 +776,7 @@ impl Walk {
                 }
             }
             Stmt::Return { results, .. } => self.exprs(results)?,
-            Stmt::Expr { x, .. } => self.expr(x)?,
+            Stmt::Expr { x, .. } | Stmt::Raise { x, .. } => self.expr(x)?,
             Stmt::Send { chan, x, .. } => {
                 self.expr(chan)?;
                 self.expr(x)?;

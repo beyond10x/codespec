@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "go",
     "version": "0.6.1",
-    "manifest_sha256": "b4b8e281c62260efbe8f16c36ecb3bee607b376dadafe509424fad805867aa16"
+    "manifest_sha256": "3c5fffe1b3f90bf039e0280f90cb075d61f0d1f45309ee361064e0b29f62bb5e"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "d45a627082ec14e6ec81967472a247933ff2b2395a7ff9924dde55df84731945"
+    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
   },
   "corpus": {
-    "sha256": "c336aa027bc992ac15fca95e2cc0e38efa7ebb76bc4d3f6b91027b8001482580"
+    "sha256": "595ff47ff0b1e252bf798f65ffc4148ade6df03a6cd00425505a7d296792337c"
   },
   "codespec": "0.6.1",
   "features": [
@@ -864,6 +864,18 @@
       "detail": "the module does not use stmt.lookup_else outside a foreign statement"
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "step": 3,
+      "reason": "subject_missing",
+      "detail": "the module does not use stmt.raise outside a foreign statement"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -1102,7 +1114,7 @@
     "claimed": 115,
     "pass": 115,
     "fail": 0,
-    "refused_unclaimed": 12,
+    "refused_unclaimed": 13,
     "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0

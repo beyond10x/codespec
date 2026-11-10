@@ -1528,6 +1528,7 @@ impl<'s> Assembly<'s> {
                 })
                 .collect(),
             results,
+            raises: Vec::new(),
             body: stmts,
             doc: String::new(),
             pos: pos_of(self.src, n),

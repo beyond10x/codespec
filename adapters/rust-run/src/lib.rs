@@ -333,11 +333,17 @@ fn rust_name(go: &str) -> String {
     }
 }
 
+/// `name` without the `r#` a raw identifier keeps from the source, as the Rust writer's `unraw`
+/// takes it off before it names a function.
+fn unraw(name: &str) -> &str {
+    name.strip_prefix("r#").unwrap_or(name)
+}
+
 // The Rust writer's `snake` (`adapters/rust/src/write.rs`), copied; `the_snake_mapping_is_the_writers`
 // holds the two equal.
 /// `OrderID` → `order_id`, `PendingOrders` → `pending_orders`, `HTTPServer` → `http_server`.
 fn snake(name: &str) -> String {
-    let chars: Vec<char> = name.chars().collect();
+    let chars: Vec<char> = unraw(name).chars().collect();
     let mut out = String::new();
     for (i, &c) in chars.iter().enumerate() {
         if c.is_uppercase() {

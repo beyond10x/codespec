@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "go",
     "version": "0.6.1",
-    "manifest_sha256": "6bbc827de76a27bcb396ab9cea6db989da8ce66545678593a3bc683c5fbbb249"
+    "manifest_sha256": "a2c5637c8168f5fdfee7be4d29455dd17040d176912194454d567d2e034bfaf7"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "d45a627082ec14e6ec81967472a247933ff2b2395a7ff9924dde55df84731945"
+    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
   },
   "codespec": "0.6.1",
   "features": [
@@ -820,6 +820,17 @@
       ]
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "reason": "refused",
+      "detail": "codespec-write-go: case.go:12: function Check: raise has no Go mapping: the writer does not write leaving a function, and every caller up to the framework, by a raised value"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -1071,7 +1082,7 @@
     "claimed": 126,
     "pass": 126,
     "fail": 0,
-    "refused_unclaimed": 1,
+    "refused_unclaimed": 2,
     "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0

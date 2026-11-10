@@ -188,8 +188,24 @@ public final class ReaderTest {
         cases.add(() -> t.formsRefused("Nesting.java", "a class nested in a nested class"));
         names.add("project_a_nested_interface_is_refused_at_its_line");
         cases.add(() -> t.formsRefused("Nesting.java", "nested interface"));
-        names.add("project_an_exception_mapper_is_refused_once_at_its_class");
+        names.add("project_an_exception_mapper_without_provider_is_refused_once_at_its_class");
         cases.add(() -> t.formsRefused("Mapper.java", "ExceptionMapper"));
+        names.add("project_a_provider_exception_mapper_is_an_exception_mapper_entry_on_its_exception");
+        cases.add(t::projectAProviderExceptionMapperIsAnExceptionMapperEntryOnItsException);
+        names.add("project_an_instanceof_in_an_exception_mapper_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Mapper.java", "instanceof"));
+        names.add("project_a_cast_of_the_exception_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Mapper.java", "cast"));
+        names.add("project_a_throw_of_a_jar_exception_in_an_entry_is_a_raise_listed_in_raises");
+        cases.add(t::projectAThrowOfAJarExceptionInAnEntryIsARaiseListedInRaises);
+        names.add("project_a_throw_in_a_method_no_entry_names_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Orders.java", "no entry names"));
+        names.add("project_a_call_of_a_method_that_raises_is_refused_at_its_line");
+        cases.add(() -> t.formsRefused("Orders.java", "which raises"));
+        names.add("project_a_path_parameter_of_an_entry_package_code_calls_is_refused_where_printed");
+        cases.add(() -> t.formsRefused("Orders.java", "printed where Java prints a null one"));
+        names.add("project_the_forms_modules_are_canonical_cir_1");
+        cases.add(t::projectTheFormsModulesAreCanonicalCir1);
         names.add("project_a_second_constructor_whose_function_name_is_taken_is_refused");
         cases.add(() -> t.formsRefused("Box.java", "a second function named NewBox2"));
         names.add("project_a_static_field_set_other_than_by_a_literal_or_a_jar_call_of_constants_is_refused");
@@ -1370,6 +1386,60 @@ public final class ReaderTest {
         List<String> want = new ArrayList<>(formsMarkers().keySet());
         got.sort(null);
         check(got.equals(want), "refusals at " + got + ", markers at " + want);
+    }
+
+    /**
+     * {@code Mapper.Errors} implements {@code ExceptionMapper<Exception>} and carries {@code
+     * @Provider}: Quarkus calls its {@code toResponse} with what a resource method raises, so the
+     * module has an {@code exception-mapper} entry naming it, on {@code java.lang.Exception.Exception}
+     * (the extern type's path, a jar class's qualified name, then its name), and
+     * neither the class nor its annotation is refused.
+     */
+    private void projectAProviderExceptionMapperIsAnExceptionMapperEntryOnItsException() throws Exception {
+        Map<String, Object> doc = forms().get("forms");
+        boolean found = false;
+        for (Object e : list(doc.get("entries"))) {
+            found |= same(e, "{\"kind\":\"exception-mapper\",\"func\":\"Errors.toResponse\",\"on\":\"java.lang.Exception.Exception\"}");
+        }
+        check(found, "no exception-mapper entry on Errors.toResponse: " + Json.write(doc.get("entries")).replaceAll("\\s+", " "));
+        List<String> at = refusalPositions(doc);
+        int provider = lineOf(testdata.resolve("project-forms/src/main/java/forms/Mapper.java"), "@Provider");
+        int cls = lineOf(testdata.resolve("project-forms/src/main/java/forms/Mapper.java"), "class Errors");
+        check(!at.contains("Mapper.java:" + provider) && !at.contains("Mapper.java:" + cls), "Errors refused: " + at);
+        check(funcByKeyOrNull(doc, "Errors.toResponse") != null, "Errors.toResponse was not read");
+    }
+
+    /**
+     * {@code Orders.get} and {@code Orders.create} are http entries throwing a jar's unchecked
+     * exceptions: each throw is a {@code raise} of the constructed value, and each function lists
+     * what it raises in {@code raises}, sorted by path, then name. {@code id}, the path parameter
+     * {@code {id}} no package code passes, is printed without a refusal: the framework hands it the
+     * segment it matched.
+     */
+    private void projectAThrowOfAJarExceptionInAnEntryIsARaiseListedInRaises() throws Exception {
+        Map<String, Object> doc = forms().get("forms");
+        Map<String, Object> get = funcByKey(doc, "Orders.get");
+        check(same(get.get("raises"), "[{\"k\":\"extern\",\"path\":\"jakarta.ws.rs.WebApplicationException\",\"name\":\"WebApplicationException\"}]"),
+            "Orders.get raises " + Json.write(get.get("raises")));
+        String body = Json.write(get.get("body")).replaceAll("\\s+", "");
+        check(body.contains("{\"k\":\"raise\",\"x\":{\"k\":\"extern\",\"path\":\"jakarta.ws.rs.WebApplicationException\",\"name\":\"<init>\""),
+            "Orders.get body " + body);
+        check(!body.contains("\"foreign\""), "Orders.get holds a foreign statement: " + body);
+        Map<String, Object> create = funcByKey(doc, "Orders.create");
+        check(same(create.get("raises"), "[{\"k\":\"extern\",\"path\":\"jakarta.ws.rs.NotFoundException\",\"name\":\"NotFoundException\"},"
+            + "{\"k\":\"extern\",\"path\":\"jakarta.ws.rs.WebApplicationException\",\"name\":\"WebApplicationException\"}]"),
+            "Orders.create raises " + Json.write(create.get("raises")));
+        check(!funcByKey(doc, "Orders.twice").containsKey("raises"), "Orders.twice lists raises");
+    }
+
+    /** Each module of the forms fixture, written as the reader writes it, passes the strict reading. */
+    private void projectTheFormsModulesAreCanonicalCir1() throws Exception {
+        for (Map.Entry<String, Map<String, Object>> m : forms().entrySet()) {
+            Path doc = work.resolve(m.getKey() + ".forms.json");
+            Files.writeString(doc, Json.write(m.getValue()), StandardCharsets.UTF_8);
+            Process p = new ProcessBuilder(codespec.toString(), "validate", "--canonical", doc.toString()).inheritIO().start();
+            check(p.waitFor() == 0, "codespec validate --canonical failed on " + m.getKey());
+        }
     }
 
     private static Map<String, Object> funcByKeyInReport(Map<String, Object> report, String key) {

@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "rust",
     "version": "0.6.1",
-    "manifest_sha256": "2cd11ae4da45755086b1ce7c79f9cd4589245f003e929d8c728f4d53167565ed"
+    "manifest_sha256": "3f7ab4aca86dc6b55c3e4bcfd8d1e866527f6cea3bebe088e727f4d77d3f2078"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "d45a627082ec14e6ec81967472a247933ff2b2395a7ff9924dde55df84731945"
+    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
   },
   "codespec": "0.6.1",
   "features": [
@@ -868,6 +868,17 @@
       ]
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "reason": "refused",
+      "detail": "Check (case.go:12): raise: the Rust writer has no mapping for leaving a function by a raised value"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -1134,7 +1145,7 @@
     "claimed": 105,
     "pass": 105,
     "fail": 0,
-    "refused_unclaimed": 22,
+    "refused_unclaimed": 23,
     "pass_unclaimed": 0,
     "untested": 0,
     "boundary_fail": 0

@@ -4,11 +4,11 @@
     "role": "writer",
     "lang": "cir",
     "version": "0.6.1",
-    "manifest_sha256": "1ebad032efa2adc72a717a87e0d94b2ab77feb58b03a0b7c9cc6afa80b3f2aeb"
+    "manifest_sha256": "3c3852a03564830daed5dcb91f86f0fab36f142bcf25d984c9c1bf5472905126"
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "d45a627082ec14e6ec81967472a247933ff2b2395a7ff9924dde55df84731945"
+    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
   },
   "codespec": "0.6.1",
   "features": [
@@ -820,6 +820,17 @@
       ]
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "reason": "refused",
+      "detail": "codespec-write-cir: refused Check (case.go:12): raise: it leaves every caller up to the framework, which the evaluator does not run; the evaluator stops there"
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -1071,7 +1082,7 @@
     "claimed": 125,
     "pass": 125,
     "fail": 0,
-    "refused_unclaimed": 1,
+    "refused_unclaimed": 2,
     "pass_unclaimed": 1,
     "untested": 0,
     "boundary_fail": 0

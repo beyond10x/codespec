@@ -58,6 +58,7 @@ features left unclaimed, and why:
 | `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write |
 | `stmt-lookup-else` | `stmt.lookup_else` | the reader never produces it: `Map.get` of a value that is not a reference is refused (an absent key gives null), and `containsKey` is not read |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
+| `stmt-raise` | `stmt.raise` | read only in a project, in a function an entry names (Projects and Quarkus); a kit case is a package read with no entry, so its module is written by hand |
 | `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |
 | `type-array-float` | `type.array` | a Java array's length belongs to the object, not to its type: an array is read as a slice |
 | `unop-deref` | `unop.deref` | Java has no pointer to a local; an object reference is dereferenced implicitly |
@@ -181,12 +182,13 @@ module keeps, and refuses at its line the forms it cannot keep (`testdata/projec
 | a field of a class of another package of the project | — | every read and write: the object is an `extern` here, whose fields are not part of the module, and a write Java makes to the caller's object would change a copy |
 | `id` of a class extending `PanacheEntity` | the struct's first field `id`, a pointer nil until `persist()` sets it: the jar declares `public Long id` without an initializer and no constructor assigns it; a class extending `PanacheEntityBase` has only its own fields | a class declaring its own `id`, which hides it; a field of any other jar superclass, whose constructor the reader cannot see |
 | a public field of a class Quarkus manages (`@Entity`, `@MappedSuperclass`, `@Embeddable`, or a Panache entity), read or written anywhere, the class's own methods included | a field, as above | when the class the access goes through, or a managed superclass up to the field's, declares the field's getter or setter by Quarkus's name and descriptor: `get` (`is` for a `boolean`) without parameters and of the field's type, `set` with one parameter of the field's type and no result, then the field's name with its first letter upper-cased, unchanged when its second letter is upper case (`getxCoord`). Quarkus turns the access into a call of it everywhere but in a constructor of that class or of a managed subclass (not in a lambda there) and in the getter or setter itself; a `@Transient` field is not rewritten, a non-public one only into Hibernate's own read or write of the field |
-| a class implementing `ExceptionMapper` | — | the class: the framework calls it with an exception a resource method throws, and `cir/1` has no thrown exception to hand it |
+| a `@Provider` class implementing `ExceptionMapper` of a jar's exception | an `exception-mapper` entry naming its `toResponse`, `on` the extern type it takes as `<path>.<name>` (`java.lang.Exception.Exception`, a jar class's path being its qualified name); `@Provider` is no refusal | a mapper without `@Provider`, without its own `toResponse`, or of a class of the project; in its body, as anywhere, `instanceof` and a cast (`cir/1` has no test or conversion of a runtime type) |
+| `throw new X(…)` of a jar's unchecked exception (`WebApplicationException`) in a method an entry names | `raise` of the constructed value, its type listed in the function's `raises`: Java leaves the method and every caller up to the framework, which hands it to its mapper; the signature the framework calls is unchanged | the throw in any other method, or in one overriding a method of the project, and every call of a method an entry names whose body throws: a caller would have to list what it raises, and so would its callers |
+| a parameter of an http entry named by a template variable `{name}` of its joined path, without an annotation or with `@PathParam` of its own name, printed as it is | the parameter, printed: the framework passes the non-empty segment it matched, converted, never null | the same parameter when a source of the project calls the method, and a template variable with a regular expression (`{id: \d*}`), which may match an empty segment |
 
-A `throw` of an exception outside the package's checked-exception hierarchy (the quickstart's
-`WebApplicationException`) stays refused and `foreign`: `cir/1` has no statement that leaves a
-function by an exception no caller declares, and an error result would change the signature the
-framework calls.
+Any other `throw` of an exception outside the package's checked-exception hierarchy stays refused
+and `foreign`: a package read has no entries, and a checked exception of a jar would have to be
+declared by every caller.
 
 `testdata/quarkus` is a Quarkus 3.27.0 project: one resource with two HTTP methods, a service bean,
 a Panache entity, a REST client interface, a `@Scheduled` method, and a source for each form
@@ -205,25 +207,31 @@ commit `81a58443e92d0080c962f4ef01aa9e6118deb7a5`, read against the class path o
 repository):
 
 - modules: 2 (`org.acme.hibernate.orm.panache.entity`, `org.acme.hibernate.orm.panache.repository`)
-- functions: 17 (the second constructors of `FruitEntity` and `Fruit`)
-- refusals: 13 (25 before the forms of a project read above were mapped and the persistence
-  annotations recorded; 35 before `@Transactional`, `@Produces` and `@Consumes` were recorded)
+- functions: 21 (the second constructors of `FruitEntity` and `Fruit`; each `ErrorMapper` with its
+  constructor and `toResponse`)
+- refusals: 8 (13 before `raise`, the `exception-mapper` entry and path parameters; 25 before the
+  forms of a project read above were mapped and the persistence annotations recorded; 35 before
+  `@Transactional`, `@Produces` and `@Consumes` were recorded)
+- raises: 8 resource functions raise `WebApplicationException`; an `exception-mapper` entry on
+  `java.lang.Exception.Exception` names each `ErrorMapper.toResponse`
 - persistence marks: 8 (`Entity`, `Cacheable` and `Column` in each package, `Id` and
   `GeneratedValue` on the repository's `Fruit.id`)
 
 | Count | Reason |
 |---|---|
-| 9 | throw of `WebApplicationException`, outside the package's checked-exception hierarchy: `cir/1` has no statement that leaves a function by an exception, and an error result would change the signature the framework calls. 8 as before; 1 in `FruitEntityResource.create` was inside an `if` refused whole for its condition (`fruit.id`), which now reads |
-| 2 | `ErrorMapper`, a static nested class implementing `ExceptionMapper`: the framework calls it with the exception a resource method throws, which `cir/1` has no form for |
 | 2 | `fruit.name` in `FruitEntityResource.update`, a field of `Fruit` of the `repository` package: the object is an extern in the `entity` module. The refused `if` holds the throw of line 67 |
+| 2 | `exception instanceof WebApplicationException` in each `ErrorMapper.toResponse`, the `if` refused whole with the cast it holds: `cir/1` has no test of a runtime type |
+| 2 | `exception.getClass().getName()` in each `ErrorMapper.toResponse`: reflection |
+| 2 | `exception.getMessage() != null` in each `ErrorMapper.toResponse`: a jar method's `String` is a `cir/1` string, which has no null to compare with |
 
-The second constructors, the static `LOGGER` fields and the fields of `Fruit` and `PanacheEntity`
-read now, and the persistence annotations are marks, not refusals; the two nested classes are
-refused as exception mappers, no longer as nested classes. No entity declares a getter or setter,
-so no field access is refused as one Quarkus rewrites. At most 10 refusals is out of reach without
-a change of `cir/1`: the 9 throws stay, and so does each `ErrorMapper`, whose `@Provider`
-registration has no entry kind and whose body tests and casts the exception's runtime type and
-calls overloaded jar methods. The 2 field refusals stay while a module holds one package.
+The 9 throws are `raise` now: 8 in resource methods an `http` entry names, and the one in
+`FruitEntityResource.update` inside the `if` refused for `fruit.name`. 6 of them print the path
+parameter `id`, which reads since only the framework passes it. The `ErrorMapper` classes read, and
+their `@Provider` is an `exception-mapper` entry. 2 refusals, the field ones, are out of reach
+while a module holds one package; the 6 in the mappers need a type test and a conversion of an
+extern value, the name of its runtime class, a nullable extern `String`, and, once
+`getClass().getName()` reads, an extern overload (`ObjectNode.put` of a `String` and of an `int`
+in one module), none of which `cir/1` has.
 
 Reproduce with a clone at that commit:
 
@@ -248,7 +256,8 @@ them.
 
 - Every reference parameter of a method is not null. A String or boxed parameter printed as it is,
   by string concatenation or `String.format`, in a method that never compares it with `null`, is
-  refused, since Java would print `null`; every other use of a parameter takes it to hold an object.
+  refused, since Java would print `null`, unless it is a path parameter only the framework passes
+  (Projects and Quarkus); every other use of a parameter takes it to hold an object.
 - A reference field without an initializer that some constructor leaves unassigned holds null
   until assigned. It is a nil pointer, not a refusal: a pointer to its type (`ptr(string)`,
   `ptr(int32)`; a class of the package is a pointer already), whose zero value is `nil`, compared

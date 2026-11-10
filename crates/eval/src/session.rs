@@ -42,7 +42,7 @@
 //! | `update` | `node`, `pos`, `value` | the call a fault answered in ends (returns, panics or the run stops): one per place of memory older than the call that it left changed, its content now, `node` the statement that wrote it last; a write undone before the end is none |
 //! | `tested`, `propagated`, `wrapped`, `dropped` | `node`, `pos`, `fault`, `nth` | an `error` fault's error is compared, returned, formatted or discarded, in that call or a later one |
 //! | `summary` | `fault`, `nth` (`"*"` for a fault of every call never reached), `do`, `outcome`, `updates` | after the call's `update` events; or `not reached` for a fault that never answered, before a `stop` |
-//! | `stop` | `n` (inside a call), `kind`, `node`, `pos`, `reason` | the run stops (crate doc § Stops); the last line |
+//! | `stop` | `n` (inside a call), `kind`, `node`, `pos`, `reason` | the run stops (crate doc § Stops, a `raise` among them), the session's later calls unrun; the last line |
 //!
 //! A value is written as Go source spells it, close enough to read: a string quoted, a struct
 //! `Name{Field: value, …}`, a pointer `&` and what it points to (`&…` for a value it already

@@ -161,7 +161,7 @@
 //! whose conformance case has a hand-written Rust source, `conformance/cases/<case>/rust/case.rs`.
 //! `tests/cases.rs` holds every claim: the source runs as the Go reference does, reads without a
 //! refusal and with its subject, and passed and written as Go runs as the reference does. It claims
-//! 111 of the 120; these stay unclaimed. Each reason says whether it holds of Rust or of this
+//! 111 of the 121; these stay unclaimed. Each reason says whether it holds of Rust or of this
 //! reader only:
 //!
 //! | feature | why |
@@ -169,6 +169,7 @@
 //! | `fact.*` | facts are computed by `codespec pass`, never read |
 //! | `stmt.foreign` | what a reader writes for what it cannot read, not a construct it reads |
 //! | `unop.plus` | Rust: the language has no unary `+` |
+//! | `stmt.raise` | Rust: a `panic!` is no value of another crate's type handed to a framework, and a `Result` is a result; the case's module is written by hand |
 //! | `decl.embedded` | Rust has no struct embedding: every field is named. Its nearest form, `impl Deref<Target = Inner> for Outer`, lets one field's fields and methods be reached through the outer value by auto-deref; this reader refuses an impl of a std trait other than `Display` and so does not read it. Reading it as `embedded` would take mapping that impl and writing each access it makes possible as the explicit path `cir/1` records |
 //! | `decl.variadic`, `expr.spread` | Rust: a function takes a fixed number of arguments (C-variadic `...` exists only on `extern "C"` declarations, and a variadic-looking `println!` is a macro); a slice parameter is a `slice` |
 //! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |

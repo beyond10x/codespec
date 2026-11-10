@@ -432,3 +432,83 @@ fn an_unknown_check_is_refused_by_name() {
     let err = run("no-such-check", &[], &Options::default()).unwrap_err();
     assert!(err.contains("no-such-check"), "{err}");
 }
+
+/// `Serve(mu, n)` locks, raises for a negative `n`, unlocks; `Call(mu, n)` locks, calls `check(n)`,
+/// which raises for a negative `n`, and unlocks; `Fine(mu, n)` locks, raises nothing, unlocks.
+fn raising_locks() -> Module {
+    let mutex =
+        serde_json::json!({"k": "ptr", "elem": {"k": "extern", "path": "sync", "name": "Mutex"}});
+    let int = serde_json::json!({"k": "int", "width": "platform", "signed": true});
+    let exc =
+        serde_json::json!({"k": "extern", "path": "java.lang", "name": "IllegalArgumentException"});
+    let none = serde_json::json!({"k": "tuple", "elems": []});
+    let lock = |name: &str, line: u32| {
+        serde_json::json!({"k": "expr", "pos": format!("s.go:{line}"), "x": {
+        "k": "extern_method", "path": "sync", "type": "Mutex", "name": name,
+        "recv": {"k": "var", "name": "mu", "t": mutex}, "args": [], "t": none}})
+    };
+    let negative = |then: serde_json::Value, line: u32| {
+        serde_json::json!({"k": "if", "pos": format!("s.go:{line}"),
+        "cond": {"k": "binop", "op": "<", "x": {"k": "var", "name": "n", "t": int}, "y": {"k": "lit", "value": "0", "t": int}, "t": {"k": "bool"}},
+        "then": [then]})
+    };
+    let raise = |line: u32| {
+        serde_json::json!({"k": "raise", "pos": format!("s.go:{line}"), "x": {
+        "k": "extern", "path": "java.lang.IllegalArgumentException", "name": "New", "args": [], "t": exc}})
+    };
+    let params = serde_json::json!([{"name": "mu", "t": mutex}, {"name": "n", "t": int}]);
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "store", "path": "example.com/store",
+        "reader": {"language": "java", "name": "test", "version": "0"},
+        "types": [],
+        "funcs": [
+            {"name": "Serve", "exported": true, "params": params, "results": [], "raises": [exc], "pos": "s.go:1",
+             "body": [lock("Lock", 2), negative(raise(4), 3), lock("Unlock", 6)]},
+            {"name": "Call", "exported": true, "params": params, "results": [], "raises": [exc], "pos": "s.go:10",
+             "body": [lock("Lock", 11), {"k": "expr", "pos": "s.go:12", "x": {"k": "call", "name": "check",
+                "args": [{"k": "var", "name": "n", "t": int}], "t": none}}, lock("Unlock", 13)]},
+            {"name": "check", "exported": false, "params": [{"name": "n", "t": int}], "results": [], "raises": [exc], "pos": "s.go:20",
+             "body": [negative(raise(22), 21)]},
+            {"name": "Fine", "exported": true, "params": params, "results": [], "pos": "s.go:30",
+             "body": [lock("Lock", 31), lock("Unlock", 32)]}
+        ],
+        "externs": [
+            {"path": "java.lang.IllegalArgumentException", "name": "New", "params": [], "results": [exc]},
+            {"path": "sync", "name": "Lock", "recv": mutex, "params": [], "results": []},
+            {"path": "sync", "name": "Unlock", "recv": mutex, "params": [], "results": []}
+        ],
+        "layout": ["func:Serve", "func:Call", "func:check", "func:Fine"],
+        "entries": [
+            {"kind": "http", "func": "Serve", "method": "GET", "on": "/serve"},
+            {"kind": "http", "func": "Call", "method": "GET", "on": "/call"}
+        ]
+    });
+    Module::from_json(doc.to_string().as_bytes()).unwrap()
+}
+
+#[test]
+fn lock_without_unlock_finds_a_lock_held_at_a_raise_and_at_a_call_that_raises() {
+    let found = run(
+        "lock-without-unlock",
+        &[raising_locks()],
+        &Options::default(),
+    )
+    .unwrap()
+    .findings;
+    assert_eq!(
+        functions(&found),
+        ["store.Serve", "store.Call"],
+        "{found:#?}"
+    );
+    let notes: Vec<String> = found
+        .iter()
+        .map(|f| serde_json::to_string(&f.evidence).unwrap())
+        .collect();
+    assert!(
+        notes[0].contains("raises at example.com/store/s.go:4"),
+        "{}",
+        notes[0]
+    );
+    assert!(notes[1].contains("check"), "{}", notes[1]);
+    assert!(notes[1].contains("s.go:12"), "{}", notes[1]);
+}

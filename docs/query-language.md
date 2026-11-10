@@ -105,6 +105,7 @@ Relations from the documents (every reader):
 | `module` | `path, name, lang, reader, version` |
 | `func` | `id, module, name, recv, exported, kind` (`func`, `method`, `lambda`, `init`, `opaque`), `pos` |
 | `param`, `result` | `func, index, name, t` |
+| `raises` | `func, t`: each extern type the function lists in `raises` |
 | `stmt` | `id, func, kind, pos, parent` |
 | `expr` | `id, func, kind, t, stmt` plus the kind's fields as columns (`op`, `name`, `value`, `x`, `y`, `args`) |
 | `call` | `site, func, kind, callee, recv, args, pos` (one relation over `call`, `method`, `extern`, `extern_method`, `iface_call`, `call_value` and every `CallRef`) |
@@ -117,8 +118,8 @@ Relations the engine derives per read body:
 
 | relation | meaning |
 |---|---|
-| `cfg_next(a, b)` | control may pass from node `a` to node `b`. Derived from the structured statements: `if`, `for`, `for_range`, `switch`, `break`, `continue`, `return`. `cir/1` has no `goto`, so this is exact. |
-| `entry(f, n)`, `exit(f, n)` | the first node of `f`, and every `return` or fall-off end |
+| `cfg_next(a, b)` | control may pass from node `a` to node `b`. Derived from the structured statements: `if`, `for`, `for_range`, `switch`, `break`, `continue`, `return`, `raise`. `cir/1` has no `goto`, so this is exact. |
+| `entry(f, n)`, `exit(f, n)` | the first node of `f`, and every `return`, `raise` or fall-off end |
 | `dominates(a, b)`, `postdominates(a, b)` | on `cfg_next` |
 | `guards(cond, n, branch)` | `n` runs only when `cond` is `true` (or `false`) |
 | `def(v, n)`, `use(v, n)`, `flows(n1, n2)` | local variables: reaching definitions and def-use on `let`, `var`, `assign` |

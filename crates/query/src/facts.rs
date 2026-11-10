@@ -3,6 +3,7 @@
 //! its cache encoding.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 
 use codespec_model::{CallRef, ChanDir, Expr, FloatBits, IntWidth, Module, Stmt, Type, TypeDecl};
 
@@ -108,6 +109,12 @@ pub const RELATIONS: &[Relation] = &[
         name: "result",
         fields: &[("func", N), ("index", I), ("name", S), ("t", T)],
         about: "every result type",
+        group: Group::Documents,
+    },
+    Relation {
+        name: "raises",
+        fields: &[("func", N), ("t", T)],
+        about: "every extern type a function lists in raises: what its raise statements and the functions it calls raise, outside its results",
         group: Group::Documents,
     },
     Relation {
@@ -262,7 +269,7 @@ pub const RELATIONS: &[Relation] = &[
     Relation {
         name: "exit",
         fields: &[("func", N), ("node", N)],
-        about: "every return of a body and every statement that falls off its end",
+        about: "every return or raise of a body, every statement calling a function that lists raises, and every statement that falls off its end",
         group: Group::Bodies,
     },
     Relation {
@@ -499,6 +506,7 @@ fn stmt_kind(s: &Stmt) -> &'static str {
         Stmt::Continue { .. } => "continue",
         Stmt::Switch { .. } => "switch",
         Stmt::Return { .. } => "return",
+        Stmt::Raise { .. } => "raise",
         Stmt::Expr { .. } => "expr",
         Stmt::Send { .. } => "send",
         Stmt::LookupElse { .. } => "lookup_else",
@@ -520,6 +528,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Continue { pos }
         | Stmt::Switch { pos, .. }
         | Stmt::Return { pos, .. }
+        | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
@@ -707,6 +716,9 @@ struct Builder {
     types: BTreeSet<String>,
     /// Each interface's methods as (name, signature), by its id.
     ifaces: BTreeMap<String, BTreeSet<(String, String)>>,
+    /// Every function of the modules that lists `raises`, as (module path, receiver type name or
+    /// `""`, name): a call of one leaves the caller there too.
+    raising: Rc<BTreeSet<(String, String, String)>>,
 }
 
 impl Builder {
@@ -1071,6 +1083,9 @@ struct Flow {
     index: HashMap<String, usize>,
     succ: Vec<BTreeSet<usize>>,
     exits: BTreeSet<usize>,
+    /// The body's module path and the functions that raise (`Builder::raising`).
+    own: String,
+    raising: Rc<BTreeSet<(String, String, String)>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1129,6 +1144,11 @@ impl Flow {
         cont: Option<Next>,
     ) -> Next {
         let me = self.node(format!("{func}#{path}"));
+        // A call of a function that raises, outside a function literal, may leave the body at
+        // this statement as a `raise` does (`codespec check`'s "may leave through").
+        if calls_raising(st, &self.own, &self.raising) {
+            self.edge(me, Next::End);
+        }
         match st {
             Stmt::If {
                 then, otherwise, ..
@@ -1199,7 +1219,7 @@ impl Flow {
                     self.edge(me, next);
                 }
             }
-            Stmt::Return { .. } => self.edge(me, Next::End),
+            Stmt::Return { .. } | Stmt::Raise { .. } => self.edge(me, Next::End),
             Stmt::Break { .. } => self.edge(me, brk.unwrap_or(Next::End)),
             Stmt::Continue { .. } => self.edge(me, cont.unwrap_or(Next::End)),
             Stmt::LookupElse { then, .. } => {
@@ -1211,6 +1231,71 @@ impl Flow {
         }
         Next::Node(me)
     }
+}
+
+/// Whether `st` itself (its nested blocks and function literals not included) calls, or uses
+/// as a value, a function of `raising`; a `foreign` statement by its call list.
+fn calls_raising(st: &Stmt, own: &str, raising: &BTreeSet<(String, String, String)>) -> bool {
+    if raising.is_empty() {
+        return false;
+    }
+    let path = |p: &str| {
+        if p.is_empty() {
+            own.to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    let has = |p: String, r: &str, n: &str| raising.contains(&(p, r.to_string(), n.to_string()));
+    if let Stmt::Foreign {
+        calls: Some(list), ..
+    } = st
+    {
+        return list.iter().any(|c| match c {
+            CallRef::Func { path: p, name, .. } => has(path(p), "", name),
+            CallRef::Method {
+                path: p,
+                recv,
+                name,
+                ..
+            }
+            | CallRef::Ref {
+                path: p,
+                recv,
+                name,
+                ..
+            } => has(path(p), recv, name),
+            _ => false,
+        });
+    }
+    fn each(e: &Expr, hit: &mut dyn FnMut(&Expr) -> bool, found: &mut bool) {
+        if *found || matches!(e, Expr::Lambda { .. }) {
+            return;
+        }
+        *found |= hit(e);
+        codespec_model::walk::children(e, &mut |c| each(c, hit, found));
+    }
+    let rt = |e: &Expr| codespec_model::receiver_type_name(e.t()).to_string();
+    let mut hit = |e: &Expr| match e {
+        Expr::Call { name, .. } => has(own.to_string(), "", name),
+        Expr::Method { x, name, .. } => has(own.to_string(), &rt(x), name),
+        Expr::Extern { path: p, name, .. } => has(path(p), "", name),
+        Expr::ExternMethod {
+            path: p,
+            type_name,
+            name,
+            ..
+        } => has(path(p), type_name, name),
+        Expr::FuncRef { name, recv, .. } => has(
+            own.to_string(),
+            &recv.as_ref().map(|r| rt(r)).unwrap_or_default(),
+            name,
+        ),
+        _ => false,
+    };
+    let mut found = false;
+    codespec_model::walk::stmt_exprs(st, &mut |e| each(e, &mut hit, &mut found));
+    found
 }
 
 /// A set of small indices.
@@ -1407,7 +1492,11 @@ impl Walker<'_> {
         for (k, st) in stmts.iter().enumerate() {
             self.stmt(st, &format!("{base}{k}"), parent);
         }
-        let mut flow = Flow::default();
+        let mut flow = Flow {
+            own: self.m.path.clone(),
+            raising: self.b.raising.clone(),
+            ..Flow::default()
+        };
         let entry = flow.seq(&self.func.clone(), stmts, base, Next::End, None, None);
         let n = flow.ids.len();
         let succ: Vec<Vec<usize>> = flow
@@ -1589,7 +1678,7 @@ impl Walker<'_> {
                     self.def(name, &id);
                 }
             }
-            Stmt::Expr { x, .. } => e(self, x, "x", None),
+            Stmt::Expr { x, .. } | Stmt::Raise { x, .. } => e(self, x, "x", None),
             Stmt::If {
                 cond,
                 then,
@@ -2163,7 +2252,23 @@ impl FactBase {
     ) -> FactBase {
         let mut order: Vec<&Module> = modules.iter().collect();
         order.sort_by(|a, b| (label(a), &a.name).cmp(&(label(b), &b.name)));
-        let mut b = Builder::default();
+        let mut b = Builder {
+            raising: Rc::new(
+                modules
+                    .iter()
+                    .flat_map(|m| {
+                        m.funcs.iter().filter(|f| !f.raises.is_empty()).map(|f| {
+                            let recv = f
+                                .recv
+                                .as_ref()
+                                .map(|r| codespec_model::receiver_type_name(&r.t).to_string());
+                            (m.path.clone(), recv.unwrap_or_default(), f.name.clone())
+                        })
+                    })
+                    .collect(),
+            ),
+            ..Builder::default()
+        };
         let mut links = Vec::new();
         let mut index: HashMap<(String, String, String), String> = HashMap::new();
         let mut has: BTreeSet<(String, &str)> = BTreeSet::new();
@@ -2269,6 +2374,10 @@ impl FactBase {
                     positions: HashMap::new(),
                 };
                 w.params(&id, f.recv.as_ref(), &f.params, &f.results);
+                for t in &f.raises {
+                    let t = w.b.ty(m, t);
+                    w.b.add("raises", vec![s(&id), s(t)]);
+                }
                 w.body(&id, &f.body, "", &id);
                 if f.body
                     .iter()
@@ -2300,7 +2409,9 @@ impl FactBase {
                     b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
                 }
                 let site = b.unknown(&id, &id, at(m, &o.pos), format!("{OPAQUE}{}", o.reason));
-                for rel in ["stmt", "expr", "param", "result", "entry", "exit", "makes"] {
+                for rel in [
+                    "stmt", "expr", "param", "result", "raises", "entry", "exit", "makes",
+                ] {
                     b.add_wild(rel, &[("func", s(&id))], site);
                 }
                 b.add_wild("contains", &[("outer", s(&id))], site);

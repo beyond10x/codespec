@@ -48,7 +48,7 @@
 //!    `read_only` lists, take no parameters and return one printable value.
 //!
 //! A function none of this reaches (a parameter of another kind, a receiver with neither, a
-//! method without a value whose receiver shows no state) is listed in [`Plan::skipped`] with the
+//! method without a value whose receiver shows no state, a function listing `raises`) is listed in [`Plan::skipped`] with the
 //! reason; `codespec-eval-diff` fails when any is.
 //!
 //! For a probe with a fallible mutator, [`Plan::setup`] also holds its **setup function**
@@ -921,6 +921,15 @@ pub fn plan(m: &Module) -> Result<Plan, String> {
     let mut setups: Vec<Value> = Vec::new();
     for f in m.funcs.iter().filter(|f| f.exported) {
         if constructors.contains(&f.key()) {
+            continue;
+        }
+        if !f.raises.is_empty() {
+            skipped.push((
+                f.key(),
+                "it raises: a call reaching the raise leaves every caller up to a framework none \
+                 of the runners is, and the writers refuse the function"
+                    .to_string(),
+            ));
             continue;
         }
         let plain = f.recv.is_none()

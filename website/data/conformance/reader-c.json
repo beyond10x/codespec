@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.6.1",
-    "sha256": "4c8139ba7ce9158afe6a0ce44a12998f00e76ee9953523bbfbbce46ef3766eda"
+    "sha256": "22609a84ba7766eaff5461944a53216bb96073fe9b28c0b1801b92865fb19dbb"
   },
   "corpus": {
     "sha256": "4c70736e86a5b821ccc25402d7648e04c9a9bcc4019f558ba0f3bfb7827999ea"
@@ -764,6 +764,12 @@
       ]
     },
     {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "stmt.return",
       "claimed": true,
       "verdict": "pass",
@@ -991,7 +997,7 @@
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,
-    "untested": 24,
+    "untested": 25,
     "boundary_fail": 0
   },
   "conforms": true
