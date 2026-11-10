@@ -285,7 +285,7 @@ to `main` only.
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.
 3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec`,
-   `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust), `codespec-write-c` and the runner `codespec-run-c` (C, built in Rust) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
+   `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust), `codespec-write-c` and the runner `codespec-run-c` (C, built in Rust), the evaluator's `codespec-write-cir` and `codespec-run-cir` (which a reader's conformance run calls for a case the Go writer refuses) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
    `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, smoke-tests
    each (the runners on the kit case `op-add`, written as Go, as Rust and as C); its job `kit` runs `task conformance-kit`, which packs `conformance/` and
    `schemas/cir-1.features.json` into `codespec-conformance-<tag>.tar.gz` and runs `codespec conform`

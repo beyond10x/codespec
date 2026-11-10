@@ -144,7 +144,23 @@ A reader is checked by what it produces, run through a writer this repository tr
 2. The reader reads it: exit 0, a valid module, the same bytes on a second read.
 3. The module contains the case's subject feature at least once outside a `foreign`
    statement, so a reader cannot pass `stmt.for` by refusing every loop.
-4. `codespec pass` and the Go writer write it; `codespec-run-go` prints `expected.txt`.
+4. `codespec pass` and the Go writer write it; `codespec-run-go` prints `expected.txt`. When the
+   Go writer refuses the passed module (it has no form for a tagged union, `decl.union`), the
+   evaluator judges it instead: `codespec-write-cir` writes it and `codespec-run-cir` runs the
+   calls, both looked up in `--adapters` when a case first needs them (a run whose every case
+   the Go writer writes does not; a case that needs them while they are missing is an error of
+   the run, never a verdict). Its output equal to `expected.txt` is a pass, a different one
+   fails with the first differing line. A stop is never a pass, and its kind decides the rest:
+   - `foreign`, `no handler`, `no body` and `unsupported` say that `cir/1` or the evaluator does
+     not give the program's meaning (`docs/evaluator.md` E4): `refused`, with the stop as the
+     reason, unless a line printed before it differs from `expected.txt`, which fails;
+   - `panic`, `blocked` and `step budget` are the program running wrong, as a Go runner that
+     crashes is: `run_failed`, claimed or not.
+
+   `codespec-write-cir` refusing the module (a `foreign` statement) is `refused` with its
+   message. The feature's entry then names the evaluator's program that judged it:
+   `"runner": "codespec-run-cir"` when it ran, `"runner": "codespec-write-cir"` when the writer
+   refused, so nothing ran.
 
 A claimed feature whose source the reader turns into `foreign` fails at step 3.
 
@@ -168,6 +184,11 @@ A claimed feature whose source the reader turns into `foreign` fails at step 3.
   "conforms": false
 }
 ```
+
+A reader's feature entry may carry `runner`, optional: the evaluator's program that judged the
+case the entry reports (its first case that did not pass, else any of its cases) at step 4,
+`codespec-run-cir` when it ran the module and `codespec-write-cir` when it refused it; without it
+the Go runner did, as in every report written before the field.
 
 `conforms` is true when every claimed feature passes and every boundary case passes. The report
 binds the adapter manifest and the kit by digest, so a report is evidence for exactly that adapter
