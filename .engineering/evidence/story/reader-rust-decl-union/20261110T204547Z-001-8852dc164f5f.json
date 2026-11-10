@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-10T20:45:47Z",
+  "actor": "human:timo",
+  "artifact": "story:reader-rust-decl-union",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust; codespec conform --lang rust --role reader: 112 claimed, 112 pass",
+    "reference": "18b6db7d"
+  }
+}

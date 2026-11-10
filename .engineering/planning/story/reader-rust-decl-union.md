@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:reader-rust-decl-union
 kind: story
-status: active
+status: implemented
 title: The Rust reader claims decl.union
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T20:07:54Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T20:07:54Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-10T20:45:47Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: the Rust reader claims decl.union
 
