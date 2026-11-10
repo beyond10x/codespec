@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.8.0
+
 ### Added
 
 - `codespec-read-rust` claims `decl.union`, 112 of the 121 features a reader can claim, up from

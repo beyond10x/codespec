@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "java",
-    "version": "0.7.0",
-    "manifest_sha256": "28d1ed4df01769e7a7d60fb29b8b3033a9ced615cac5132f58c91ee211efa65c"
+    "version": "0.8.0",
+    "manifest_sha256": "6e716dd48229c39246c18c46023afba950cb6beaa16678083fa8fa2a6ad150b2"
   },
   "kit": {
-    "version": "0.7.0",
-    "sha256": "5aa72311cecdc696942ce9b15815a9cf57a96d60fb95be483fffabb867f5e912"
+    "version": "0.8.0",
+    "sha256": "7084313f70a660884c736e4a92532b4f6bdad32ec499fe7b582b53d40a118137"
   },
   "corpus": {
     "sha256": "63f695919382b40416adad8ae7de196d1a441c105fe879d57c2d9b80e05a6441"
   },
-  "codespec": "0.7.0",
+  "codespec": "0.8.0",
   "features": [
     {
       "id": "assign.add",
