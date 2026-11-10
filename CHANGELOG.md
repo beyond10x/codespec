@@ -4,6 +4,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-rust` claims `decl.union`, 112 of the 121 features a reader can claim, up from
+  111. The kit case `decl-union` has a Rust source, an enum of struct variants, and the reader
+  check runs its module through the evaluator, as the Go writer has no form for a union.
+
 ## 0.7.0
 
 ### Added

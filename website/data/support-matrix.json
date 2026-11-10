@@ -1116,7 +1116,7 @@
         "decl.newtype": "verified",
         "decl.struct": "verified",
         "decl.type_params": "verified",
-        "decl.union": "refused",
+        "decl.union": "verified",
         "decl.var": "verified",
         "decl.variadic": "refused",
         "expr.binop": "verified",

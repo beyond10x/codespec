@@ -10,7 +10,9 @@
 //! 2. reads with no refusal, the same bytes twice, and uses the subject outside a `foreign`
 //!    statement;
 //! 3. passed by `codespec pass`, written by `codespec write --lang go` and run by
-//!    `codespec-run-go` on `calls.json`, prints `expected.txt`.
+//!    `codespec-run-go` on `calls.json`, prints `expected.txt`; for a subject the Go writer's
+//!    `--describe` does not claim (`decl.union`), once it refuses the module, `codespec eval` on
+//!    `calls.json` prints it, as the reader check's step 4 has the evaluator judge it.
 //!
 //! A `rust/case.rs` exists for exactly the claimed subjects: one for an unclaimed subject would be a
 //! source nothing holds.
@@ -92,6 +94,20 @@ fn go_bin() -> &'static Path {
             "go build the Go writer and runner",
         );
         bin
+    })
+}
+
+/// What `codespec-write-go --describe` claims.
+fn go_writer_claims() -> &'static BTreeSet<String> {
+    static C: OnceLock<BTreeSet<String>> = OnceLock::new();
+    C.get_or_init(|| {
+        let bytes = ok(
+            Command::new(go_bin().join("codespec-write-go")).arg("--describe"),
+            "codespec-write-go --describe",
+        );
+        manifest_from_json(&bytes)
+            .expect("a strict manifest")
+            .claimed()
     })
 }
 
@@ -246,7 +262,7 @@ fn hold(case: &Case) -> Result<(), String> {
             .arg(&passed),
         "codespec pass",
     )?;
-    run(
+    let wrote = run(
         Command::new(&codespec)
             .args(["write", "--lang", "go"])
             .arg(&passed)
@@ -255,7 +271,20 @@ fn hold(case: &Case) -> Result<(), String> {
             .arg("--adapters")
             .arg(go_bin()),
         "codespec write --lang go",
-    )?;
+    );
+    if wrote.is_err() && !go_writer_claims().contains(&case.subject) {
+        // As the reader check's step 4: what the Go writer has no form for, the evaluator runs.
+        let from_eval = run(
+            Command::new(&codespec)
+                .arg("eval")
+                .arg(&passed)
+                .arg("--calls")
+                .arg(&calls),
+            "codespec eval on the module the Go writer refuses",
+        )?;
+        return same("the evaluator's run of the module", &expected, &from_eval);
+    }
+    wrote?;
     let from_go = run(
         Command::new(go_bin().join("codespec-run-go"))
             .arg("-build")

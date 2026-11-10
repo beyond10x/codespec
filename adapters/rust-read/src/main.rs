@@ -41,7 +41,6 @@ fn manifest() -> AdapterManifest {
         ]),
         not: list(&[
             "decl.embedded",
-            "decl.union",
             "decl.variadic",
             "expr.extern",
             "expr.extern_method",
