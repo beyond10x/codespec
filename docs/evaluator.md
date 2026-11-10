@@ -123,8 +123,10 @@ ends a run that does not return (wasmi's fuel). `Stop` carries the node id and r
 - **The kit is the test suite.** `codespec eval <case.cir.json> --calls calls.json` prints the
   harness encoding, and every case must print `expected.txt`.
 - **One more `codespec conform` runner.** An identity writer `codespec-write-cir` copies the
-  module and `codespec-run-cir` evaluates it. `conform` looks programs up by language name, so
-  `codespec conform --lang cir --role writer` needs no change.
+  module and `codespec-run-cir` evaluates it, calling a function the calls file names as Go
+  spells it (`Echo`) by the name the module gives it (`echo`), as the Go writer exports it.
+  `conform` looks programs up by language name, so `codespec conform --lang cir --role writer`
+  needs no change.
 - **Differential oracle.** Inputs generated per function from its `cir/1` signature (Flourine's
   per-function differential fuzzing) go as one `codespec-calls/1` file to the evaluator and to the
   Go, Rust, Java, Groovy and, once it lands, C runners. On a difference, the evaluator's trace

@@ -34,14 +34,15 @@ public final class Main {
     /**
      * The reader's claim: the features its output for {@code examples/ledger} uses and the subject
      * of every conformance kit case with a {@code java/Case.java}, which the reader reads, the passes
-     * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}
-     * ({@code ReaderTest}; {@code codespec-conformance manifest --read} over the ledger and the kit
-     * modules checks every claimed feature is used).
+     * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}, or,
+     * for a module the Go writer refuses ({@code decl.union}), {@code codespec-write-cir} writes and
+     * {@code codespec-run-cir} runs ({@code ReaderTest}; {@code codespec-conformance manifest
+     * --read} over the ledger and the kit modules checks every claimed feature is used).
      */
     static final String[] CLAIM = {
         "assign.add", "assign.and", "assign.div", "assign.mul", "assign.or", "assign.rem",
         "assign.shl", "assign.shr", "assign.sub", "assign.xor", "decl.enum", "decl.interface",
-        "decl.struct", "decl.type_params", "decl.var", "decl.variadic", "expr.binop", "expr.call",
+        "decl.struct", "decl.type_params", "decl.union", "decl.var", "decl.variadic", "expr.binop", "expr.call",
         "expr.call_value", "expr.const", "expr.conv", "expr.errvar", "expr.field", "expr.float",
         "expr.func_ref", "expr.global", "expr.iface_call", "expr.index", "expr.instantiate",
         "expr.intrinsic", "expr.lambda", "expr.lit", "expr.make", "expr.method", "expr.nil",
