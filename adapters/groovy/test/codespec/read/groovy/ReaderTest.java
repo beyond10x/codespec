@@ -226,6 +226,8 @@ public final class ReaderTest {
         cases.put("the_conventions_reach_a_nested_closure_this_x_service_a_field_initializer_an_inherited_field_and_static_gorm",
             t::conventionsReachEveryPlaceACallIsListed);
         cases.put("a_static_field_and_a_field_of_a_nested_class_are_set_by_no_convention", t::conventionsDoNotReachWhatSpringDoesNotSet);
+        cases.put("a_service_field_call_of_a_method_with_a_default_parameter_names_it_with_and_without_the_last_argument",
+            t::conventionNamesAMethodWithADefaultParameter);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -2534,6 +2536,98 @@ public final class ReaderTest {
             wrong.add("the field's getter at " + getter + ": no dynamic call of pick in " + Json.write(viaGetter));
         }
         check(wrong.isEmpty(), "calls a convention names a target of where Spring sets no field: " + wrong);
+    }
+
+    /**
+     * A parameter with a default value leaves the service-field convention its one target. The
+     * method is refused at its declaration, since Groovy adds an overload without the parameter,
+     * and is an opaque function of the document; a call through a {@code def} field names it
+     * whether it passes the last argument or leaves it out. Where the name is an overload's, the
+     * call names the numbered function the document holds. Two methods of the name that both
+     * take as many arguments as the call passes stay a call that names no target.
+     */
+    private void conventionNamesAMethodWithADefaultParameter() throws Exception {
+        Path app = work.resolve("convention-defaults");
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=rates\n");
+        write(app.resolve("grails-app/services/rates/RateService.groovy"), "package rates\n\nclass RateService {\n"
+            + "    int plain(int a, int b, int c) {\n        return a + b + c\n    }\n\n"
+            + "    int padded(int a, int b, int c = 1) {\n        return a + b + c\n    }\n\n"
+            + "    def loose(a, b, Map c = [:]) {\n        return c\n    }\n\n"
+            + "    private int hidden(int a, int b, int c = base()) {\n        return a + b + c\n    }\n\n"
+            + "    int base() {\n        return 2\n    }\n\n"
+            + "    int over(String s) {\n        return 1\n    }\n\n"
+            + "    int over(int a, int b, int c = 1) {\n        return a + b + c\n    }\n\n"
+            + "    int both(int a, int b = 0) {\n        return a + b\n    }\n\n"
+            + "    int both(String s, int n = 0) {\n        return n\n    }\n}\n");
+        write(app.resolve("grails-app/services/rates/WholeService.groovy"), "package rates\n\nclass WholeService {\n"
+            + "    def scratch\n\n"
+            + "    int sum(int a, int b, int c = 1) {\n        return a + b + c\n    }\n}\n");
+        String svc = "grails-app/services/rates/CallerService.groovy";
+        write(app.resolve(svc), "package rates\n\nclass CallerService {\n"
+            + "    def rateService\n    def wholeService\n\n"
+            + "    void all(List<Integer> ns) {\n"
+            + "        rateService.plain(1, 2, 3)\n"
+            + "        rateService.padded(4, 5, 6)\n"
+            + "        rateService.padded(7, 8)\n"
+            + "        rateService.loose('a', 'b', [k: 1])\n"
+            + "        rateService.loose('a', 'b')\n"
+            + "        rateService.loose(k: 2, 'b', [:])\n"
+            + "        rateService.hidden(1, 2, 4)\n"
+            + "        rateService.hidden(1, 2)\n"
+            + "        rateService.over(1, 2, 5)\n"
+            + "        rateService.over(1, 2)\n"
+            + "        rateService.over('x')\n"
+            + "        rateService.both(9)\n"
+            + "        rateService.both(9, 10)\n"
+            + "        wholeService.sum(1, 2, 6)\n"
+            + "        wholeService.sum(1, 2)\n"
+            + "        ns.each { n -> rateService.padded(n, n, n) }\n"
+            + "    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        List<String> wrong = new ArrayList<>();
+        for (String key : List.of("RateService.padded", "RateService.loose", "RateService.hidden", "RateService.over2",
+            "RateService.both", "RateService.both2", "WholeService.sum")) {
+            if (opaqueOrNull(doc, key) == null) {
+                wrong.add("the document holds no opaque function " + key);
+            }
+        }
+        String[][] named = {
+            {"no default, three arguments", "rateService.plain(1, 2, 3)", "RateService", "plain"},
+            {"a default, every argument passed", "rateService.padded(4, 5, 6)", "RateService", "padded"},
+            {"a default, left out", "rateService.padded(7, 8)", "RateService", "padded"},
+            {"untyped parameters, every argument passed", "rateService.loose('a', 'b', [k: 1])", "RateService", "loose"},
+            {"untyped parameters, the default left out", "rateService.loose('a', 'b')", "RateService", "loose"},
+            {"named arguments, which are one map", "rateService.loose(k: 2, 'b', [:])", "RateService", "loose"},
+            {"a private method, every argument passed", "rateService.hidden(1, 2, 4)", "RateService", "hidden"},
+            {"a private method, the default left out", "rateService.hidden(1, 2)", "RateService", "hidden"},
+            {"a numbered overload, every argument passed", "rateService.over(1, 2, 5)", "RateService", "over2"},
+            {"a numbered overload, the default left out", "rateService.over(1, 2)", "RateService", "over2"},
+            {"the overload that is read", "rateService.over('x')", "RateService", "over"},
+            {"a service refused as a whole, every argument passed", "wholeService.sum(1, 2, 6)", "WholeService", "sum"},
+            {"a service refused as a whole, the default left out", "wholeService.sum(1, 2)", "WholeService", "sum"},
+        };
+        for (String[] n : named) {
+            String pos = shapesPos(app, svc, n[1]);
+            refsAre(doc, n[0], pos, List.of(methodBy("", n[2], n[3], SERVICE_FIELD, pos)), wrong);
+        }
+        String each = shapesPos(app, svc, "ns.each");
+        List<Object> inClosure = refsAt(doc, each);
+        boolean padded = false;
+        for (Object ref : inClosure) {
+            padded |= same(ref, methodBy("", "RateService", "padded", SERVICE_FIELD, each));
+        }
+        if (!padded) {
+            wrong.add("in a closure, every argument passed, at " + each + ": " + Json.write(inClosure).replaceAll("\\s*\\n\\s*", " "));
+        }
+        for (String text : List.of("rateService.both(9)", "rateService.both(9, 10)")) {
+            String pos = shapesPos(app, svc, text);
+            refsAre(doc, "two methods that both take the arguments", pos, List.of(value("groovy dynamic call of both", pos)), wrong);
+        }
+        check(wrong.isEmpty(), "calls of a method with a default parameter: " + wrong);
+        Path out = work.resolve("convention-defaults.json");
+        Files.writeString(out, Json.write(doc), StandardCharsets.UTF_8);
+        Object[] valid = codespecPrints("convention-defaults.validate.txt", "validate", "--canonical", out.toString());
+        check(valid[0].equals(0), "codespec validate --canonical refused the read");
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----
