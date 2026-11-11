@@ -92,12 +92,14 @@ import org.codehaus.groovy.ast.stmt.TryCatchStatement;
 import org.codehaus.groovy.ast.stmt.WhileStatement;
 import org.codehaus.groovy.classgen.ReturnAdder;
 import org.codehaus.groovy.classgen.asm.sc.StaticTypesTypeChooser;
+import org.codehaus.groovy.control.ClassNodeResolver;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilationUnit;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.Phases;
 import org.codehaus.groovy.control.SourceUnit;
 import org.codehaus.groovy.control.messages.ExceptionMessage;
+import org.codehaus.groovy.control.messages.Message;
 import org.codehaus.groovy.control.messages.SimpleMessage;
 import org.codehaus.groovy.control.messages.SyntaxErrorMessage;
 import org.codehaus.groovy.syntax.SyntaxException;
@@ -119,7 +121,10 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * StaticTypesTypeChooser}), else its declared type; a local or parameter has its declared type, a
  * {@code def} local the type the checker infers for its declaration. A type-checking error does not
  * fail the read: the statement holding it becomes {@code foreign}. A file whose imports or classes
- * do not resolve is refused as a whole at the first such line; the others are read.
+ * do not resolve is refused as a whole at the first such line; the others are read. A class the
+ * JVM cannot load ({@code NoClassDefFoundError}, {@code ClassFormatError}) does not resolve, nor
+ * does the class of an annotation member's constant or a name in a static scope that is no
+ * variable, static field or class: none of them ends the read.
  *
  * <p>What it maps, as the Java reader ({@code adapters/java}) maps the same construct:
  *
@@ -157,6 +162,17 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * groovy-semantics}, {@code type}, {@code unresolved} and {@code unsupported}, and in a Grails
  * application {@code gorm} and {@code spring}.
  *
+ * <p>Code that is not read still calls what it calls (README.md "Call lists"): every {@code
+ * foreign} statement carries the {@code calls} it makes, and a method or constructor refused at its
+ * declaration, or with its class, is an {@code opaque} function of the module with the reason and
+ * the calls of its body ({@link CallLister}). A call names the target the type checker resolved,
+ * and no target where it resolved none. A refused overload is a function of its own, numbered
+ * from 2 ({@link #nameOpaque}). In a Grails application two conventions name a target the type
+ * checker does not, and the call ref says {@code by} which ({@link #byConvention}): a GORM method
+ * on a domain class is a method of {@code grails.gorm}, {@code grails-gorm}, and a call through a
+ * field Spring sets by its name to a service that is read is one of that service's method, {@code
+ * grails-service-field}.
+ *
  * <p>The Grails layer ({@link #read(Grails, List)}, README.md "Grails 2.5.6 applications"): the
  * domain classes and services of the application are read, every other file of it compiled
  * resolve-only, with the jars of {@code CODESPEC_GROOVY_CLASSPATH} on the classpath and their
@@ -165,9 +181,14 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * <name>}; a domain metadata static is refused, {@code gorm: mapping metadata <name>}; a domain
  * property of a reference type without an initializer is {@code JvmTypes.unassignedField} of its
  * type, used as the Java reader uses such a field; a field Spring autowires is refused, {@code spring:
- * injected dependency}, and a call through it is {@code foreign}; a method {@code
- * TransactionalTransform} rewrote is refused, {@code unsupported: grails transform}. Two classes
- * with one simple name are both refused.
+ * injected dependency}, and a call through it is {@code foreign}. No local AST transformation of a
+ * jar is run, Grails's {@code TransactionalTransform} among them: a class is read as its source
+ * says. Two classes with one simple name are both refused.
+ *
+ * <p>Whatever fails while one file is compiled, type-checked or read refuses that file as a whole
+ * with what failed, or leaves a resolve-only file out, and the other files are read ({@link
+ * #run}); a failure that names no file refuses every file left. Short of a {@link Failure} of the
+ * input itself the document is written.
  */
 public final class Reader {
     /** Why a directory could not be read at all. */
@@ -327,8 +348,6 @@ public final class Reader {
     private final Set<FieldNode> injected = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Domain properties of a reference type that hold null until set: {@code ptr(T)}. */
     private final Set<FieldNode> nullable = Collections.newSetFromMap(new IdentityHashMap<>());
-    /** Methods the Grails {@code TransactionalTransform} rewrote: refused, never read. */
-    private final Set<MethodNode> transformed = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private Reader() {}
 
@@ -372,10 +391,142 @@ public final class Reader {
         for (Path f : app.services) {
             r.serviceFiles.add(app.relative(f));
         }
-        ClassLoader parent = JavaSources.compile(app.java, classpath, new Hidden(Reader.class.getClassLoader()));
-        return r.run(app.read(), app.resolveOnly, classpath, parent);
+        URL[] jars = new URL[classpath.size()];
+        for (int i = 0; i < jars.length; i++) {
+            try {
+                jars[i] = classpath.get(i).toAbsolutePath().normalize().toUri().toURL();
+            } catch (java.net.MalformedURLException e) {
+                throw new Failure(classpath.get(i) + ": " + e.getMessage());
+            }
+        }
+        // The classes javac compiles from src/java are defined under a loader that sees the jars
+        // they were compiled against: one that extends a class of a jar is defined with it. The
+        // loader holds the jars open and is closed when the read is over.
+        java.net.URLClassLoader onClasspath = new java.net.URLClassLoader(jars, new Hidden(Reader.class.getClassLoader()));
+        try {
+            ClassLoader parent = JavaSources.compile(app.java, classpath, onClasspath);
+            return r.run(app.read(), app.resolveOnly, classpath, parent);
+        } finally {
+            try {
+                onClasspath.close();
+            } catch (IOException e) {
+                // The read is over, its document built or its failure thrown; a jar that does
+                // not close changes neither.
+            }
+        }
     }
 
+    /** What failed while one file was compiled, type-checked or read: the file is taken out for it. */
+    private static final class Blame {
+        /** The file, or null when the compiler was working on none it names. */
+        final Path file;
+        final int line;
+        /** The refusal's category and what follows it. */
+        final String category;
+        final String detail;
+        /** The class-loading error behind it, which may name a class that cannot be used, or null. */
+        final LinkageError linkage;
+
+        Blame(Path file, int line, String category, String detail, Throwable error) {
+            this.file = file;
+            this.line = line;
+            this.category = category;
+            this.detail = detail;
+            this.linkage = error instanceof LinkageError ? (LinkageError) error : null;
+        }
+
+        String reason() {
+            return category + ": " + detail;
+        }
+    }
+
+    /**
+     * The blame of {@code file} for {@code e}, thrown while {@code who} worked on it: the
+     * exception's class and message, then those of its first cause when it has one. A class that
+     * cannot be found or loaded, {@code e} or a cause of it, is {@code unresolved}; anything else
+     * is {@code unsupported}.
+     */
+    private static Blame thrown(Path file, int line, Throwable e, String who) {
+        if (e instanceof LinkageError) {
+            return new Blame(file, line, UNRESOLVED, text(e), e);
+        }
+        boolean missing = false;
+        Throwable root = e;
+        for (int depth = 0; depth < 32; depth++) {
+            missing |= root instanceof ClassNotFoundException || root instanceof LinkageError;
+            if (root.getCause() == null || root.getCause() == root) {
+                break;
+            }
+            root = root.getCause();
+        }
+        String said = root == e ? text(e) : text(e) + ": " + text(root);
+        return missing ? new Blame(file, line, UNRESOLVED, said, e) : new Blame(file, line, UNSUPPORTED, who + " failed: " + said, e);
+    }
+
+    /**
+     * The compilation succeeded and a file failed after it, in the type checker or while a class
+     * was read: the read starts again without each file blamed, or without the class one names.
+     */
+    private static final class Restart extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        final transient List<Blame> blames;
+
+        Restart(List<Blame> blames) {
+            super(blames.get(0).reason(), null, false, false);
+            this.blames = blames;
+        }
+    }
+
+    /**
+     * Groovy's message when its reflection on a class fails for a class that one names
+     * ({@code Java5.configureClassNode}): the first is found and cannot be used.
+     */
+    private static final String UNABLE_TO_LOAD = "Unable to load class ";
+
+    /** A compiler's or an exception's text on one line, with no control or format character. */
+    private static String oneLine(String s) {
+        return printable(s.replaceAll("\\s+", " ").trim());
+    }
+
+    private static String text(Throwable e) {
+        return oneLine(String.valueOf(e));
+    }
+
+    /**
+     * Whether {@code e} ends the run as it does without the reader: the JVM is out of a resource.
+     * A stack overflow is {@code codespec.jvm.Bounded}'s refusal of a source nested too deep.
+     */
+    private static boolean fatal(Throwable e) {
+        return e instanceof VirtualMachineError || codespec.jvm.Bounded.overflow(e);
+    }
+
+    /**
+     * Whether {@code e} names the class that cannot be used and that class was not known yet: it is
+     * now, {@code unloadable} holding why, and the next compilation does not resolve it, so each file
+     * that names it is refused, or left out, at the line that does.
+     */
+    private static boolean nowUnloadable(LinkageError e, Map<String, String> unloadable) {
+        String m = String.valueOf(e.getMessage());
+        if (!m.startsWith(UNABLE_TO_LOAD)) {
+            return false;
+        }
+        String cls = m.substring(UNABLE_TO_LOAD.length()).trim();
+        int sp = cls.indexOf(' ');
+        if (sp >= 0) {
+            cls = cls.substring(0, sp);
+        }
+        return !cls.isEmpty() && unloadable.putIfAbsent(cls, text(e)) == null;
+    }
+
+    /**
+     * The read, as a loop that ends. Each round compiles the files that are left and reads them. A
+     * round that fails takes out at least one file, refused as a whole at a line with the reason
+     * or, resolve-only, left out, or learns of one more class that cannot be loaded; a round that
+     * fails and can blame no file refuses every file that is left, with that one reason. The next
+     * round starts from nothing, so no file is both read and refused. Short of a {@link Failure}
+     * of the input itself, the document is written.
+     */
     private Map<String, Object> run(List<Path> files, List<Path> resolveOnly, List<Path> classpath, ClassLoader parent)
         throws Failure {
         List<Path> remaining = new ArrayList<>();
@@ -388,29 +539,333 @@ public final class Reader {
         }
         Set<String> disabled = globalTransforms(classpath);
         Map<String, String> packages = new HashMap<>();
+        Map<String, String> unloadable = new HashMap<>();
+        notUtf8(remaining);
+        Reader r = this;
         while (true) {
-            CompilationUnit cu = newUnit(classpath, disabled, parent);
+            try {
+                return r.attempt(files, remaining, resolve, packages, unloadable, classpath, disabled, parent);
+            } catch (Restart u) {
+                // What r read so far is dropped; the files refused before it stay refused.
+                Reader next = new Reader();
+                next.app = app;
+                next.domainFiles.addAll(domainFiles);
+                next.serviceFiles.addAll(serviceFiles);
+                next.refusals.addAll(r.refusals.subList(0, r.fileRefusals));
+                next.takeOut(u.blames, List.of(), remaining, resolve, unloadable);
+                r = next;
+            }
+        }
+    }
+
+    /** How many of {@link #refusals} refuse a whole file: those made before any class is read. */
+    private int fileRefusals;
+    /** The class being type-checked or read, or null. */
+    private ClassNode reading;
+
+    /**
+     * A read file that is not UTF-8 text is refused as a whole at its first line and not compiled:
+     * Groovy's compiler reads each byte that is no UTF-8 as a replacement character, so what it
+     * compiles is not what the file says.
+     */
+    private void notUtf8(List<Path> remaining) throws Failure {
+        for (Path p : new ArrayList<>(remaining)) {
+            try {
+                Files.readString(p, StandardCharsets.UTF_8);
+            } catch (java.nio.charset.CharacterCodingException e) {
+                remaining.remove(p);
+                addRefusal(label(p) + ":1", p.getFileName().toString(), UNSUPPORTED + ": the file is not UTF-8 text");
+            } catch (IOException e) {
+                throw new Failure(p + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Compile {@code remaining} and {@code resolve} and read {@code remaining}, taking out each file
+     * that fails to compile and compiling again. {@link Restart} when a file fails once the
+     * compilation is over; the lists and maps are the caller's and keep what was found.
+     */
+    private Map<String, Object> attempt(List<Path> files, List<Path> remaining, List<Path> resolve, Map<String, String> packages,
+        Map<String, String> unloadable, List<Path> classpath, Set<String> disabled, ClassLoader parent) throws Failure {
+        while (true) {
+            if (remaining.isEmpty()) {
+                return module(app != null ? app.name : packageOf(files, packages));
+            }
+            Compilation cu = newUnit(classpath, disabled, parent, unloadable);
             for (Path f : remaining) {
                 cu.addSource(f.toFile());
             }
             for (Path f : resolve) {
                 cu.addSource(f.toFile());
             }
+            Throwable escaped = null;
+            boolean compiled = false;
             try {
                 cu.compile(Phases.CANONICALIZATION);
-                typeCheck(cu, remaining);
-                break;
+                compiled = cu.blames.isEmpty();
             } catch (CompilationFailedException e) {
-                packagesOf(cu, packages);
-                Set<Path> refused = unresolvedFiles(cu, remaining, resolve);
-                remaining.removeAll(refused);
-                resolve.removeAll(refused);
-                if (remaining.isEmpty()) {
-                    return module(app != null ? app.name : packageOf(files, packages));
+                // Its errors are in the compilation's collector.
+            } catch (RuntimeException | Error e) {
+                if (fatal(e)) {
+                    throw e;
+                }
+                escaped = e;
+            }
+            packagesOf(cu, packages);
+            if (!compiled) {
+                List<Blame> blames = located(cu, unloadable);
+                blames.addAll(cu.blames);
+                takeOut(blames, cu.unblamed(escaped), remaining, resolve, unloadable);
+                continue;
+            }
+            fileRefusals = refusals.size();
+            try {
+                typeCheck(cu, remaining);
+                return module(app != null ? app.name : packageName());
+            } catch (Restart e) {
+                throw e;
+            } catch (RuntimeException | Error e) {
+                if (fatal(e)) {
+                    throw e;
+                }
+                // The reader itself failed, on the class it was reading or on none.
+                Unit u = reading == null ? null : unitOf.get(reading);
+                throw new Restart(List.of(thrown(u == null ? null : Path.of(u.su.getName()).toAbsolutePath().normalize(),
+                    reading == null ? 1 : firstLine(reading), e, "the reader")));
+            }
+        }
+    }
+
+    /**
+     * Take out what a failed round blames: a class a loading error names no longer resolves, and
+     * each file blamed is refused as a whole at its line or, resolve-only, left out, once. When
+     * that takes out nothing, no file can be blamed: every file that is left is refused at its
+     * first line with the one reason, {@code nowhere} holding what else the compiler said.
+     */
+    private void takeOut(List<Blame> blames, List<String> nowhere, List<Path> remaining, List<Path> resolve,
+        Map<String, String> unloadable) throws Failure {
+        boolean progress = false;
+        Set<String> said = new java.util.LinkedHashSet<>();
+        for (Blame b : blames) {
+            if (b.linkage != null && nowUnloadable(b.linkage, unloadable)) {
+                progress = true;
+            } else if (b.file != null && leaveOut(b.file, b.line, b.reason(), remaining, resolve)) {
+                progress = true;
+            } else {
+                said.add(b.detail);
+            }
+        }
+        if (progress) {
+            return;
+        }
+        said.addAll(nowhere);
+        String reason = UNSUPPORTED + ": no file can be blamed: " + (said.isEmpty() ? "the compilation failed" : String.join("; ", said));
+        for (Path p : remaining) {
+            addRefusal(label(p) + ":1", printable(lineText(p, 1)), reason);
+        }
+        remaining.clear();
+    }
+
+    /**
+     * Take {@code p} out of the compilation for {@code reason} at {@code line}: a read file is
+     * refused as a whole there; a resolve-only file of an application yields nothing. Whether it
+     * was still in the compilation.
+     */
+    private boolean leaveOut(Path p, int line, String reason, List<Path> remaining, List<Path> resolve) throws Failure {
+        if (remaining.remove(p)) {
+            addRefusal(label(p) + ":" + line, printable(lineText(p, line)), reason);
+            return true;
+        }
+        if (!resolve.contains(p)) {
+            return false;
+        }
+        if (app == null) {
+            throw new Failure(label(p) + ":" + line + ": " + reason + " in a file that is compiled but not read");
+        }
+        return resolve.remove(p);
+    }
+
+    /** The line a class begins at: its first annotation's, else its own. */
+    private static int firstLine(ClassNode cn) {
+        int line = cn.getLineNumber();
+        for (AnnotationNode a : cn.getAnnotations()) {
+            if (a.getLineNumber() > 0 && (line <= 0 || a.getLineNumber() < line)) {
+                line = a.getLineNumber();
+            }
+        }
+        return Math.max(line, 1);
+    }
+
+    /** Where Groovy's own classes come from: its jar. */
+    private static final String GROOVY_JAR = location(org.codehaus.groovy.transform.ASTTransformation.class);
+
+    private static String location(Class<?> c) {
+        java.security.CodeSource source = c.getProtectionDomain().getCodeSource();
+        return source == null || source.getLocation() == null ? null : source.getLocation().toString();
+    }
+
+    /** Whether {@code c} is a class of the Groovy jar itself, not of a jar the application names. */
+    private static boolean ofGroovy(Class<?> c) {
+        String from = location(c);
+        return GROOVY_JAR == null || from == null
+            ? c.getClassLoader() == org.codehaus.groovy.transform.ASTTransformation.class.getClassLoader()
+            : GROOVY_JAR.equals(from);
+    }
+
+    /**
+     * A compilation in which the failure of one file does not end the others.
+     *
+     * <p>A class the JVM cannot load is one that does not resolve. Whatever is thrown while the
+     * compiler works on one file or one class, and every error it reports then without a file, is
+     * kept as a {@link Blame} of that file, where Groovy's own compiler lets an {@code Error}
+     * through and turns an exception into an error that names no file. The phase goes on with the
+     * other files and fails at its end, so one round finds every file that fails in that phase.
+     *
+     * <p>A local AST transformation that is no class of the Groovy jar is not run: it is taken off
+     * each class before the compiler works on the class. Groovy's own stay, the one behind a trait
+     * among them.
+     */
+    private static final class Compilation extends CompilationUnit {
+        /** What failed, in the order met. */
+        final List<Blame> blames = new ArrayList<>();
+        /** The errors of the collector that a blame accounts for. */
+        private final Set<Object> blamed = Collections.newSetFromMap(new IdentityHashMap<>());
+
+        Compilation(CompilerConfiguration config, GroovyClassLoader loader, Map<String, String> unloadable) {
+            super(config, null, loader);
+            setClassNodeResolver(new ClassNodeResolver() {
+                @Override
+                public LookupResult findClassNode(String name, CompilationUnit unit) {
+                    if (unloadable.containsKey(name)) {
+                        return null;
+                    }
+                    try {
+                        return super.findClassNode(name, unit);
+                    } catch (LinkageError e) {
+                        // The class file is there and the JVM does not define it: its superclass is
+                        // on no jar (NoClassDefFoundError), or it is a stub without code
+                        // (ClassFormatError). The name does not resolve.
+                        unloadable.put(name, text(e));
+                        return null;
+                    }
+                }
+            });
+        }
+
+        private static Path fileOf(SourceUnit source) {
+            return source == null ? null : Path.of(source.getName()).toAbsolutePath().normalize();
+        }
+
+        /** The line of a blame: the class's first, else the first of the file's classes, else 1. */
+        private static int lineOf(SourceUnit source, ClassNode cn) {
+            if (cn != null) {
+                return firstLine(cn);
+            }
+            int first = 0;
+            if (source != null && source.getAST() != null) {
+                for (ClassNode c : source.getAST().getClasses()) {
+                    int line = firstLine(c);
+                    first = first == 0 ? line : Math.min(first, line);
+                }
+            }
+            return Math.max(first, 1);
+        }
+
+        /** Run one step of a phase on one file or class, keeping what fails in it as a blame of that file. */
+        private void guarded(SourceUnit source, ClassNode cn, Runnable step) {
+            int before = getErrorCollector().getErrorCount();
+            try {
+                step.run();
+            } catch (CompilationFailedException e) {
+                unlocated(source, cn, before);
+                throw e;
+            } catch (RuntimeException | Error e) {
+                if (fatal(e)) {
+                    throw e;
+                }
+                blames.add(thrown(fileOf(source), lineOf(source, cn), e, "the compiler"));
+                // The phase ends with an error, as it does for one the compiler reports itself.
+                Message m = new ExceptionMessage(e instanceof Exception ? (Exception) e : new RuntimeException(e), false, this);
+                blamed.add(m);
+                getErrorCollector().addErrorAndContinue(m);
+            }
+            unlocated(source, cn, before);
+        }
+
+        /** Each error reported since {@code before} that names no file is one of the file being worked on. */
+        private void unlocated(SourceUnit source, ClassNode cn, int before) {
+            for (int i = before; i < getErrorCollector().getErrorCount(); i++) {
+                Message m = getErrorCollector().getError(i);
+                if (!(m instanceof SyntaxErrorMessage) && blamed.add(m)) {
+                    blames.add(new Blame(fileOf(source), lineOf(source, cn), UNSUPPORTED, "compile error: " + said(m), null));
                 }
             }
         }
-        return module(app != null ? app.name : packageName());
+
+        private static String said(Message m) {
+            if (m instanceof ExceptionMessage) {
+                return text(((ExceptionMessage) m).getCause());
+            }
+            if (m instanceof SimpleMessage) {
+                return oneLine(((SimpleMessage) m).getMessage());
+            }
+            return m.getClass().getName();
+        }
+
+        /**
+         * What the compiler said that no blame accounts for: each error without a file reported
+         * outside the work on any one file, and {@code escaped}, what left the compilation, or null.
+         */
+        List<String> unblamed(Throwable escaped) {
+            List<String> out = new ArrayList<>();
+            for (int i = 0; i < getErrorCollector().getErrorCount(); i++) {
+                Message m = getErrorCollector().getError(i);
+                if (!(m instanceof SyntaxErrorMessage) && !blamed.contains(m)) {
+                    out.add("compile error: " + said(m));
+                }
+            }
+            if (escaped != null) {
+                out.add(thrown(null, 1, escaped, "the compiler").detail);
+            }
+            return out;
+        }
+
+        /** Take off {@code cn} every local transformation that is no class of the Groovy jar. */
+        private static void ownTransformsOnly(ClassNode cn) {
+            for (org.codehaus.groovy.control.CompilePhase phase : org.codehaus.groovy.control.CompilePhase.values()) {
+                cn.getTransforms(phase).keySet().removeIf(t -> !ofGroovy(t));
+            }
+        }
+
+        @Override
+        public void applyToSourceUnits(SourceUnitOperation body) throws CompilationFailedException {
+            super.applyToSourceUnits(new SourceUnitOperation() {
+                @Override
+                public void call(SourceUnit source) throws CompilationFailedException {
+                    guarded(source, null, () -> body.call(source));
+                }
+            });
+        }
+
+        @Override
+        public void applyToPrimaryClassNodes(PrimaryClassNodeOperation body) throws CompilationFailedException {
+            super.applyToPrimaryClassNodes(new PrimaryClassNodeOperation() {
+                @Override
+                public void call(SourceUnit source, org.codehaus.groovy.classgen.GeneratorContext context, ClassNode classNode)
+                    throws CompilationFailedException {
+                    guarded(source, classNode, () -> {
+                        ownTransformsOnly(classNode);
+                        body.call(source, context, classNode);
+                    });
+                }
+
+                @Override
+                public boolean needSortedInput() {
+                    return body.needSortedInput();
+                }
+            });
+        }
     }
 
     /**
@@ -444,7 +899,8 @@ public final class Reader {
         return out;
     }
 
-    private static CompilationUnit newUnit(List<Path> classpath, Set<String> disabledGlobals, ClassLoader parent) {
+    private static Compilation newUnit(List<Path> classpath, Set<String> disabledGlobals, ClassLoader parent,
+        Map<String, String> unloadable) {
         CompilerConfiguration config = new CompilerConfiguration();
         config.setSourceEncoding("UTF-8");
         List<String> cp = new ArrayList<>();
@@ -454,7 +910,7 @@ public final class Reader {
         config.setClasspathList(cp);
         config.setDisabledGlobalASTTransformations(new HashSet<>(disabledGlobals));
         GroovyClassLoader loader = new GroovyClassLoader(parent, config);
-        return new CompilationUnit(config, null, loader);
+        return new Compilation(config, loader, unloadable);
     }
 
     /** A read file's name in every position: its path in the Grails application, else its file name. */
@@ -505,73 +961,91 @@ public final class Reader {
         return p.endsWith(".") ? p.substring(0, p.length() - 1) : p;
     }
 
-    private static String packageOf(List<Path> files, Map<String, String> packages) throws Failure {
+    /**
+     * The package of a plain directory every file of which is refused: the module's name. When no
+     * file was parsed far enough to give it there is no document to write, and the read fails
+     * with the refusals on one line.
+     */
+    private String packageOf(List<Path> files, Map<String, String> packages) throws Failure {
         for (Path f : files) {
             String p = packages.get(f.toAbsolutePath().normalize().toString());
             if (p != null && !p.isEmpty()) {
                 return p;
             }
         }
-        throw new Failure("no file declares a package");
+        List<String> why = new ArrayList<>();
+        for (Map<String, Object> r : refusals) {
+            why.add(r.get("pos") + ": " + r.get("reason"));
+        }
+        throw new Failure(why.isEmpty() ? "no file declares a package" : String.join("; ", why));
     }
 
     /**
-     * The read files a failed compilation refuses: each whose only errors are classes that do not
-     * resolve, refused at the first such line. Any other error fails the read.
+     * The name a compiler error says does not resolve, or null for any other error: a class
+     * ({@code unable to resolve class}), the class of an annotation member's constant, or a name in
+     * a static scope that is no variable, static field or class, as a class is once its file is
+     * left out.
      */
-    private Set<Path> unresolvedFiles(CompilationUnit cu, List<Path> remaining, List<Path> resolve) throws Failure {
-        Map<String, SyntaxException> first = new LinkedHashMap<>();
-        List<String> other = new ArrayList<>();
-        List<?> messages = cu.getErrorCollector().getErrors();
-        for (Object m : messages == null ? List.of() : messages) {
-            if (m instanceof SyntaxErrorMessage) {
-                SyntaxException se = ((SyntaxErrorMessage) m).getCause();
-                String text = se.getOriginalMessage().trim();
-                String where = Path.of(String.valueOf(se.getSourceLocator())).getFileName() + ":" + se.getStartLine() + ": ";
-                if (text.startsWith("unable to resolve class ")) {
-                    SyntaxException seen = first.get(se.getSourceLocator());
-                    if (seen == null || se.getStartLine() < seen.getStartLine()) {
-                        first.put(se.getSourceLocator(), se);
-                    }
-                } else {
-                    other.add(where + text);
-                }
-            } else if (m instanceof ExceptionMessage) {
-                other.add(String.valueOf(((ExceptionMessage) m).getCause()));
-            } else if (m instanceof SimpleMessage) {
-                other.add(((SimpleMessage) m).getMessage());
-            } else {
-                other.add(String.valueOf(m));
-            }
-        }
-        if (!other.isEmpty() || first.isEmpty()) {
-            Collections.sort(other);
-            throw new Failure(other.isEmpty() ? "compilation failed" : String.join("\n", other));
-        }
-        Set<Path> refused = new HashSet<>();
-        for (Map.Entry<String, SyntaxException> e : first.entrySet()) {
-            Path p = Path.of(e.getKey()).toAbsolutePath().normalize();
-            SyntaxException se = e.getValue();
-            String cls = se.getOriginalMessage().trim().substring("unable to resolve class ".length()).trim();
+    private static String unresolvedName(String text) {
+        if (text.startsWith("unable to resolve class ")) {
+            String cls = text.substring("unable to resolve class ".length()).trim();
             int sp = cls.indexOf(' ');
-            if (sp >= 0) {
-                cls = cls.substring(0, sp);
-            }
-            if (!remaining.contains(p)) {
-                if (app != null && resolve.contains(p)) {
-                    // A resolve-only file of the application is not read: dropped from the
-                    // compilation, it yields nothing, and what references it does not resolve.
-                    refused.add(p);
-                    continue;
-                }
-                throw new Failure(label(p) + ":" + se.getStartLine() + ": unable to resolve class " + cls
-                    + " in a file that is compiled but not read");
-            }
-            String line = lineText(p, se.getStartLine());
-            addRefusal(label(p) + ":" + se.getStartLine(), line, UNRESOLVED + ": " + cls);
-            refused.add(p);
+            return sp >= 0 ? cls.substring(0, sp) : cls;
         }
-        return refused;
+        for (String[] form : new String[][] {
+            {"unable to find class '", "' for annotation attribute constant"},
+            {"Apparent variable '", "' was found in a static scope"}}) {
+            int end = text.indexOf(form[1]);
+            if (text.startsWith(form[0]) && end >= form[0].length()) {
+                return text.substring(form[0].length(), end).replaceAll("\\s+", " ");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The files the located errors of a failed compilation blame, one blame a file: its first
+     * name that does not resolve ({@link #unresolvedName}), {@code unresolved: <name>}, a class
+     * found that the JVM could not load named with why; else its first error of any other kind,
+     * {@code unsupported: compile error: <the compiler's message>}.
+     */
+    private static List<Blame> located(CompilationUnit cu, Map<String, String> unloadable) {
+        Map<String, SyntaxException> unresolved = new LinkedHashMap<>();
+        Map<String, SyntaxException> other = new LinkedHashMap<>();
+        for (int i = 0; i < cu.getErrorCollector().getErrorCount(); i++) {
+            if (!(cu.getErrorCollector().getError(i) instanceof SyntaxErrorMessage)) {
+                continue;
+            }
+            SyntaxException se = ((SyntaxErrorMessage) cu.getErrorCollector().getError(i)).getCause();
+            Map<String, SyntaxException> first = unresolvedName(String.valueOf(se.getOriginalMessage()).trim()) != null ? unresolved : other;
+            SyntaxException seen = first.get(String.valueOf(se.getSourceLocator()));
+            if (seen == null || se.getStartLine() < seen.getStartLine()) {
+                first.put(String.valueOf(se.getSourceLocator()), se);
+            }
+        }
+        other.keySet().removeAll(unresolved.keySet());
+        List<Blame> out = new ArrayList<>();
+        for (Map.Entry<String, SyntaxException> e : unresolved.entrySet()) {
+            String cls = unresolvedName(String.valueOf(e.getValue().getOriginalMessage()).trim());
+            if (unloadable.containsKey(cls)) {
+                cls += ": " + unloadable.get(cls);
+            }
+            out.add(new Blame(fileOf(e.getKey()), Math.max(e.getValue().getStartLine(), 1), UNRESOLVED, cls, null));
+        }
+        for (Map.Entry<String, SyntaxException> e : other.entrySet()) {
+            out.add(new Blame(fileOf(e.getKey()), Math.max(e.getValue().getStartLine(), 1), UNSUPPORTED,
+                "compile error: " + oneLine(String.valueOf(e.getValue().getOriginalMessage())), null));
+        }
+        return out;
+    }
+
+    /** The file a compiler error names, or null when what it names is no path. */
+    private static Path fileOf(String locator) {
+        try {
+            return Path.of(locator).toAbsolutePath().normalize();
+        } catch (java.nio.file.InvalidPathException e) {
+            return null;
+        }
     }
 
     private static String lineText(Path p, int line) {
@@ -617,36 +1091,47 @@ public final class Reader {
             }
         }
         int before = errorCount(cu);
-        for (ClassNode cn : decls) {
-            transactionalTransform(cn);
-        }
+        // A class the checker fails on is one more file to take out; the checker goes on with the
+        // other classes, so one round finds every such file.
+        List<Blame> failed = new ArrayList<>();
         for (ClassNode cn : decls) {
             if (cn.isInterface() || cn.isAnnotationDefinition()) {
                 continue;
             }
-            StaticTypeCheckingVisitor v = new StaticTypeCheckingVisitor(unitOf.get(cn).su, cn);
-            v.setCompilationUnit(cu);
-            v.addTypeCheckingExtension(new IntdivTyping(v));
-            v.initialize();
+            reading = cn;
             try {
+                StaticTypeCheckingVisitor v = new StaticTypeCheckingVisitor(unitOf.get(cn).su, cn);
+                v.setCompilationUnit(cu);
+                v.addTypeCheckingExtension(new IntdivTyping(v));
+                v.initialize();
                 v.visitClass(cn);
                 v.performSecondPass();
-            } catch (RuntimeException e) {
-                throw new Failure(unitOf.get(cn).file + ": the Groovy type checker failed on class " + cn.getName() + ": " + e);
+            } catch (RuntimeException | Error e) {
+                if (fatal(e)) {
+                    throw e;
+                }
+                failed.add(thrown(Path.of(unitOf.get(cn).su.getName()).toAbsolutePath().normalize(), firstLine(cn), e,
+                    "the type checker"));
             }
+        }
+        reading = null;
+        if (!failed.isEmpty()) {
+            throw new Restart(failed);
         }
         List<?> messages = cu.getErrorCollector().getErrors();
         if (messages == null) {
             return;
         }
         for (Object m : messages.subList(before, messages.size())) {
+            // Neither is an error the checker is known to report; with no class to blame, every
+            // file is refused for it.
             if (!(m instanceof SyntaxErrorMessage)) {
-                throw new Failure("the Groovy type checker reported " + m);
+                throw new IllegalStateException("the Groovy type checker reported " + m);
             }
             SyntaxException se = ((SyntaxErrorMessage) m).getCause();
             Unit u = byName.get(se.getSourceLocator());
             if (u == null) {
-                throw new Failure("a type-checking error outside the read files: " + se.getOriginalMessage());
+                throw new IllegalStateException("a type-checking error outside the read files: " + se.getOriginalMessage());
             }
             String msg = se.getOriginalMessage().trim();
             if (msg.startsWith(STC_PREFIX)) {
@@ -656,74 +1141,12 @@ public final class Reader {
         }
     }
 
-    /** The annotation whose local transformation rewrites a Grails service's methods. */
+    /**
+     * The annotation of a Grails service's transaction. Its local transformation, {@code
+     * TransactionalTransform}, is a class of a jar and is not run ({@link Compilation}), so each
+     * method it would rewrite is read from its source body.
+     */
     private static final String TRANSACTIONAL = "grails.transaction.Transactional";
-
-    /** The interface {@code TransactionalTransform} adds to the class it rewrites. */
-    private static final String TRANSACTION_MANAGER_AWARE = "org.codehaus.groovy.grails.orm.support.TransactionManagerAware";
-
-    /** The prefix of the method into which {@code TransactionalTransform} moves a method's own body. */
-    private static final String MOVED_BODY = "$tt__";
-
-    /**
-     * The methods Grails's {@code TransactionalTransform} rewrote, which runs at {@code
-     * CANONICALIZATION} wherever {@code @grails.transaction.Transactional} resolves and which
-     * disabling global transformations does not turn off. It moves a method's body into a method
-     * of its own and replaces the body with a call through a transaction template. The reader
-     * reads neither: each rewritten method is refused ({@code unsupported: grails transform}), and
-     * both bodies are emptied before type checking, so the checker does not load the classes the
-     * rewrite names.
-     */
-    private void transactionalTransform(ClassNode cn) {
-        for (MethodNode moved : new ArrayList<>(cn.getMethods())) {
-            if (!moved.getName().startsWith(MOVED_BODY) || userNode(moved)) {
-                continue;
-            }
-            String name = moved.getName().substring(MOVED_BODY.length());
-            for (MethodNode m : cn.getMethods(name)) {
-                if (userNode(m) && movedFrom(moved, m)) {
-                    transformed.add(m);
-                    m.setCode(new BlockStatement());
-                }
-            }
-            moved.setCode(new BlockStatement());
-        }
-    }
-
-    /**
-     * Whether {@code moved} holds the body of {@code m}: its parameters are {@code m}'s, type for
-     * type, then the {@code TransactionStatus} the transform appends. An overload the transform did
-     * not rewrite has other parameter types and is read, or refused, on its own.
-     */
-    private static boolean movedFrom(MethodNode moved, MethodNode m) {
-        Parameter[] mp = m.getParameters();
-        Parameter[] tp = moved.getParameters();
-        if (tp.length != mp.length + 1
-            || !tp[mp.length].getType().getName().equals("org.springframework.transaction.TransactionStatus")) {
-            return false;
-        }
-        for (int i = 0; i < mp.length; i++) {
-            if (!tp[i].getType().getName().equals(mp[i].getType().getName())) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** Whether a class carries {@code @grails.transaction.Transactional} or one of its methods was rewritten by it. */
-    private boolean transactional(ClassNode cn) {
-        for (AnnotationNode a : cn.getAnnotations()) {
-            if (a.getClassNode().getName().equals(TRANSACTIONAL)) {
-                return true;
-            }
-        }
-        for (MethodNode m : cn.getMethods()) {
-            if (transformed.contains(m)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     private static int errorCount(CompilationUnit cu) {
         List<?> m = cu.getErrorCollector().getErrors();
@@ -748,11 +1171,15 @@ public final class Reader {
     }
 
     private Map<String, Object> module(String pkg) {
+        reading = null;
         classify();
         signatures();
+        nameOpaque();
         for (ClassNode cn : decls) {
+            reading = cn;
             emit(cn);
         }
+        List<Object> opaqueFuncs = opaqueFuncs();
         for (Err e : errs) {
             if (!e.consumed) {
                 addRefusal(e.unit.file + ":" + e.line, "type check", DYNAMIC + ": " + e.msg);
@@ -777,6 +1204,9 @@ public final class Reader {
         doc.put("layout", layout);
         if (!refusals.isEmpty()) {
             doc.put("refusals", new ArrayList<Object>(refusals));
+        }
+        if (!opaqueFuncs.isEmpty()) {
+            doc.put("opaque", opaqueFuncs);
         }
         return doc;
     }
@@ -832,6 +1262,7 @@ public final class Reader {
             simpleNames.merge(cn.getNameWithoutPackage(), 1, Integer::sum);
         }
         for (ClassNode cn : decls) {
+            reading = cn;
             Unit u = unitOf.get(cn);
             String name = cn.getNameWithoutPackage();
             String why = null;
@@ -851,6 +1282,10 @@ public final class Reader {
             if (why != null) {
                 refuseDecl(u, cn, name, why);
                 consume(u, cn);
+                if (simpleNames.get(name) == 1) {
+                    // Of two classes with one simple name neither has a name in the module.
+                    opaqueClass(u, cn, why);
+                }
                 continue;
             }
             if (cn.isEnum()) {
@@ -879,6 +1314,8 @@ public final class Reader {
                     refuseDecl(u, e.getKey(), cn.getNameWithoutPackage() + "." + e.getKey().getName(), e.getValue());
                 }
                 consume(u, cn);
+                // No member of it is read; each is refused for the first field that is.
+                opaqueClass(u, cn, bad.values().iterator().next());
                 changed = true;
             }
         }
@@ -968,9 +1405,6 @@ public final class Reader {
             return UNSUPPORTED + ": class extends " + cn.getSuperClass().getName() + ": inheritance is outside cir/1";
         }
         for (ClassNode i : cn.getInterfaces()) {
-            if (i.getName().equals(TRANSACTION_MANAGER_AWARE) && transactional(cn)) {
-                continue;
-            }
             if (!i.getName().equals("groovy.lang.GroovyObject")) {
                 return UNSUPPORTED + ": implements " + i.getName() + ": interfaces are outside the reader's subset";
             }
@@ -1150,7 +1584,7 @@ public final class Reader {
         for (AnnotationNode a : n.getAnnotations()) {
             String qn = a.getClassNode().getName();
             if (qn.equals(TRANSACTIONAL)) {
-                // Its transformation's rewrites are refused method by method (transactionalTransform).
+                // Its transformation is not run and the method is read from its source body.
                 continue;
             }
             if (qn.equals("groovy.transform.CompileDynamic") || HARMLESS_ANNOTATIONS.contains(qn) && skips(a)) {
@@ -1182,6 +1616,7 @@ public final class Reader {
             if (!structs.containsKey(cn.getName())) {
                 continue;
             }
+            reading = cn;
             Unit u = unitOf.get(cn);
             String cname = cn.getNameWithoutPackage();
             for (FieldNode f : userFields(cn)) {
@@ -1221,9 +1656,6 @@ public final class Reader {
                 }
                 if (why != null) {
                     // turned off by an annotation
-                } else if (transformed.contains(m)) {
-                    why = UNSUPPORTED + ": grails transform: @Transactional replaced the body of " + name + " with a call"
-                        + " through a transaction template, and the reader does not read a rewritten method";
                 } else if (!ctor && !isIdentifier(name)) {
                     why = UNSUPPORTED + ": the method name \"" + printable(name) + "\" is no identifier: cir/1 names are"
                         + " identifiers";
@@ -1262,6 +1694,7 @@ public final class Reader {
                 if (why != null) {
                     refuseDecl(u, m, what, why);
                     consume(u, m);
+                    opaque(u, cn, m, ctor, why);
                     continue;
                 }
                 fns.put(m, fn);
@@ -3015,20 +3448,35 @@ public final class Reader {
 
     private static final String GORM_DETAIL = "GORM persistence is outside cir/1 until it has a persistence boundary";
 
-    /** The GORM methods by name; the dynamic finders and association methods by prefix. */
-    private static final Set<String> GORM_METHODS = Set.of(
-        "save", "delete", "validate", "refresh", "merge", "attach", "discard", "get", "read", "load", "list", "count",
-        "exists", "find", "findAll", "findWhere", "findAllWhere", "where", "withCriteria", "createCriteria", "executeQuery",
-        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion",
-        "first", "ident", "getAll");
+    /**
+     * The GORM methods by name; the dynamic finders and association methods by prefix. The names
+     * are those of every public method GORM adds to a domain class in the Grails 2.5.6
+     * distribution (grails-datastore-gorm: {@code GormStaticApi}, {@code GormInstanceApi}, {@code
+     * GormValidationApi}), and the accessors of the properties GORM adds ({@code errors}, {@code
+     * getId}, {@code getVersion}). ReaderTest holds the list against the distribution.
+     */
+    static final Set<String> GORM_METHODS = Set.of(
+        // GormStaticApi: called on the class.
+        "count", "create", "createCriteria", "deleteAll", "executeQuery", "executeUpdate", "exists", "find", "findAll",
+        "findAllWhere", "findOrCreateWhere", "findOrSaveWhere", "findWhere", "first", "get", "getAll", "getAsync", "getCount",
+        "last", "list", "load", "lock", "merge", "proxy", "read", "saveAll", "where", "whereAny", "whereLazy", "withCriteria",
+        "withDatastoreSession", "withNewSession", "withNewTransaction", "withSession", "withStatelessSession",
+        "withTransaction",
+        // GormInstanceApi: called on an instance; lock and merge are of both.
+        "attach", "delete", "discard", "getDirtyPropertyNames", "getPersistentValue", "ident", "insert", "instanceOf",
+        "isAttached", "isDirty", "mutex", "refresh", "save",
+        // GormValidationApi.
+        "clearErrors", "getErrors", "hasErrors", "setErrors", "validate",
+        // The properties GORM adds, by their accessors.
+        "errors", "getId", "getVersion");
 
-    private static final List<String> GORM_PREFIXES = List.of(
+    static final List<String> GORM_PREFIXES = List.of(
         "findBy", "findAllBy", "listOrderBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
 
     /** The implicit properties of a domain instance. */
     private static final Set<String> GORM_PROPERTIES = Set.of("id", "version", "errors");
 
-    private static boolean gormMethod(String name) {
+    static boolean gormMethod(String name) {
         if (GORM_METHODS.contains(name)) {
             return true;
         }
@@ -3045,10 +3493,15 @@ public final class Reader {
      * Tool.findByName}), an instance of one ({@code loan.save()}), or {@code this} in a domain class.
      */
     private ClassNode gormReceiver(Expression recv, boolean implicitThis, Ctx ctx) {
+        return gormReceiver(recv, implicitThis, ctx.fn == null ? null : ctx.fn.cls);
+    }
+
+    /** As above, for code of the class {@code in}, which {@code this} is an instance of. */
+    private ClassNode gormReceiver(Expression recv, boolean implicitThis, ClassNode in) {
         if (implicitThis || isThis(recv)) {
-            return ctx.fn != null && isDomain(ctx.fn.cls) ? ctx.fn.cls : null;
+            return in != null && isDomain(in) ? in : null;
         }
-        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, ctx);
+        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, null);
         return isDomain(t) ? t.redirect() : null;
     }
 
@@ -4072,6 +4525,528 @@ public final class Reader {
         st.put("src", src);
         st.put("reason", reason);
         st.put("pos", pos);
+        st.put("calls", callsOf(u, n, ctx.fallbackLine));
         return st;
+    }
+
+    // ---- the calls of code that is not read ----
+
+    /**
+     * A method or constructor a read file declares with a body and the reader does not read: an
+     * {@code opaque} function of the module, with the reason of its refusal and the calls its body
+     * makes, so that the call graph has no hole where it is.
+     */
+    private static final class Op {
+        final Unit unit;
+        final ClassNode cls;
+        final MethodNode node;
+        final boolean ctor;
+        final String reason;
+        /** The class, or null for a constructor, which is the function {@code New<Class>}. */
+        String recv;
+        String name;
+
+        Op(Unit unit, ClassNode cls, MethodNode node, boolean ctor, String reason) {
+            this.unit = unit;
+            this.cls = cls;
+            this.node = node;
+            this.ctor = ctor;
+            this.reason = reason;
+        }
+    }
+
+    /** The opaque functions, in the order met; in source order once {@link #nameOpaque} ran. */
+    private final List<Op> opaque = new ArrayList<>();
+    private final Map<MethodNode, Op> opaqueOf = new IdentityHashMap<>();
+
+    /** A method or constructor refused at its declaration or with its class; one without a body calls nothing and is none. */
+    private void opaque(Unit u, ClassNode cn, MethodNode m, boolean ctor, String reason) {
+        if (m.getCode() != null) {
+            opaque.add(new Op(u, cn, m, ctor, reason));
+        }
+    }
+
+    /** Every method and constructor of a class that is refused as a whole. */
+    private void opaqueClass(Unit u, ClassNode cn, String reason) {
+        for (MethodNode m : userMethods(cn)) {
+            opaque(u, cn, m, m instanceof ConstructorNode, reason);
+        }
+    }
+
+    /**
+     * Name the opaque functions, in source order, once every function that is read has its name. A
+     * method is {@code <Class>.<name>}, a static one too: two refused classes may each declare a
+     * static method of one name, which as functions of the module would be one. A constructor is
+     * {@code New<Class>}. cir/1 keys a function by its receiver type and name and refuses two of
+     * one key, so an overload is a function of its own: where the name is taken, by a function
+     * that is read or by an earlier overload, it takes the lowest number from 2 that is free
+     * ({@code renew2}, {@code NewDesk2}), as the Java reader names a second constructor.
+     */
+    private void nameOpaque() {
+        Map<ClassNode, Integer> order = new IdentityHashMap<>();
+        for (ClassNode cn : decls) {
+            order.put(cn, order.size());
+        }
+        opaque.sort(Comparator.comparingInt((Op o) -> order.get(o.cls)).thenComparingInt(o -> o.node.getLineNumber())
+            .thenComparingInt(o -> o.node.getColumnNumber()));
+        Set<String> taken = new HashSet<>();
+        for (Fn fn : fns.values()) {
+            taken.add(fn.key());
+        }
+        for (Fn fn : ctors.values()) {
+            taken.add(fn.key());
+        }
+        for (Op o : opaque) {
+            String cname = o.cls.getNameWithoutPackage();
+            String base = o.ctor ? "New" + cname : printable(o.node.getName());
+            o.recv = o.ctor ? null : cname;
+            String name = base;
+            for (int n = 2; !taken.add(o.recv == null ? name : o.recv + "." + name); n++) {
+                name = base + n;
+            }
+            o.name = name;
+            opaqueOf.put(o.node, o);
+        }
+    }
+
+    /** The {@code opaque} list of the document: each function with the calls of its body. */
+    private List<Object> opaqueFuncs() {
+        List<Object> out = new ArrayList<>();
+        for (Op o : opaque) {
+            reading = o.cls;
+            Map<String, Object> m = Json.obj();
+            m.put("name", o.name);
+            if (o.recv != null) {
+                m.put("recv", o.recv);
+            }
+            m.put("pos", declPos(o.unit, o.node));
+            m.put("reason", o.reason);
+            CallLister v = new CallLister(o.unit, o.node.getLineNumber());
+            for (Parameter p : o.node.getParameters()) {
+                // A default value runs in the overload Groovy adds without the parameter.
+                if (p.hasInitialExpression()) {
+                    p.getInitialExpression().visit(v);
+                }
+            }
+            o.node.getCode().visit(v);
+            m.put("calls", v.out);
+            out.add(m);
+        }
+        reading = null;
+        return out;
+    }
+
+    /**
+     * Every call the code under {@code n} makes that is written as one, as cir/1 call refs: a call
+     * before its receiver and its arguments, otherwise in source order, as the Go reader lists
+     * them. {@code n} is a statement, or a field whose initializer is meant.
+     */
+    private List<Object> callsOf(Unit u, ASTNode n, int fallback) {
+        CallLister v = new CallLister(u, fallback);
+        if (n instanceof FieldNode) {
+            if (((FieldNode) n).hasInitialExpression()) {
+                ((FieldNode) n).getInitialExpression().visit(v);
+            }
+        } else {
+            n.visit(v);
+        }
+        return v.out;
+    }
+
+    /** The signature of every closure: Groovy types a closure by its class alone. */
+    private static final String CLOSURE_SIG = "groovy.lang.Closure";
+
+    private static Map<String, Object> funcRef(String path, String name, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "func");
+        if (!path.isEmpty()) {
+            c.put("path", path);
+        }
+        c.put("name", name);
+        c.put("pos", pos);
+        return c;
+    }
+
+    private static Map<String, Object> methodRef(String path, String recv, String name, String pos) {
+        return methodRef(path, recv, name, "", pos);
+    }
+
+    /** A method call; {@code by} names the convention that gave the target, empty when the type checker did. */
+    private static Map<String, Object> methodRef(String path, String recv, String name, String by, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "method");
+        if (!path.isEmpty()) {
+            c.put("path", path);
+        }
+        c.put("recv", recv);
+        c.put("name", name);
+        if (!by.isEmpty()) {
+            c.put("by", by);
+        }
+        c.put("pos", pos);
+        return c;
+    }
+
+    /** The module GORM's methods are methods of: {@code grails.gorm.<Domain>.<method>}. */
+    private static final String GORM_PATH = "grails.gorm";
+
+    /** {@code by} of a GORM method on a domain class: GORM adds it to the class at run time. */
+    static final String BY_GORM = "grails-gorm";
+
+    /** {@code by} of a call through a field Spring sets, by its name, to a service that is read. */
+    static final String BY_SERVICE_FIELD = "grails-service-field";
+
+    /**
+     * The call a convention of Grails 2 names the target of where the type checker names none, or
+     * null. Both hold in a Grails application alone: elsewhere no class is a domain class and no
+     * field is set by its name.
+     *
+     * <p>{@code grails-gorm}: the call the reader refuses as {@code gorm:}, by the same test (a
+     * domain class, an instance of one or {@code this} in one as receiver, a name of {@link
+     * #gormMethod}, not a method the domain class declares itself). It is a method of the domain
+     * class in {@code grails.gorm}, static or not, which no document declares: an edge that leaves
+     * the application, as a call into a library is.
+     *
+     * <p>{@code grails-service-field}: a call the type checker did not resolve, through a field
+     * of a service or a domain class that Spring autowires by name ({@link #springSets}: the
+     * class read or refused as a whole, the field its own or inherited, named bare or as {@code
+     * this.<name>}), where the name is the bean name of exactly one service that is read and the
+     * field is {@code def}, {@code Object} or of that service's type. The call may stand
+     * anywhere a call is listed: {@code in} is the class whose code it is, not a method being
+     * read. Its target is the one method of that name the service declares itself, not static,
+     * that takes as many arguments as the call passes ({@link #takes}; uncounted where an
+     * argument is spread). Where that is no method or more than one, the convention tells no
+     * target and the call stays one that names none.
+     */
+    private Map<String, Object> byConvention(MethodCallExpression call, String name, MethodNode t, ClassNode in, String pos) {
+        if (name == null) {
+            return null;
+        }
+        ClassNode domain = gormReceiver(call.getObjectExpression(), call.isImplicitThis(), in);
+        if (domain != null && gormMethod(name) && !declaredBy(t, domain)) {
+            return methodRef(GORM_PATH, domain.getNameWithoutPackage(), name, BY_GORM, pos);
+        }
+        if (t != null || call.isImplicitThis()) {
+            return null;
+        }
+        Object through = named(call.getObjectExpression());
+        if (through == null) {
+            through = fieldOfThis(call.getObjectExpression(), in);
+        }
+        if (!(through instanceof FieldNode) || !springSets((FieldNode) through, in)) {
+            return null;
+        }
+        FieldNode field = (FieldNode) through;
+        ClassNode service = serviceOfBean(field.getName());
+        boolean untyped = field.isDynamicTyped() || field.getType().equals(ClassHelper.OBJECT_TYPE);
+        if (service == null || !(untyped || field.getType().redirect() == service)) {
+            return null;
+        }
+        List<Expression> as = args(call.getArguments());
+        boolean counted = true;
+        for (Expression a : as) {
+            counted &= !(a instanceof SpreadExpression);
+        }
+        MethodNode target = null;
+        for (MethodNode m : userMethods(service)) {
+            if (m instanceof ConstructorNode || m.isStatic() || !m.getName().equals(name) || counted && !takes(m, as.size())) {
+                continue;
+            }
+            if (target != null) {
+                return null;
+            }
+            target = m;
+        }
+        Fn fn = target == null ? null : fns.get(target);
+        if (fn != null) {
+            return methodRef("", fn.cls.getNameWithoutPackage(), fn.name, BY_SERVICE_FIELD, pos);
+        }
+        Op op = target == null ? null : opaqueOf.get(target);
+        return op == null || op.recv == null ? null : methodRef("", op.recv, op.name, BY_SERVICE_FIELD, pos);
+    }
+
+    /**
+     * The field {@code this.<name>} or {@code this.@<name>} names in code of the class {@code in},
+     * its own or one it inherits, or null. {@link #named} looks the field up in the type of the
+     * {@code this} expression, which Groovy leaves {@code Object}, and so finds none.
+     */
+    private static FieldNode fieldOfThis(Expression e, ClassNode in) {
+        if (in == null || !(e instanceof PropertyExpression) || !isThis(((PropertyExpression) e).getObjectExpression())) {
+            return null;
+        }
+        String name = ((PropertyExpression) e).getPropertyAsString();
+        return name == null ? null : in.getField(name);
+    }
+
+    /**
+     * Whether Spring sets {@code f} by its name in the instance the code of the class {@code in}
+     * runs on: a field {@link #injectedField} that an artefact declares, or that the artefact
+     * {@code in} is, or is nested in, inherits from any class. {@link #injected} holds such
+     * fields of the classes that are read alone ({@link #grailsMembers}); a call list is not
+     * confined to those, so this asks the classes themselves.
+     */
+    private boolean springSets(FieldNode f, ClassNode in) {
+        if (!injectedField(f)) {
+            return false;
+        }
+        ClassNode declaring = f.getDeclaringClass();
+        if (artefact(declaring)) {
+            return true;
+        }
+        ClassNode top = in;
+        while (top != null && top.getOuterClass() != null) {
+            top = top.getOuterClass();
+        }
+        return declaring != null && artefact(top) && !top.redirect().equals(declaring.redirect()) && top.isDerivedFrom(declaring);
+    }
+
+    /**
+     * Whether a class is a service or a domain class Spring makes or autowires an instance of,
+     * read or refused as a whole: a top-level class of such a file. A nested class is no bean,
+     * and an enum is none.
+     */
+    private boolean artefact(ClassNode cn) {
+        return cn != null && cn.getOuterClass() == null && !cn.isScript() && !cn.isEnum() && (isService(cn) || isDomain(cn));
+    }
+
+    /**
+     * The one service that is read whose Spring bean has the name {@code bean}, or null. Grails 2
+     * names a service's bean by its class's simple name as a property ({@code NoticeService}:
+     * {@code noticeService}; a name beginning with two capitals is kept, {@code URLService}).
+     */
+    private ClassNode serviceOfBean(String bean) {
+        ClassNode found = null;
+        for (ClassNode cn : decls) {
+            String simple = cn.getNameWithoutPackage();
+            boolean kept = simple.length() > 1 && Character.isUpperCase(simple.charAt(0)) && Character.isUpperCase(simple.charAt(1));
+            String name = kept ? simple : Character.toLowerCase(simple.charAt(0)) + simple.substring(1);
+            if (cn.getOuterClass() == null && isService(cn) && name.equals(bean)) {
+                if (found != null) {
+                    return null;
+                }
+                found = cn;
+            }
+        }
+        return found;
+    }
+
+    /** Whether a call passing {@code n} arguments can be one of {@code m}: its parameters, less those with a default, a last array taking any number. */
+    private static boolean takes(MethodNode m, int n) {
+        Parameter[] ps = m.getParameters();
+        int required = 0;
+        for (Parameter p : ps) {
+            if (!p.hasInitialExpression()) {
+                required++;
+            }
+        }
+        if (n >= required && n <= ps.length) {
+            return true;
+        }
+        return ps.length > 0 && ps[ps.length - 1].getType().isArray() && n >= ps.length - 1;
+    }
+
+    /** A call that names no function: of a function value of the signature {@code sig}, or one whose target is not known. */
+    private static Map<String, Object> valueRef(String sig, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "value");
+        c.put("sig", sig);
+        c.put("pos", pos);
+        return c;
+    }
+
+    private static Map<String, Object> lambdaRef(List<Object> calls, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "lambda");
+        c.put("sig", CLOSURE_SIG);
+        c.put("calls", calls);
+        c.put("pos", pos);
+        return c;
+    }
+
+    /** What a call the type checker did not resolve says of itself: the name it is looked up by at run time. */
+    private static String dynamicSig(String name) {
+        return "groovy dynamic call of " + (name == null ? "a method named at run time" : printable(name));
+    }
+
+    /** A class outside the module as the Java reader names one: nested classes joined by a dot. */
+    private static String outside(String className) {
+        return className.replace('$', '.');
+    }
+
+    /**
+     * The call of {@code t}, the method or constructor the type checker resolved a call to, or
+     * null when it is none to list.
+     *
+     * <p>In the module ({@code path} absent): a function that is read by its key, a static method
+     * or a constructor a function, any other a method of its class; an opaque function by its
+     * name. A member the compiler generates for a class of the module (a property's getter or
+     * setter) is no function: null, but for the constructor of a struct without one, which is
+     * {@code New<Class>}. A declared member with no function in the module, as one without a body
+     * or one of two classes with one simple name, is a call whose target is not known.
+     *
+     * <p>Outside the module, as the Java reader names an extern: a static method or a constructor
+     * ({@code <init>}) is a function of the class's qualified name, an instance method a method of
+     * the class in its package. A GDK method is the static method that implements it. A class
+     * without a package has no path that is not the module's: a call whose target is not known.
+     */
+    private Map<String, Object> callOf(MethodNode t, String pos) {
+        if (t instanceof ExtensionMethodNode) {
+            MethodNode impl = ((ExtensionMethodNode) t).getExtensionMethodNode();
+            return funcRef(outside(impl.getDeclaringClass().getName()), impl.getName(), pos);
+        }
+        Fn fn = fns.get(t);
+        if (fn != null) {
+            return fn.isStatic || fn.isCtor ? funcRef("", fn.name, pos) : methodRef("", fn.cls.getNameWithoutPackage(), fn.name, pos);
+        }
+        Op op = opaqueOf.get(t);
+        if (op != null) {
+            return op.recv == null ? funcRef("", op.name, pos) : methodRef("", op.recv, op.name, pos);
+        }
+        boolean ctor = t instanceof ConstructorNode;
+        ClassNode dc = t.getDeclaringClass().redirect();
+        String name = ctor ? "<init>" : t.getName();
+        if (unitOf.containsKey(dc)) {
+            if (userNode(t)) {
+                return valueRef("groovy call of " + dc.getName() + "." + printable(name) + ", which the module holds no function for", pos);
+            }
+            Fn made = ctor && structs.containsKey(dc.getName()) ? ctors.get(dc) : null;
+            return made == null ? null : funcRef("", made.name, pos);
+        }
+        String pkg = dc.getPackageName();
+        if (pkg == null || pkg.isEmpty()) {
+            return valueRef("groovy call of " + dc.getName() + "." + printable(name) + ", of a class without a package", pos);
+        }
+        return t.isStatic() || ctor ? funcRef(outside(dc.getName()), name, pos)
+            : methodRef(pkg, outside(dc.getNameWithoutPackage()), name, pos);
+    }
+
+    /**
+     * Lists the calls of the code it visits. A method call, a static call and a constructor call
+     * the type checker resolved ({@code DIRECT_METHOD_CALL_TARGET}) name their target ({@link
+     * #callOf}); one it did not resolve is a {@code value} call, which names no function and which
+     * the fact base takes as unknown, so no answer rests on a target the reader guessed. A
+     * constructor call is also a {@code new} of its class, the first of each class in a list. A
+     * closure is a {@code lambda} holding its own calls, a method pointer one holding the call
+     * Groovy resolves when it runs; a call of a closure is a {@code value} call of the closure
+     * signature. What is not written as a call is not listed: README.md, "Call lists". Where a
+     * convention names the target of a method call, the call is that one and says so ({@link
+     * #byConvention}).
+     */
+    private final class CallLister extends CodeVisitorSupport {
+        final Unit u;
+        final int fallback;
+        /** The class whose code is visited: the one being read when the lister is made. */
+        final ClassNode in = reading;
+        List<Object> out = new ArrayList<>();
+
+        CallLister(Unit u, int fallback) {
+            this.u = u;
+            this.fallback = fallback;
+        }
+
+        private void add(Map<String, Object> call) {
+            if (call != null) {
+                out.add(call);
+            }
+        }
+
+        /** A value of {@code type} is made here; listed once for each class. */
+        private void made(ClassNode type, String pos) {
+            Map<String, Object> c = Json.obj();
+            c.put("k", "new");
+            boolean own = unitOf.containsKey(type);
+            if (!own) {
+                String pkg = type.getPackageName();
+                if (pkg == null || pkg.isEmpty()) {
+                    return;
+                }
+                c.put("path", pkg);
+            }
+            // A nested class of the module keeps the name its opaque functions have as receiver.
+            c.put("name", own ? type.getNameWithoutPackage() : outside(type.getNameWithoutPackage()));
+            for (Object o : out) {
+                Map<?, ?> seen = (Map<?, ?>) o;
+                if ("new".equals(seen.get("k")) && c.get("name").equals(seen.get("name"))
+                    && java.util.Objects.equals(c.get("path"), seen.get("path"))) {
+                    return;
+                }
+            }
+            c.put("pos", pos);
+            out.add(c);
+        }
+
+        @Override
+        public void visitMethodCallExpression(MethodCallExpression call) {
+            String pos = pos(u, call, fallback);
+            String name = call.getMethodAsString();
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            Map<String, Object> convention = byConvention(call, name, t, in, pos);
+            if (convention != null) {
+                add(convention);
+            } else if (t == null) {
+                add(valueRef(dynamicSig(name), pos));
+            } else if (t.getDeclaringClass().getName().equals(CLOSURE_SIG) && (t.getName().equals("call") || t.getName().equals("doCall"))) {
+                add(valueRef(CLOSURE_SIG, pos));
+            } else {
+                add(callOf(t, pos));
+            }
+            super.visitMethodCallExpression(call);
+        }
+
+        @Override
+        public void visitStaticMethodCallExpression(StaticMethodCallExpression call) {
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            if (t == null && call.getOwnerType().redirect().isPrimaryClassNode()) {
+                List<MethodNode> ms = call.getOwnerType().getMethods(call.getMethod());
+                t = ms.size() == 1 ? ms.get(0) : null;
+            }
+            String pos = pos(u, call, fallback);
+            add(t == null ? valueRef(dynamicSig(call.getMethod()), pos) : callOf(t, pos));
+            super.visitStaticMethodCallExpression(call);
+        }
+
+        @Override
+        public void visitConstructorCallExpression(ConstructorCallExpression call) {
+            String pos = pos(u, call, fallback);
+            ClassNode type = call.getType().redirect();
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            if (t != null) {
+                add(callOf(t, pos));
+            } else if (!unitOf.containsKey(type)) {
+                // Not resolved to one constructor: some constructor of the class runs.
+                String pkg = type.getPackageName();
+                add(pkg == null || pkg.isEmpty()
+                    ? valueRef("groovy call of " + type.getName() + ".<init>, of a class without a package", pos)
+                    : funcRef(outside(type.getName()), "<init>", pos));
+            } else if (structs.containsKey(type.getName()) && ctors.get(type).node == null) {
+                add(funcRef("", ctors.get(type).name, pos));
+            } else if (!type.getDeclaredConstructors().isEmpty()) {
+                add(valueRef("groovy call of " + type.getName() + ".<init>, which the type checker does not resolve", pos));
+            }
+            if (!call.isSpecialCall()) {
+                made(type, pos);
+            }
+            super.visitConstructorCallExpression(call);
+        }
+
+        @Override
+        public void visitClosureExpression(ClosureExpression closure) {
+            List<Object> outer = out;
+            out = new ArrayList<>();
+            super.visitClosureExpression(closure);
+            List<Object> inner = out;
+            out = outer;
+            out.add(lambdaRef(inner, pos(u, closure, fallback)));
+        }
+
+        @Override
+        public void visitMethodPointerExpression(MethodPointerExpression pointer) {
+            String pos = pos(u, pointer, fallback);
+            Expression name = pointer.getMethodName();
+            List<Object> inner = new ArrayList<>();
+            inner.add(valueRef(dynamicSig(name instanceof ConstantExpression ? name.getText() : null), pos));
+            out.add(lambdaRef(inner, pos));
+            super.visitMethodPointerExpression(pointer);
+        }
     }
 }

@@ -4,6 +4,90 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-groovy` writes the calls of the code it does not read, so `codespec reach`, `cq`
+  and `calls` answer over a Groovy module whose bodies are mostly refused. Every `foreign`
+  statement carries `calls`; a method or constructor refused at its declaration, and every one of
+  a class refused as a whole, is an `opaque` function with its `reason` and its `calls`. A call
+  names the method the type checker resolved, in the module or outside it as the Java reader names
+  an extern; a call it did not resolve is a `value` call, which names no function; a closure is a
+  `lambda` with its own calls. A refused overload is an `opaque` function of its own, numbered
+  from 2: the second `renew` of a class is `renew2`. A document read before gains `calls` on its
+  `foreign` statements and `opaque`, and nothing else changes
+  (`adapters/groovy/README.md`, "Call lists"; fixture `adapters/groovy/testdata/holds`).
+- `cir/1` has `by` on a `method` call ref of a call list: the name of the convention that gave
+  the call its target where the source language's type information resolved none. Additive: a
+  document without it reads and writes byte for byte as before, and a reader that follows no
+  convention never writes it. `codespec reach`, `reaches` and `calls` follow such a call as any
+  other and `codespec effects` gives it the effects of the same call without `by`; `codespec
+  query` has the relation `call_by{site, by}`, one row for each such call, so a query selects the
+  convention edges or leaves them out.
+- `codespec-read-groovy` names the target of two kinds of call the type checker does not resolve
+  in a Grails 2.5.6 application, each with its `by`. `grails-gorm`: a GORM method on a domain
+  class, an instance of one or `this` in one is a call of `grails.gorm.<Domain>.<method>`.
+  `grails-service-field`: a call through a field Spring sets by its name to a service that is
+  read is a call of the one method of that name the service declares that takes as many
+  arguments as the call passes; where the convention names no one method, the call stays a
+  `value` call. Both hold wherever a call is listed: in a class that is read and in one refused
+  as a whole, inside a closure at any depth, in a field's initializer. The field is one of a
+  service or a domain class, its own or inherited, `def`, `Object` or of the service's type,
+  named bare or as `this.<name>`; a static field, a field of a nested class and a call on the
+  field's getter name no target. A plain Groovy module has neither
+  (`adapters/groovy/README.md`, "A convention names a target the type checker does not").
+
+### Changed
+
+- `codespec-read-groovy` classifies as `gorm` every public method GORM adds to a domain class in
+  the Grails 2.5.6 distribution, where it knew a selection: `withNewTransaction`, `withSession`,
+  `lock`, `last`, `insert`, `isDirty`, `findOrSaveWhere` and the others
+  `adapters/groovy/README.md` lists are now `gorm: <name> on <Domain>`, where they were `dynamic`
+  or `closure`.
+
+- `codespec-read-groovy` runs no local AST transformation of a `CODESPEC_GROOVY_CLASSPATH` jar,
+  Grails's and its plugins' among them; Groovy's own still run. The annotation is refused at its
+  line as a mark, `unsupported: annotation <class>: annotations with behaviour are outside cir/1`,
+  the class that carries it is read as its source says, and a call of a member the transformation
+  would have added is `foreign`, `dynamic`. A transformation whose class cannot be loaded refuses
+  the artefact, `unresolved`. Three consequences for a Grails application:
+  - a method `@grails.transaction.Transactional` covers is read from its source body, where it
+    was refused, `unsupported: grails transform`;
+  - a resolve-only class with `@grails.persistence.Entity` is compiled as a plain class, where it
+    was left out and each artefact naming it refused `unresolved`;
+  - only `grails-core-2.5.6.jar` and `spring-tx-4.1.9.RELEASE.jar` are needed for
+    `grails.transaction.Transactional` to resolve, not the four jars its transformation loaded
+    classes from.
+
+### Fixed
+
+- `codespec-read-groovy` no longer ends a read with exit 1 and no document because one file
+  fails. Whatever fails while one file is compiled, type-checked or read refuses that artefact as
+  a whole, one refusal at a line with what failed; a resolve-only file of a Grails application is
+  left out; every other artefact is read and the document is written with exit 0
+  (`adapters/groovy/README.md`, "A file that fails is refused; the read goes on"). The rule does
+  not depend on the failure's message:
+  - a compiler error with a file and a line, a syntax error among them, refuses the artefact at
+    that line, `unresolved: <name>` for a name that does not resolve, else
+    `unsupported: compile error: <the compiler's message>`;
+  - an exception or error thrown while the compiler, a transformation of Groovy itself, the type
+    checker or the reader works on a file refuses the artefact at its class,
+    `unresolved: <exception>: <cause>` when a class cannot be found or loaded (`@Slf4j` without
+    the logging jar), else `unsupported: the compiler failed: <exception>`;
+  - a read file that is not UTF-8 text is refused at line 1 and not compiled;
+  - a failure that names no file refuses every artefact still being read at line 1,
+    `unsupported: no file can be blamed: <what failed>`;
+  - the files left are compiled again after each file is taken out, so a file that fails only
+    once another is gone is refused too, and each round takes out at least one file.
+
+  Conditions that ended a read and are now a refusal or read: a `src/java` class that extends or
+  implements a class of a `CODESPEC_GROOVY_CLASSPATH` jar (now defined where those jars are
+  visible, so a Groovy file naming it resolves); a class of a jar whose own dependency is on no
+  jar (`NoClassDefFoundError`) or that comes from a stub jar of API-only class files
+  (`ClassFormatError: Absent Code attribute`), `unresolved: <class>: …`; an annotation member
+  naming a constant of a class on no jar; a name in a static method whose class's file was
+  refused or left out; `Unable to load logging class`; `X.super.m()` on a trait whose file was
+  left out; a syntax error. What still ends a read is listed in the README.
+
 ## 0.8.0
 
 ### Added

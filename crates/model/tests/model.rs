@@ -872,6 +872,48 @@ fn calls_opaque_functions_and_method_sets_read_and_are_canonical() {
     assert_eq!(again, m);
 }
 
+/// A `method` call ref may say by which convention the reader named its target (`by`). The field
+/// is written between `name` and `pos`, read back to the same bytes, and a document without it
+/// is written without it; a `func` call ref has no such field.
+#[test]
+fn a_method_call_ref_says_by_which_convention_its_target_was_named() {
+    let plain = Module::from_json(&serde_json::to_vec(&with_calls()).expect("json"))
+        .expect("admitted")
+        .to_json();
+    assert!(!plain.contains("\"by\""), "{plain}");
+    let mut v = with_calls();
+    v["funcs"][0]["body"][0]["calls"][2]["by"] = serde_json::json!("grails-service-field");
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    let text = m.to_json();
+    let at = text.find("\"by\": \"grails-service-field\"").expect("by");
+    let name = text[..at].rfind("\"name\": \"M\"").expect("name before by");
+    assert!(
+        text[name..at].lines().count() == 2,
+        "by does not follow name: {}",
+        &text[name..at]
+    );
+    assert!(
+        text[at..]
+            .lines()
+            .nth(1)
+            .expect("a line after by")
+            .contains("\"pos\"")
+    );
+    let again = Module::from_json(text.as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), text);
+    assert_eq!(again, m);
+    // Without the field the document is the one written before it existed.
+    let without: String = text
+        .lines()
+        .filter(|l| !l.contains("\"by\""))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert_eq!(without, plain);
+    let mut v = with_calls();
+    v["funcs"][0]["body"][0]["calls"][0]["by"] = serde_json::json!("grails-gorm");
+    assert!(refused(&v).contains("unknown field `by`"));
+}
+
 #[test]
 fn an_opaque_function_with_the_name_of_a_declared_function_is_refused() {
     let mut v = with_calls();

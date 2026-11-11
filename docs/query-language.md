@@ -109,6 +109,7 @@ Relations from the documents (every reader):
 | `stmt` | `id, func, kind, pos, parent` |
 | `expr` | `id, func, kind, t, stmt` plus the kind's fields as columns (`op`, `name`, `value`, `x`, `y`, `args`) |
 | `call` | `site, func, kind, callee, recv, args, pos` (one relation over `call`, `method`, `extern`, `extern_method`, `iface_call`, `call_value` and every `CallRef`) |
+| `call_by` | `site, by`: each listed call whose target a convention gave, not the type information (`CallRef` `by`: `grails-gorm`, `grails-service-field`) |
 | `type` | `id, kind, name, path, bits, signed, elem, key, fields` (one type view over the `Type` tree and the `sig` strings of call refs) |
 | `fact` | `kind, module, item` (`fallible`, `comma_ok`, `shared`, `unordered_iteration`, …) |
 | `refusal` | `module, pos, what, reason` |

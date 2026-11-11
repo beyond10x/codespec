@@ -183,6 +183,12 @@ pub const RELATIONS: &[Relation] = &[
         group: Group::Documents,
     },
     Relation {
+        name: "call_by",
+        fields: &[("site", N), ("by", S)],
+        about: "every listed call whose target a convention gave, not the source language's type information: by the convention the reader names (Groovy: grails-gorm, grails-service-field); calls links such a call as any other",
+        group: Group::Documents,
+    },
+    Relation {
         name: "type",
         fields: &[
             ("id", T),
@@ -1783,6 +1789,7 @@ impl Walker<'_> {
                         let f = s(&self.func);
                         self.b
                             .add_wild("call", &[("site", s(&id)), ("func", f.clone())], site);
+                        self.b.add_wild("call_by", &[("site", s(&id))], site);
                         self.b.add_wild("calls", &[("site", s(&id))], site);
                         self.b
                             .add_wild("expr", &[("func", f.clone()), ("stmt", s(&id))], site);
@@ -1810,8 +1817,17 @@ impl Walker<'_> {
                     ("func", self.own(path), String::new(), name.clone())
                 }
                 CallRef::Method {
-                    path, recv, name, ..
-                } => ("method", self.own(path), recv.clone(), name.clone()),
+                    path,
+                    recv,
+                    name,
+                    by,
+                    ..
+                } => {
+                    if !by.is_empty() {
+                        self.b.add("call_by", vec![s(&site), s(by)]);
+                    }
+                    ("method", self.own(path), recv.clone(), name.clone())
+                }
                 CallRef::Iface {
                     iface,
                     name,
@@ -2416,6 +2432,7 @@ impl FactBase {
                 }
                 b.add_wild("contains", &[("outer", s(&id))], site);
                 b.add_wild("call", &[("site", s(&id)), ("func", s(&id))], site);
+                b.add_wild("call_by", &[("site", s(&id))], site);
                 b.add_wild("calls", &[("site", s(&id))], site);
                 if !o.calls.is_empty() {
                     has.insert((lang.clone(), "calls"));

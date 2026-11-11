@@ -573,10 +573,13 @@ impl<'a> Graph<'a> {
                 };
                 self.call_func(holder, mi, path, name, &lookup, pos);
             }
+            // `by`, the convention a reader named the target by, changes nothing here: the call
+            // is the same edge.
             CallRef::Method {
                 path,
                 recv,
                 name,
+                by: _,
                 pos,
             } => self.method(holder, mi, path, recv, name, pos),
             CallRef::Iface {

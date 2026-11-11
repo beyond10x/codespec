@@ -367,6 +367,76 @@ fn scc_makes_implements_and_effect_hold_their_rows() {
     );
 }
 
+/// A foreign statement lists four calls: of the module's method `T.M` and of a method outside the
+/// set, each with the convention that gave its target (`by`), of `os.Getenv` with none, and,
+/// inside a function literal, of `T.M` by a convention again. `call_by` holds one row for each
+/// marked call, so a query selects the convention edges or leaves them out, and `calls` links
+/// a marked call as any other.
+#[test]
+fn call_by_selects_and_excludes_the_calls_a_convention_gave_a_target() {
+    let pos = |l: u32| format!("m.go:{l}");
+    let t = serde_json::json!({"k": "ptr", "elem": {"k": "named", "name": "T"}});
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "groovy", "name": "hand-written", "version": "0"},
+        "layout": [],
+        "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": pos(1)}],
+        "funcs": [
+            {"name": "main", "exported": false, "params": [], "results": [], "pos": pos(2),
+             "body": [{"k": "foreign", "lang": "groovy", "src": "x", "reason": "dynamic: x", "pos": pos(3),
+                "calls": [
+                    {"k": "method", "recv": "T", "name": "M", "by": "grails-service-field", "pos": pos(3)},
+                    {"k": "method", "path": "grails.gorm", "recv": "Hold", "name": "save", "by": "grails-gorm", "pos": pos(3)},
+                    {"k": "func", "path": "os", "name": "Getenv", "pos": pos(3)},
+                    {"k": "lambda", "sig": "groovy.lang.Closure", "pos": pos(3), "calls": [
+                        {"k": "method", "recv": "T", "name": "N", "by": "grails-service-field", "pos": pos(4)}
+                    ]}
+                ]}]},
+            {"name": "M", "exported": true, "params": [], "results": [], "pos": pos(5),
+             "recv": {"name": "t", "t": t}, "body": []},
+            {"name": "N", "exported": true, "params": [], "results": [], "pos": pos(6),
+             "recv": {"name": "t", "t": t}, "body": []}
+        ]
+    });
+    let m = Module::from_json(serde_json::to_string(&doc).unwrap().as_bytes())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let rows = |q: &str| answer(q, std::slice::from_ref(&m));
+    assert_eq!(
+        rows("conv(C, B) :- call{site: S, callee: C}, call_by{site: S, by: B}.\n?- conv(C, B)."),
+        "example.com/m.T.M\tgrails-service-field\n\
+         example.com/m.T.N\tgrails-service-field\n\
+         grails.gorm.Hold.save\tgrails-gorm\n"
+    );
+    assert_eq!(
+        rows(
+            "gorm(C) :- call{site: S, callee: C}, call_by{site: S, by: \"grails-gorm\"}.\n?- gorm(C)."
+        ),
+        "grails.gorm.Hold.save\n"
+    );
+    // Left out: the calls whose target the reader's type information gave.
+    assert_eq!(
+        rows(
+            "typed(C) :- call{site: S, callee: C, listed: true}, !call_by{site: S}.\n?- typed(C)."
+        ),
+        "os.Getenv\n"
+    );
+    // A marked call is linked as any other: reach and calls follow it.
+    assert_eq!(
+        rows("edge(T) :- calls{site: S, target: T}, call_by{site: S}.\n?- edge(T)."),
+        "example.com/m.T.M\nexample.com/m.T.N\n"
+    );
+    assert_eq!(
+        rows("?- reaches(\"example.com/m.main\", G)."),
+        "example.com/m.T.M\nexample.com/m.T.N\n"
+    );
+    assert_eq!(
+        FactBase::build(std::slice::from_ref(&m))
+            .rows("call_by")
+            .len(),
+        3
+    );
+}
+
 /// Disjunctions expand into bodies: 2^10 is within the limit, 2^11 is past it and refused,
 /// naming the count and the limit.
 #[test]
