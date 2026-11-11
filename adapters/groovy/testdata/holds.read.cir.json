@@ -1290,6 +1290,82 @@
       "pos": "grails-app/services/holds/ReminderService.groovy:8"
     },
     {
+      "name": "remindAll",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "ReminderService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "late",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Hold"
+              }
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "late.each { Hold h -> noticeService.remind(h.daysWaiting(today)) }",
+          "reason": "closure: a closure passed to each: functions as values are outside cir/1",
+          "pos": "grails-app/services/holds/ReminderService.groovy:16",
+          "calls": [
+            {
+              "k": "func",
+              "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+              "name": "each",
+              "pos": "grails-app/services/holds/ReminderService.groovy:16"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [
+                {
+                  "k": "method",
+                  "recv": "NoticeService",
+                  "name": "remind",
+                  "by": "grails-service-field",
+                  "pos": "grails-app/services/holds/ReminderService.groovy:16"
+                },
+                {
+                  "k": "method",
+                  "recv": "Hold",
+                  "name": "daysWaiting",
+                  "pos": "grails-app/services/holds/ReminderService.groovy:16"
+                }
+              ],
+              "pos": "grails-app/services/holds/ReminderService.groovy:16"
+            }
+          ]
+        }
+      ],
+      "pos": "grails-app/services/holds/ReminderService.groovy:15"
+    },
+    {
       "name": "waitingCount",
       "exported": true,
       "recv": {
@@ -1316,7 +1392,7 @@
           "lang": "groovy",
           "src": "return Hold.countByShelvedOnDay(-1)",
           "reason": "gorm: countByShelvedOnDay on Hold: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/holds/ReminderService.groovy:16",
+          "pos": "grails-app/services/holds/ReminderService.groovy:28",
           "calls": [
             {
               "k": "method",
@@ -1324,12 +1400,12 @@
               "recv": "Hold",
               "name": "countByShelvedOnDay",
               "by": "grails-gorm",
-              "pos": "grails-app/services/holds/ReminderService.groovy:16"
+              "pos": "grails-app/services/holds/ReminderService.groovy:28"
             }
           ]
         }
       ],
-      "pos": "grails-app/services/holds/ReminderService.groovy:15"
+      "pos": "grails-app/services/holds/ReminderService.groovy:27"
     },
     {
       "name": "archiveAll",
@@ -1366,7 +1442,7 @@
           "lang": "groovy",
           "src": "Hold.withNewTransaction {\n            done.each { Hold h -> h.delete() }\n        }",
           "reason": "gorm: withNewTransaction on Hold: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/holds/ReminderService.groovy:20",
+          "pos": "grails-app/services/holds/ReminderService.groovy:32",
           "calls": [
             {
               "k": "method",
@@ -1374,7 +1450,7 @@
               "recv": "Hold",
               "name": "withNewTransaction",
               "by": "grails-gorm",
-              "pos": "grails-app/services/holds/ReminderService.groovy:20"
+              "pos": "grails-app/services/holds/ReminderService.groovy:32"
             },
             {
               "k": "lambda",
@@ -1384,7 +1460,7 @@
                   "k": "func",
                   "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
                   "name": "each",
-                  "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                  "pos": "grails-app/services/holds/ReminderService.groovy:33"
                 },
                 {
                   "k": "lambda",
@@ -1396,18 +1472,18 @@
                       "recv": "Hold",
                       "name": "delete",
                       "by": "grails-gorm",
-                      "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                      "pos": "grails-app/services/holds/ReminderService.groovy:33"
                     }
                   ],
-                  "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                  "pos": "grails-app/services/holds/ReminderService.groovy:33"
                 }
               ],
-              "pos": "grails-app/services/holds/ReminderService.groovy:20"
+              "pos": "grails-app/services/holds/ReminderService.groovy:32"
             }
           ]
         }
       ],
-      "pos": "grails-app/services/holds/ReminderService.groovy:19"
+      "pos": "grails-app/services/holds/ReminderService.groovy:31"
     }
   ],
   "layout": [
@@ -1429,6 +1505,7 @@
     "type:ReminderService",
     "func:NewReminderService",
     "func:ReminderService.remindLate",
+    "func:ReminderService.remindAll",
     "func:ReminderService.waitingCount",
     "func:ReminderService.archiveAll"
   ],
@@ -1469,6 +1546,11 @@
       "reason": "closure: a closure passed to each: functions as values are outside cir/1"
     },
     {
+      "pos": "grails-app/services/holds/PickupService.groovy:3",
+      "what": "PickupService",
+      "reason": "unsupported: implements holds.Tally: interfaces are outside the reader's subset"
+    },
+    {
       "pos": "grails-app/services/holds/RecallService.groovy:3",
       "what": "RecallService",
       "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1"
@@ -1495,11 +1577,21 @@
     },
     {
       "pos": "grails-app/services/holds/ReminderService.groovy:16",
+      "what": "late.each { Hold h -> noticeService.remind(h.daysWaiting(today)) }",
+      "reason": "closure: a closure passed to each: functions as values are outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:19",
+      "what": "ReminderService.escalate(…)",
+      "reason": "dynamic: escalate returns def: its result has the type of whatever it returns"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:28",
       "what": "return Hold.countByShelvedOnDay(-1)",
       "reason": "gorm: countByShelvedOnDay on Hold: GORM persistence is outside cir/1 until it has a persistence boundary"
     },
     {
-      "pos": "grails-app/services/holds/ReminderService.groovy:20",
+      "pos": "grails-app/services/holds/ReminderService.groovy:32",
       "what": "Hold.withNewTransaction { …",
       "reason": "gorm: withNewTransaction on Hold: GORM persistence is outside cir/1 until it has a persistence boundary"
     }
@@ -1536,6 +1628,79 @@
           "recv": "NoticeService",
           "name": "remind",
           "pos": "grails-app/services/holds/DeskService.groovy:25"
+        }
+      ]
+    },
+    {
+      "name": "tally",
+      "recv": "PickupService",
+      "pos": "grails-app/services/holds/PickupService.groovy:8",
+      "reason": "unsupported: implements holds.Tally: interfaces are outside the reader's subset",
+      "calls": [
+        {
+          "k": "method",
+          "path": "grails.gorm",
+          "recv": "Hold",
+          "name": "countByShelvedOnDay",
+          "by": "grails-gorm",
+          "pos": "grails-app/services/holds/PickupService.groovy:9"
+        }
+      ]
+    },
+    {
+      "name": "announce",
+      "recv": "PickupService",
+      "pos": "grails-app/services/holds/PickupService.groovy:12",
+      "reason": "unsupported: implements holds.Tally: interfaces are outside the reader's subset",
+      "calls": [
+        {
+          "k": "method",
+          "recv": "NoticeService",
+          "name": "pickupReady",
+          "by": "grails-service-field",
+          "pos": "grails-app/services/holds/PickupService.groovy:13"
+        },
+        {
+          "k": "method",
+          "recv": "Hold",
+          "name": "daysWaiting",
+          "pos": "grails-app/services/holds/PickupService.groovy:13"
+        }
+      ]
+    },
+    {
+      "name": "extendAll",
+      "recv": "PickupService",
+      "pos": "grails-app/services/holds/PickupService.groovy:16",
+      "reason": "unsupported: implements holds.Tally: interfaces are outside the reader's subset",
+      "calls": [
+        {
+          "k": "func",
+          "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+          "name": "each",
+          "pos": "grails-app/services/holds/PickupService.groovy:17"
+        },
+        {
+          "k": "lambda",
+          "sig": "groovy.lang.Closure",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "DeskService",
+              "name": "renew2",
+              "by": "grails-service-field",
+              "pos": "grails-app/services/holds/PickupService.groovy:18"
+            },
+            {
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Hold",
+              "name": "save",
+              "by": "grails-gorm",
+              "pos": "grails-app/services/holds/PickupService.groovy:19"
+            }
+          ],
+          "pos": "grails-app/services/holds/PickupService.groovy:17"
         }
       ]
     },
@@ -1609,6 +1774,42 @@
       "pos": "grails-app/services/holds/RecallService.groovy:19",
       "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1",
       "calls": []
+    },
+    {
+      "name": "escalate",
+      "recv": "ReminderService",
+      "pos": "grails-app/services/holds/ReminderService.groovy:19",
+      "reason": "dynamic: escalate returns def: its result has the type of whatever it returns",
+      "calls": [
+        {
+          "k": "func",
+          "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+          "name": "each",
+          "pos": "grails-app/services/holds/ReminderService.groovy:20"
+        },
+        {
+          "k": "lambda",
+          "sig": "groovy.lang.Closure",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "DeskService",
+              "name": "renew2",
+              "by": "grails-service-field",
+              "pos": "grails-app/services/holds/ReminderService.groovy:21"
+            },
+            {
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Hold",
+              "name": "save",
+              "by": "grails-gorm",
+              "pos": "grails-app/services/holds/ReminderService.groovy:22"
+            }
+          ],
+          "pos": "grails-app/services/holds/ReminderService.groovy:20"
+        }
+      ]
     }
   ]
 }

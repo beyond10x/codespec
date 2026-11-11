@@ -4708,9 +4708,12 @@ public final class Reader {
      * the application, as a call into a library is.
      *
      * <p>{@code grails-service-field}: a call the type checker did not resolve, through a field
-     * of a service or a domain class that Spring autowires by name, where the name is the bean
-     * name of exactly one service that is read and the field is {@code def} or of that service's
-     * type. Its target is the one method of that name the service declares itself, not static,
+     * of a service or a domain class that Spring autowires by name ({@link #springSets}: the
+     * class read or refused as a whole, the field its own or inherited, named bare or as {@code
+     * this.<name>}), where the name is the bean name of exactly one service that is read and the
+     * field is {@code def}, {@code Object} or of that service's type. The call may stand
+     * anywhere a call is listed: {@code in} is the class whose code it is, not a method being
+     * read. Its target is the one method of that name the service declares itself, not static,
      * that takes as many arguments as the call passes ({@link #takes}; uncounted where an
      * argument is spread). Where that is no method or more than one, the convention tells no
      * target and the call stays one that names none.
@@ -4727,12 +4730,16 @@ public final class Reader {
             return null;
         }
         Object through = named(call.getObjectExpression());
-        if (!(through instanceof FieldNode) || !injected.contains(through)) {
+        if (through == null) {
+            through = fieldOfThis(call.getObjectExpression(), in);
+        }
+        if (!(through instanceof FieldNode) || !springSets((FieldNode) through, in)) {
             return null;
         }
         FieldNode field = (FieldNode) through;
         ClassNode service = serviceOfBean(field.getName());
-        if (service == null || !(field.isDynamicTyped() || field.getType().redirect() == service)) {
+        boolean untyped = field.isDynamicTyped() || field.getType().equals(ClassHelper.OBJECT_TYPE);
+        if (service == null || !(untyped || field.getType().redirect() == service)) {
             return null;
         }
         List<Expression> as = args(call.getArguments());
@@ -4756,6 +4763,50 @@ public final class Reader {
         }
         Op op = target == null ? null : opaqueOf.get(target);
         return op == null || op.recv == null ? null : methodRef("", op.recv, op.name, BY_SERVICE_FIELD, pos);
+    }
+
+    /**
+     * The field {@code this.<name>} or {@code this.@<name>} names in code of the class {@code in},
+     * its own or one it inherits, or null. {@link #named} looks the field up in the type of the
+     * {@code this} expression, which Groovy leaves {@code Object}, and so finds none.
+     */
+    private static FieldNode fieldOfThis(Expression e, ClassNode in) {
+        if (in == null || !(e instanceof PropertyExpression) || !isThis(((PropertyExpression) e).getObjectExpression())) {
+            return null;
+        }
+        String name = ((PropertyExpression) e).getPropertyAsString();
+        return name == null ? null : in.getField(name);
+    }
+
+    /**
+     * Whether Spring sets {@code f} by its name in the instance the code of the class {@code in}
+     * runs on: a field {@link #injectedField} that an artefact declares, or that the artefact
+     * {@code in} is, or is nested in, inherits from any class. {@link #injected} holds such
+     * fields of the classes that are read alone ({@link #grailsMembers}); a call list is not
+     * confined to those, so this asks the classes themselves.
+     */
+    private boolean springSets(FieldNode f, ClassNode in) {
+        if (!injectedField(f)) {
+            return false;
+        }
+        ClassNode declaring = f.getDeclaringClass();
+        if (artefact(declaring)) {
+            return true;
+        }
+        ClassNode top = in;
+        while (top != null && top.getOuterClass() != null) {
+            top = top.getOuterClass();
+        }
+        return declaring != null && artefact(top) && !top.redirect().equals(declaring.redirect()) && top.isDerivedFrom(declaring);
+    }
+
+    /**
+     * Whether a class is a service or a domain class Spring makes or autowires an instance of,
+     * read or refused as a whole: a top-level class of such a file. A nested class is no bean,
+     * and an enum is none.
+     */
+    private boolean artefact(ClassNode cn) {
+        return cn != null && cn.getOuterClass() == null && !cn.isScript() && !cn.isEnum() && (isService(cn) || isDomain(cn));
     }
 
     /**

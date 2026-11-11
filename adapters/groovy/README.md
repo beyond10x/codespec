@@ -36,9 +36,9 @@ and an enum. Each directory under `testdata/refuse` holds one construct the read
 Grails application; `testdata/lending/EXPECTED.md` is what the reader reads of it, and
 `testdata/lending.read.cir.json` is that read. `testdata/holds` is a second one, most of whose
 calls go through code the reader refuses: a method that returns `def`, a second overload, a closure,
-a service that extends another, and a service that calls two others through `def` fields and a
-domain class through GORM. `testdata/holds.read.cir.json` is its read, and "Call lists" below is
-what it shows.
+a service that extends another, a service that calls two others through `def` fields and a domain
+class through GORM, and a service that does both and is refused as a whole, since it implements an
+interface. `testdata/holds.read.cir.json` is its read, and "Call lists" below is what it shows.
 
 ## Call lists
 
@@ -100,7 +100,7 @@ carries `by`.
 | `by` | The call | The call ref |
 | --- | --- | --- |
 | `grails-gorm` | a GORM method ("What the Grails layer reads and refuses" lists them) on a domain class, an instance of one or `this` in one, that the domain class does not declare itself: the call the reader refuses as `gorm: <name> on <Domain>` | `method`, `path` `grails.gorm`, `recv` the domain class, `name` the method as written, static or not: `Hold.countByShelvedOnDay(-1)` is a call of `grails.gorm.Hold.countByShelvedOnDay` |
-| `grails-service-field` | a call the type checker did not resolve, through a field of a service or a domain class whose name is the Spring bean name of exactly one service that is read (`noticeService` for `NoticeService`), the field being `def` or of that service's type | `method`, `recv` the service, `name` the function of the one method of that name the service declares that takes as many arguments as the call passes: `deskService.renew(hold, 7)` is a call of `DeskService.renew2` |
+| `grails-service-field` | a call the type checker did not resolve, through a field Spring sets in a service or a domain class, whose name is the Spring bean name of exactly one service that is read (`noticeService` for `NoticeService`), the field being `def`, `Object` or of that service's type | `method`, `recv` the service, `name` the function of the one method of that name the service declares that takes as many arguments as the call passes: `deskService.renew(hold, 7)` is a call of `DeskService.renew2` |
 
 `grails.gorm` is no module any document declares: a `grails-gorm` call is an edge that leaves the
 application, as a call into a library is, and one name for every domain class's `save`. The closure
@@ -121,6 +121,30 @@ passed to a GORM method is a `lambda` in the same list, with its own calls.
 Grails 2 names a service's bean by its class's simple name as a property: `NoticeService` is
 `noticeService`, and a name that begins with two capitals is kept, `URLService`.
 
+Both conventions hold wherever a call is listed, not in the body of a method that is read alone:
+in a `foreign` statement and in an `opaque` function, of a class that is read, of one refused as a
+whole (`PickupService` in `testdata/holds`, which implements an interface) and of one refused at a
+field; inside a closure, at any depth, where the call ref stands in the closure's `lambda`; in a
+field's initializer; and, for GORM, in a static method.
+
+The field of `grails-service-field` is one Spring sets in the instance the code runs on:
+
+- a field of a service or a domain class, the top-level class of its file, named bare
+  (`noticeService.remind(…)`) or as `this.noticeService`;
+- one such a class inherits, from another artefact or from any other class (an abstract base
+  class under `src/groovy`);
+- in the code of a nested class, a field of the artefact around it.
+
+It does not reach, and the call stays a `value` call:
+
+- a `static` field, which Spring does not set;
+- a field a nested class declares itself: a nested class is no bean;
+- a call on what the field's getter returns, `getNoticeService().remind(…)`, or on a local the
+  field was assigned to: the rule reads a field by its name, not a value by where it came from;
+- a field of another object, `other.noticeService.remind(…)`;
+- a field in a class that is no service and no domain class, a controller or a class under
+  `src/groovy` among them, which the reader does not read.
+
 `codespec reach`, `reaches` and `calls` follow a call with `by` as any other, without being asked
 to: in `testdata/holds`, `ReminderService.remindLate` reaches `NoticeService.remind` and
 `DeskService.renew2` through two `def` fields alone. The relation `call_by{site, by}` of the fact
@@ -130,6 +154,7 @@ base holds one row for each such call, so a query selects the convention edges o
 $ codespec query 'conv(C, B) :- call{site: S, callee: C}, call_by{site: S, by: B}.
 ?- conv(C, B).' adapters/groovy/testdata/holds.read.cir.json
 DeskService.renew2	grails-service-field
+NoticeService.pickupReady	grails-service-field
 NoticeService.remind	grails-service-field
 grails.gorm.Hold.countByShelvedOnDay	grails-gorm
 grails.gorm.Hold.delete	grails-gorm

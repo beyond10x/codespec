@@ -29,7 +29,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `grails-service-field`: a call through a field Spring sets by its name to a service that is
   read is a call of the one method of that name the service declares that takes as many
   arguments as the call passes; where the convention names no one method, the call stays a
-  `value` call. A plain Groovy module has neither
+  `value` call. Both hold wherever a call is listed: in a class that is read and in one refused
+  as a whole, inside a closure at any depth, in a field's initializer. The field is one of a
+  service or a domain class, its own or inherited, `def`, `Object` or of the service's type,
+  named bare or as `this.<name>`; a static field, a field of a nested class and a call on the
+  field's getter name no target. A plain Groovy module has neither
   (`adapters/groovy/README.md`, "A convention names a target the type checker does not").
 
 ### Changed

@@ -216,6 +216,16 @@ public final class ReaderTest {
         cases.put("the_gorm_method_list_holds_every_method_of_the_gorm_api_classes_of_the_grails_distribution",
             t::gormListIsTheDistributions);
         cases.put("the_readme_names_both_conventions_their_marks_and_every_gorm_method", t::readmeNamesTheConventions);
+        cases.put("holds_a_service_field_call_in_a_class_refused_as_a_whole_is_marked", t::holdsServiceFieldInARefusedClass);
+        cases.put("holds_a_gorm_call_in_a_class_refused_as_a_whole_is_marked", t::holdsGormInARefusedClass);
+        cases.put("holds_a_service_field_call_in_a_closure_passed_as_an_argument_is_marked_inside_its_lambda_in_a_read_method",
+            t::holdsServiceFieldInAClosureOfAReadMethod);
+        cases.put("holds_a_service_field_call_and_a_gorm_call_in_a_closure_are_marked_inside_its_lambda_in_an_opaque_function",
+            t::holdsConventionsInAClosureOfAnOpaqueFunction);
+        cases.put("holds_a_closure_in_a_class_refused_as_a_whole_holds_its_marked_calls", t::holdsClosureInARefusedClass);
+        cases.put("the_conventions_reach_a_nested_closure_this_x_service_a_field_initializer_an_inherited_field_and_static_gorm",
+            t::conventionsReachEveryPlaceACallIsListed);
+        cases.put("a_static_field_and_a_field_of_a_nested_class_are_set_by_no_convention", t::conventionsDoNotReachWhatSpringDoesNotSet);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -1844,7 +1854,8 @@ public final class ReaderTest {
             + method("java.lang", "String", "trim", trim) + "," + method("holds", "Slip", "text", trim) + ","
             + value("groovy dynamic call of archive", archive));
         opaqueIs(doc, "RecallService.graceDays", holdsPos(RECALL, "static int graceDays"), EXTENDS_NOTICE, "");
-        check(list(doc.get("opaque")).size() == 5, "opaque functions: " + Json.write(doc.get("opaque")));
+        // RecallService's three, shelve, renew2, ReminderService.escalate and PickupService's three.
+        check(list(doc.get("opaque")).size() == 9, "opaque functions: " + Json.write(doc.get("opaque")));
     }
 
     private void holdsOverloadsAreTwoFunctions() throws Exception {
@@ -2120,6 +2131,7 @@ public final class ReaderTest {
         check(conv[0].equals(1), "codespec query exit " + conv[0] + ", not 1 (rows)");
         check(List.of(((String) conv[1]).split("\n")).equals(List.of(
             "DeskService.renew2\t" + SERVICE_FIELD,
+            "NoticeService.pickupReady\t" + SERVICE_FIELD,
             "NoticeService.remind\t" + SERVICE_FIELD,
             "grails.gorm.Hold.countByShelvedOnDay\t" + GORM,
             "grails.gorm.Hold.delete\t" + GORM,
@@ -2278,6 +2290,250 @@ public final class ReaderTest {
         java.util.Collections.sort(unnamed);
         check(unnamed.isEmpty(), "README.md does not name the GORM methods " + unnamed);
         check(readme.contains("call_by"), "README.md does not name the relation call_by");
+    }
+
+    // ---- conventions, wherever a call is listed ----
+
+    private static final String PICKUP = "grails-app/services/holds/PickupService.groovy";
+    private static final String EACH = "org.codehaus.groovy.runtime.DefaultGroovyMethods";
+
+    /** The calls of the opaque function {@code key} are {@code [calls]}. */
+    private static void opaqueCalls(Map<String, Object> doc, String key, String calls) {
+        Map<String, Object> o = opaqueOrNull(doc, key);
+        check(o != null, "no opaque function " + key + " in " + Json.write(doc.getOrDefault("opaque", List.of())));
+        check(same(o.get("calls"), "[" + calls + "]"), key + " calls " + Json.write(o.get("calls")));
+    }
+
+    /**
+     * {@code PickupService} implements an interface and so is refused as a whole: each of its
+     * methods is an opaque function. Its {@code def noticeService} is set by Spring as any
+     * service's is, so the call through it is one of {@code NoticeService.pickupReady}.
+     */
+    private void holdsServiceFieldInARefusedClass() throws Exception {
+        Map<String, Object> doc = holds();
+        check(byNameOrNull(list(doc.get("types")), "PickupService") == null, "PickupService, which implements an interface, is a type");
+        String ready = holdsPos(PICKUP, "noticeService.pickupReady");
+        opaqueCalls(doc, "PickupService.announce",
+            methodBy("", "NoticeService", "pickupReady", SERVICE_FIELD, ready) + "," + method("", "Hold", "daysWaiting", ready));
+    }
+
+    /** A GORM call in a method of a class refused as a whole. */
+    private void holdsGormInARefusedClass() throws Exception {
+        Map<String, Object> doc = holds();
+        String count = holdsPos(PICKUP, "Hold.countByShelvedOnDay");
+        opaqueCalls(doc, "PickupService.tally", methodBy("grails.gorm", "Hold", "countByShelvedOnDay", GORM, count));
+    }
+
+    /**
+     * {@code late.each { … noticeService.remind(…) }} in a method that is read: the statement is
+     * foreign, its closure a lambda, and the call through the field is marked inside the lambda.
+     */
+    private void holdsServiceFieldInAClosureOfAReadMethod() throws Exception {
+        Map<String, Object> doc = holds();
+        check(funcByKeyOrNull(doc, "ReminderService.remindAll") != null, "ReminderService.remindAll is not read");
+        String each = holdsPos(REMINDER, "late.each { Hold h -> noticeService.remind");
+        foreignCalls(doc, each, func(EACH, "each", each) + ","
+            + lambda(methodBy("", "NoticeService", "remind", SERVICE_FIELD, each) + "," + method("", "Hold", "daysWaiting", each), each));
+    }
+
+    /**
+     * {@code ReminderService.escalate} returns {@code def}: an opaque function of a class that is
+     * read. The closure it passes to {@code each} calls a service through a field and saves a
+     * domain instance; both are marked inside the lambda.
+     */
+    private void holdsConventionsInAClosureOfAnOpaqueFunction() throws Exception {
+        Map<String, Object> doc = holds();
+        String each = holdsPos(REMINDER, "overdue.each { Hold h ->");
+        String renew = holdsPos(REMINDER, "deskService.renew(h, 14)");
+        String save = holdsPos(REMINDER, "h.save()");
+        opaqueCalls(doc, "ReminderService.escalate", func(EACH, "each", each) + ","
+            + lambda(methodBy("", "DeskService", "renew2", SERVICE_FIELD, renew) + ","
+                + methodBy("grails.gorm", "Hold", "save", GORM, save), each));
+    }
+
+    /** Both together: a closure in a method of a class refused as a whole. */
+    private void holdsClosureInARefusedClass() throws Exception {
+        Map<String, Object> doc = holds();
+        String each = holdsPos(PICKUP, "waiting.each { Hold h ->");
+        String renew = holdsPos(PICKUP, "deskService.renew(h, 7)");
+        String save = holdsPos(PICKUP, "h.save()");
+        opaqueCalls(doc, "PickupService.extendAll", func(EACH, "each", each) + ","
+            + lambda(methodBy("", "DeskService", "renew2", SERVICE_FIELD, renew) + ","
+                + methodBy("grails.gorm", "Hold", "save", GORM, save), each));
+    }
+
+    /** Every call ref at {@code pos} in any call list of the document, a lambda's own calls among them, in order. */
+    private static List<Object> refsAt(Map<String, Object> doc, String pos) {
+        List<Object> lists = new ArrayList<>();
+        for (Map<String, Object> f : foreigns(doc.get("funcs"))) {
+            lists.add(f.get("calls"));
+        }
+        for (Object o : list(doc.getOrDefault("opaque", List.of()))) {
+            lists.add(map(o).get("calls"));
+        }
+        List<Object> out = new ArrayList<>();
+        for (Object calls : lists) {
+            refsAt(calls, pos, out);
+        }
+        return out;
+    }
+
+    private static void refsAt(Object calls, String pos, List<Object> out) {
+        for (Object c : list(calls)) {
+            Map<String, Object> ref = map(c);
+            if ("lambda".equals(ref.get("k"))) {
+                refsAt(ref.get("calls"), pos, out);
+            } else if (pos.equals(ref.get("pos"))) {
+                out.add(ref);
+            }
+        }
+    }
+
+    /** The made-up application the two cases below read: one service to call, and each place a call can stand. */
+    private Path shapesApp() throws Exception {
+        Path app = work.resolve("convention-shapes");
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=shapes\n");
+        write(app.resolve("grails-app/domain/shapes/Item.groovy"), "package shapes\n\nclass Item {\n    int n = 0\n\n"
+            + "    static Item newest() {\n        return last()\n    }\n}\n");
+        write(app.resolve("grails-app/domain/shapes/Special.groovy"), "package shapes\n\nclass Special extends Item {\n"
+            + "    def pickService\n\n"
+            + "    void keep() {\n        pickService.pick(5)\n        save()\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/PickService.groovy"), "package shapes\n\nclass PickService {\n"
+            + "    int picked = 0\n\n"
+            + "    void pick(int a) {\n        picked = picked + a\n    }\n\n"
+            + "    int total() {\n        return picked\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/ShapeService.groovy"), "package shapes\n\nclass ShapeService {\n"
+            + "    def pickService\n"
+            + "    int atStart = pickService.total()\n\n"
+            + "    void nested(List<Item> items) {\n"
+            + "        Item.withTransaction { items.each { Item i -> pickService.pick(i.n) } }\n"
+            + "    }\n\n"
+            + "    void viaThis() {\n        this.pickService.pick(2)\n    }\n\n"
+            + "    void viaGetter() {\n        getPickService().pick(11)\n    }\n\n"
+            + "    void viaOthers(ShapeService other) {\n        def held = pickService\n        held.pick(12)\n"
+            + "        other.pickService.pick(13)\n    }\n\n"
+            + "    static int stored() {\n        return Item.count()\n    }\n}\n");
+        write(app.resolve("src/groovy/shapes/Support.groovy"), "package shapes\n\nabstract class Support {\n    def pickService\n}\n");
+        write(app.resolve("grails-app/services/shapes/BackedService.groovy"), "package shapes\n\nclass BackedService extends Support {\n"
+            + "    void back() {\n        pickService.pick(10)\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/PlainService.groovy"), "package shapes\n\nclass PlainService {\n"
+            + "    Object pickService\n\n"
+            + "    void go() {\n        pickService.pick(9)\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/BaseService.groovy"), "package shapes\n\nclass BaseService {\n"
+            + "    def pickService\n}\n");
+        write(app.resolve("grails-app/services/shapes/DerivedService.groovy"), "package shapes\n\nclass DerivedService extends BaseService {\n"
+            + "    void inherited() {\n        pickService.pick(8)\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/LooseService.groovy"), "package shapes\n\nclass LooseService {\n"
+            + "    def pickService\n    def scratch\n\n"
+            + "    void go() {\n        pickService.pick(4)\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/StaticService.groovy"), "package shapes\n\nclass StaticService {\n"
+            + "    static def pickService\n\n"
+            + "    static void go() {\n        pickService.pick(3)\n    }\n}\n");
+        write(app.resolve("grails-app/services/shapes/OuterService.groovy"), "package shapes\n\nclass OuterService {\n"
+            + "    def pickService\n\n"
+            + "    class Teller {\n        void tell() {\n            pickService.pick(7)\n        }\n    }\n\n"
+            + "    class Helper {\n        def pickService\n\n        void help() {\n            pickService.pick(6)\n        }\n    }\n}\n");
+        return app;
+    }
+
+    private static String shapesPos(Path app, String file, String text) throws IOException {
+        return file + ":" + lineOf(app.resolve(file), text);
+    }
+
+    /** Names {@code what} and the refs found in {@code wrong} where the call refs at {@code pos} are not {@code want}. */
+    private static void refsAre(Map<String, Object> doc, String what, String pos, List<String> want, List<String> wrong) {
+        List<Object> got = refsAt(doc, pos);
+        if (!same(got, "[" + String.join(",", want) + "]")) {
+            wrong.add(what + " at " + pos + ": " + Json.write(got).replaceAll("\\s*\\n\\s*", " "));
+        }
+    }
+
+    /**
+     * The conventions hold wherever the reader lists a call, not in a method body of a read class
+     * alone: in a closure inside a closure, through {@code this.pickService}, in a field's
+     * initializer, through a field a service inherits from the service it extends, in a class
+     * none of whose members is read because a field of it is refused, in a domain class refused
+     * as a whole, in a nested class through the field of the service around it, and for GORM in
+     * a static method, on the class and on {@code this} of a domain class.
+     */
+    private void conventionsReachEveryPlaceACallIsListed() throws Exception {
+        Path app = shapesApp();
+        Map<String, Object> doc = Main.read(app, List.of());
+        String shape = "grails-app/services/shapes/ShapeService.groovy";
+        List<String> wrong = new ArrayList<>();
+        String nested = shapesPos(app, shape, "Item.withTransaction");
+        refsAre(doc, "a closure inside a closure", nested, List.of(
+            methodBy("grails.gorm", "Item", "withTransaction", GORM, nested), func(EACH, "each", nested),
+            methodBy("", "PickService", "pick", SERVICE_FIELD, nested)), wrong);
+        String viaThis = shapesPos(app, shape, "this.pickService.pick(2)");
+        refsAre(doc, "this.pickService", viaThis, List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, viaThis)), wrong);
+        String atStart = shapesPos(app, shape, "int atStart");
+        refsAre(doc, "a field's initializer", atStart, List.of(methodBy("", "PickService", "total", SERVICE_FIELD, atStart)), wrong);
+        String stored = shapesPos(app, shape, "Item.count()");
+        refsAre(doc, "GORM on the class in a static method", stored, List.of(methodBy("grails.gorm", "Item", "count", GORM, stored)),
+            wrong);
+        String newest = shapesPos(app, "grails-app/domain/shapes/Item.groovy", "return last()");
+        refsAre(doc, "GORM on this in a static method of a domain class", newest,
+            List.of(methodBy("grails.gorm", "Item", "last", GORM, newest)), wrong);
+        String inherited = shapesPos(app, "grails-app/services/shapes/DerivedService.groovy", "pickService.pick(8)");
+        refsAre(doc, "a field inherited from the service a service extends", inherited,
+            List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, inherited)), wrong);
+        String loose = shapesPos(app, "grails-app/services/shapes/LooseService.groovy", "pickService.pick(4)");
+        refsAre(doc, "a class refused at a field", loose, List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, loose)), wrong);
+        String special = "grails-app/domain/shapes/Special.groovy";
+        String keep = shapesPos(app, special, "pickService.pick(5)");
+        refsAre(doc, "a domain class refused as a whole", keep, List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, keep)), wrong);
+        String save = shapesPos(app, special, "save()");
+        refsAre(doc, "GORM on this in a domain class refused as a whole", save,
+            List.of(methodBy("grails.gorm", "Special", "save", GORM, save)), wrong);
+        String tell = shapesPos(app, "grails-app/services/shapes/OuterService.groovy", "pickService.pick(7)");
+        refsAre(doc, "a nested class, through the field of the service around it", tell,
+            List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, tell)), wrong);
+        String back = shapesPos(app, "grails-app/services/shapes/BackedService.groovy", "pickService.pick(10)");
+        refsAre(doc, "a field inherited from a class that is no artefact", back,
+            List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, back)), wrong);
+        String plain = shapesPos(app, "grails-app/services/shapes/PlainService.groovy", "pickService.pick(9)");
+        refsAre(doc, "a field declared Object, which def is", plain, List.of(methodBy("", "PickService", "pick", SERVICE_FIELD, plain)),
+            wrong);
+        check(wrong.isEmpty(), "calls the conventions do not reach: " + wrong);
+        Path out = work.resolve("convention-shapes.json");
+        Files.writeString(out, Json.write(doc), StandardCharsets.UTF_8);
+        Object[] valid = codespecPrints("convention-shapes.validate.txt", "validate", "--canonical", out.toString());
+        check(valid[0].equals(0), "codespec validate --canonical refused the read");
+    }
+
+    /**
+     * Spring sets no static field and no field of a nested class, which is no bean: a call
+     * through either names no target. Nor does a call on what the field's getter returns, on a
+     * local the field was assigned to or on the field of another object: the rule reads a field
+     * of the instance by its name, not a value by where it came from.
+     */
+    private void conventionsDoNotReachWhatSpringDoesNotSet() throws Exception {
+        Path app = shapesApp();
+        Map<String, Object> doc = Main.read(app, List.of());
+        List<String> wrong = new ArrayList<>();
+        String go = shapesPos(app, "grails-app/services/shapes/StaticService.groovy", "pickService.pick(3)");
+        refsAre(doc, "a static field", go, List.of(value("groovy dynamic call of pick", go)), wrong);
+        String help = shapesPos(app, "grails-app/services/shapes/OuterService.groovy", "pickService.pick(6)");
+        refsAre(doc, "a field of a nested class", help, List.of(value("groovy dynamic call of pick", help)), wrong);
+        String shape = "grails-app/services/shapes/ShapeService.groovy";
+        String held = shapesPos(app, shape, "held.pick(12)");
+        refsAre(doc, "a local the field was assigned to", held, List.of(value("groovy dynamic call of pick", held)), wrong);
+        String other = shapesPos(app, shape, "other.pickService.pick(13)");
+        refsAre(doc, "a field of another object", other, List.of(value("groovy dynamic call of pick", other)), wrong);
+        String getter = shapesPos(app, shape, "getPickService().pick(11)");
+        List<Object> viaGetter = refsAt(doc, getter);
+        boolean dynamic = false;
+        for (Object ref : viaGetter) {
+            dynamic |= same(ref, value("groovy dynamic call of pick", getter));
+            if (map(ref).containsKey("by")) {
+                wrong.add("the field's getter at " + getter + ": " + Json.write(ref));
+            }
+        }
+        if (!dynamic) {
+            wrong.add("the field's getter at " + getter + ": no dynamic call of pick in " + Json.write(viaGetter));
+        }
+        check(wrong.isEmpty(), "calls a convention names a target of where Spring sets no field: " + wrong);
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----
