@@ -4,7 +4,7 @@ id: story:reader-groovy-aborts-on-grails-2
 kind: story
 status: draft
 title: The Groovy reader refuses instead of aborting on a Grails 2 application
-revision: 2
+revision: 3
 ---
 # Story: the Groovy reader refuses instead of aborting on a Grails 2 application
 
@@ -54,3 +54,27 @@ whole" (lines 63, 190) and a resolve-only or Java file that does not resolve is 
 - Items 2 to 5: the read exits 0 or with the refusal exit, writes its document, and names the
   refused file and line; no `Error` or compiler failure escapes `Reader`.
 - `task check` exits 0.
+
+## Evidence
+
+Two passes, `c5c548e9` and `7d116fa4`, on `story/groovy-reader-aborts`.
+
+In this repository, on `7d116fa4`: `ReaderTest` 80 passed, 0 failed, 0 skipped, on made-up trees
+and jars the test builds; `task check` exit 0 (136 cargo suites, 1011 passed, 0 failed).
+
+On the Grails 2.5.6 application the conditions were reported from, run by the reporting session on
+2026-11-11 with an adapter built from `7d116fa4`; as reported, not reproduced here, the logs are
+not in this repository:
+
+- `c5c548e9`: the class-loader condition (item 1) was gone; the other four ended in new aborts
+  (a logging class that could not be loaded, a compile error after a trait's file was left out, an
+  exception thrown by a local AST transformation of a jar, a Java EE package the JDK no longer
+  ships).
+- `7d116fa4`: 6 of 6 reads exit 0 and write a document: the merged tree with the full classpath,
+  with only `grails-core` and `spring-tx`, and as a copy with annotations stripped by hand; one
+  plugin directory alone with the full classpath, with the six jars the README named, and with
+  Grails' `lib/` including the stub jar.
+- Refusals in those six reads: `unresolved` 33 to 248, `unsupported: annotation` 4 to 189,
+  `unsupported: compile error`, `the compiler failed` and `no file can be blamed` 0 in all six.
+- The merged tree as written and its hand-stripped copy give the same 203 functions; they differ
+  by 9 `unsupported: annotation` refusals.
