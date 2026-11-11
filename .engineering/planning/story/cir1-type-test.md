@@ -6,7 +6,7 @@ status: draft
 title: 'cir/1: a test of a value''s dynamic type with a typed binding'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+revision: 2
 ---
 # Story: cir/1 has a test of a value's dynamic type with a typed binding
 
@@ -38,3 +38,7 @@ exception mapper. `cir/1` has no runtime type test, so the readers refuse the `i
 - Own: `crates/model`, `schemas/`, `adapters/java/src/codespec/read/Reader.java`,
   `adapters/go/cmd/codespec-read-go`, `crates/eval`, the writers' statement and expression matches,
   `conformance/cases`. Inferred.
+
+## Requested again
+
+On 2026-11-11 by another session that generates small servers through `cir/1`: with a type test its runtime library could keep values of an interface type, and `codespec-read-go` refuses type assertions and type switches today.
