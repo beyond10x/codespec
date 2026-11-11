@@ -147,6 +147,24 @@ public final class ReaderTest {
         cases.put("adversary_grails_list_order_by_on_a_domain_class_is_foreign_gorm", t::adversaryListOrderBy);
         cases.put("a_method_whose_quoted_name_is_no_identifier_is_refused_and_the_document_reads_strictly",
             t::aQuotedMethodNameIsRefused);
+        // A class, a jar or a file that does not resolve refuses a file and the read writes its
+        // document. Each case builds its application, and the jars it needs, under the work dir.
+        cases.put("a_src_java_class_extending_a_class_of_a_classpath_jar_is_defined_and_the_service_naming_it_reads",
+            t::aSrcJavaClassExtendingAClasspathClassResolves);
+        cases.put("a_class_whose_own_dependency_is_on_no_jar_refuses_the_service_importing_it_unresolved",
+            t::aClassWhoseDependencyIsMissingRefusesTheFileNamingIt);
+        cases.put("a_class_reached_through_a_call_whose_own_dependency_is_on_no_jar_refuses_the_service_reaching_it_unresolved",
+            t::aClassReachedThroughACallWhoseDependencyIsMissingRefusesTheFileReachingIt);
+        cases.put("a_transformation_that_needs_a_class_on_no_jar_refuses_the_class_it_annotates_unresolved",
+            t::aTransformationThatNeedsAMissingClassRefusesTheClassItAnnotates);
+        cases.put("a_stub_class_without_a_code_attribute_refuses_the_service_importing_it_unresolved",
+            t::aStubClassWithoutCodeRefusesTheFileNamingIt);
+        cases.put("an_annotation_constant_of_a_class_on_no_jar_refuses_its_file_unresolved",
+            t::anAnnotationConstantOfAMissingClassRefusesItsFile);
+        cases.put("a_qualified_reference_in_a_static_method_to_an_enum_left_out_refuses_its_file_unresolved",
+            t::aQualifiedReferenceToALeftOutEnumRefusesItsFile);
+        cases.put("a_reference_in_a_static_method_to_a_refused_domain_class_of_its_package_refuses_its_file_unresolved",
+            t::aReferenceToARefusedDomainClassOfItsPackageRefusesItsFile);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -1006,6 +1024,331 @@ public final class ReaderTest {
             + "    List<Book> ordered() {\n        return Book.listOrderByPages()\n    }\n}\n");
         Map<String, Object> doc = Main.read(app, List.of());
         foreignWith(doc, svc + ":6", "gorm: listOrderByPages");
+    }
+
+    // ---- a class, a jar or a file that does not resolve refuses a file; it never ends the read ----
+
+    private static final String PLAIN_SERVICE = "grails-app/services/lib/PlainService.groovy";
+
+    /** An application under the work dir holding one service that needs nothing: every case requires it read. */
+    private Path appWithPlainService(String name) throws IOException {
+        Path app = adversaryApp(name);
+        write(app.resolve(PLAIN_SERVICE), "package lib\n\nclass PlainService {\n\n"
+            + "    int pure(int n) {\n        return n + 2\n    }\n}\n");
+        return app;
+    }
+
+    /** Read {@code app} with {@code jars}; whatever the read throws fails the case, naming it. */
+    private static Map<String, Object> readWritesADocument(Path app, List<Path> jars) {
+        Map<String, Object> doc;
+        try {
+            doc = Main.read(app, jars);
+        } catch (Throwable e) {
+            throw new AssertionError("the read ended without a document: " + e);
+        }
+        check(funcByKeyOrNull(doc, "PlainService.pure") != null, "PlainService.pure, which needs nothing, is not read");
+        return doc;
+    }
+
+    /** {@code file} is refused as a whole, once, at {@code line}, its reason beginning {@code reason}; {@code key} is not read. */
+    private static void refusedAsAWhole(Map<String, Object> doc, String file, int line, String reason, String key) {
+        List<String> all = new ArrayList<>();
+        for (Object r : list(doc.get("refusals"))) {
+            String pos = (String) map(r).get("pos");
+            if (pos.startsWith(file + ":")) {
+                all.add(pos + " " + map(r).get("reason"));
+            }
+        }
+        check(all.size() == 1 && all.get(0).startsWith(file + ":" + line + " " + reason),
+            file + " is not refused once at line " + line + " as " + reason + ": " + all);
+        check(funcByKeyOrNull(doc, key) == null, key + ", of a refused file, is read");
+    }
+
+    /**
+     * Compile {@code sources} (binary class name to Java text) with javac against {@code classpath}
+     * and pack every class file whose entry name {@code keep} accepts, after {@code edit}, into a jar
+     * under the work dir.
+     */
+    private Path jarOf(String name, Map<String, String> sources, List<Path> classpath,
+        java.util.function.Predicate<String> keep, java.util.function.BiFunction<String, byte[], byte[]> edit) throws IOException {
+        Path dir = work.resolve("jars/" + name);
+        if (Files.exists(dir)) {
+            try (Stream<Path> s = Files.walk(dir)) {
+                for (Path p : s.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.delete(p);
+                }
+            }
+        }
+        Path src = dir.resolve("src");
+        Path classes = dir.resolve("classes");
+        Files.createDirectories(classes);
+        List<java.io.File> files = new ArrayList<>();
+        for (Map.Entry<String, String> e : sources.entrySet()) {
+            Path f = src.resolve(e.getKey().replace('.', '/') + ".java");
+            write(f, e.getValue());
+            files.add(f.toFile());
+        }
+        javax.tools.JavaCompiler javac = javax.tools.ToolProvider.getSystemJavaCompiler();
+        check(javac != null, "no Java compiler in this runtime");
+        List<String> cp = new ArrayList<>();
+        for (Path p : classpath) {
+            cp.add(p.toString());
+        }
+        List<String> options = List.of("-proc:none", "-nowarn", "--release", "8", "-Xlint:-options", "-d", classes.toString(),
+            "-classpath", String.join(java.io.File.pathSeparator, cp));
+        java.io.StringWriter out = new java.io.StringWriter();
+        try (javax.tools.StandardJavaFileManager fm = javac.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+            boolean ok = javac.getTask(out, fm, null, options, null, fm.getJavaFileObjectsFromFiles(files)).call();
+            check(ok, "javac failed on the classes of " + name + ": " + out);
+        }
+        Path jar = dir.resolve(name + ".jar");
+        try (Stream<Path> s = Files.walk(classes);
+            java.util.jar.JarOutputStream j = new java.util.jar.JarOutputStream(Files.newOutputStream(jar))) {
+            for (Path p : s.filter(Files::isRegularFile).sorted().toList()) {
+                String entry = classes.relativize(p).toString().replace(java.io.File.separatorChar, '/');
+                if (keep.test(entry)) {
+                    j.putNextEntry(new java.util.jar.JarEntry(entry));
+                    j.write(edit.apply(entry, Files.readAllBytes(p)));
+                    j.closeEntry();
+                }
+            }
+        }
+        return jar;
+    }
+
+    private Path jarOf(String name, Map<String, String> sources, java.util.function.Predicate<String> keep) throws IOException {
+        return jarOf(name, sources, List.of(), keep, (entry, bytes) -> bytes);
+    }
+
+    private static int u2(byte[] b, int at) {
+        return (b[at] & 0xff) << 8 | b[at + 1] & 0xff;
+    }
+
+    private static int u4(byte[] b, int at) {
+        return u2(b, at) << 16 | u2(b, at + 2);
+    }
+
+    /**
+     * A class file as an API-only stub jar ships it: {@code ACC_ABSTRACT} cleared on the class and on
+     * each method, so that a method compiled abstract is a concrete method without a {@code Code}
+     * attribute. The JVM refuses to define it, {@code ClassFormatError: Absent Code attribute}.
+     */
+    private static byte[] withoutCode(byte[] classFile) {
+        byte[] b = classFile.clone();
+        int p = 10;
+        for (int i = 1, n = u2(b, 8); i < n; i++) {
+            int tag = b[p] & 0xff;
+            if (tag == 1) {
+                p += 3 + u2(b, p + 1);
+            } else if (tag == 5 || tag == 6) {
+                p += 9;
+                i++;
+            } else if (tag == 7 || tag == 8 || tag == 16 || tag == 19 || tag == 20) {
+                p += 3;
+            } else if (tag == 15) {
+                p += 4;
+            } else {
+                p += 5;
+            }
+        }
+        b[p] &= ~0x04;
+        p += 6;
+        p += 2 + 2 * u2(b, p);
+        for (int members = 0; members < 2; members++) {
+            int count = u2(b, p);
+            p += 2;
+            for (int i = 0; i < count; i++) {
+                if (members == 1) {
+                    b[p] &= ~0x04;
+                }
+                int attributes = u2(b, p + 6);
+                p += 8;
+                for (int a = 0; a < attributes; a++) {
+                    p += 6 + u4(b, p + 2);
+                }
+            }
+        }
+        return b;
+    }
+
+    /**
+     * {@code src/java} is compiled "against the Groovy jar and CODESPEC_GROOVY_CLASSPATH" (README.md):
+     * a Java class there that extends a class of such a jar compiles, and must then be defined where
+     * that jar is visible, so that the service naming it resolves.
+     */
+    private void aSrcJavaClassExtendingAClasspathClassResolves() throws Exception {
+        Path jar = jarOf("base", Map.of("base.Base", "package base;\n\npublic class Base {\n"
+            + "    public int base() {\n        return 1;\n    }\n}\n"), e -> true);
+        Path app = appWithPlainService("src-java-extends-classpath");
+        write(app.resolve("src/java/lib/Derived.java"), "package lib;\n\npublic class Derived extends base.Base {\n}\n");
+        String svc = "grails-app/services/lib/DerivedService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass DerivedService {\n\n"
+            + "    int viaDerived(Derived d, int n) {\n        return n\n    }\n\n"
+            + "    int beside(int n) {\n        return n + 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        // lib.Derived resolves: the service is not refused as a whole, and the one method that
+        // takes a Derived is refused for what it is, a class that is not read.
+        check(funcByKeyOrNull(doc, "DerivedService.beside") != null, "DerivedService.beside is not read: " + Json.write(doc.get("refusals")));
+        check(reasonsAt(doc, svc + ":5").equals(List.of("type: type lib.Derived is outside the reader's types")),
+            "viaDerived at " + svc + ":5 is " + reasonsAt(doc, svc + ":5"));
+        check(list(doc.get("refusals")).size() == 1, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * A class of a jar whose own dependency is on no jar: the class is found, and the JVM throws
+     * {@code NoClassDefFoundError} for the dependency when Groovy reflects on it. The service that
+     * imports it does not resolve and is refused at its import; the other service is read.
+     */
+    private void aClassWhoseDependencyIsMissingRefusesTheFileNamingIt() throws Exception {
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("gone.Log", "package gone;\n\npublic class Log {\n}\n");
+        sources.put("dep.Helper", "package dep;\n\npublic class Helper {\n    public static gone.Log log;\n\n"
+            + "    public static int one() {\n        return 1;\n    }\n}\n");
+        Path jar = jarOf("dep", sources, e -> !e.startsWith("gone/"));
+        Path app = appWithPlainService("missing-dependency");
+        String svc = "grails-app/services/lib/HelperService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport dep.Helper\n\nclass HelperService {\n\n"
+            + "    int one() {\n        return Helper.one()\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 3, "unresolved: dep.Helper", "HelperService.one");
+        check(reasonsAt(doc, svc + ":3").get(0).contains("gone/Log"), "the reason does not name the missing class gone/Log: "
+            + reasonsAt(doc, svc + ":3"));
+    }
+
+    /**
+     * A class no file names, reached as the result of a call, whose own dependency is on no jar:
+     * the type checker meets the {@code NoClassDefFoundError} after the compilation. No line names
+     * the class, so the service that reaches it is refused at its class; the service refused for
+     * its import before that stays refused once, and the other service is read.
+     */
+    private void aClassReachedThroughACallWhoseDependencyIsMissingRefusesTheFileReachingIt() throws Exception {
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("gone.Log", "package gone;\n\npublic class Log {\n}\n");
+        sources.put("dep.Inner", "package dep;\n\npublic class Inner {\n    public static gone.Log log;\n\n"
+            + "    public int size() {\n        return 0;\n    }\n}\n");
+        sources.put("dep.Outer", "package dep;\n\npublic class Outer {\n"
+            + "    public static Inner inner() {\n        return new Inner();\n    }\n}\n");
+        Path jar = jarOf("reach", sources, e -> !e.startsWith("gone/"));
+        Path app = appWithPlainService("missing-dependency-reached");
+        String svc = "grails-app/services/lib/ReachService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport dep.Outer\n\nclass ReachService {\n\n"
+            + "    int size() {\n        return Outer.inner().size()\n    }\n}\n");
+        String board = "grails-app/services/lib/BoardService.groovy";
+        write(app.resolve(board), "package lib\n\nimport gone.Board\n\nclass BoardService {\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 5, "unresolved: ", "ReachService.size");
+        check(reasonsAt(doc, svc + ":5").get(0).contains("dep.Inner") && reasonsAt(doc, svc + ":5").get(0).contains("gone/Log"),
+            "the reason does not name dep.Inner and the missing class gone/Log: " + reasonsAt(doc, svc + ":5"));
+        refusedAsAWhole(doc, board, 3, "unresolved: gone.Board", "BoardService.one");
+    }
+
+    /**
+     * A local AST transformation of a jar that needs a class on no jar as it runs, as Grails's
+     * transformations load the classes of other jars: Groovy's compiler turns the {@code
+     * NoClassDefFoundError} into a compilation error that names no file. The class the annotation
+     * is on is refused at its line; the other service is read.
+     */
+    private void aTransformationThatNeedsAMissingClassRefusesTheClassItAnnotates() throws Exception {
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("gone.Log", "package gone;\n\npublic class Log {\n    public static void touch() {\n    }\n}\n");
+        sources.put("xf.Mark", "package xf;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE)\n"
+            + "@java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)\n"
+            + "@org.codehaus.groovy.transform.GroovyASTTransformationClass(\"xf.MarkTransform\")\n"
+            + "public @interface Mark {\n}\n");
+        sources.put("xf.MarkTransform", "package xf;\n\n"
+            + "@org.codehaus.groovy.transform.GroovyASTTransformation(phase = org.codehaus.groovy.control.CompilePhase.CANONICALIZATION)\n"
+            + "public class MarkTransform implements org.codehaus.groovy.transform.ASTTransformation {\n"
+            + "    public void visit(org.codehaus.groovy.ast.ASTNode[] nodes, org.codehaus.groovy.control.SourceUnit source) {\n"
+            + "        gone.Log.touch();\n    }\n}\n");
+        Path groovy;
+        try {
+            groovy = Path.of(groovy.lang.GroovyObject.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (java.net.URISyntaxException e) {
+            throw new AssertionError(e);
+        }
+        Path jar = jarOf("xf", sources, List.of(groovy), e -> !e.startsWith("gone/"), (entry, bytes) -> bytes);
+        Path app = appWithPlainService("transformation-missing-class");
+        String svc = "grails-app/services/lib/MarkedService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport xf.Mark\n\n@Mark\nclass MarkedService {\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 5, "unresolved: ", "MarkedService.one");
+        check(reasonsAt(doc, svc + ":5").get(0).contains("gone/Log"), "the reason does not name the missing class gone/Log: "
+            + reasonsAt(doc, svc + ":5"));
+    }
+
+    /**
+     * A stub jar holds API-only class files, methods without a {@code Code} attribute: javac and
+     * Groovy's resolver find the class, and the JVM refuses to define it with {@code
+     * ClassFormatError}. The service that imports it is refused at its import; the other is read.
+     */
+    private void aStubClassWithoutCodeRefusesTheFileNamingIt() throws Exception {
+        Path jar = jarOf("stub", Map.of("stub.Kind", "package stub;\n\npublic abstract class Kind {\n"
+            + "    public abstract int rank();\n}\n"), List.of(), e -> true, (entry, bytes) -> withoutCode(bytes));
+        try (java.net.URLClassLoader l = new java.net.URLClassLoader(new java.net.URL[] {jar.toUri().toURL()}, null)) {
+            l.loadClass("stub.Kind");
+            throw new AssertionError("the stub class the case builds is defined by the JVM");
+        } catch (ClassFormatError e) {
+            check(String.valueOf(e.getMessage()).contains("Absent Code attribute"), "the stub class fails as " + e);
+        }
+        Path app = appWithPlainService("stub-jar");
+        String svc = "grails-app/services/lib/KindService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport stub.Kind\n\nclass KindService {\n\n"
+            + "    int rank(Kind k) {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 3, "unresolved: stub.Kind", "KindService.rank");
+        check(reasonsAt(doc, svc + ":3").get(0).contains("Absent Code attribute"), "the reason does not say why stub.Kind cannot be loaded: "
+            + reasonsAt(doc, svc + ":3"));
+    }
+
+    /**
+     * An annotation of a jar whose member names a constant of a class on no jar: Groovy reports
+     * "unable to find class … for annotation attribute constant" at the annotation. The file is
+     * refused there; the other service is read.
+     */
+    private void anAnnotationConstantOfAMissingClassRefusesItsFile() throws Exception {
+        Path jar = jarOf("ann", Map.of("ann.Tag", "package ann;\n\n"
+            + "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+            + "public @interface Tag {\n    String value();\n}\n"), e -> true);
+        Path app = appWithPlainService("annotation-constant");
+        String svc = "grails-app/services/lib/TaggedService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport ann.Tag\n\n@Tag(ann.Levels.HIGH)\nclass TaggedService {\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 5, "unresolved: ann.Levels.HIGH", "TaggedService.one");
+    }
+
+    /**
+     * A resolve-only enum whose import does not resolve is left out. A service that names it by its
+     * qualified name in a static method then holds a name Groovy takes for a variable, "Apparent
+     * variable 'lib' was found in a static scope": the service is refused at that line.
+     */
+    private void aQualifiedReferenceToALeftOutEnumRefusesItsFile() throws Exception {
+        Path app = appWithPlainService("left-out-enum");
+        write(app.resolve("src/groovy/lib/Color.groovy"), "package lib\n\nimport gone.Palette\n\nenum Color {\n    RED, GREEN\n}\n");
+        String svc = "grails-app/services/lib/PaintService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass PaintService {\n\n"
+            + "    static String first() {\n        return lib.Color.RED.name()\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of());
+        refusedAsAWhole(doc, svc, 6, "unresolved: lib", "first");
+    }
+
+    /**
+     * A domain class refused for its import is left out too. A domain class of its package that
+     * names it in a static method is refused at that line, each of the two once.
+     */
+    private void aReferenceToARefusedDomainClassOfItsPackageRefusesItsFile() throws Exception {
+        Path app = appWithPlainService("refused-domain-class");
+        String shelf = "grails-app/domain/lib/Shelf.groovy";
+        write(app.resolve(shelf), "package lib\n\nimport gone.Board\n\nclass Shelf {\n\n    static final int EMPTY = 0\n\n"
+            + "    int slots = 0\n}\n");
+        String rack = "grails-app/domain/lib/Rack.groovy";
+        write(app.resolve(rack), "package lib\n\nclass Rack {\n\n    int slots = 0\n\n"
+            + "    static int none() {\n        return Shelf.EMPTY\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of());
+        refusedAsAWhole(doc, shelf, 3, "unresolved: gone.Board", "NewShelf");
+        refusedAsAWhole(doc, rack, 8, "unresolved: Shelf", "none");
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----

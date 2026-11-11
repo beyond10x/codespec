@@ -4,6 +4,28 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Fixed
+
+- `codespec-read-groovy` no longer ends the read of a Grails application with exit 1 and no
+  document in five conditions; each is now read or a refusal at a line, and the document is
+  written (`adapters/groovy/README.md`, "Grails 2.5.6 applications"):
+  - a `src/java` class that extends or implements a class of a `CODESPEC_GROOVY_CLASSPATH` jar
+    failed with `NoClassDefFoundError`; it is now defined where those jars are visible, and a
+    Groovy file naming it resolves;
+  - a class of a jar whose own dependency is on no jar (`NoClassDefFoundError`), named in a file,
+    reached through a call or needed by an annotation's local transformation as it runs, refuses
+    the artefact, `unresolved: …` with the JVM's error;
+  - a class from a stub jar of API-only class files (`ClassFormatError: Absent Code attribute`)
+    refuses the artefact that names it, `unresolved: <class>: …`;
+  - an annotation member naming a constant of a class on no jar ("unable to find class … for
+    annotation attribute constant") refuses the artefact at the annotation;
+  - a name in a static method that no longer resolves because its class's own file was refused or
+    left out ("Apparent variable … was found in a static scope") refuses the artefact at that
+    line, `unresolved: <name>`.
+
+  In each, a resolve-only file is left out instead, and every other artefact is read. A plain
+  Groovy package with such a name in a static scope is refused the same way, where the read ended.
+
 ## 0.8.0
 
 ### Added

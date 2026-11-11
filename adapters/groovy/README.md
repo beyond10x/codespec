@@ -51,8 +51,9 @@ Grails application, into one module named by its `app.name`. A directory without
   read.
 - `src/java` is resolve-only too: its `.java` files are compiled first, with javac in memory, against
   the Groovy jar and `CODESPEC_GROOVY_CLASSPATH`, so a Groovy file that names one of their classes
-  resolves. A Java file javac reports an error in is left out. The Java files do not see the Groovy
-  files.
+  resolves. Their classes are defined where those jars are visible, so one that extends or
+  implements a class of a jar resolves too. A Java file javac reports an error in is left out. The
+  Java files do not see the Groovy files.
 - A resolve-only file that declares a GORM entity with `@grails.persistence.Entity` is left out of
   the compilation: its local transformation needs the whole Grails runtime and would otherwise fail
   the read of every file, and the class is never read. A read file that names it is refused
@@ -61,7 +62,20 @@ Grails application, into one module named by its `app.name`. A directory without
 - Two artefacts with the same simple name in different packages are both refused,
   `unsupported: duplicate simple name`: one module has one namespace.
 - An artefact whose imports do not resolve is refused as a whole at its first unresolved line,
-  `unresolved: <class>`; the others are read.
+  `unresolved: <class>`; the others are read. A resolve-only file that does not resolve is left out.
+  What does not resolve, besides a class that is nowhere:
+  - a class a jar holds that the JVM cannot load, `unresolved: <class>: <the JVM's error>`: its
+    superclass or the type of one of its members is on no jar (`NoClassDefFoundError`), or it comes
+    from a stub jar of API-only class files (`ClassFormatError: Absent Code attribute`);
+  - the class of a constant an annotation member names, `@Tag(Levels.HIGH)` with `Levels` on no jar,
+    refused at the annotation, `unresolved: Levels.HIGH`;
+  - a name in a static method or initializer that is no variable, static field or class, as the
+    name of a class is once its own file is refused or left out, `unresolved: <name>`;
+  - a class that is not named in the file and cannot be loaded when the type checker reaches it
+    through a call, or that a local transformation of an annotation needs as it runs: the artefact
+    is refused at its class (its first annotation's line), `unresolved: <the JVM's error>`.
+
+  A compiler error that is none of these, a syntax error among them, still ends the read.
 
 The compile classpath is the Groovy jar, then the jars `CODESPEC_GROOVY_CLASSPATH` names
 (separated by `:`), so a real application can be read with its dependency jars. Every global AST
@@ -187,11 +201,13 @@ String title              // type: property title holds null until assigned
 
 ### `unresolved`
 
-A file whose imports or classes do not resolve is refused as a whole, at its first line; the other
-files are read.
+A file whose imports or classes do not resolve is refused as a whole, at its first line that does
+not; the other files are read. A class a jar holds that the JVM cannot load does not resolve
+either, and the reason says why; "Grails 2.5.6 applications" lists every form.
 
 ```groovy
 import com.example.missing.Gone   // unresolved: com.example.missing.Gone
+import com.example.stub.Kind      // unresolved: com.example.stub.Kind: java.lang.ClassFormatError: Absent Code attribute …
 ```
 
 ### `gorm`

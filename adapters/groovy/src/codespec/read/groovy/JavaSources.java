@@ -29,7 +29,8 @@ import javax.tools.ToolProvider;
  * reports an error in is left out and the rest compiled again, as a resolve-only Groovy file whose
  * imports do not resolve is left out; a Groovy file that names one of its classes is then refused
  * {@code unresolved}. The Java files see the Groovy jar and the jars of {@code
- * CODESPEC_GROOVY_CLASSPATH}, not the Groovy files.
+ * CODESPEC_GROOVY_CLASSPATH}, not the Groovy files; {@code parent} must see those jars too, since a
+ * class that extends one of theirs is defined under it.
  */
 final class JavaSources {
     private JavaSources() {}

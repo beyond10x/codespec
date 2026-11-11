@@ -92,6 +92,7 @@ import org.codehaus.groovy.ast.stmt.TryCatchStatement;
 import org.codehaus.groovy.ast.stmt.WhileStatement;
 import org.codehaus.groovy.classgen.ReturnAdder;
 import org.codehaus.groovy.classgen.asm.sc.StaticTypesTypeChooser;
+import org.codehaus.groovy.control.ClassNodeResolver;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilationUnit;
 import org.codehaus.groovy.control.CompilerConfiguration;
@@ -119,7 +120,10 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * StaticTypesTypeChooser}), else its declared type; a local or parameter has its declared type, a
  * {@code def} local the type the checker infers for its declaration. A type-checking error does not
  * fail the read: the statement holding it becomes {@code foreign}. A file whose imports or classes
- * do not resolve is refused as a whole at the first such line; the others are read.
+ * do not resolve is refused as a whole at the first such line; the others are read. A class the
+ * JVM cannot load ({@code NoClassDefFoundError}, {@code ClassFormatError}) does not resolve, nor
+ * does the class of an annotation member's constant or a name in a static scope that is no
+ * variable, static field or class: none of them ends the read.
  *
  * <p>What it maps, as the Java reader ({@code adapters/java}) maps the same construct:
  *
@@ -372,8 +376,77 @@ public final class Reader {
         for (Path f : app.services) {
             r.serviceFiles.add(app.relative(f));
         }
-        ClassLoader parent = JavaSources.compile(app.java, classpath, new Hidden(Reader.class.getClassLoader()));
-        return r.run(app.read(), app.resolveOnly, classpath, parent);
+        URL[] jars = new URL[classpath.size()];
+        for (int i = 0; i < jars.length; i++) {
+            try {
+                jars[i] = classpath.get(i).toAbsolutePath().normalize().toUri().toURL();
+            } catch (java.net.MalformedURLException e) {
+                throw new Failure(classpath.get(i) + ": " + e.getMessage());
+            }
+        }
+        // The classes javac compiles from src/java are defined under a loader that sees the jars
+        // they were compiled against: one that extends a class of a jar is defined with it. The
+        // loader holds the jars open and is closed when the read is over.
+        java.net.URLClassLoader onClasspath = new java.net.URLClassLoader(jars, new Hidden(Reader.class.getClassLoader()));
+        try {
+            ClassLoader parent = JavaSources.compile(app.java, classpath, onClasspath);
+            return r.run(app.read(), app.resolveOnly, classpath, parent);
+        } finally {
+            try {
+                onClasspath.close();
+            } catch (IOException e) {
+                // The read is over, its document built or its failure thrown; a jar that does
+                // not close changes neither.
+            }
+        }
+    }
+
+    /**
+     * A class the read needs that the JVM cannot load, met after the compilation, in the type
+     * checker or while a class is read: the read starts again without the class or without the file.
+     */
+    private static final class Unloadable extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        final transient LinkageError error;
+        /** The file being read, or null when none was. */
+        final transient Path file;
+        final int line;
+
+        Unloadable(LinkageError error, Path file, int line) {
+            super(String.valueOf(error), null, false, false);
+            this.error = error;
+            this.file = file;
+            this.line = line;
+        }
+    }
+
+    /**
+     * Groovy's message when its reflection on a class fails for a class that one names
+     * ({@code Java5.configureClassNode}): the first is found and cannot be used.
+     */
+    private static final String UNABLE_TO_LOAD = "Unable to load class ";
+
+    private static String text(LinkageError e) {
+        return String.valueOf(e).replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Whether {@code e} names the class that cannot be used and that class was not known yet: it is
+     * now, {@code unloadable} holding why, and the next compilation does not resolve it, so each file
+     * that names it is refused, or left out, at the line that does.
+     */
+    private static boolean nowUnloadable(LinkageError e, Map<String, String> unloadable) {
+        String m = String.valueOf(e.getMessage());
+        if (!m.startsWith(UNABLE_TO_LOAD)) {
+            return false;
+        }
+        String cls = m.substring(UNABLE_TO_LOAD.length()).trim();
+        int sp = cls.indexOf(' ');
+        if (sp >= 0) {
+            cls = cls.substring(0, sp);
+        }
+        return !cls.isEmpty() && unloadable.putIfAbsent(cls, text(e)) == null;
     }
 
     private Map<String, Object> run(List<Path> files, List<Path> resolveOnly, List<Path> classpath, ClassLoader parent)
@@ -388,29 +461,207 @@ public final class Reader {
         }
         Set<String> disabled = globalTransforms(classpath);
         Map<String, String> packages = new HashMap<>();
+        Map<String, String> unloadable = new HashMap<>();
+        Reader r = this;
         while (true) {
-            CompilationUnit cu = newUnit(classpath, disabled, parent);
+            try {
+                return r.attempt(files, remaining, resolve, packages, unloadable, classpath, disabled, parent);
+            } catch (Unloadable u) {
+                // What r read so far is dropped; the files refused before it stay refused.
+                Reader next = new Reader();
+                next.app = app;
+                next.domainFiles.addAll(domainFiles);
+                next.serviceFiles.addAll(serviceFiles);
+                next.refusals.addAll(r.refusals.subList(0, r.fileRefusals));
+                if (!nowUnloadable(u.error, unloadable)) {
+                    if (u.file == null) {
+                        throw new Failure("a class the read needs cannot be loaded: " + text(u.error));
+                    }
+                    next.leaveOut(u.file, u.line, text(u.error), remaining, resolve);
+                }
+                r = next;
+            }
+        }
+    }
+
+    /** How many of {@link #refusals} refuse a whole file: those made before any class is read. */
+    private int fileRefusals;
+    /** The class being type-checked or read, or null. */
+    private ClassNode reading;
+
+    /**
+     * Compile {@code remaining} and {@code resolve} and read {@code remaining}, taking out each file
+     * that does not resolve and compiling again. {@link Unloadable} when a class cannot be loaded
+     * once the compilation is over; the lists and maps are the caller's and keep what was found.
+     */
+    private Map<String, Object> attempt(List<Path> files, List<Path> remaining, List<Path> resolve, Map<String, String> packages,
+        Map<String, String> unloadable, List<Path> classpath, Set<String> disabled, ClassLoader parent) throws Failure {
+        while (true) {
+            if (remaining.isEmpty()) {
+                return module(app != null ? app.name : packageOf(files, packages));
+            }
+            Compilation cu = newUnit(classpath, disabled, parent, unloadable);
             for (Path f : remaining) {
                 cu.addSource(f.toFile());
             }
             for (Path f : resolve) {
                 cu.addSource(f.toFile());
             }
+            boolean compiled = false;
             try {
                 cu.compile(Phases.CANONICALIZATION);
+                compiled = true;
+                packagesOf(cu, packages);
+                fileRefusals = refusals.size();
                 typeCheck(cu, remaining);
-                break;
+                return module(app != null ? app.name : packageName());
             } catch (CompilationFailedException e) {
                 packagesOf(cu, packages);
-                Set<Path> refused = unresolvedFiles(cu, remaining, resolve);
-                remaining.removeAll(refused);
-                resolve.removeAll(refused);
-                if (remaining.isEmpty()) {
-                    return module(app != null ? app.name : packageOf(files, packages));
+                if (cu.failure != null) {
+                    unloadableIn(cu, remaining, resolve, unloadable);
+                } else {
+                    Set<Path> refused = unresolvedFiles(cu, remaining, resolve, unloadable);
+                    remaining.removeAll(refused);
+                    resolve.removeAll(refused);
                 }
+            } catch (LinkageError e) {
+                if (compiled) {
+                    Unit u = reading == null ? null : unitOf.get(reading);
+                    throw new Unloadable(e, u == null ? null : Path.of(u.su.getName()).toAbsolutePath().normalize(),
+                        reading == null ? 1 : firstLine(reading));
+                }
+                packagesOf(cu, packages);
+                if (cu.failure == null) {
+                    throw new Failure("a class the compilation needs cannot be loaded: " + text(e));
+                }
+                unloadableIn(cu, remaining, resolve, unloadable);
             }
         }
-        return module(app != null ? app.name : packageName());
+    }
+
+    /**
+     * The compilation stopped at a class the JVM cannot load. Where the error names the class that
+     * cannot be used, that class no longer resolves and the files are compiled again; else the
+     * file the compiler was working on is taken out.
+     */
+    private void unloadableIn(Compilation cu, List<Path> remaining, List<Path> resolve, Map<String, String> unloadable)
+        throws Failure {
+        if (nowUnloadable(cu.failure, unloadable)) {
+            return;
+        }
+        leaveOut(Path.of(cu.failedIn.getName()).toAbsolutePath().normalize(), cu.failedLine, text(cu.failure), remaining, resolve);
+    }
+
+    /**
+     * Take {@code p} out of the compilation for {@code why} at {@code line}: a read file is refused
+     * as a whole there, {@code unresolved}; a resolve-only file of an application yields nothing.
+     */
+    private void leaveOut(Path p, int line, String why, List<Path> remaining, List<Path> resolve) throws Failure {
+        if (remaining.remove(p)) {
+            addRefusal(label(p) + ":" + line, lineText(p, line), UNRESOLVED + ": " + why);
+        } else if (app == null || !resolve.remove(p)) {
+            throw new Failure(label(p) + ":" + line + ": " + why + " in a file that is compiled but not read");
+        }
+    }
+
+    /** The line a class begins at: its first annotation's, else its own. */
+    private static int firstLine(ClassNode cn) {
+        int line = cn.getLineNumber();
+        for (AnnotationNode a : cn.getAnnotations()) {
+            if (a.getLineNumber() > 0 && (line <= 0 || a.getLineNumber() < line)) {
+                line = a.getLineNumber();
+            }
+        }
+        return Math.max(line, 1);
+    }
+
+    /**
+     * A compilation that takes a class the JVM cannot load for one that does not resolve, and that
+     * knows which file it was working on when a class failed to load elsewhere: Groovy's own
+     * compiler lets the error through from a file's resolution, and turns one thrown by a local
+     * transformation into a compilation error that names no file.
+     */
+    private static final class Compilation extends CompilationUnit {
+        /** The first class-loading error met, or null; the file and the line the compiler was working on. */
+        LinkageError failure;
+        SourceUnit failedIn;
+        int failedLine;
+
+        Compilation(CompilerConfiguration config, GroovyClassLoader loader, Map<String, String> unloadable) {
+            super(config, null, loader);
+            setClassNodeResolver(new ClassNodeResolver() {
+                @Override
+                public LookupResult findClassNode(String name, CompilationUnit unit) {
+                    if (unloadable.containsKey(name)) {
+                        return null;
+                    }
+                    try {
+                        return super.findClassNode(name, unit);
+                    } catch (LinkageError e) {
+                        // The class file is there and the JVM does not define it: its superclass is
+                        // on no jar (NoClassDefFoundError), or it is a stub without code
+                        // (ClassFormatError). The name does not resolve.
+                        unloadable.put(name, text(e));
+                        return null;
+                    }
+                }
+            });
+        }
+
+        private void failed(LinkageError e, SourceUnit source, ClassNode cn) {
+            if (failure != null) {
+                return;
+            }
+            failure = e;
+            failedIn = source;
+            failedLine = 1;
+            if (cn != null) {
+                failedLine = firstLine(cn);
+            } else if (source.getAST() != null) {
+                int first = 0;
+                for (ClassNode c : source.getAST().getClasses()) {
+                    int line = firstLine(c);
+                    first = first == 0 ? line : Math.min(first, line);
+                }
+                failedLine = Math.max(first, 1);
+            }
+        }
+
+        @Override
+        public void applyToSourceUnits(SourceUnitOperation body) throws CompilationFailedException {
+            super.applyToSourceUnits(new SourceUnitOperation() {
+                @Override
+                public void call(SourceUnit source) throws CompilationFailedException {
+                    try {
+                        body.call(source);
+                    } catch (LinkageError e) {
+                        failed(e, source, null);
+                        throw e;
+                    }
+                }
+            });
+        }
+
+        @Override
+        public void applyToPrimaryClassNodes(PrimaryClassNodeOperation body) throws CompilationFailedException {
+            super.applyToPrimaryClassNodes(new PrimaryClassNodeOperation() {
+                @Override
+                public void call(SourceUnit source, org.codehaus.groovy.classgen.GeneratorContext context, ClassNode classNode)
+                    throws CompilationFailedException {
+                    try {
+                        body.call(source, context, classNode);
+                    } catch (LinkageError e) {
+                        failed(e, source, classNode);
+                        throw e;
+                    }
+                }
+
+                @Override
+                public boolean needSortedInput() {
+                    return body.needSortedInput();
+                }
+            });
+        }
     }
 
     /**
@@ -444,7 +695,8 @@ public final class Reader {
         return out;
     }
 
-    private static CompilationUnit newUnit(List<Path> classpath, Set<String> disabledGlobals, ClassLoader parent) {
+    private static Compilation newUnit(List<Path> classpath, Set<String> disabledGlobals, ClassLoader parent,
+        Map<String, String> unloadable) {
         CompilerConfiguration config = new CompilerConfiguration();
         config.setSourceEncoding("UTF-8");
         List<String> cp = new ArrayList<>();
@@ -454,7 +706,7 @@ public final class Reader {
         config.setClasspathList(cp);
         config.setDisabledGlobalASTTransformations(new HashSet<>(disabledGlobals));
         GroovyClassLoader loader = new GroovyClassLoader(parent, config);
-        return new CompilationUnit(config, null, loader);
+        return new Compilation(config, loader, unloadable);
     }
 
     /** A read file's name in every position: its path in the Grails application, else its file name. */
@@ -516,10 +768,35 @@ public final class Reader {
     }
 
     /**
-     * The read files a failed compilation refuses: each whose only errors are classes that do not
-     * resolve, refused at the first such line. Any other error fails the read.
+     * The name a compiler error says does not resolve, or null for any other error: a class
+     * ({@code unable to resolve class}), the class of an annotation member's constant, or a name in
+     * a static scope that is no variable, static field or class, as a class is once its file is
+     * left out.
      */
-    private Set<Path> unresolvedFiles(CompilationUnit cu, List<Path> remaining, List<Path> resolve) throws Failure {
+    private static String unresolvedName(String text) {
+        if (text.startsWith("unable to resolve class ")) {
+            String cls = text.substring("unable to resolve class ".length()).trim();
+            int sp = cls.indexOf(' ');
+            return sp >= 0 ? cls.substring(0, sp) : cls;
+        }
+        for (String[] form : new String[][] {
+            {"unable to find class '", "' for annotation attribute constant"},
+            {"Apparent variable '", "' was found in a static scope"}}) {
+            int end = text.indexOf(form[1]);
+            if (text.startsWith(form[0]) && end >= form[0].length()) {
+                return text.substring(form[0].length(), end).replaceAll("\\s+", " ");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The read files a failed compilation refuses: each whose only errors are names that do not
+     * resolve ({@link #unresolvedName}), refused at the first such line; a class found that the JVM
+     * could not load is named with why. Any other error fails the read.
+     */
+    private Set<Path> unresolvedFiles(CompilationUnit cu, List<Path> remaining, List<Path> resolve, Map<String, String> unloadable)
+        throws Failure {
         Map<String, SyntaxException> first = new LinkedHashMap<>();
         List<String> other = new ArrayList<>();
         List<?> messages = cu.getErrorCollector().getErrors();
@@ -528,7 +805,7 @@ public final class Reader {
                 SyntaxException se = ((SyntaxErrorMessage) m).getCause();
                 String text = se.getOriginalMessage().trim();
                 String where = Path.of(String.valueOf(se.getSourceLocator())).getFileName() + ":" + se.getStartLine() + ": ";
-                if (text.startsWith("unable to resolve class ")) {
+                if (unresolvedName(text) != null) {
                     SyntaxException seen = first.get(se.getSourceLocator());
                     if (seen == null || se.getStartLine() < seen.getStartLine()) {
                         first.put(se.getSourceLocator(), se);
@@ -552,10 +829,9 @@ public final class Reader {
         for (Map.Entry<String, SyntaxException> e : first.entrySet()) {
             Path p = Path.of(e.getKey()).toAbsolutePath().normalize();
             SyntaxException se = e.getValue();
-            String cls = se.getOriginalMessage().trim().substring("unable to resolve class ".length()).trim();
-            int sp = cls.indexOf(' ');
-            if (sp >= 0) {
-                cls = cls.substring(0, sp);
+            String cls = unresolvedName(se.getOriginalMessage().trim());
+            if (unloadable.containsKey(cls)) {
+                cls += ": " + unloadable.get(cls);
             }
             if (!remaining.contains(p)) {
                 if (app != null && resolve.contains(p)) {
@@ -624,6 +900,7 @@ public final class Reader {
             if (cn.isInterface() || cn.isAnnotationDefinition()) {
                 continue;
             }
+            reading = cn;
             StaticTypeCheckingVisitor v = new StaticTypeCheckingVisitor(unitOf.get(cn).su, cn);
             v.setCompilationUnit(cu);
             v.addTypeCheckingExtension(new IntdivTyping(v));
@@ -748,9 +1025,11 @@ public final class Reader {
     }
 
     private Map<String, Object> module(String pkg) {
+        reading = null;
         classify();
         signatures();
         for (ClassNode cn : decls) {
+            reading = cn;
             emit(cn);
         }
         for (Err e : errs) {
@@ -832,6 +1111,7 @@ public final class Reader {
             simpleNames.merge(cn.getNameWithoutPackage(), 1, Integer::sum);
         }
         for (ClassNode cn : decls) {
+            reading = cn;
             Unit u = unitOf.get(cn);
             String name = cn.getNameWithoutPackage();
             String why = null;
@@ -1182,6 +1462,7 @@ public final class Reader {
             if (!structs.containsKey(cn.getName())) {
                 continue;
             }
+            reading = cn;
             Unit u = unitOf.get(cn);
             String cname = cn.getNameWithoutPackage();
             for (FieldNode f : userFields(cn)) {
