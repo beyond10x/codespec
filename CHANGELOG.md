@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.9.0
+
 ### Added
 
 - `codespec-read-groovy` writes the calls of the code it does not read, so `codespec reach`, `cq`
