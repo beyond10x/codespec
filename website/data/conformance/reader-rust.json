@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "rust",
-    "version": "0.8.0",
-    "manifest_sha256": "3d655bfd9c229f0fd30a4d291b08ceec4855f07ad5932b4918985d1c7f3fb027"
+    "version": "0.9.0",
+    "manifest_sha256": "9d25f132ae74fa30205cba7b578d3da0b90a478d7405b32f5df12ff1aee7daf5"
   },
   "kit": {
-    "version": "0.8.0",
-    "sha256": "7084313f70a660884c736e4a92532b4f6bdad32ec499fe7b582b53d40a118137"
+    "version": "0.9.0",
+    "sha256": "c6c67aef6822ba649263bb8c4026f8dd616593c1c539f724475aca1837943bb1"
   },
   "corpus": {
     "sha256": "46791ece95f5b38e01a7c0d9c5c94ceaa21d385c84cf52334ac3692fb13002dd"
   },
-  "codespec": "0.8.0",
+  "codespec": "0.9.0",
   "features": [
     {
       "id": "assign.add",

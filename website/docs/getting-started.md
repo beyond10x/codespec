@@ -18,7 +18,7 @@ target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, and `SHA256SUMS` over them. An archive
 holds `codespec`, the Go and Rust readers and writers, and their runners, side by side. Download
 the archive for your machine and `SHA256SUMS`, check it and extract it. `<tag>` is the release, for
-example `0.8.0`. On macOS, `shasum -a 256 -c --ignore-missing SHA256SUMS` does the check:
+example `0.9.0`. On macOS, `shasum -a 256 -c --ignore-missing SHA256SUMS` does the check:
 
 ```shell-session
 $ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz
@@ -30,7 +30,7 @@ $ tar -xzf codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/share/code
 $ export PATH="$HOME/.local/share/codespec:$PATH"
 $ export CODESPEC_ADAPTERS="$HOME/.local/share/codespec"
 $ codespec --version
-codespec 0.8.0
+codespec 0.9.0
 ```
 
 `codespec` runs an adapter from the directory `CODESPEC_ADAPTERS` names, or from `--adapters` on
@@ -222,7 +222,7 @@ codespec-write-c
 codespec-write-go
 codespec-write-rust
 $ target/debug/codespec --version
-codespec 0.8.0
+codespec 0.9.0
 ```
 
 A source build runs as `target/debug/codespec` with `CODESPEC_ADAPTERS=target/adapters`.
