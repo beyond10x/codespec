@@ -59,6 +59,13 @@
         }
       ],
       "pos": "grails-app/services/holds/NoticeService.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "ReminderService",
+      "exported": true,
+      "fields": [],
+      "pos": "grails-app/services/holds/ReminderService.groovy:3"
     }
   ],
   "funcs": [
@@ -302,6 +309,88 @@
         }
       ],
       "pos": "grails-app/domain/holds/Hold.groovy:17"
+    },
+    {
+      "name": "shelveOn",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Hold"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "day",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Hold"
+                  }
+                }
+              },
+              "name": "shelvedOnDay",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "day",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/holds/Hold.groovy:22"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "save()",
+          "reason": "gorm: save on Hold: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/domain/holds/Hold.groovy:23",
+          "calls": [
+            {
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Hold",
+              "name": "save",
+              "by": "grails-gorm",
+              "pos": "grails-app/domain/holds/Hold.groovy:23"
+            }
+          ]
+        }
+      ],
+      "pos": "grails-app/domain/holds/Hold.groovy:21"
     },
     {
       "name": "NewDeskService",
@@ -1005,6 +1094,320 @@
         }
       ],
       "pos": "grails-app/services/holds/NoticeService.groovy:15"
+    },
+    {
+      "name": "NewReminderService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "ReminderService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "ReminderService",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "ReminderService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "ReminderService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/ReminderService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "ReminderService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/ReminderService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/holds/ReminderService.groovy:3"
+    },
+    {
+      "name": "remindLate",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "ReminderService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "hold",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Hold"
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "late"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "hold",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Hold"
+                  }
+                }
+              },
+              "name": "daysWaiting",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "today",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/ReminderService.groovy:9"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "noticeService.remind(late)",
+          "reason": "spring: call through an injected dependency, noticeService.remind: Spring sets it at run time",
+          "pos": "grails-app/services/holds/ReminderService.groovy:10",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "NoticeService",
+              "name": "remind",
+              "by": "grails-service-field",
+              "pos": "grails-app/services/holds/ReminderService.groovy:10"
+            }
+          ]
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "deskService.renew(hold, 7)",
+          "reason": "spring: call through an injected dependency, deskService.renew: Spring sets it at run time",
+          "pos": "grails-app/services/holds/ReminderService.groovy:11",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "DeskService",
+              "name": "renew2",
+              "by": "grails-service-field",
+              "pos": "grails-app/services/holds/ReminderService.groovy:11"
+            }
+          ]
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "late",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/ReminderService.groovy:12"
+        }
+      ],
+      "pos": "grails-app/services/holds/ReminderService.groovy:8"
+    },
+    {
+      "name": "waitingCount",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "ReminderService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "return Hold.countByShelvedOnDay(-1)",
+          "reason": "gorm: countByShelvedOnDay on Hold: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/holds/ReminderService.groovy:16",
+          "calls": [
+            {
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Hold",
+              "name": "countByShelvedOnDay",
+              "by": "grails-gorm",
+              "pos": "grails-app/services/holds/ReminderService.groovy:16"
+            }
+          ]
+        }
+      ],
+      "pos": "grails-app/services/holds/ReminderService.groovy:15"
+    },
+    {
+      "name": "archiveAll",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "ReminderService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "done",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Hold"
+              }
+            }
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "Hold.withNewTransaction {\n            done.each { Hold h -> h.delete() }\n        }",
+          "reason": "gorm: withNewTransaction on Hold: GORM persistence is outside cir/1 until it has a persistence boundary",
+          "pos": "grails-app/services/holds/ReminderService.groovy:20",
+          "calls": [
+            {
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Hold",
+              "name": "withNewTransaction",
+              "by": "grails-gorm",
+              "pos": "grails-app/services/holds/ReminderService.groovy:20"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [
+                {
+                  "k": "func",
+                  "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+                  "name": "each",
+                  "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                },
+                {
+                  "k": "lambda",
+                  "sig": "groovy.lang.Closure",
+                  "calls": [
+                    {
+                      "k": "method",
+                      "path": "grails.gorm",
+                      "recv": "Hold",
+                      "name": "delete",
+                      "by": "grails-gorm",
+                      "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                    }
+                  ],
+                  "pos": "grails-app/services/holds/ReminderService.groovy:21"
+                }
+              ],
+              "pos": "grails-app/services/holds/ReminderService.groovy:20"
+            }
+          ]
+        }
+      ],
+      "pos": "grails-app/services/holds/ReminderService.groovy:19"
     }
   ],
   "layout": [
@@ -1012,6 +1415,7 @@
     "func:NewHold",
     "func:Hold.daysWaiting",
     "func:Hold.isShelved",
+    "func:Hold.shelveOn",
     "type:DeskService",
     "func:NewDeskService",
     "func:DeskService.checkIn",
@@ -1021,13 +1425,23 @@
     "func:NewNoticeService",
     "func:NoticeService.pickupReady",
     "func:NoticeService.remind",
-    "func:NoticeService.sentCount"
+    "func:NoticeService.sentCount",
+    "type:ReminderService",
+    "func:NewReminderService",
+    "func:ReminderService.remindLate",
+    "func:ReminderService.waitingCount",
+    "func:ReminderService.archiveAll"
   ],
   "refusals": [
     {
       "pos": "grails-app/domain/holds/Hold.groovy:9",
       "what": "Hold.constraints",
       "reason": "gorm: mapping metadata constraints"
+    },
+    {
+      "pos": "grails-app/domain/holds/Hold.groovy:23",
+      "what": "save()",
+      "reason": "gorm: save on Hold: GORM persistence is outside cir/1 until it has a persistence boundary"
     },
     {
       "pos": "grails-app/services/holds/DeskService.groovy:5",
@@ -1058,6 +1472,36 @@
       "pos": "grails-app/services/holds/RecallService.groovy:3",
       "what": "RecallService",
       "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:5",
+      "what": "ReminderService.noticeService",
+      "reason": "spring: injected dependency"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:6",
+      "what": "ReminderService.deskService",
+      "reason": "spring: injected dependency"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:10",
+      "what": "noticeService.remind(late)",
+      "reason": "spring: call through an injected dependency, noticeService.remind: Spring sets it at run time"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:11",
+      "what": "deskService.renew(hold, 7)",
+      "reason": "spring: call through an injected dependency, deskService.renew: Spring sets it at run time"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:16",
+      "what": "return Hold.countByShelvedOnDay(-1)",
+      "reason": "gorm: countByShelvedOnDay on Hold: GORM persistence is outside cir/1 until it has a persistence boundary"
+    },
+    {
+      "pos": "grails-app/services/holds/ReminderService.groovy:20",
+      "what": "Hold.withNewTransaction { …",
+      "reason": "gorm: withNewTransaction on Hold: GORM persistence is outside cir/1 until it has a persistence boundary"
     }
   ],
   "opaque": [

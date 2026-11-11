@@ -207,6 +207,15 @@ public final class ReaderTest {
             t::fieldRefusedClassAndQuotedNameAreOpaque);
         cases.put("classes_with_one_simple_name_yield_no_opaque_function_and_a_call_of_one_is_a_value_call",
             t::duplicateSimpleNamesYieldNoOpaqueFunction);
+        cases.put("holds_a_gorm_method_on_a_domain_class_is_a_call_of_grails_gorm_marked_by_its_convention",
+            t::holdsGormCallsAreMarked);
+        cases.put("holds_a_call_through_an_x_service_field_is_a_call_of_the_service_s_method_marked_by_its_convention",
+            t::holdsServiceFieldCallsAreMarked);
+        cases.put("holds_reach_follows_a_convention_edge_and_a_query_selects_or_excludes_them", t::holdsReachAndQueryOverConventions);
+        cases.put("a_convention_names_no_target_it_cannot_tell_and_none_outside_a_grails_application", t::conventionsDoNotGuess);
+        cases.put("the_gorm_method_list_holds_every_method_of_the_gorm_api_classes_of_the_grails_distribution",
+            t::gormListIsTheDistributions);
+        cases.put("the_readme_names_both_conventions_their_marks_and_every_gorm_method", t::readmeNamesTheConventions);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -2019,6 +2028,256 @@ public final class ReaderTest {
         check(opaqueOrNull(doc, "Book.size") == null, "a Book.size is an opaque function: " + Json.write(doc.get("opaque")));
         opaqueIs(doc, "ShelfService.count", svc + ":4", "dynamic: count returns def: its result has the type of whatever it returns",
             value("groovy call of a.Book.size, which the module holds no function for", svc + ":5"));
+    }
+
+    // ---- conventions: a target the type checker did not give ----
+
+    private static final String REMINDER = "grails-app/services/holds/ReminderService.groovy";
+    private static final String HOLD = "grails-app/domain/holds/Hold.groovy";
+    private static final String GORM = "grails-gorm";
+    private static final String SERVICE_FIELD = "grails-service-field";
+
+    /** A method call ref whose target a convention gave: {@code by} between the name and the position. */
+    private static String methodBy(String path, String recv, String name, String by, String pos) {
+        return "{\"k\":\"method\"," + (path.isEmpty() ? "" : "\"path\":\"" + path + "\",") + "\"recv\":\"" + recv + "\",\"name\":\""
+            + name + "\",\"by\":\"" + by + "\",\"pos\":\"" + pos + "\"}";
+    }
+
+    private static void onlyReasonStartsWith(Map<String, Object> doc, String pos, String start) {
+        List<String> reasons = reasonsAt(doc, pos);
+        check(reasons.size() == 1 && reasons.get(0).startsWith(start), "the refusal at " + pos + ": " + reasons);
+    }
+
+    /**
+     * A GORM method called on a domain class, on an instance of one and on {@code this} in one is
+     * a call of {@code grails.gorm.<Domain>.<method>}, marked {@code grails-gorm}: a dynamic
+     * finder, {@code withNewTransaction} with the calls of its closure, {@code delete} and {@code
+     * save}.
+     */
+    private void holdsGormCallsAreMarked() throws Exception {
+        Map<String, Object> doc = holds();
+        String count = holdsPos(REMINDER, "Hold.countByShelvedOnDay");
+        foreignCalls(doc, count, methodBy("grails.gorm", "Hold", "countByShelvedOnDay", GORM, count));
+        onlyReasonStartsWith(doc, count, "gorm: countByShelvedOnDay on Hold");
+        String tx = holdsPos(REMINDER, "Hold.withNewTransaction");
+        String each = holdsPos(REMINDER, "done.each");
+        foreignCalls(doc, tx, methodBy("grails.gorm", "Hold", "withNewTransaction", GORM, tx) + ","
+            + lambda(func("org.codehaus.groovy.runtime.DefaultGroovyMethods", "each", each) + ","
+                + lambda(methodBy("grails.gorm", "Hold", "delete", GORM, each), each), tx));
+        onlyReasonStartsWith(doc, tx, "gorm: withNewTransaction on Hold");
+        String save = holdsPos(HOLD, "save()");
+        foreignCalls(doc, save, methodBy("grails.gorm", "Hold", "save", GORM, save));
+        onlyReasonStartsWith(doc, save, "gorm: save on Hold");
+    }
+
+    /**
+     * {@code noticeService} and {@code deskService} are {@code def} fields of a service: the type
+     * checker resolves no call through them. Grails 2 sets each by its name to the service of that
+     * name, so the call is one of that service's method, marked {@code grails-service-field}; of
+     * the two overloads of {@code renew} the one taking two arguments. A call through the typed
+     * field of {@code DeskService} is resolved by the checker and carries no mark.
+     */
+    private void holdsServiceFieldCallsAreMarked() throws Exception {
+        Map<String, Object> doc = holds();
+        String remind = holdsPos(REMINDER, "noticeService.remind(late)");
+        foreignCalls(doc, remind, methodBy("", "NoticeService", "remind", SERVICE_FIELD, remind));
+        onlyReasonStartsWith(doc, remind, "spring: call through an injected dependency, noticeService.remind");
+        String renew = holdsPos(REMINDER, "deskService.renew(hold, 7)");
+        foreignCalls(doc, renew, methodBy("", "DeskService", "renew2", SERVICE_FIELD, renew));
+        String ready = holdsPos(DESK, "noticeService.pickupReady");
+        check(same(list(opaqueOrNull(doc, "DeskService.shelve").get("calls")).get(0), method("", "NoticeService", "pickupReady", ready)),
+            "the call through the typed field: " + Json.write(opaqueOrNull(doc, "DeskService.shelve").get("calls")));
+    }
+
+    /** The first value of each row {@code codespec query} printed. */
+    private static List<String> firstColumn(String printed) {
+        List<String> out = new ArrayList<>();
+        for (String line : printed.split("\n")) {
+            if (!line.isEmpty()) {
+                out.add(line.split("\t")[0]);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@code ReminderService.remindLate} reaches {@code NoticeService.remind} and {@code
+     * DeskService.renew2} only through {@code def} fields: {@code codespec reach} follows the
+     * convention edges without being asked to. The relation {@code call_by} holds each, so a query
+     * selects them, by convention, or leaves them out.
+     */
+    private void holdsReachAndQueryOverConventions() throws Exception {
+        Path doc = work.resolve("holds.conventions.cir.json");
+        Files.writeString(doc, Json.write(holds()), StandardCharsets.UTF_8);
+        Object[] ran = codespecPrints("holds.conventions.reach.json", "reach", doc.toString(), "--entry",
+            "holds.ReminderService.remindLate");
+        check(ran[0].equals(0), "codespec reach exit " + ran[0]);
+        List<Object> reached = list(map(list(map(Json.parse((String) ran[1])).get("modules")).get(0)).get("reached"));
+        check(reached.contains("NoticeService.remind") && reached.contains("DeskService.renew2"),
+            "reach does not follow the convention edges from ReminderService.remindLate: " + reached);
+        Object[] conv = codespecPrints("holds.conventions.txt", "query",
+            "conv(C, B) :- call{site: S, callee: C}, call_by{site: S, by: B}.\n?- conv(C, B).", doc.toString());
+        check(conv[0].equals(1), "codespec query exit " + conv[0] + ", not 1 (rows)");
+        check(List.of(((String) conv[1]).split("\n")).equals(List.of(
+            "DeskService.renew2\t" + SERVICE_FIELD,
+            "NoticeService.remind\t" + SERVICE_FIELD,
+            "grails.gorm.Hold.countByShelvedOnDay\t" + GORM,
+            "grails.gorm.Hold.delete\t" + GORM,
+            "grails.gorm.Hold.save\t" + GORM,
+            "grails.gorm.Hold.withNewTransaction\t" + GORM)), "the calls a convention gave a target: " + conv[1]);
+        Object[] gorm = codespecPrints("holds.gorm.txt", "query",
+            "gorm(C) :- call{site: S, callee: C}, call_by{site: S, by: \"" + GORM + "\"}.\n?- gorm(C).", doc.toString());
+        check(firstColumn((String) gorm[1]).size() == 4, "the GORM calls: " + gorm[1]);
+        Object[] typed = codespecPrints("holds.typed.txt", "query",
+            "typed(C) :- call{site: S, callee: C, kind: \"method\", listed: true}, !call_by{site: S}.\n?- typed(C).", doc.toString());
+        List<String> resolved = firstColumn((String) typed[1]);
+        check(resolved.contains("NoticeService.pickupReady") && resolved.contains("java.lang.String.trim"),
+            "the method calls the type checker resolved: " + resolved);
+        for (String callee : resolved) {
+            check(!callee.startsWith("grails.gorm."), "a GORM call among the calls the type checker resolved: " + resolved);
+        }
+        // Reachability over the edges the type checker gave alone: remindLate reaches no service.
+        Object[] strict = codespecPrints("holds.strict.txt", "query",
+            "edge(F, T) :- call{site: S, func: F}, calls{site: S, target: T}, !call_by{site: S}.\n"
+            + "strict(F, T) :- edge(F, T).\nstrict(F, T) :- strict(F, M), edge(M, T).\n"
+            + "?- strict(\"holds.ReminderService.remindLate\", T).", doc.toString());
+        check(List.of(((String) strict[1]).split("\n")).equals(List.of("holds.Hold.daysWaiting")),
+            "what remindLate reaches without the convention edges: " + strict[1]);
+    }
+
+    /**
+     * A convention gives a target only where it names one: not for a method the service does not
+     * declare, not where two overloads take as many arguments as the call passes, not for a field
+     * named for a service the module does not read, and not for a GORM name the domain class
+     * declares itself. Outside a Grails application nothing sets a field by its name and no class
+     * is a domain class: no call is marked.
+     */
+    private void conventionsDoNotGuess() throws Exception {
+        Path app = work.resolve("convention-app");
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=conv\n");
+        write(app.resolve("grails-app/domain/conv/Item.groovy"),
+            "package conv\n\nclass Item {\n    int n = 0\n\n    void save() {\n        n = n + 1\n    }\n}\n");
+        write(app.resolve("grails-app/services/conv/PickService.groovy"), "package conv\n\nclass PickService {\n"
+            + "    int picked = 0\n\n"
+            + "    void pick(int a) {\n        picked = picked + a\n    }\n\n"
+            + "    void pick(String s) {\n        picked = picked + 1\n    }\n\n"
+            + "    void drop(int a) {\n        picked = picked - a\n    }\n}\n");
+        String svc = "grails-app/services/conv/MixService.groovy";
+        write(app.resolve(svc), "package conv\n\nclass MixService {\n"
+            + "    def pickService\n    def mailService\n    PickService typedService\n\n"
+            + "    def mix(Item item, def x) {\n"
+            + "        pickService.pick(x)\n"
+            + "        pickService.missing()\n"
+            + "        pickService.drop(1)\n"
+            + "        mailService.send(x)\n"
+            + "        typedService.drop(2)\n"
+            + "        item.save()\n"
+            + "        Item.get(1)\n"
+            + "        return x\n"
+            + "    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        opaqueIs(doc, "MixService.mix", svc + ":8", "dynamic: mix returns def: its result has the type of whatever it returns",
+            value("groovy dynamic call of pick", svc + ":9") + ","
+            + value("groovy dynamic call of missing", svc + ":10") + ","
+            + methodBy("", "PickService", "drop", SERVICE_FIELD, svc + ":11") + ","
+            + value("groovy dynamic call of send", svc + ":12") + ","
+            + method("", "PickService", "drop", svc + ":13") + ","
+            + method("", "Item", "save", svc + ":14") + ","
+            + methodBy("grails.gorm", "Item", "get", GORM, svc + ":15"));
+        Path out = work.resolve("convention-app.json");
+        Files.writeString(out, Json.write(doc), StandardCharsets.UTF_8);
+        Object[] valid = codespecPrints("convention-app.validate.txt", "validate", "--canonical", out.toString());
+        check(valid[0].equals(0), "codespec validate --canonical refused the read");
+
+        Path plain = work.resolve("convention-plain");
+        write(plain.resolve("Item.groovy"), "package plain\n\nclass Item {\n    int n = 0\n}\n");
+        write(plain.resolve("ItemService.groovy"),
+            "package plain\n\nclass ItemService {\n    int size(Item item) {\n        return item.n\n    }\n}\n");
+        write(plain.resolve("Shelf.groovy"), "package plain\n\nclass Shelf {\n    def itemService\n\n"
+            + "    def mix(Item item) {\n        itemService.size(item)\n        Item.get(1)\n        return item\n    }\n}\n");
+        Map<String, Object> read = Reader.read(plain);
+        check(same(opaqueOrNull(read, "Shelf.mix").get("calls"), "[" + value("groovy dynamic call of size", "Shelf.groovy:7") + ","
+            + value("groovy dynamic call of get", "Shelf.groovy:8") + "]"),
+            "Shelf.mix, outside a Grails application, calls " + Json.write(opaqueOrNull(read, "Shelf.mix").get("calls")));
+    }
+
+    /** The classes whose public methods GORM adds to every domain class, static, instance and validation. */
+    private static final List<String> GORM_API = List.of(
+        "org.grails.datastore.gorm.GormStaticApi", "org.grails.datastore.gorm.GormInstanceApi",
+        "org.grails.datastore.gorm.GormValidationApi");
+
+    /** The methods of those classes that are the API object's own: its hook, its state and its settings. */
+    private static final List<String> GORM_API_OWN = List.of(
+        "methodMissing", "getGormDynamicFinders", "getGormPersistentEntity", "getValidationErrorsMap", "getValidationSkipMap",
+        "getFailOnError", "isFailOnError", "setFailOnError", "getValidationException", "setValidationException", "getValidator",
+        "setValidator", "getBeforeValidateHelper", "setBeforeValidateHelper", "getMetaClass", "setMetaClass", "invokeMethod",
+        "getProperty", "setProperty");
+
+    /**
+     * Every public instance method the GORM API classes of the Grails 2.5.6 distribution declare
+     * (grails-datastore-gorm) is in the reader's list, {@code withTransaction} and {@code
+     * withNewTransaction} among them, so the list is the distribution's and not a selection.
+     */
+    private void gormListIsTheDistributions() throws Exception {
+        String home = System.getenv("GRAILS_HOME");
+        if (home == null || home.isEmpty()) {
+            throw new Skip("GRAILS_HOME is not set; set it to a Grails 2.5.6 distribution to run this case");
+        }
+        List<java.net.URL> jars = new ArrayList<>();
+        for (String dir : List.of("lib", "dist")) {
+            try (Stream<Path> files = Files.walk(Path.of(home, dir))) {
+                for (Path p : files.sorted().toList()) {
+                    String n = p.getFileName().toString();
+                    if (n.endsWith(".jar") && !n.endsWith("-sources.jar") && !n.endsWith("-javadoc.jar")) {
+                        jars.add(p.toUri().toURL());
+                    }
+                }
+            }
+        }
+        List<String> missing = new ArrayList<>();
+        List<String> seen = new ArrayList<>();
+        try (java.net.URLClassLoader loader = new java.net.URLClassLoader(jars.toArray(new java.net.URL[0]),
+            ClassLoader.getPlatformClassLoader())) {
+            for (String api : GORM_API) {
+                Class<?> c = Class.forName(api, false, loader);
+                for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                    int mod = m.getModifiers();
+                    String n = m.getName();
+                    if (!java.lang.reflect.Modifier.isPublic(mod) || java.lang.reflect.Modifier.isStatic(mod) || m.isSynthetic()
+                        || n.contains("$") || GORM_API_OWN.contains(n)) {
+                        continue;
+                    }
+                    seen.add(n);
+                    if (!Reader.gormMethod(n)) {
+                        missing.add(c.getSimpleName() + "." + n);
+                    }
+                }
+            }
+        }
+        check(seen.contains("withTransaction") && seen.contains("withNewTransaction") && seen.contains("save")
+            && seen.contains("validate"), "the GORM API classes declare " + seen);
+        check(missing.isEmpty(), "GORM methods of the distribution the reader's list does not hold: " + missing);
+    }
+
+    private void readmeNamesTheConventions() throws Exception {
+        String readme = Files.readString(root.resolve("adapters/groovy/README.md"));
+        for (String mark : List.of(GORM, SERVICE_FIELD)) {
+            check(readme.contains("`" + mark + "`"), "README.md does not name the mark `" + mark + "`");
+        }
+        List<String> unnamed = new ArrayList<>();
+        for (String name : Reader.GORM_METHODS) {
+            if (!readme.contains("`" + name + "`")) {
+                unnamed.add(name);
+            }
+        }
+        for (String prefix : Reader.GORM_PREFIXES) {
+            if (!readme.contains("`" + prefix + "*`")) {
+                unnamed.add(prefix + "*");
+            }
+        }
+        java.util.Collections.sort(unnamed);
+        check(unnamed.isEmpty(), "README.md does not name the GORM methods " + unnamed);
+        check(readme.contains("call_by"), "README.md does not name the relation call_by");
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----

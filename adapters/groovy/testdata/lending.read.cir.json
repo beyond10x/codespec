@@ -1661,8 +1661,11 @@
           "pos": "grails-app/services/lending/CatalogService.groovy:8",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of get",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Tool",
+              "name": "get",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/CatalogService.groovy:8"
             }
           ]
@@ -1709,8 +1712,11 @@
           "pos": "grails-app/services/lending/CatalogService.groovy:12",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of findByName",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Tool",
+              "name": "findByName",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/CatalogService.groovy:12"
             }
           ]
@@ -1760,8 +1766,11 @@
           "pos": "grails-app/services/lending/CatalogService.groovy:16",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of withCriteria",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Tool",
+              "name": "withCriteria",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/CatalogService.groovy:16"
             },
             {
@@ -3890,8 +3899,11 @@
           "pos": "grails-app/services/lending/LoanService.groovy:13",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of addToLoans",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Member",
+              "name": "addToLoans",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/LoanService.groovy:13"
             }
           ]
@@ -3927,8 +3939,11 @@
           "pos": "grails-app/services/lending/LoanService.groovy:15",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of save",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Loan",
+              "name": "save",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/LoanService.groovy:15"
             }
           ]
@@ -3971,8 +3986,11 @@
           "pos": "grails-app/services/lending/LoanService.groovy:19",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of delete",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Loan",
+              "name": "delete",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/LoanService.groovy:19"
             }
           ]
@@ -4026,8 +4044,11 @@
           "pos": "grails-app/services/lending/LoanService.groovy:23",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of findAllByMember",
+              "k": "method",
+              "path": "grails.gorm",
+              "recv": "Loan",
+              "name": "findAllByMember",
+              "by": "grails-gorm",
               "pos": "grails-app/services/lending/LoanService.groovy:23"
             }
           ]
@@ -4072,8 +4093,10 @@
           "pos": "grails-app/services/lending/LoanService.groovy:27",
           "calls": [
             {
-              "k": "value",
-              "sig": "groovy dynamic call of toolById",
+              "k": "method",
+              "recv": "CatalogService",
+              "name": "toolById",
+              "by": "grails-service-field",
               "pos": "grails-app/services/lending/LoanService.groovy:27"
             }
           ]

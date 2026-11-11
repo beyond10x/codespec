@@ -225,9 +225,12 @@
           ]
         },
         {
-          "description": "A call of the method `name` declared on the named type `recv` of the module `path`\n(empty: this module), the receiver's type being known.",
+          "description": "A call of the method `name` declared on the named type `recv` of the module `path`\n(empty: this module), the receiver's type being known. With `by`, a convention of a\nframework gave the target, not the source language's type information, and `by` names\nthe convention; without it, the type information resolved the call. The Groovy reader\nwrites two: `grails-gorm`, a GORM method called on a domain class `recv` of the module,\nwhich GORM adds at run time (`path` is `grails.gorm`), and `grails-service-field`, a\ncall the type checker did not resolve through a field that Grails 2 sets, by its name,\nto the service `recv` of the module (`noticeService` to `NoticeService`).",
           "type": "object",
           "properties": {
+            "by": {
+              "type": "string"
+            },
             "k": {
               "type": "string",
               "const": "method"

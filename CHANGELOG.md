@@ -16,8 +16,29 @@ Every change a user of `codespec` or of `cir/1` would notice.
   from 2: the second `renew` of a class is `renew2`. A document read before gains `calls` on its
   `foreign` statements and `opaque`, and nothing else changes
   (`adapters/groovy/README.md`, "Call lists"; fixture `adapters/groovy/testdata/holds`).
+- `cir/1` has `by` on a `method` call ref of a call list: the name of the convention that gave
+  the call its target where the source language's type information resolved none. Additive: a
+  document without it reads and writes byte for byte as before, and a reader that follows no
+  convention never writes it. `codespec reach`, `reaches` and `calls` follow such a call as any
+  other and `codespec effects` gives it the effects of the same call without `by`; `codespec
+  query` has the relation `call_by{site, by}`, one row for each such call, so a query selects the
+  convention edges or leaves them out.
+- `codespec-read-groovy` names the target of two kinds of call the type checker does not resolve
+  in a Grails 2.5.6 application, each with its `by`. `grails-gorm`: a GORM method on a domain
+  class, an instance of one or `this` in one is a call of `grails.gorm.<Domain>.<method>`.
+  `grails-service-field`: a call through a field Spring sets by its name to a service that is
+  read is a call of the one method of that name the service declares that takes as many
+  arguments as the call passes; where the convention names no one method, the call stays a
+  `value` call. A plain Groovy module has neither
+  (`adapters/groovy/README.md`, "A convention names a target the type checker does not").
 
 ### Changed
+
+- `codespec-read-groovy` classifies as `gorm` every public method GORM adds to a domain class in
+  the Grails 2.5.6 distribution, where it knew a selection: `withNewTransaction`, `withSession`,
+  `lock`, `last`, `insert`, `isDirty`, `findOrSaveWhere` and the others
+  `adapters/groovy/README.md` lists are now `gorm: <name> on <Domain>`, where they were `dynamic`
+  or `closure`.
 
 - `codespec-read-groovy` runs no local AST transformation of a `CODESPEC_GROOVY_CLASSPATH` jar,
   Grails's and its plugins' among them; Groovy's own still run. The annotation is refused at its

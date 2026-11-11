@@ -17,4 +17,9 @@ class Hold {
     boolean isShelved() {
         return shelvedOnDay >= 0
     }
+
+    void shelveOn(int day) {
+        shelvedOnDay = day
+        save()
+    }
 }

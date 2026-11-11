@@ -167,7 +167,11 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * declaration, or with its class, is an {@code opaque} function of the module with the reason and
  * the calls of its body ({@link CallLister}). A call names the target the type checker resolved,
  * and no target where it resolved none. A refused overload is a function of its own, numbered
- * from 2 ({@link #nameOpaque}).
+ * from 2 ({@link #nameOpaque}). In a Grails application two conventions name a target the type
+ * checker does not, and the call ref says {@code by} which ({@link #byConvention}): a GORM method
+ * on a domain class is a method of {@code grails.gorm}, {@code grails-gorm}, and a call through a
+ * field Spring sets by its name to a service that is read is one of that service's method, {@code
+ * grails-service-field}.
  *
  * <p>The Grails layer ({@link #read(Grails, List)}, README.md "Grails 2.5.6 applications"): the
  * domain classes and services of the application are read, every other file of it compiled
@@ -3444,20 +3448,35 @@ public final class Reader {
 
     private static final String GORM_DETAIL = "GORM persistence is outside cir/1 until it has a persistence boundary";
 
-    /** The GORM methods by name; the dynamic finders and association methods by prefix. */
-    private static final Set<String> GORM_METHODS = Set.of(
-        "save", "delete", "validate", "refresh", "merge", "attach", "discard", "get", "read", "load", "list", "count",
-        "exists", "find", "findAll", "findWhere", "findAllWhere", "where", "withCriteria", "createCriteria", "executeQuery",
-        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion",
-        "first", "ident", "getAll");
+    /**
+     * The GORM methods by name; the dynamic finders and association methods by prefix. The names
+     * are those of every public method GORM adds to a domain class in the Grails 2.5.6
+     * distribution (grails-datastore-gorm: {@code GormStaticApi}, {@code GormInstanceApi}, {@code
+     * GormValidationApi}), and the accessors of the properties GORM adds ({@code errors}, {@code
+     * getId}, {@code getVersion}). ReaderTest holds the list against the distribution.
+     */
+    static final Set<String> GORM_METHODS = Set.of(
+        // GormStaticApi: called on the class.
+        "count", "create", "createCriteria", "deleteAll", "executeQuery", "executeUpdate", "exists", "find", "findAll",
+        "findAllWhere", "findOrCreateWhere", "findOrSaveWhere", "findWhere", "first", "get", "getAll", "getAsync", "getCount",
+        "last", "list", "load", "lock", "merge", "proxy", "read", "saveAll", "where", "whereAny", "whereLazy", "withCriteria",
+        "withDatastoreSession", "withNewSession", "withNewTransaction", "withSession", "withStatelessSession",
+        "withTransaction",
+        // GormInstanceApi: called on an instance; lock and merge are of both.
+        "attach", "delete", "discard", "getDirtyPropertyNames", "getPersistentValue", "ident", "insert", "instanceOf",
+        "isAttached", "isDirty", "mutex", "refresh", "save",
+        // GormValidationApi.
+        "clearErrors", "getErrors", "hasErrors", "setErrors", "validate",
+        // The properties GORM adds, by their accessors.
+        "errors", "getId", "getVersion");
 
-    private static final List<String> GORM_PREFIXES = List.of(
+    static final List<String> GORM_PREFIXES = List.of(
         "findBy", "findAllBy", "listOrderBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
 
     /** The implicit properties of a domain instance. */
     private static final Set<String> GORM_PROPERTIES = Set.of("id", "version", "errors");
 
-    private static boolean gormMethod(String name) {
+    static boolean gormMethod(String name) {
         if (GORM_METHODS.contains(name)) {
             return true;
         }
@@ -3474,10 +3493,15 @@ public final class Reader {
      * Tool.findByName}), an instance of one ({@code loan.save()}), or {@code this} in a domain class.
      */
     private ClassNode gormReceiver(Expression recv, boolean implicitThis, Ctx ctx) {
+        return gormReceiver(recv, implicitThis, ctx.fn == null ? null : ctx.fn.cls);
+    }
+
+    /** As above, for code of the class {@code in}, which {@code this} is an instance of. */
+    private ClassNode gormReceiver(Expression recv, boolean implicitThis, ClassNode in) {
         if (implicitThis || isThis(recv)) {
-            return ctx.fn != null && isDomain(ctx.fn.cls) ? ctx.fn.cls : null;
+            return in != null && isDomain(in) ? in : null;
         }
-        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, ctx);
+        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, null);
         return isDomain(t) ? t.redirect() : null;
     }
 
@@ -4644,6 +4668,11 @@ public final class Reader {
     }
 
     private static Map<String, Object> methodRef(String path, String recv, String name, String pos) {
+        return methodRef(path, recv, name, "", pos);
+    }
+
+    /** A method call; {@code by} names the convention that gave the target, empty when the type checker did. */
+    private static Map<String, Object> methodRef(String path, String recv, String name, String by, String pos) {
         Map<String, Object> c = Json.obj();
         c.put("k", "method");
         if (!path.isEmpty()) {
@@ -4651,8 +4680,118 @@ public final class Reader {
         }
         c.put("recv", recv);
         c.put("name", name);
+        if (!by.isEmpty()) {
+            c.put("by", by);
+        }
         c.put("pos", pos);
         return c;
+    }
+
+    /** The module GORM's methods are methods of: {@code grails.gorm.<Domain>.<method>}. */
+    private static final String GORM_PATH = "grails.gorm";
+
+    /** {@code by} of a GORM method on a domain class: GORM adds it to the class at run time. */
+    static final String BY_GORM = "grails-gorm";
+
+    /** {@code by} of a call through a field Spring sets, by its name, to a service that is read. */
+    static final String BY_SERVICE_FIELD = "grails-service-field";
+
+    /**
+     * The call a convention of Grails 2 names the target of where the type checker names none, or
+     * null. Both hold in a Grails application alone: elsewhere no class is a domain class and no
+     * field is set by its name.
+     *
+     * <p>{@code grails-gorm}: the call the reader refuses as {@code gorm:}, by the same test (a
+     * domain class, an instance of one or {@code this} in one as receiver, a name of {@link
+     * #gormMethod}, not a method the domain class declares itself). It is a method of the domain
+     * class in {@code grails.gorm}, static or not, which no document declares: an edge that leaves
+     * the application, as a call into a library is.
+     *
+     * <p>{@code grails-service-field}: a call the type checker did not resolve, through a field
+     * of a service or a domain class that Spring autowires by name, where the name is the bean
+     * name of exactly one service that is read and the field is {@code def} or of that service's
+     * type. Its target is the one method of that name the service declares itself, not static,
+     * that takes as many arguments as the call passes ({@link #takes}; uncounted where an
+     * argument is spread). Where that is no method or more than one, the convention tells no
+     * target and the call stays one that names none.
+     */
+    private Map<String, Object> byConvention(MethodCallExpression call, String name, MethodNode t, ClassNode in, String pos) {
+        if (name == null) {
+            return null;
+        }
+        ClassNode domain = gormReceiver(call.getObjectExpression(), call.isImplicitThis(), in);
+        if (domain != null && gormMethod(name) && !declaredBy(t, domain)) {
+            return methodRef(GORM_PATH, domain.getNameWithoutPackage(), name, BY_GORM, pos);
+        }
+        if (t != null || call.isImplicitThis()) {
+            return null;
+        }
+        Object through = named(call.getObjectExpression());
+        if (!(through instanceof FieldNode) || !injected.contains(through)) {
+            return null;
+        }
+        FieldNode field = (FieldNode) through;
+        ClassNode service = serviceOfBean(field.getName());
+        if (service == null || !(field.isDynamicTyped() || field.getType().redirect() == service)) {
+            return null;
+        }
+        List<Expression> as = args(call.getArguments());
+        boolean counted = true;
+        for (Expression a : as) {
+            counted &= !(a instanceof SpreadExpression);
+        }
+        MethodNode target = null;
+        for (MethodNode m : userMethods(service)) {
+            if (m instanceof ConstructorNode || m.isStatic() || !m.getName().equals(name) || counted && !takes(m, as.size())) {
+                continue;
+            }
+            if (target != null) {
+                return null;
+            }
+            target = m;
+        }
+        Fn fn = target == null ? null : fns.get(target);
+        if (fn != null) {
+            return methodRef("", fn.cls.getNameWithoutPackage(), fn.name, BY_SERVICE_FIELD, pos);
+        }
+        Op op = target == null ? null : opaqueOf.get(target);
+        return op == null || op.recv == null ? null : methodRef("", op.recv, op.name, BY_SERVICE_FIELD, pos);
+    }
+
+    /**
+     * The one service that is read whose Spring bean has the name {@code bean}, or null. Grails 2
+     * names a service's bean by its class's simple name as a property ({@code NoticeService}:
+     * {@code noticeService}; a name beginning with two capitals is kept, {@code URLService}).
+     */
+    private ClassNode serviceOfBean(String bean) {
+        ClassNode found = null;
+        for (ClassNode cn : decls) {
+            String simple = cn.getNameWithoutPackage();
+            boolean kept = simple.length() > 1 && Character.isUpperCase(simple.charAt(0)) && Character.isUpperCase(simple.charAt(1));
+            String name = kept ? simple : Character.toLowerCase(simple.charAt(0)) + simple.substring(1);
+            if (cn.getOuterClass() == null && isService(cn) && name.equals(bean)) {
+                if (found != null) {
+                    return null;
+                }
+                found = cn;
+            }
+        }
+        return found;
+    }
+
+    /** Whether a call passing {@code n} arguments can be one of {@code m}: its parameters, less those with a default, a last array taking any number. */
+    private static boolean takes(MethodNode m, int n) {
+        Parameter[] ps = m.getParameters();
+        int required = 0;
+        for (Parameter p : ps) {
+            if (!p.hasInitialExpression()) {
+                required++;
+            }
+        }
+        if (n >= required && n <= ps.length) {
+            return true;
+        }
+        return ps.length > 0 && ps[ps.length - 1].getType().isArray() && n >= ps.length - 1;
     }
 
     /** A call that names no function: of a function value of the signature {@code sig}, or one whose target is not known. */
@@ -4738,11 +4877,15 @@ public final class Reader {
      * constructor call is also a {@code new} of its class, the first of each class in a list. A
      * closure is a {@code lambda} holding its own calls, a method pointer one holding the call
      * Groovy resolves when it runs; a call of a closure is a {@code value} call of the closure
-     * signature. What is not written as a call is not listed: README.md, "Call lists".
+     * signature. What is not written as a call is not listed: README.md, "Call lists". Where a
+     * convention names the target of a method call, the call is that one and says so ({@link
+     * #byConvention}).
      */
     private final class CallLister extends CodeVisitorSupport {
         final Unit u;
         final int fallback;
+        /** The class whose code is visited: the one being read when the lister is made. */
+        final ClassNode in = reading;
         List<Object> out = new ArrayList<>();
 
         CallLister(Unit u, int fallback) {
@@ -4786,7 +4929,10 @@ public final class Reader {
             String pos = pos(u, call, fallback);
             String name = call.getMethodAsString();
             MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
-            if (t == null) {
+            Map<String, Object> convention = byConvention(call, name, t, in, pos);
+            if (convention != null) {
+                add(convention);
+            } else if (t == null) {
                 add(valueRef(dynamicSig(name), pos));
             } else if (t.getDeclaringClass().getName().equals(CLOSURE_SIG) && (t.getName().equals("call") || t.getName().equals("doCall"))) {
                 add(valueRef(CLOSURE_SIG, pos));

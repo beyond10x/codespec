@@ -35,9 +35,10 @@ and an enum. Each directory under `testdata/refuse` holds one construct the read
 `foreign` or refuses; its line is marked `// refused <category>`. `testdata/lending` is a small
 Grails application; `testdata/lending/EXPECTED.md` is what the reader reads of it, and
 `testdata/lending.read.cir.json` is that read. `testdata/holds` is a second one, most of whose
-calls go through code the reader refuses: a method that returns `def`, a second overload, a closure
-and a service that extends another. `testdata/holds.read.cir.json` is its read, and "Call lists"
-below is what it shows.
+calls go through code the reader refuses: a method that returns `def`, a second overload, a closure,
+a service that extends another, and a service that calls two others through `def` fields and a
+domain class through GORM. `testdata/holds.read.cir.json` is its read, and "Call lists" below is
+what it shows.
 
 ## Call lists
 
@@ -69,6 +70,7 @@ What a call list holds, a call before its receiver and its arguments, otherwise 
 | one it resolved to a class outside the module, a resolve-only class of the application among them | as the Java reader names an extern: `method` with `path` the package and `recv` the class; `func` with `path` the qualified class name for a static method and for a constructor, `<init>` |
 | one it resolved to a GDK method, `names.each { … }` | `func`, the static method that implements it: `path` `org.codehaus.groovy.runtime.DefaultGroovyMethods`, `name` `each` |
 | a call it did not resolve | `value`, `sig` `groovy dynamic call of <name>`: it names no function, and the fact base holds it as a call whose target is unknown |
+| in a Grails application, a GORM method on a domain class, and a call it did not resolve through a field Spring sets to a service that is read | `method` with `by`, the convention that names the target: "A convention names a target the type checker does not" below |
 | `new T(…)` | the constructor call, then `new` of `T`, once for each class in a list |
 | a closure | `lambda` of `sig` `groovy.lang.Closure`, holding the calls of its body |
 | a method pointer, `x.&name` | `lambda` holding one `value` call, `groovy dynamic call of <name>`: Groovy resolves it when it runs |
@@ -84,6 +86,66 @@ A call of a declared method the module holds no function for, a method without a
 two classes with one simple name, is a `value` call,
 `groovy call of <class>.<name>, which the module holds no function for`; so is a call into a class
 without a package, which has no `path` that is not the module's own.
+
+### A convention names a target the type checker does not
+
+In a Grails application most calls between artefacts are ones Groovy's type checker cannot
+resolve: a service reaches another through a `def` field Spring sets, and a domain class has no
+`save` in its source. Two conventions of Grails 2 name the target of such a call. The reader
+follows them, and the call ref says so: a `method` call ref whose target a convention gave carries
+`by`, the name of the convention, between `name` and `pos`. A call ref without `by` names what the
+type checker resolved. Outside a Grails application neither convention holds and no call ref
+carries `by`.
+
+| `by` | The call | The call ref |
+| --- | --- | --- |
+| `grails-gorm` | a GORM method ("What the Grails layer reads and refuses" lists them) on a domain class, an instance of one or `this` in one, that the domain class does not declare itself: the call the reader refuses as `gorm: <name> on <Domain>` | `method`, `path` `grails.gorm`, `recv` the domain class, `name` the method as written, static or not: `Hold.countByShelvedOnDay(-1)` is a call of `grails.gorm.Hold.countByShelvedOnDay` |
+| `grails-service-field` | a call the type checker did not resolve, through a field of a service or a domain class whose name is the Spring bean name of exactly one service that is read (`noticeService` for `NoticeService`), the field being `def` or of that service's type | `method`, `recv` the service, `name` the function of the one method of that name the service declares that takes as many arguments as the call passes: `deskService.renew(hold, 7)` is a call of `DeskService.renew2` |
+
+`grails.gorm` is no module any document declares: a `grails-gorm` call is an edge that leaves the
+application, as a call into a library is, and one name for every domain class's `save`. The closure
+passed to a GORM method is a `lambda` in the same list, with its own calls.
+
+`grails-service-field` tells a target only where the convention names one. The call stays a
+`value` call, `groovy dynamic call of <name>`, where:
+
+- no service that is read has that bean name, or two have (a plugin's service, a bean defined in
+  `resources.groovy`);
+- the field is of another type than the service;
+- the service declares no method of that name itself (an inherited one is not looked for), only a
+  static one, or one the module holds no function for;
+- two overloads take as many arguments as the call passes. A parameter with a default value may be
+  left out and a last array parameter takes any number; where an argument is spread (`*args`) the
+  arguments are not counted and the name alone must tell.
+
+Grails 2 names a service's bean by its class's simple name as a property: `NoticeService` is
+`noticeService`, and a name that begins with two capitals is kept, `URLService`.
+
+`codespec reach`, `reaches` and `calls` follow a call with `by` as any other, without being asked
+to: in `testdata/holds`, `ReminderService.remindLate` reaches `NoticeService.remind` and
+`DeskService.renew2` through two `def` fields alone. The relation `call_by{site, by}` of the fact
+base holds one row for each such call, so a query selects the convention edges or leaves them out:
+
+```console
+$ codespec query 'conv(C, B) :- call{site: S, callee: C}, call_by{site: S, by: B}.
+?- conv(C, B).' adapters/groovy/testdata/holds.read.cir.json
+DeskService.renew2	grails-service-field
+NoticeService.remind	grails-service-field
+grails.gorm.Hold.countByShelvedOnDay	grails-gorm
+grails.gorm.Hold.delete	grails-gorm
+grails.gorm.Hold.save	grails-gorm
+grails.gorm.Hold.withNewTransaction	grails-gorm
+$ codespec query 'edge(F, T) :- call{site: S, func: F}, calls{site: S, target: T}, !call_by{site: S}.
+strict(F, T) :- edge(F, T).
+strict(F, T) :- strict(F, M), edge(M, T).
+?- strict("holds.ReminderService.remindLate", T).' adapters/groovy/testdata/holds.read.cir.json
+holds.Hold.daysWaiting
+```
+
+The first lists every call a convention gave a target, with the convention; the second is
+reachability over the edges the type checker gave alone, under which `remindLate` reaches no
+service. An effect set does not differ for `by`: a call with it has the effects of the same call
+without it.
 
 ### Overloads are functions of their own
 
@@ -232,13 +294,29 @@ is on `CODESPEC_GROOVY_CLASSPATH`.
 
 What the Grails layer reads and refuses:
 
-- GORM calls stay `foreign`, `gorm: <name>`, on a domain class, an instance of one or `this` in one:
-  `save`, `delete`, `validate`, `refresh`, `merge`, `attach`, `discard`, `get`, `read`, `load`,
-  `list`, `count`, `exists`, `find`, `findAll`, `findWhere`, `findAllWhere`, `where`,
-  `withCriteria`, `createCriteria`, `executeQuery`, `executeUpdate`, `withTransaction`,
-  `withNewSession`, `errors`, `hasErrors`, `first`, `ident`, `getAll`, the implicit `id` and
-  `version`, and every `findBy*`, `findAllBy*`, `listOrderBy*`, `countBy*`, `findOrCreateBy*`,
-  `findOrSaveBy*`, `addTo*` and `removeFrom*`. The classification wins over `dynamic` and `closure`.
+- GORM calls stay `foreign`, `gorm: <name>`, on a domain class, an instance of one or `this` in one,
+  unless the domain class declares the method itself. The names are those of every public method
+  GORM adds to a domain class in the Grails 2.5.6 distribution (`grails-datastore-gorm`), which a
+  test holds the list against:
+  - on the class (`GormStaticApi`): `count`, `create`, `createCriteria`, `deleteAll`,
+    `executeQuery`, `executeUpdate`, `exists`, `find`, `findAll`, `findAllWhere`,
+    `findOrCreateWhere`, `findOrSaveWhere`, `findWhere`, `first`, `get`, `getAll`, `getAsync`,
+    `getCount`, `last`, `list`, `load`, `lock`, `merge`, `proxy`, `read`, `saveAll`, `where`,
+    `whereAny`, `whereLazy`, `withCriteria`, `withDatastoreSession`, `withNewSession`,
+    `withNewTransaction`, `withSession`, `withStatelessSession`, `withTransaction`;
+  - on an instance (`GormInstanceApi`): `attach`, `delete`, `discard`, `getDirtyPropertyNames`,
+    `getPersistentValue`, `ident`, `insert`, `instanceOf`, `isAttached`, `isDirty`, `lock`,
+    `merge`, `mutex`, `refresh`, `save`;
+  - validation (`GormValidationApi`): `clearErrors`, `getErrors`, `hasErrors`, `setErrors`,
+    `validate`;
+  - the properties GORM adds: `errors`, `getId`, `getVersion`, and the implicit `id` and `version`;
+  - by prefix, the dynamic finders and association methods: `findBy*`, `findAllBy*`,
+    `listOrderBy*`, `countBy*`, `findOrCreateBy*`, `findOrSaveBy*`, `addTo*` and `removeFrom*`.
+
+  The classification wins over `dynamic` and `closure`. A method the Hibernate plugin adds beyond
+  these is not in the distribution and not in the list: a call of one is refused as any call the
+  type checker does not resolve. In the statement's call list the GORM call carries `by`
+  `grails-gorm` ("Call lists").
 - Domain metadata (`static constraints`, `mapping`, `hasMany`, `belongsTo`, `hasOne`, `transients`,
   `embedded`, `namedQueries`) is no field: one refusal at its line, `gorm: mapping metadata <name>`.
 - A domain property of a reference type without an initializer holds `null` until set: it is a
@@ -391,6 +469,13 @@ them.
   the list does not name it. A call the checker did not resolve names no target at all, so no
   answer over the call graph rests on a target the reader guessed; what such a call reaches is
   unknown, not nothing.
+- A call ref with `by` rests on its convention, which the reader does not check against a running
+  application. `grails-service-field`: Spring sets the field to the service of that bean name, no
+  bean definition (`resources.groovy`, a plugin) replaces that bean with another class's, the field
+  is not assigned anything else, and the method that runs is the one the service declares, not an
+  override in a subclass or a method a metaclass adds. `grails-gorm`: the method called is GORM's;
+  what it does, the queries it runs and the event handlers and other code GORM calls back into
+  (`beforeInsert`, a custom validator), is in no call list.
 - Every reference parameter of a method is not null.
 - The program runs under `Locale.ROOT`: `sprintf` prints ASCII digits.
 - Transactions: Grails 2 services are transactional by default, and the reader does not model a
