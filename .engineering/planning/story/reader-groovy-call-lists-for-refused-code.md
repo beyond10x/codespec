@@ -7,7 +7,7 @@ title: The Groovy reader lists the calls of code it refuses
 summary: Foreign statements carry call lists, refused methods become opaque functions, and two Grails 2 conventions resolve calls the type checker left open.
 relations:
 - depends_on: story:reader-groovy-aborts-on-grails-2
-revision: 3
+revision: 4
 ---
 # Story: the Groovy reader lists the calls of code it refuses
 
@@ -80,3 +80,30 @@ The numbers are as reported and were not reproduced here.
 
 `story:reader-groovy-aborts-on-grails-2`: both change `Reader.java`; this story starts from the
 commit that closes that one.
+
+## Evidence
+
+Two commits on `impl/groovy-call-lists`: `0c11b657` (call lists and `opaque` functions) and
+`5480cc12` (the two conventions, each marked by the `by` field of the `method` call ref, a `cir/1`
+minor, and the fact `call_by`).
+
+In this repository, on `5480cc12`: `ReaderTest` 97 passed, 0 failed, 0 skipped; model 66, effects
+28 and query 21 passed; `task check` exit 0 (136 cargo suites, 1014 passed, 0 failed). The made-up
+tree is `adapters/groovy/testdata/holds`.
+
+Settled from the flaw list: convention edges are marked; two overloads are two functions
+(`adapters/groovy/README.md`, "Overloads are functions of their own"); the GORM list holds every
+method of the GORM API classes of the Grails 2.5.6 distribution; the README names both
+conventions; the reader prints nothing to stderr. Still open: an unresolved call is a `value`
+call whose `sig` holds the method name as text.
+
+On the Grails 2.5.6 application the experiment was made on, run by the reporting session on
+2026-11-11 with an adapter built from `0c11b657`; as reported, not reproduced here:
+
+- the read exits 0 and writes its document;
+- functions 1741, of them 203 read and 1538 `opaque` (203 and 0 on the commit before);
+- calls 8285, of them 1269 linked to a function of the document; 5337 call sites with an unknown
+  target;
+- caller and callee pairs 1885.
+
+`5480cc12` has not been run on that application yet.
