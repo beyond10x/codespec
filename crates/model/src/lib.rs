@@ -657,12 +657,20 @@ pub enum CallRef {
         pos: Pos,
     },
     /// A call of the method `name` declared on the named type `recv` of the module `path`
-    /// (empty: this module), the receiver's type being known.
+    /// (empty: this module), the receiver's type being known. With `by`, a convention of a
+    /// framework gave the target, not the source language's type information, and `by` names
+    /// the convention; without it, the type information resolved the call. The Groovy reader
+    /// writes two: `grails-gorm`, a GORM method called on a domain class `recv` of the module,
+    /// which GORM adds at run time (`path` is `grails.gorm`), and `grails-service-field`, a
+    /// call the type checker did not resolve through a field that Grails 2 sets, by its name,
+    /// to the service `recv` of the module (`noticeService` to `NoticeService`).
     Method {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         path: String,
         recv: String,
         name: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        by: String,
         pos: Pos,
     },
     /// A call of the method `name` through a value of the interface `iface` (its spelling, for

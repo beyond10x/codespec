@@ -408,6 +408,49 @@ fn a_foreign_statement_and_an_opaque_function_contribute_the_calls_they_list() {
     assert_eq!(raw.effect_sites[0].at, ["m.go:6"]);
 }
 
+/// `F` holds a foreign statement listing a call of the module's method `T.M`, which reads the
+/// environment, and a call of a method outside the set; `by` says each target comes from a
+/// reader's convention.
+fn convention_calls(by: bool) -> Module {
+    let t = json!({"k": "ptr", "elem": {"k": "named", "name": "T"}});
+    let mut own = json!({"k": "method", "recv": "T", "name": "M", "pos": "m.go:2"});
+    let mut outside = json!({"k": "method", "path": "grails.gorm", "recv": "Hold", "name": "save", "pos": "m.go:2"});
+    if by {
+        own["by"] = json!("grails-service-field");
+        outside["by"] = json!("grails-gorm");
+    }
+    let getenv = json!({"k": "expr", "pos": "m.go:5",
+        "x": {"k": "extern", "path": "os", "name": "Getenv", "args": [{"k": "lit", "value": "\"HOME\"", "t": s()}], "t": s()}});
+    doc(
+        "p",
+        "",
+        vec![
+            unit_func("F", 1, vec![foreign(2, vec![own, outside])]),
+            json!({"name": "M", "exported": true, "recv": {"name": "t", "t": t}, "params": [], "results": [],
+                "body": [getenv], "pos": "m.go:4"}),
+        ],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:3"}],
+            "externs": [decl("os", "Getenv")],
+            "layout": ["func:F", "type:T", "func:T.M"]
+        }),
+    )
+}
+
+/// A call ref that says a convention gave its target counts as the same call without the mark:
+/// the effects, the unknown sites and the sites of each effect are the same report.
+#[test]
+fn a_call_ref_naming_its_convention_gives_the_effect_set_of_the_same_call_without_it() {
+    let marked = analyze(&convention_calls(true), &[std_summary()]);
+    let plain = analyze(&convention_calls(false), &[std_summary()]);
+    assert_eq!(marked.to_json(), plain.to_json());
+    let f = entry(&marked, "F");
+    assert_eq!(f.effects, ["env"]);
+    let reasons: Vec<&str> = f.unknown.iter().map(|u| u.reason.as_str()).collect();
+    assert_eq!(reasons.len(), 1, "{reasons:?}");
+    assert!(reasons[0].contains("grails.gorm"), "{reasons:?}");
+}
+
 /// `a.Caller` calls `b.F` (an extern of `a`), which calls `os.Getenv`.
 fn linked_pair() -> (Module, Module) {
     let a = doc(

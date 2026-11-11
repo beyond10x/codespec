@@ -162,6 +162,17 @@ import org.codehaus.groovy.transform.stc.StaticTypesMarker;
  * groovy-semantics}, {@code type}, {@code unresolved} and {@code unsupported}, and in a Grails
  * application {@code gorm} and {@code spring}.
  *
+ * <p>Code that is not read still calls what it calls (README.md "Call lists"): every {@code
+ * foreign} statement carries the {@code calls} it makes, and a method or constructor refused at its
+ * declaration, or with its class, is an {@code opaque} function of the module with the reason and
+ * the calls of its body ({@link CallLister}). A call names the target the type checker resolved,
+ * and no target where it resolved none. A refused overload is a function of its own, numbered
+ * from 2 ({@link #nameOpaque}). In a Grails application two conventions name a target the type
+ * checker does not, and the call ref says {@code by} which ({@link #byConvention}): a GORM method
+ * on a domain class is a method of {@code grails.gorm}, {@code grails-gorm}, and a call through a
+ * field Spring sets by its name to a service that is read is one of that service's method, {@code
+ * grails-service-field}.
+ *
  * <p>The Grails layer ({@link #read(Grails, List)}, README.md "Grails 2.5.6 applications"): the
  * domain classes and services of the application are read, every other file of it compiled
  * resolve-only, with the jars of {@code CODESPEC_GROOVY_CLASSPATH} on the classpath and their
@@ -1163,10 +1174,12 @@ public final class Reader {
         reading = null;
         classify();
         signatures();
+        nameOpaque();
         for (ClassNode cn : decls) {
             reading = cn;
             emit(cn);
         }
+        List<Object> opaqueFuncs = opaqueFuncs();
         for (Err e : errs) {
             if (!e.consumed) {
                 addRefusal(e.unit.file + ":" + e.line, "type check", DYNAMIC + ": " + e.msg);
@@ -1191,6 +1204,9 @@ public final class Reader {
         doc.put("layout", layout);
         if (!refusals.isEmpty()) {
             doc.put("refusals", new ArrayList<Object>(refusals));
+        }
+        if (!opaqueFuncs.isEmpty()) {
+            doc.put("opaque", opaqueFuncs);
         }
         return doc;
     }
@@ -1266,6 +1282,10 @@ public final class Reader {
             if (why != null) {
                 refuseDecl(u, cn, name, why);
                 consume(u, cn);
+                if (simpleNames.get(name) == 1) {
+                    // Of two classes with one simple name neither has a name in the module.
+                    opaqueClass(u, cn, why);
+                }
                 continue;
             }
             if (cn.isEnum()) {
@@ -1294,6 +1314,8 @@ public final class Reader {
                     refuseDecl(u, e.getKey(), cn.getNameWithoutPackage() + "." + e.getKey().getName(), e.getValue());
                 }
                 consume(u, cn);
+                // No member of it is read; each is refused for the first field that is.
+                opaqueClass(u, cn, bad.values().iterator().next());
                 changed = true;
             }
         }
@@ -1672,6 +1694,7 @@ public final class Reader {
                 if (why != null) {
                     refuseDecl(u, m, what, why);
                     consume(u, m);
+                    opaque(u, cn, m, ctor, why);
                     continue;
                 }
                 fns.put(m, fn);
@@ -3425,20 +3448,35 @@ public final class Reader {
 
     private static final String GORM_DETAIL = "GORM persistence is outside cir/1 until it has a persistence boundary";
 
-    /** The GORM methods by name; the dynamic finders and association methods by prefix. */
-    private static final Set<String> GORM_METHODS = Set.of(
-        "save", "delete", "validate", "refresh", "merge", "attach", "discard", "get", "read", "load", "list", "count",
-        "exists", "find", "findAll", "findWhere", "findAllWhere", "where", "withCriteria", "createCriteria", "executeQuery",
-        "executeUpdate", "withTransaction", "withNewSession", "errors", "hasErrors", "getErrors", "getId", "getVersion",
-        "first", "ident", "getAll");
+    /**
+     * The GORM methods by name; the dynamic finders and association methods by prefix. The names
+     * are those of every public method GORM adds to a domain class in the Grails 2.5.6
+     * distribution (grails-datastore-gorm: {@code GormStaticApi}, {@code GormInstanceApi}, {@code
+     * GormValidationApi}), and the accessors of the properties GORM adds ({@code errors}, {@code
+     * getId}, {@code getVersion}). ReaderTest holds the list against the distribution.
+     */
+    static final Set<String> GORM_METHODS = Set.of(
+        // GormStaticApi: called on the class.
+        "count", "create", "createCriteria", "deleteAll", "executeQuery", "executeUpdate", "exists", "find", "findAll",
+        "findAllWhere", "findOrCreateWhere", "findOrSaveWhere", "findWhere", "first", "get", "getAll", "getAsync", "getCount",
+        "last", "list", "load", "lock", "merge", "proxy", "read", "saveAll", "where", "whereAny", "whereLazy", "withCriteria",
+        "withDatastoreSession", "withNewSession", "withNewTransaction", "withSession", "withStatelessSession",
+        "withTransaction",
+        // GormInstanceApi: called on an instance; lock and merge are of both.
+        "attach", "delete", "discard", "getDirtyPropertyNames", "getPersistentValue", "ident", "insert", "instanceOf",
+        "isAttached", "isDirty", "mutex", "refresh", "save",
+        // GormValidationApi.
+        "clearErrors", "getErrors", "hasErrors", "setErrors", "validate",
+        // The properties GORM adds, by their accessors.
+        "errors", "getId", "getVersion");
 
-    private static final List<String> GORM_PREFIXES = List.of(
+    static final List<String> GORM_PREFIXES = List.of(
         "findBy", "findAllBy", "listOrderBy", "countBy", "findOrCreateBy", "findOrSaveBy", "addTo", "removeFrom");
 
     /** The implicit properties of a domain instance. */
     private static final Set<String> GORM_PROPERTIES = Set.of("id", "version", "errors");
 
-    private static boolean gormMethod(String name) {
+    static boolean gormMethod(String name) {
         if (GORM_METHODS.contains(name)) {
             return true;
         }
@@ -3455,10 +3493,15 @@ public final class Reader {
      * Tool.findByName}), an instance of one ({@code loan.save()}), or {@code this} in a domain class.
      */
     private ClassNode gormReceiver(Expression recv, boolean implicitThis, Ctx ctx) {
+        return gormReceiver(recv, implicitThis, ctx.fn == null ? null : ctx.fn.cls);
+    }
+
+    /** As above, for code of the class {@code in}, which {@code this} is an instance of. */
+    private ClassNode gormReceiver(Expression recv, boolean implicitThis, ClassNode in) {
         if (implicitThis || isThis(recv)) {
-            return ctx.fn != null && isDomain(ctx.fn.cls) ? ctx.fn.cls : null;
+            return in != null && isDomain(in) ? in : null;
         }
-        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, ctx);
+        ClassNode t = recv instanceof ClassExpression ? recv.getType() : staticType(recv, null);
         return isDomain(t) ? t.redirect() : null;
     }
 
@@ -4482,6 +4525,528 @@ public final class Reader {
         st.put("src", src);
         st.put("reason", reason);
         st.put("pos", pos);
+        st.put("calls", callsOf(u, n, ctx.fallbackLine));
         return st;
+    }
+
+    // ---- the calls of code that is not read ----
+
+    /**
+     * A method or constructor a read file declares with a body and the reader does not read: an
+     * {@code opaque} function of the module, with the reason of its refusal and the calls its body
+     * makes, so that the call graph has no hole where it is.
+     */
+    private static final class Op {
+        final Unit unit;
+        final ClassNode cls;
+        final MethodNode node;
+        final boolean ctor;
+        final String reason;
+        /** The class, or null for a constructor, which is the function {@code New<Class>}. */
+        String recv;
+        String name;
+
+        Op(Unit unit, ClassNode cls, MethodNode node, boolean ctor, String reason) {
+            this.unit = unit;
+            this.cls = cls;
+            this.node = node;
+            this.ctor = ctor;
+            this.reason = reason;
+        }
+    }
+
+    /** The opaque functions, in the order met; in source order once {@link #nameOpaque} ran. */
+    private final List<Op> opaque = new ArrayList<>();
+    private final Map<MethodNode, Op> opaqueOf = new IdentityHashMap<>();
+
+    /** A method or constructor refused at its declaration or with its class; one without a body calls nothing and is none. */
+    private void opaque(Unit u, ClassNode cn, MethodNode m, boolean ctor, String reason) {
+        if (m.getCode() != null) {
+            opaque.add(new Op(u, cn, m, ctor, reason));
+        }
+    }
+
+    /** Every method and constructor of a class that is refused as a whole. */
+    private void opaqueClass(Unit u, ClassNode cn, String reason) {
+        for (MethodNode m : userMethods(cn)) {
+            opaque(u, cn, m, m instanceof ConstructorNode, reason);
+        }
+    }
+
+    /**
+     * Name the opaque functions, in source order, once every function that is read has its name. A
+     * method is {@code <Class>.<name>}, a static one too: two refused classes may each declare a
+     * static method of one name, which as functions of the module would be one. A constructor is
+     * {@code New<Class>}. cir/1 keys a function by its receiver type and name and refuses two of
+     * one key, so an overload is a function of its own: where the name is taken, by a function
+     * that is read or by an earlier overload, it takes the lowest number from 2 that is free
+     * ({@code renew2}, {@code NewDesk2}), as the Java reader names a second constructor.
+     */
+    private void nameOpaque() {
+        Map<ClassNode, Integer> order = new IdentityHashMap<>();
+        for (ClassNode cn : decls) {
+            order.put(cn, order.size());
+        }
+        opaque.sort(Comparator.comparingInt((Op o) -> order.get(o.cls)).thenComparingInt(o -> o.node.getLineNumber())
+            .thenComparingInt(o -> o.node.getColumnNumber()));
+        Set<String> taken = new HashSet<>();
+        for (Fn fn : fns.values()) {
+            taken.add(fn.key());
+        }
+        for (Fn fn : ctors.values()) {
+            taken.add(fn.key());
+        }
+        for (Op o : opaque) {
+            String cname = o.cls.getNameWithoutPackage();
+            String base = o.ctor ? "New" + cname : printable(o.node.getName());
+            o.recv = o.ctor ? null : cname;
+            String name = base;
+            for (int n = 2; !taken.add(o.recv == null ? name : o.recv + "." + name); n++) {
+                name = base + n;
+            }
+            o.name = name;
+            opaqueOf.put(o.node, o);
+        }
+    }
+
+    /** The {@code opaque} list of the document: each function with the calls of its body. */
+    private List<Object> opaqueFuncs() {
+        List<Object> out = new ArrayList<>();
+        for (Op o : opaque) {
+            reading = o.cls;
+            Map<String, Object> m = Json.obj();
+            m.put("name", o.name);
+            if (o.recv != null) {
+                m.put("recv", o.recv);
+            }
+            m.put("pos", declPos(o.unit, o.node));
+            m.put("reason", o.reason);
+            CallLister v = new CallLister(o.unit, o.node.getLineNumber());
+            for (Parameter p : o.node.getParameters()) {
+                // A default value runs in the overload Groovy adds without the parameter.
+                if (p.hasInitialExpression()) {
+                    p.getInitialExpression().visit(v);
+                }
+            }
+            o.node.getCode().visit(v);
+            m.put("calls", v.out);
+            out.add(m);
+        }
+        reading = null;
+        return out;
+    }
+
+    /**
+     * Every call the code under {@code n} makes that is written as one, as cir/1 call refs: a call
+     * before its receiver and its arguments, otherwise in source order, as the Go reader lists
+     * them. {@code n} is a statement, or a field whose initializer is meant.
+     */
+    private List<Object> callsOf(Unit u, ASTNode n, int fallback) {
+        CallLister v = new CallLister(u, fallback);
+        if (n instanceof FieldNode) {
+            if (((FieldNode) n).hasInitialExpression()) {
+                ((FieldNode) n).getInitialExpression().visit(v);
+            }
+        } else {
+            n.visit(v);
+        }
+        return v.out;
+    }
+
+    /** The signature of every closure: Groovy types a closure by its class alone. */
+    private static final String CLOSURE_SIG = "groovy.lang.Closure";
+
+    private static Map<String, Object> funcRef(String path, String name, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "func");
+        if (!path.isEmpty()) {
+            c.put("path", path);
+        }
+        c.put("name", name);
+        c.put("pos", pos);
+        return c;
+    }
+
+    private static Map<String, Object> methodRef(String path, String recv, String name, String pos) {
+        return methodRef(path, recv, name, "", pos);
+    }
+
+    /** A method call; {@code by} names the convention that gave the target, empty when the type checker did. */
+    private static Map<String, Object> methodRef(String path, String recv, String name, String by, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "method");
+        if (!path.isEmpty()) {
+            c.put("path", path);
+        }
+        c.put("recv", recv);
+        c.put("name", name);
+        if (!by.isEmpty()) {
+            c.put("by", by);
+        }
+        c.put("pos", pos);
+        return c;
+    }
+
+    /** The module GORM's methods are methods of: {@code grails.gorm.<Domain>.<method>}. */
+    private static final String GORM_PATH = "grails.gorm";
+
+    /** {@code by} of a GORM method on a domain class: GORM adds it to the class at run time. */
+    static final String BY_GORM = "grails-gorm";
+
+    /** {@code by} of a call through a field Spring sets, by its name, to a service that is read. */
+    static final String BY_SERVICE_FIELD = "grails-service-field";
+
+    /**
+     * The call a convention of Grails 2 names the target of where the type checker names none, or
+     * null. Both hold in a Grails application alone: elsewhere no class is a domain class and no
+     * field is set by its name.
+     *
+     * <p>{@code grails-gorm}: the call the reader refuses as {@code gorm:}, by the same test (a
+     * domain class, an instance of one or {@code this} in one as receiver, a name of {@link
+     * #gormMethod}, not a method the domain class declares itself). It is a method of the domain
+     * class in {@code grails.gorm}, static or not, which no document declares: an edge that leaves
+     * the application, as a call into a library is.
+     *
+     * <p>{@code grails-service-field}: a call the type checker did not resolve, through a field
+     * of a service or a domain class that Spring autowires by name ({@link #springSets}: the
+     * class read or refused as a whole, the field its own or inherited, named bare or as {@code
+     * this.<name>}), where the name is the bean name of exactly one service that is read and the
+     * field is {@code def}, {@code Object} or of that service's type. The call may stand
+     * anywhere a call is listed: {@code in} is the class whose code it is, not a method being
+     * read. Its target is the one method of that name the service declares itself, not static,
+     * that takes as many arguments as the call passes ({@link #takes}; uncounted where an
+     * argument is spread). Where that is no method or more than one, the convention tells no
+     * target and the call stays one that names none.
+     */
+    private Map<String, Object> byConvention(MethodCallExpression call, String name, MethodNode t, ClassNode in, String pos) {
+        if (name == null) {
+            return null;
+        }
+        ClassNode domain = gormReceiver(call.getObjectExpression(), call.isImplicitThis(), in);
+        if (domain != null && gormMethod(name) && !declaredBy(t, domain)) {
+            return methodRef(GORM_PATH, domain.getNameWithoutPackage(), name, BY_GORM, pos);
+        }
+        if (t != null || call.isImplicitThis()) {
+            return null;
+        }
+        Object through = named(call.getObjectExpression());
+        if (through == null) {
+            through = fieldOfThis(call.getObjectExpression(), in);
+        }
+        if (!(through instanceof FieldNode) || !springSets((FieldNode) through, in)) {
+            return null;
+        }
+        FieldNode field = (FieldNode) through;
+        ClassNode service = serviceOfBean(field.getName());
+        boolean untyped = field.isDynamicTyped() || field.getType().equals(ClassHelper.OBJECT_TYPE);
+        if (service == null || !(untyped || field.getType().redirect() == service)) {
+            return null;
+        }
+        List<Expression> as = args(call.getArguments());
+        boolean counted = true;
+        for (Expression a : as) {
+            counted &= !(a instanceof SpreadExpression);
+        }
+        MethodNode target = null;
+        for (MethodNode m : userMethods(service)) {
+            if (m instanceof ConstructorNode || m.isStatic() || !m.getName().equals(name) || counted && !takes(m, as.size())) {
+                continue;
+            }
+            if (target != null) {
+                return null;
+            }
+            target = m;
+        }
+        Fn fn = target == null ? null : fns.get(target);
+        if (fn != null) {
+            return methodRef("", fn.cls.getNameWithoutPackage(), fn.name, BY_SERVICE_FIELD, pos);
+        }
+        Op op = target == null ? null : opaqueOf.get(target);
+        return op == null || op.recv == null ? null : methodRef("", op.recv, op.name, BY_SERVICE_FIELD, pos);
+    }
+
+    /**
+     * The field {@code this.<name>} or {@code this.@<name>} names in code of the class {@code in},
+     * its own or one it inherits, or null. {@link #named} looks the field up in the type of the
+     * {@code this} expression, which Groovy leaves {@code Object}, and so finds none.
+     */
+    private static FieldNode fieldOfThis(Expression e, ClassNode in) {
+        if (in == null || !(e instanceof PropertyExpression) || !isThis(((PropertyExpression) e).getObjectExpression())) {
+            return null;
+        }
+        String name = ((PropertyExpression) e).getPropertyAsString();
+        return name == null ? null : in.getField(name);
+    }
+
+    /**
+     * Whether Spring sets {@code f} by its name in the instance the code of the class {@code in}
+     * runs on: a field {@link #injectedField} that an artefact declares, or that the artefact
+     * {@code in} is, or is nested in, inherits from any class. {@link #injected} holds such
+     * fields of the classes that are read alone ({@link #grailsMembers}); a call list is not
+     * confined to those, so this asks the classes themselves.
+     */
+    private boolean springSets(FieldNode f, ClassNode in) {
+        if (!injectedField(f)) {
+            return false;
+        }
+        ClassNode declaring = f.getDeclaringClass();
+        if (artefact(declaring)) {
+            return true;
+        }
+        ClassNode top = in;
+        while (top != null && top.getOuterClass() != null) {
+            top = top.getOuterClass();
+        }
+        return declaring != null && artefact(top) && !top.redirect().equals(declaring.redirect()) && top.isDerivedFrom(declaring);
+    }
+
+    /**
+     * Whether a class is a service or a domain class Spring makes or autowires an instance of,
+     * read or refused as a whole: a top-level class of such a file. A nested class is no bean,
+     * and an enum is none.
+     */
+    private boolean artefact(ClassNode cn) {
+        return cn != null && cn.getOuterClass() == null && !cn.isScript() && !cn.isEnum() && (isService(cn) || isDomain(cn));
+    }
+
+    /**
+     * The one service that is read whose Spring bean has the name {@code bean}, or null. Grails 2
+     * names a service's bean by its class's simple name as a property ({@code NoticeService}:
+     * {@code noticeService}; a name beginning with two capitals is kept, {@code URLService}).
+     */
+    private ClassNode serviceOfBean(String bean) {
+        ClassNode found = null;
+        for (ClassNode cn : decls) {
+            String simple = cn.getNameWithoutPackage();
+            boolean kept = simple.length() > 1 && Character.isUpperCase(simple.charAt(0)) && Character.isUpperCase(simple.charAt(1));
+            String name = kept ? simple : Character.toLowerCase(simple.charAt(0)) + simple.substring(1);
+            if (cn.getOuterClass() == null && isService(cn) && name.equals(bean)) {
+                if (found != null) {
+                    return null;
+                }
+                found = cn;
+            }
+        }
+        return found;
+    }
+
+    /** Whether a call passing {@code n} arguments can be one of {@code m}: its parameters, less those with a default, a last array taking any number. */
+    private static boolean takes(MethodNode m, int n) {
+        Parameter[] ps = m.getParameters();
+        int required = 0;
+        for (Parameter p : ps) {
+            if (!p.hasInitialExpression()) {
+                required++;
+            }
+        }
+        if (n >= required && n <= ps.length) {
+            return true;
+        }
+        return ps.length > 0 && ps[ps.length - 1].getType().isArray() && n >= ps.length - 1;
+    }
+
+    /** A call that names no function: of a function value of the signature {@code sig}, or one whose target is not known. */
+    private static Map<String, Object> valueRef(String sig, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "value");
+        c.put("sig", sig);
+        c.put("pos", pos);
+        return c;
+    }
+
+    private static Map<String, Object> lambdaRef(List<Object> calls, String pos) {
+        Map<String, Object> c = Json.obj();
+        c.put("k", "lambda");
+        c.put("sig", CLOSURE_SIG);
+        c.put("calls", calls);
+        c.put("pos", pos);
+        return c;
+    }
+
+    /** What a call the type checker did not resolve says of itself: the name it is looked up by at run time. */
+    private static String dynamicSig(String name) {
+        return "groovy dynamic call of " + (name == null ? "a method named at run time" : printable(name));
+    }
+
+    /** A class outside the module as the Java reader names one: nested classes joined by a dot. */
+    private static String outside(String className) {
+        return className.replace('$', '.');
+    }
+
+    /**
+     * The call of {@code t}, the method or constructor the type checker resolved a call to, or
+     * null when it is none to list.
+     *
+     * <p>In the module ({@code path} absent): a function that is read by its key, a static method
+     * or a constructor a function, any other a method of its class; an opaque function by its
+     * name. A member the compiler generates for a class of the module (a property's getter or
+     * setter) is no function: null, but for the constructor of a struct without one, which is
+     * {@code New<Class>}. A declared member with no function in the module, as one without a body
+     * or one of two classes with one simple name, is a call whose target is not known.
+     *
+     * <p>Outside the module, as the Java reader names an extern: a static method or a constructor
+     * ({@code <init>}) is a function of the class's qualified name, an instance method a method of
+     * the class in its package. A GDK method is the static method that implements it. A class
+     * without a package has no path that is not the module's: a call whose target is not known.
+     */
+    private Map<String, Object> callOf(MethodNode t, String pos) {
+        if (t instanceof ExtensionMethodNode) {
+            MethodNode impl = ((ExtensionMethodNode) t).getExtensionMethodNode();
+            return funcRef(outside(impl.getDeclaringClass().getName()), impl.getName(), pos);
+        }
+        Fn fn = fns.get(t);
+        if (fn != null) {
+            return fn.isStatic || fn.isCtor ? funcRef("", fn.name, pos) : methodRef("", fn.cls.getNameWithoutPackage(), fn.name, pos);
+        }
+        Op op = opaqueOf.get(t);
+        if (op != null) {
+            return op.recv == null ? funcRef("", op.name, pos) : methodRef("", op.recv, op.name, pos);
+        }
+        boolean ctor = t instanceof ConstructorNode;
+        ClassNode dc = t.getDeclaringClass().redirect();
+        String name = ctor ? "<init>" : t.getName();
+        if (unitOf.containsKey(dc)) {
+            if (userNode(t)) {
+                return valueRef("groovy call of " + dc.getName() + "." + printable(name) + ", which the module holds no function for", pos);
+            }
+            Fn made = ctor && structs.containsKey(dc.getName()) ? ctors.get(dc) : null;
+            return made == null ? null : funcRef("", made.name, pos);
+        }
+        String pkg = dc.getPackageName();
+        if (pkg == null || pkg.isEmpty()) {
+            return valueRef("groovy call of " + dc.getName() + "." + printable(name) + ", of a class without a package", pos);
+        }
+        return t.isStatic() || ctor ? funcRef(outside(dc.getName()), name, pos)
+            : methodRef(pkg, outside(dc.getNameWithoutPackage()), name, pos);
+    }
+
+    /**
+     * Lists the calls of the code it visits. A method call, a static call and a constructor call
+     * the type checker resolved ({@code DIRECT_METHOD_CALL_TARGET}) name their target ({@link
+     * #callOf}); one it did not resolve is a {@code value} call, which names no function and which
+     * the fact base takes as unknown, so no answer rests on a target the reader guessed. A
+     * constructor call is also a {@code new} of its class, the first of each class in a list. A
+     * closure is a {@code lambda} holding its own calls, a method pointer one holding the call
+     * Groovy resolves when it runs; a call of a closure is a {@code value} call of the closure
+     * signature. What is not written as a call is not listed: README.md, "Call lists". Where a
+     * convention names the target of a method call, the call is that one and says so ({@link
+     * #byConvention}).
+     */
+    private final class CallLister extends CodeVisitorSupport {
+        final Unit u;
+        final int fallback;
+        /** The class whose code is visited: the one being read when the lister is made. */
+        final ClassNode in = reading;
+        List<Object> out = new ArrayList<>();
+
+        CallLister(Unit u, int fallback) {
+            this.u = u;
+            this.fallback = fallback;
+        }
+
+        private void add(Map<String, Object> call) {
+            if (call != null) {
+                out.add(call);
+            }
+        }
+
+        /** A value of {@code type} is made here; listed once for each class. */
+        private void made(ClassNode type, String pos) {
+            Map<String, Object> c = Json.obj();
+            c.put("k", "new");
+            boolean own = unitOf.containsKey(type);
+            if (!own) {
+                String pkg = type.getPackageName();
+                if (pkg == null || pkg.isEmpty()) {
+                    return;
+                }
+                c.put("path", pkg);
+            }
+            // A nested class of the module keeps the name its opaque functions have as receiver.
+            c.put("name", own ? type.getNameWithoutPackage() : outside(type.getNameWithoutPackage()));
+            for (Object o : out) {
+                Map<?, ?> seen = (Map<?, ?>) o;
+                if ("new".equals(seen.get("k")) && c.get("name").equals(seen.get("name"))
+                    && java.util.Objects.equals(c.get("path"), seen.get("path"))) {
+                    return;
+                }
+            }
+            c.put("pos", pos);
+            out.add(c);
+        }
+
+        @Override
+        public void visitMethodCallExpression(MethodCallExpression call) {
+            String pos = pos(u, call, fallback);
+            String name = call.getMethodAsString();
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            Map<String, Object> convention = byConvention(call, name, t, in, pos);
+            if (convention != null) {
+                add(convention);
+            } else if (t == null) {
+                add(valueRef(dynamicSig(name), pos));
+            } else if (t.getDeclaringClass().getName().equals(CLOSURE_SIG) && (t.getName().equals("call") || t.getName().equals("doCall"))) {
+                add(valueRef(CLOSURE_SIG, pos));
+            } else {
+                add(callOf(t, pos));
+            }
+            super.visitMethodCallExpression(call);
+        }
+
+        @Override
+        public void visitStaticMethodCallExpression(StaticMethodCallExpression call) {
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            if (t == null && call.getOwnerType().redirect().isPrimaryClassNode()) {
+                List<MethodNode> ms = call.getOwnerType().getMethods(call.getMethod());
+                t = ms.size() == 1 ? ms.get(0) : null;
+            }
+            String pos = pos(u, call, fallback);
+            add(t == null ? valueRef(dynamicSig(call.getMethod()), pos) : callOf(t, pos));
+            super.visitStaticMethodCallExpression(call);
+        }
+
+        @Override
+        public void visitConstructorCallExpression(ConstructorCallExpression call) {
+            String pos = pos(u, call, fallback);
+            ClassNode type = call.getType().redirect();
+            MethodNode t = call.getNodeMetaData(StaticTypesMarker.DIRECT_METHOD_CALL_TARGET);
+            if (t != null) {
+                add(callOf(t, pos));
+            } else if (!unitOf.containsKey(type)) {
+                // Not resolved to one constructor: some constructor of the class runs.
+                String pkg = type.getPackageName();
+                add(pkg == null || pkg.isEmpty()
+                    ? valueRef("groovy call of " + type.getName() + ".<init>, of a class without a package", pos)
+                    : funcRef(outside(type.getName()), "<init>", pos));
+            } else if (structs.containsKey(type.getName()) && ctors.get(type).node == null) {
+                add(funcRef("", ctors.get(type).name, pos));
+            } else if (!type.getDeclaredConstructors().isEmpty()) {
+                add(valueRef("groovy call of " + type.getName() + ".<init>, which the type checker does not resolve", pos));
+            }
+            if (!call.isSpecialCall()) {
+                made(type, pos);
+            }
+            super.visitConstructorCallExpression(call);
+        }
+
+        @Override
+        public void visitClosureExpression(ClosureExpression closure) {
+            List<Object> outer = out;
+            out = new ArrayList<>();
+            super.visitClosureExpression(closure);
+            List<Object> inner = out;
+            out = outer;
+            out.add(lambdaRef(inner, pos(u, closure, fallback)));
+        }
+
+        @Override
+        public void visitMethodPointerExpression(MethodPointerExpression pointer) {
+            String pos = pos(u, pointer, fallback);
+            Expression name = pointer.getMethodName();
+            List<Object> inner = new ArrayList<>();
+            inner.add(valueRef(dynamicSig(name instanceof ConstantExpression ? name.getText() : null), pos));
+            out.add(lambdaRef(inner, pos));
+            super.visitMethodPointerExpression(pointer);
+        }
     }
 }
