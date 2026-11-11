@@ -165,6 +165,26 @@ public final class ReaderTest {
             t::aQualifiedReferenceToALeftOutEnumRefusesItsFile);
         cases.put("a_reference_in_a_static_method_to_a_refused_domain_class_of_its_package_refuses_its_file_unresolved",
             t::aReferenceToARefusedDomainClassOfItsPackageRefusesItsFile);
+        // The general rule: whatever fails while one file is compiled or read refuses that file
+        // with the reason, a resolve-only file is left out, every other artefact is read and the
+        // document is written. No case here is a message the reader knows.
+        cases.put("a_logging_annotation_whose_logger_class_is_on_no_jar_refuses_its_file_and_a_resolve_only_file_is_left_out",
+            t::aLoggingAnnotationWithoutItsLoggerRefusesItsFile);
+        cases.put("a_trait_super_call_whose_trait_s_file_was_left_out_refuses_its_file_with_the_compiler_s_message",
+            t::aTraitSuperCallWhoseTraitWasLeftOutRefusesItsFile);
+        cases.put("a_transformation_of_a_jar_that_throws_as_it_runs_is_not_run_and_the_classes_it_annotates_are_read",
+            t::aTransformationOfAJarIsNotRun);
+        cases.put("a_compile_error_the_reader_has_never_seen_refuses_its_file_with_the_compiler_s_message",
+            t::aCompileErrorNeverSeenRefusesItsFile);
+        cases.put("an_exception_thrown_inside_a_compilation_phase_refuses_the_file_being_compiled_with_its_class_and_message",
+            t::anExceptionInsideAPhaseRefusesTheFileBeingCompiled);
+        cases.put("an_exception_that_names_no_file_refuses_every_artefact_with_one_reason_and_the_document_is_written",
+            t::anExceptionThatNamesNoFileRefusesEveryArtefact);
+        cases.put("a_chain_of_three_files_each_failing_once_the_next_is_gone_ends_with_each_refused_once",
+            t::aChainOfThreeFilesEndsWithEachRefusedOnce);
+        cases.put("a_class_of_a_jar_that_needs_javax_activation_or_jaxb_which_this_jdk_does_not_ship_refuses_the_service_naming_it",
+            t::aClassThatNeedsARemovedJdkPackageRefusesTheFileNamingIt);
+        cases.put("a_service_that_is_not_utf_8_text_is_refused_and_the_rest_is_read", t::aServiceThatIsNotUtf8IsRefused);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -523,17 +543,13 @@ public final class ReaderTest {
 
     /**
      * The Grails 2.5.6 distribution jars a Grails application is read with, relative to {@code
-     * GRAILS_HOME}: {@code grails.transaction.Transactional} and its transform (grails-core), the
-     * Spring enums its members name (spring-tx), and the classes the transform loads as it runs
-     * (jsr250-api, spring-beans, spring-core, grails-bootstrap). README.md names each.
+     * GRAILS_HOME}: {@code grails.transaction.Transactional} and its transform (grails-core) and
+     * the Spring enums its members name (spring-tx). The transform is not run, so the jars it
+     * loads classes from as it runs are not among them. README.md names each.
      */
     static final List<String> GRAILS_JARS = List.of(
         "dist/grails-core-2.5.6.jar",
-        "lib/org.springframework/spring-tx/jars/spring-tx-4.1.9.RELEASE.jar",
-        "lib/javax.annotation/jsr250-api/jars/jsr250-api-1.0.jar",
-        "lib/org.springframework/spring-beans/jars/spring-beans-4.1.9.RELEASE.jar",
-        "lib/org.springframework/spring-core/jars/spring-core-4.1.9.RELEASE.jar",
-        "dist/grails-bootstrap-2.5.6.jar");
+        "lib/org.springframework/spring-tx/jars/spring-tx-4.1.9.RELEASE.jar");
 
     /** The identifiers {@code TransactionalTransform} introduces, which no read may hold. */
     static final List<String> TRANSFORM_IDENTIFIERS = List.of(
@@ -798,10 +814,9 @@ public final class ReaderTest {
             String pos = AUDIT + ":" + (i + 1);
             Map<String, Object> fn = funcByKeyOrNull(doc, "TransactionalAuditService." + method);
             List<String> reasons = reasonsAt(doc, pos);
-            boolean refused = fn == null && reasons.size() == 1 && reasons.get(0).startsWith("unsupported: grails transform");
             boolean readFromSource = fn != null && pos.equals(fn.get("pos")) && reasons.isEmpty() && withinMethod(fn, lines, i + 1);
-            check(refused || readFromSource, method + " at " + pos + " is neither read from its source body nor refused as"
-                + " grails transform: " + (fn == null ? "no function" : Json.write(fn).replaceAll("\\s+", " ")) + " " + reasons);
+            check(readFromSource, method + " at " + pos + " is not read from its source body, the transformation not being run: "
+                + (fn == null ? "no function" : Json.write(fn).replaceAll("\\s+", " ")) + " " + reasons);
         }
         List<String> others = new ArrayList<>();
         for (String p : Lending.compare(doc, lendingDir())) {
@@ -957,9 +972,10 @@ public final class ReaderTest {
 
     /**
      * Grails 2 lets a class in src/groovy be a GORM entity through {@code @grails.persistence.Entity}.
-     * With the six jars README.md names, its local transformation needs spring-context, and the
-     * NoClassDefFoundError fails the whole read, though src/groovy is resolve-only and "yields no
-     * struct, function or refusal". The same application without the jars reads.
+     * Run, its local transformation needs spring-context, and the NoClassDefFoundError failed the
+     * whole read, though src/groovy is resolve-only and "yields no struct, function or refusal".
+     * The transformation is of a jar and is not run: with the jars README.md names the read
+     * succeeds and the domain class is read.
      */
     private void adversaryEntityInSrcGroovy() throws Exception {
         List<Path> jars = grailsJars();
@@ -997,9 +1013,10 @@ public final class ReaderTest {
     }
 
     /**
-     * A method-level {@code @Transactional} on {@code size(int)} rewrites only that method. Its
-     * overload {@code size(String)} is matched by name and parameter count, emptied and refused as
-     * rewritten, which it is not; its own reason, overloading, is lost.
+     * A method-level {@code @Transactional} on {@code size(int)} would rewrite only that method.
+     * Its overload {@code size(String)} was once matched by name and parameter count, emptied and
+     * refused as rewritten, which it was not, losing its own reason, overloading. The
+     * transformation is not run and no method is refused as rewritten.
      */
     private void adversaryOverloadNotRewritten() throws Exception {
         List<Path> jars = grailsJars();
@@ -1244,38 +1261,49 @@ public final class ReaderTest {
     }
 
     /**
-     * A local AST transformation of a jar that needs a class on no jar as it runs, as Grails's
-     * transformations load the classes of other jars: Groovy's compiler turns the {@code
-     * NoClassDefFoundError} into a compilation error that names no file. The class the annotation
-     * is on is refused at its line; the other service is read.
+     * Two local AST transformations of a jar that need a class on no jar, as Grails's
+     * transformations need the classes of other jars. The reader runs no transformation of a jar,
+     * and Groovy's compiler still loads the class of each to see that it is one. {@code
+     * MarkTransform} extends the missing class, so it cannot be loaded: the class its annotation is
+     * on is refused at the annotation's line, naming the missing class. {@code TouchTransform}
+     * needs the missing class only as it runs: it is loaded and not run, its annotation is a mark
+     * and the class that carries it is read. The other service is read.
      */
     private void aTransformationThatNeedsAMissingClassRefusesTheClassItAnnotates() throws Exception {
         Map<String, String> sources = new LinkedHashMap<>();
         sources.put("gone.Log", "package gone;\n\npublic class Log {\n    public static void touch() {\n    }\n}\n");
-        sources.put("xf.Mark", "package xf;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE)\n"
-            + "@java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)\n"
-            + "@org.codehaus.groovy.transform.GroovyASTTransformationClass(\"xf.MarkTransform\")\n"
-            + "public @interface Mark {\n}\n");
+        for (String name : List.of("Mark", "Touch")) {
+            sources.put("xf." + name, "package xf;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.SOURCE)\n"
+                + "@java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)\n"
+                + "@org.codehaus.groovy.transform.GroovyASTTransformationClass(\"xf." + name + "Transform\")\n"
+                + "public @interface " + name + " {\n}\n");
+        }
         sources.put("xf.MarkTransform", "package xf;\n\n"
             + "@org.codehaus.groovy.transform.GroovyASTTransformation(phase = org.codehaus.groovy.control.CompilePhase.CANONICALIZATION)\n"
-            + "public class MarkTransform implements org.codehaus.groovy.transform.ASTTransformation {\n"
+            + "public class MarkTransform extends gone.Log implements org.codehaus.groovy.transform.ASTTransformation {\n"
+            + "    public void visit(org.codehaus.groovy.ast.ASTNode[] nodes, org.codehaus.groovy.control.SourceUnit source) {\n"
+            + "    }\n}\n");
+        sources.put("xf.TouchTransform", "package xf;\n\n"
+            + "@org.codehaus.groovy.transform.GroovyASTTransformation(phase = org.codehaus.groovy.control.CompilePhase.CANONICALIZATION)\n"
+            + "public class TouchTransform implements org.codehaus.groovy.transform.ASTTransformation {\n"
             + "    public void visit(org.codehaus.groovy.ast.ASTNode[] nodes, org.codehaus.groovy.control.SourceUnit source) {\n"
             + "        gone.Log.touch();\n    }\n}\n");
-        Path groovy;
-        try {
-            groovy = Path.of(groovy.lang.GroovyObject.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-        } catch (java.net.URISyntaxException e) {
-            throw new AssertionError(e);
-        }
-        Path jar = jarOf("xf", sources, List.of(groovy), e -> !e.startsWith("gone/"), (entry, bytes) -> bytes);
+        Path jar = jarOf("xf", sources, List.of(groovyJar()), e -> !e.startsWith("gone/"), (entry, bytes) -> bytes);
         Path app = appWithPlainService("transformation-missing-class");
         String svc = "grails-app/services/lib/MarkedService.groovy";
         write(app.resolve(svc), "package lib\n\nimport xf.Mark\n\n@Mark\nclass MarkedService {\n\n"
             + "    int one() {\n        return 1\n    }\n}\n");
+        String touched = "grails-app/services/lib/TouchedService.groovy";
+        write(app.resolve(touched), "package lib\n\nimport xf.Touch\n\n@Touch\nclass TouchedService {\n\n"
+            + "    int two() {\n        return 2\n    }\n}\n");
         Map<String, Object> doc = readWritesADocument(app, List.of(jar));
         refusedAsAWhole(doc, svc, 5, "unresolved: ", "MarkedService.one");
         check(reasonsAt(doc, svc + ":5").get(0).contains("gone/Log"), "the reason does not name the missing class gone/Log: "
             + reasonsAt(doc, svc + ":5"));
+        check(reasonsAt(doc, touched + ":5").equals(List.of("unsupported: annotation xf.Touch: annotations with behaviour are outside cir/1")),
+            "@Touch at " + touched + ":5 is " + reasonsAt(doc, touched + ":5"));
+        check(funcByKeyOrNull(doc, "TouchedService.two") != null, "TouchedService.two, of the class whose transformation is not run, is"
+            + " not read: " + Json.write(doc.get("refusals")));
     }
 
     /**
@@ -1349,6 +1377,328 @@ public final class ReaderTest {
         Map<String, Object> doc = readWritesADocument(app, List.of());
         refusedAsAWhole(doc, shelf, 3, "unresolved: gone.Board", "NewShelf");
         refusedAsAWhole(doc, rack, 8, "unresolved: Shelf", "none");
+    }
+
+    // ---- the general rule: whatever fails in one file refuses that file; it never ends the read ----
+
+    /** The jar Groovy itself is loaded from: what a transformation or a processor of a made-up jar is compiled against. */
+    private static Path groovyJar() {
+        try {
+            return Path.of(groovy.lang.GroovyObject.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        } catch (java.net.URISyntaxException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** The case's premise: this JVM cannot load {@code cls}. */
+    private static void notLoadable(String cls) {
+        try {
+            Class.forName(cls, false, ReaderTest.class.getClassLoader());
+        } catch (ClassNotFoundException | LinkageError e) {
+            return;
+        }
+        throw new Skip("this runtime loads " + cls + ", which the case needs to be on no jar");
+    }
+
+    /** No refusal names a file under {@code dir}: a resolve-only file yields nothing, left out or not. */
+    private static void nothingFrom(Map<String, Object> doc, String dir) {
+        for (Object r : list(doc.get("refusals"))) {
+            String pos = (String) map(r).get("pos");
+            check(!pos.startsWith(dir), "a refusal in a resolve-only file: " + pos + " " + map(r).get("reason"));
+        }
+    }
+
+    /** Nothing of the document, no type, constant, function or statement, lies in {@code file}: it is refused, so it is not read. */
+    private static void nothingReadFrom(Map<String, Object> doc, String file) {
+        List<String> found = new ArrayList<>();
+        for (String part : List.of("types", "consts", "funcs")) {
+            positions(doc.get(part), found);
+        }
+        found.removeIf(p -> !p.startsWith(file + ":"));
+        check(found.isEmpty(), file + " is refused as a whole and read at " + found);
+    }
+
+    private static void positions(Object o, List<String> out) {
+        if (o instanceof Map) {
+            Map<String, Object> m = map(o);
+            if (m.get("pos") instanceof String) {
+                out.add((String) m.get("pos"));
+            }
+            for (Object v : m.values()) {
+                positions(v, out);
+            }
+        } else if (o instanceof List) {
+            for (Object v : list(o)) {
+                positions(v, out);
+            }
+        }
+    }
+
+    /**
+     * Groovy's own logging transformation ({@code @Slf4j}, {@code @Commons}, {@code @Log4j}) loads
+     * the logger class as it runs and throws {@code GroovyRuntimeException: Unable to load logging
+     * class} when it is on no jar. The compiler turns that into an error that names no file. Each
+     * service carrying such an annotation is refused at it, naming the class that is missing; the
+     * resolve-only file is left out; the other service is read.
+     */
+    private void aLoggingAnnotationWithoutItsLoggerRefusesItsFile() throws Exception {
+        for (String cls : List.of("org.slf4j.Logger", "org.apache.commons.logging.Log", "org.apache.log4j.Logger")) {
+            notLoadable(cls);
+        }
+        Path app = appWithPlainService("logging-without-logger");
+        String logged = "grails-app/services/lib/LoggedService.groovy";
+        write(app.resolve(logged), "package lib\n\nimport groovy.util.logging.Slf4j\n\n@Slf4j\nclass LoggedService {\n\n"
+            + "    int one() {\n        log.info(\"one\")\n        return 1\n    }\n}\n");
+        String noted = "grails-app/services/lib/NotedService.groovy";
+        write(app.resolve(noted), "package lib\n\nimport groovy.util.logging.Commons\n\n@Commons\nclass NotedService {\n\n"
+            + "    int two() {\n        return 2\n    }\n}\n");
+        write(app.resolve("src/groovy/lib/Notes.groovy"), "package lib\n\nimport groovy.util.logging.Log4j\n\n@Log4j\n"
+            + "class Notes {\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of());
+        refusedAsAWhole(doc, logged, 5, "unresolved: ", "LoggedService.one");
+        String why = reasonsAt(doc, logged + ":5").get(0);
+        check(why.contains("Unable to load logging class") && why.contains("org.slf4j.Logger"),
+            "the reason does not hold the exception's message and the missing class org.slf4j.Logger: " + why);
+        refusedAsAWhole(doc, noted, 5, "unresolved: ", "NotedService.two");
+        check(reasonsAt(doc, noted + ":5").get(0).contains("org.apache.commons.logging.Log"),
+            "the reason does not name the missing class org.apache.commons.logging.Log: " + reasonsAt(doc, noted + ":5"));
+        nothingFrom(doc, "src/");
+        check(list(doc.get("refusals")).size() == 2, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * A trait whose file is left out for its import, while a jar holds an interface of its name:
+     * the classes that call {@code Greets.super.hello()} then name a class that is no trait, and
+     * the compiler reports "The usage of 'Class.this' and 'Class.super' is only allowed in
+     * nested/inner classes." at that line, a message the reader has no rule for. The service is
+     * refused there with the message; the resolve-only class is left out; the other service is read.
+     */
+    private void aTraitSuperCallWhoseTraitWasLeftOutRefusesItsFile() throws Exception {
+        Path jar = jarOf("greets", Map.of("lib.Greets", "package lib;\n\npublic interface Greets {\n    String hello();\n}\n"),
+            e -> true);
+        Path app = appWithPlainService("trait-super-call");
+        write(app.resolve("src/groovy/lib/Greets.groovy"), "package lib\n\nimport gone.Missing\n\ntrait Greets {\n\n"
+            + "    String hello() {\n        return \"hello\"\n    }\n}\n");
+        write(app.resolve("src/groovy/lib/Loud.groovy"), "package lib\n\nclass Loud implements Greets {\n\n"
+            + "    String hello() {\n        return Greets.super.hello() + \"!\"\n    }\n}\n");
+        String svc = "grails-app/services/lib/GreeterService.groovy";
+        write(app.resolve(svc), "package lib\n\nclass GreeterService implements Greets {\n\n"
+            + "    String hello() {\n        return Greets.super.hello()\n    }\n\n    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 6, "unsupported: compile error: The usage of 'Class.this' and 'Class.super' is only allowed in"
+            + " nested/inner classes.", "GreeterService.one");
+        nothingReadFrom(doc, svc);
+        nothingFrom(doc, "src/");
+        check(list(doc.get("refusals")).size() == 1, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * A local AST transformation of a jar that throws as it runs, as a transformation of a
+     * framework does once the framework is not running: {@code IllegalArgumentException}. The
+     * reader does not run a local transformation of a jar. The annotation is a mark, refused at its
+     * line as every annotation with behaviour is; the class that carries it is read as written, a
+     * call of a member the transformation would have added stays a call the type checker does not
+     * resolve, and a resolve-only class that carries it is compiled, so the service naming it
+     * resolves.
+     */
+    private void aTransformationOfAJarIsNotRun() throws Exception {
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("xf.Checked", "package xf;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+            + "@java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)\n"
+            + "@org.codehaus.groovy.transform.GroovyASTTransformationClass(\"xf.CheckedTransform\")\n"
+            + "public @interface Checked {\n}\n");
+        sources.put("xf.CheckedTransform", "package xf;\n\n"
+            + "@org.codehaus.groovy.transform.GroovyASTTransformation(phase = org.codehaus.groovy.control.CompilePhase.CANONICALIZATION)\n"
+            + "public class CheckedTransform implements org.codehaus.groovy.transform.ASTTransformation {\n"
+            + "    public void visit(org.codehaus.groovy.ast.ASTNode[] nodes, org.codehaus.groovy.control.SourceUnit source) {\n"
+            + "        throw new IllegalArgumentException(\"Loader must not be null\");\n    }\n}\n");
+        Path jar = jarOf("checked", sources, List.of(groovyJar()), e -> true, (entry, bytes) -> bytes);
+        Path app = appWithPlainService("transformation-throws");
+        write(app.resolve("src/groovy/lib/Form.groovy"), "package lib\n\nimport xf.Checked\n\n@Checked\nclass Form {\n\n"
+            + "    int pages = 0\n}\n");
+        String svc = "grails-app/services/lib/FormService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport xf.Checked\n\n@Checked\nclass FormService {\n\n"
+            + "    boolean checked() {\n        return check()\n    }\n\n    int one() {\n        return 1\n    }\n}\n");
+        String desk = "grails-app/services/lib/DeskService.groovy";
+        write(app.resolve(desk), "package lib\n\nclass DeskService {\n\n"
+            + "    int pagesOf(Form form) {\n        return 1\n    }\n\n    int two() {\n        return 2\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        for (Object r : list(doc.get("refusals"))) {
+            check(!((String) map(r).get("reason")).startsWith("unresolved"), map(r).get("pos") + " " + map(r).get("reason"));
+        }
+        check(reasonsAt(doc, svc + ":5").equals(List.of("unsupported: annotation xf.Checked: annotations with behaviour are outside cir/1")),
+            "@Checked at " + svc + ":5 is " + reasonsAt(doc, svc + ":5"));
+        check(funcByKeyOrNull(doc, "FormService.one") != null, "FormService.one, of the class that carries the annotation, is not read: "
+            + Json.write(doc.get("refusals")));
+        foreignWith(doc, svc + ":9", "dynamic: ");
+        check(reasonsAt(doc, desk + ":5").equals(List.of("type: type lib.Form is outside the reader's types")),
+            "pagesOf at " + desk + ":5 is " + reasonsAt(doc, desk + ":5"));
+        check(funcByKeyOrNull(doc, "DeskService.two") != null, "DeskService.two is not read");
+        nothingFrom(doc, "src/");
+    }
+
+    /**
+     * Two compiler errors the reader has no rule for, each with its file and line: a syntax error,
+     * met while the file is parsed, and a local declared twice, met in a later phase. Each service
+     * is refused at its line with the compiler's message; a resolve-only file that does not parse
+     * is left out; the other service is read.
+     */
+    private void aCompileErrorNeverSeenRefusesItsFile() throws Exception {
+        Path app = appWithPlainService("compile-errors");
+        String broken = "grails-app/services/lib/BrokenService.groovy";
+        write(app.resolve(broken), "package lib\n\nclass BrokenService {\n\n    int one( {\n        return 1\n    }\n}\n");
+        String twice = "grails-app/services/lib/TwiceService.groovy";
+        write(app.resolve(twice), "package lib\n\nclass TwiceService {\n\n"
+            + "    int twice(int n) {\n        int n = 2\n        return n\n    }\n}\n");
+        write(app.resolve("src/groovy/lib/Scrap.groovy"), "package lib\n\nclass Scrap {\n    int ( }\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of());
+        refusedAsAWhole(doc, broken, 5, "unsupported: compile error: unexpected token: {", "BrokenService.one");
+        refusedAsAWhole(doc, twice, 6, "unsupported: compile error: The current scope already contains a variable of the name n",
+            "TwiceService.twice");
+        nothingReadFrom(doc, broken);
+        nothingReadFrom(doc, twice);
+        nothingFrom(doc, "src/");
+        check(list(doc.get("refusals")).size() == 2, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * Code of a jar that the compiler runs inside a phase and that throws what nobody listed: the
+     * processor of an annotation collector, {@code IllegalStateException}. The compiler knows
+     * which file it was working on; that service is refused at its class with the exception's class
+     * and message, a resolve-only file is left out, and the other service is read.
+     */
+    private void anExceptionInsideAPhaseRefusesTheFileBeingCompiled() throws Exception {
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("xf.Boom", "package xf;\n\n@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n"
+            + "@java.lang.annotation.Target(java.lang.annotation.ElementType.TYPE)\n"
+            + "@groovy.transform.AnnotationCollector(processor = \"xf.BoomProcessor\")\n"
+            + "public @interface Boom {\n}\n");
+        sources.put("xf.BoomProcessor", "package xf;\n\n"
+            + "public class BoomProcessor extends org.codehaus.groovy.transform.AnnotationCollectorTransform {\n"
+            + "    @Override\n"
+            + "    public java.util.List<org.codehaus.groovy.ast.AnnotationNode> visit(org.codehaus.groovy.ast.AnnotationNode collector,\n"
+            + "        org.codehaus.groovy.ast.AnnotationNode usage, org.codehaus.groovy.ast.AnnotatedNode annotated,\n"
+            + "        org.codehaus.groovy.control.SourceUnit source) {\n"
+            + "        throw new IllegalStateException(\"made up failure 4711\");\n    }\n}\n");
+        Path jar = jarOf("boom", sources, List.of(groovyJar()), e -> true, (entry, bytes) -> bytes);
+        Path app = appWithPlainService("exception-in-phase");
+        String svc = "grails-app/services/lib/BoomService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport xf.Boom\n\n@Boom\nclass BoomService {\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        write(app.resolve("src/groovy/lib/Bang.groovy"), "package lib\n\nimport xf.Boom\n\n@Boom\nclass Bang {\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, svc, 5, "unsupported: ", "BoomService.one");
+        String why = reasonsAt(doc, svc + ":5").get(0);
+        check(why.contains("java.lang.IllegalStateException: made up failure 4711"),
+            "the reason does not hold the exception's class and message: " + why);
+        nothingReadFrom(doc, svc);
+        nothingFrom(doc, "src/");
+        check(list(doc.get("refusals")).size() == 1, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * An exception that leaves the compiler outside the work on any one file: {@code @ASTTest},
+     * Groovy's own, runs its closure from the compiler's progress callback, where whatever it
+     * throws passes through the compilation. No file can be blamed, so every artefact is refused
+     * at its first line with that one reason, and the document is written.
+     */
+    private void anExceptionThatNamesNoFileRefusesEveryArtefact() throws Exception {
+        Path app = appWithPlainService("exception-names-no-file");
+        String svc = "grails-app/services/lib/TestedService.groovy";
+        write(app.resolve(svc), "package lib\n\nimport groovy.transform.ASTTest\n\n"
+            + "@ASTTest(value = { throw new IllegalStateException(\"made up failure 4712\") })\nclass TestedService {\n\n"
+            + "    int one() {\n        return 1\n    }\n}\n");
+        Map<String, Object> doc;
+        try {
+            doc = Main.read(app, List.of());
+        } catch (Throwable e) {
+            throw new AssertionError("the read ended without a document: " + e);
+        }
+        String prefix = "unsupported: no file can be blamed: ";
+        refusedAsAWhole(doc, svc, 1, prefix, "TestedService.one");
+        refusedAsAWhole(doc, PLAIN_SERVICE, 1, prefix, "PlainService.pure");
+        check(reasonsAt(doc, svc + ":1").equals(reasonsAt(doc, PLAIN_SERVICE + ":1")), "the two artefacts are refused for two reasons: "
+            + Json.write(doc.get("refusals")));
+        check(list(doc.get("refusals")).size() == 2, "refusals " + Json.write(doc.get("refusals")));
+        check(list(doc.get("types")).isEmpty() && list(doc.get("funcs")).isEmpty(), "something is read beside the refusals");
+        check("library".equals(doc.get("name")), "module name " + doc.get("name"));
+    }
+
+    /**
+     * Three read files, each of which compiles only while the next is there. The trait's import
+     * does not resolve, so it is refused; the service that calls {@code Gamma.super.name()} then
+     * names the jar's interface of that name, which is no trait, and is refused with the compiler's
+     * message; the service that names that one in a static method is refused in turn. The read
+     * ends: each of the three is refused once, none of them is read, the fourth service is.
+     */
+    private void aChainOfThreeFilesEndsWithEachRefusedOnce() throws Exception {
+        Path jar = jarOf("gamma", Map.of("lib.Gamma", "package lib;\n\npublic interface Gamma {\n    String name();\n}\n"), e -> true);
+        Path app = appWithPlainService("chain-of-three");
+        String gamma = "grails-app/domain/lib/Gamma.groovy";
+        write(app.resolve(gamma), "package lib\n\nimport gone.Missing\n\ntrait Gamma {\n\n"
+            + "    String name() {\n        return \"gamma\"\n    }\n}\n");
+        String beta = "grails-app/services/lib/BetaService.groovy";
+        write(app.resolve(beta), "package lib\n\nclass BetaService implements Gamma {\n\n    static final int TWO = 2\n\n"
+            + "    String name() {\n        return Gamma.super.name()\n    }\n}\n");
+        String alpha = "grails-app/services/lib/AlphaService.groovy";
+        write(app.resolve(alpha), "package lib\n\nclass AlphaService {\n\n"
+            + "    static int one() {\n        return BetaService.TWO - 1\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, gamma, 3, "unresolved: gone.Missing", "Gamma.name");
+        refusedAsAWhole(doc, beta, 8, "unsupported: compile error: The usage of 'Class.this' and 'Class.super'", "BetaService.name");
+        refusedAsAWhole(doc, alpha, 6, "unresolved: BetaService", "one");
+        for (String file : List.of(gamma, beta, alpha)) {
+            nothingReadFrom(doc, file);
+        }
+        check(list(doc.get("refusals")).size() == 3, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    /**
+     * A library class compiled for Java 8 whose member is a {@code javax.activation} or a JAXB
+     * class: the JDK shipped both until Java 10 and no longer does, so on this runtime the class
+     * is found and cannot be defined. The service that imports it is refused at its import,
+     * naming the missing class; the other service is read.
+     */
+    private void aClassThatNeedsARemovedJdkPackageRefusesTheFileNamingIt() throws Exception {
+        notLoadable("javax.activation.DataHandler");
+        notLoadable("javax.xml.bind.JAXBContext");
+        Map<String, String> sources = new LinkedHashMap<>();
+        sources.put("legacy.Mailer", "package legacy;\n\npublic class Mailer {\n    public static javax.activation.DataHandler handler;\n\n"
+            + "    public static int one() {\n        return 1;\n    }\n}\n");
+        sources.put("legacy.Binder", "package legacy;\n\npublic class Binder {\n    public static javax.xml.bind.JAXBContext context;\n\n"
+            + "    public static int two() {\n        return 2;\n    }\n}\n");
+        Path jar = jarOf("legacy", sources, e -> true);
+        Path app = appWithPlainService("removed-jdk-package");
+        String mail = "grails-app/services/lib/MailService.groovy";
+        write(app.resolve(mail), "package lib\n\nimport legacy.Mailer\n\nclass MailService {\n\n"
+            + "    int one() {\n        return Mailer.one()\n    }\n}\n");
+        String bind = "grails-app/services/lib/BindService.groovy";
+        write(app.resolve(bind), "package lib\n\nimport legacy.Binder\n\nclass BindService {\n\n"
+            + "    int two() {\n        return Binder.two()\n    }\n}\n");
+        Map<String, Object> doc = readWritesADocument(app, List.of(jar));
+        refusedAsAWhole(doc, mail, 3, "unresolved: legacy.Mailer", "MailService.one");
+        check(reasonsAt(doc, mail + ":3").get(0).contains("javax/activation/DataHandler"),
+            "the reason does not name the missing class: " + reasonsAt(doc, mail + ":3"));
+        refusedAsAWhole(doc, bind, 3, "unresolved: legacy.Binder", "BindService.two");
+        check(reasonsAt(doc, bind + ":3").get(0).contains("javax/xml/bind/JAXBContext"),
+            "the reason does not name the missing class: " + reasonsAt(doc, bind + ":3"));
+    }
+
+    /**
+     * A service saved as ISO-8859-1: Groovy's compiler reads it, each byte that is no UTF-8 as a
+     * replacement character, so what it compiled is not what the file says. The service is refused
+     * as a whole at its first line; the other service is read.
+     */
+    private void aServiceThatIsNotUtf8IsRefused() throws Exception {
+        Path app = appWithPlainService("not-utf-8");
+        String svc = "grails-app/services/lib/LatinService.groovy";
+        Files.createDirectories(app.resolve(svc).getParent());
+        Files.write(app.resolve(svc), ("package lib\n\nclass LatinService {\n\n    String name() {\n        return \"gräße\"\n"
+            + "    }\n}\n").getBytes(StandardCharsets.ISO_8859_1));
+        Map<String, Object> doc = readWritesADocument(app, List.of());
+        refusedAsAWhole(doc, svc, 1, "unsupported: the file is not UTF-8 text", "LatinService.name");
+        nothingReadFrom(doc, svc);
+        check(list(doc.get("refusals")).size() == 1, "refusals " + Json.write(doc.get("refusals")));
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----

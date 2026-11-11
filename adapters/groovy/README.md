@@ -54,10 +54,6 @@ Grails application, into one module named by its `app.name`. A directory without
   resolves. Their classes are defined where those jars are visible, so one that extends or
   implements a class of a jar resolves too. A Java file javac reports an error in is left out. The
   Java files do not see the Groovy files.
-- A resolve-only file that declares a GORM entity with `@grails.persistence.Entity` is left out of
-  the compilation: its local transformation needs the whole Grails runtime and would otherwise fail
-  the read of every file, and the class is never read. A read file that names it is refused
-  `unresolved`.
 - Positions name a file by its path in the application: `grails-app/services/lending/LoanService.groovy:15`.
 - Two artefacts with the same simple name in different packages are both refused,
   `unsupported: duplicate simple name`: one module has one namespace.
@@ -71,40 +67,87 @@ Grails application, into one module named by its `app.name`. A directory without
     refused at the annotation, `unresolved: Levels.HIGH`;
   - a name in a static method or initializer that is no variable, static field or class, as the
     name of a class is once its own file is refused or left out, `unresolved: <name>`;
-  - a class that is not named in the file and cannot be loaded when the type checker reaches it
-    through a call, or that a local transformation of an annotation needs as it runs: the artefact
-    is refused at its class (its first annotation's line), `unresolved: <the JVM's error>`.
+  - a class that is not named in the file and cannot be loaded when the compiler or the type
+    checker reaches it, through a call or as the class of a local transformation: the artefact is
+    refused at its class (its first annotation's line), `unresolved: <the JVM's error>`.
 
-  A compiler error that is none of these, a syntax error among them, still ends the read.
+### A file that fails is refused; the read goes on
+
+Whatever fails while one file is compiled, type-checked or read takes that file out, and only that
+file. An artefact is refused as a whole, one refusal at a line with what failed; a resolve-only
+file is left out and yields nothing; every other artefact is read, and the document is written
+with exit 0. The reader does not know the failures by their messages:
+
+- A compiler error that names a file and a line, whatever it says, a syntax error among them,
+  refuses the artefact at that line: `unresolved: <name>` for a name that does not resolve, as
+  above, else `unsupported: compile error: <the compiler's message>`. A file with several errors is
+  refused once, at its first unresolved name, else at its first error.
+- An exception or error thrown while the compiler, one of Groovy's own transformations, the type
+  checker or the reader works on a file refuses the artefact at its class (its first annotation's
+  line): `unresolved: <exception>: <its first cause>` when it or a cause of it is a class that
+  cannot be found or loaded, as `@Slf4j` without the logging jar, else
+  `unsupported: the compiler failed: <exception>` (`the type checker failed:`,
+  `the reader failed:`). An error the compiler reports without a file while it works on one is
+  that file's, `unsupported: compile error: <message>`.
+- A read file that is not UTF-8 text is refused at line 1, `unsupported: the file is not UTF-8
+  text`, and not compiled.
+- A failure that names no file, as an exception thrown between two files, refuses every artefact
+  still being read at line 1, `unsupported: no file can be blamed: <what failed>`. The artefacts
+  refused before it keep their own refusal.
+
+The files that are left are compiled again after each file is taken out, since a file can fail
+only once another is gone: a class of a file that was left out no longer resolves. Each round
+takes out at least one file, so the read ends, and no file is both read and refused.
+
+What still ends a read with exit 1 and a message, no document: an input the reader cannot read at
+all (no such directory, a jar named on `CODESPEC_GROOVY_CLASSPATH` that is no file,
+`application.properties` naming another Grails version or no `app.name`, no domain class and no
+service, a file that cannot be opened); a plain Groovy directory with no `.groovy` file, with files
+of two packages or of none, or none of whose files compiles far enough to name its package, the
+module's name, in which case the message holds the refusals; a source nested deeper than the
+reader's limit; and the JVM running out of memory.
+
+### Classpath and transformations
 
 The compile classpath is the Groovy jar, then the jars `CODESPEC_GROOVY_CLASSPATH` names
-(separated by `:`), so a real application can be read with its dependency jars. Every global AST
-transformation those jars register is disabled, so no GORM method is injected and every GORM call
-is visible as written.
+(separated by `:`), so a real application can be read with its dependency jars.
 
 ```console
 CODESPEC_GROOVY_CLASSPATH=<jar>:<jar> codespec read --lang groovy <grails app> --out <file> --adapters target/adapters
 ```
 
+No AST transformation of those jars is run. Every global transformation they register is disabled,
+so no GORM method is injected and every GORM call is visible as written. A local transformation, the
+one an annotation names with `@GroovyASTTransformationClass`, is run only when it is a class of the
+Groovy jar itself (`@Slf4j`, `@ToString`, the one behind a trait); one of any other jar is not run,
+Grails's and its plugins' among them, since they need the running framework and rewrite the code
+read. What a caller sees of such an annotation:
+
+- The annotation is a mark: refused at its line, `unsupported: annotation <class>: annotations with
+  behaviour are outside cir/1`, as every annotation outside the reader's list is, and the class that
+  carries it is read as its source says.
+- A member the transformation would have added is not there: a call of it is `foreign`,
+  `dynamic: call of <name>, which the type checker does not resolve`.
+- Groovy's compiler still loads the transformation's class to see that it is one. When that class
+  cannot be loaded, its superclass being on no jar, the artefact is refused as a whole,
+  `unresolved: <the JVM's error>`.
+- `@grails.transaction.Transactional` is not refused, and each method it covers is read from its
+  source body: `TransactionalTransform` is not run, so no identifier of its rewrite reaches the
+  module. `@grails.persistence.Entity` on a resolve-only class leaves the class a plain one.
+
 For a service that imports `grails.transaction.Transactional`, put these jars of the Grails 2.5.6
-distribution on `CODESPEC_GROOVY_CLASSPATH`. The first two hold the annotation, its transformation
-and the Spring enums its members name; the transformation loads classes from the other four as it
-runs.
+distribution on `CODESPEC_GROOVY_CLASSPATH`: they hold the annotation and the Spring enums its
+members name. Without them, such a service is refused as a whole,
+`unresolved: grails.transaction.Transactional`.
 
 - `$GRAILS_HOME/dist/grails-core-2.5.6.jar`
 - `$GRAILS_HOME/lib/org.springframework/spring-tx/jars/spring-tx-4.1.9.RELEASE.jar`
-- `$GRAILS_HOME/lib/javax.annotation/jsr250-api/jars/jsr250-api-1.0.jar`
-- `$GRAILS_HOME/lib/org.springframework/spring-beans/jars/spring-beans-4.1.9.RELEASE.jar`
-- `$GRAILS_HOME/lib/org.springframework/spring-core/jars/spring-core-4.1.9.RELEASE.jar`
-- `$GRAILS_HOME/dist/grails-bootstrap-2.5.6.jar`
 
-Without them, such a service is refused as a whole, `unresolved: grails.transaction.Transactional`.
-With them, `@Transactional`'s local transformation, `TransactionalTransform`, runs at
-`CANONICALIZATION` (disabling global transformations does not turn it off) and rewrites each method
-it covers into a call through a transaction template. The reader never reads a rewritten method:
-each is refused, `unsupported: grails transform`, and no identifier the rewrite introduces reaches
-the module. A method counts as rewritten when the transform moved its body: an overload it did not
-cover, with other parameter types, is read or refused on its own.
+The reader runs on JDK 17 or later, which no longer ships `javax.activation`, JAXB (`javax.xml.bind`)
+and the other Java EE packages a Grails 2 application could take from JDK 8. A class of a jar that
+needs one of them is `unresolved: <class>: java.lang.NoClassDefFoundError: javax/activation/…`, and
+the artefact naming it is refused, until the jar that holds the package (`activation`, `jaxb-api`)
+is on `CODESPEC_GROOVY_CLASSPATH`.
 
 What the Grails layer reads and refuses:
 

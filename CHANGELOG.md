@@ -4,27 +4,51 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Changed
+
+- `codespec-read-groovy` runs no local AST transformation of a `CODESPEC_GROOVY_CLASSPATH` jar,
+  Grails's and its plugins' among them; Groovy's own still run. The annotation is refused at its
+  line as a mark, `unsupported: annotation <class>: annotations with behaviour are outside cir/1`,
+  the class that carries it is read as its source says, and a call of a member the transformation
+  would have added is `foreign`, `dynamic`. A transformation whose class cannot be loaded refuses
+  the artefact, `unresolved`. Three consequences for a Grails application:
+  - a method `@grails.transaction.Transactional` covers is read from its source body, where it
+    was refused, `unsupported: grails transform`;
+  - a resolve-only class with `@grails.persistence.Entity` is compiled as a plain class, where it
+    was left out and each artefact naming it refused `unresolved`;
+  - only `grails-core-2.5.6.jar` and `spring-tx-4.1.9.RELEASE.jar` are needed for
+    `grails.transaction.Transactional` to resolve, not the four jars its transformation loaded
+    classes from.
+
 ### Fixed
 
-- `codespec-read-groovy` no longer ends the read of a Grails application with exit 1 and no
-  document in five conditions; each is now read or a refusal at a line, and the document is
-  written (`adapters/groovy/README.md`, "Grails 2.5.6 applications"):
-  - a `src/java` class that extends or implements a class of a `CODESPEC_GROOVY_CLASSPATH` jar
-    failed with `NoClassDefFoundError`; it is now defined where those jars are visible, and a
-    Groovy file naming it resolves;
-  - a class of a jar whose own dependency is on no jar (`NoClassDefFoundError`), named in a file,
-    reached through a call or needed by an annotation's local transformation as it runs, refuses
-    the artefact, `unresolved: …` with the JVM's error;
-  - a class from a stub jar of API-only class files (`ClassFormatError: Absent Code attribute`)
-    refuses the artefact that names it, `unresolved: <class>: …`;
-  - an annotation member naming a constant of a class on no jar ("unable to find class … for
-    annotation attribute constant") refuses the artefact at the annotation;
-  - a name in a static method that no longer resolves because its class's own file was refused or
-    left out ("Apparent variable … was found in a static scope") refuses the artefact at that
-    line, `unresolved: <name>`.
+- `codespec-read-groovy` no longer ends a read with exit 1 and no document because one file
+  fails. Whatever fails while one file is compiled, type-checked or read refuses that artefact as
+  a whole, one refusal at a line with what failed; a resolve-only file of a Grails application is
+  left out; every other artefact is read and the document is written with exit 0
+  (`adapters/groovy/README.md`, "A file that fails is refused; the read goes on"). The rule does
+  not depend on the failure's message:
+  - a compiler error with a file and a line, a syntax error among them, refuses the artefact at
+    that line, `unresolved: <name>` for a name that does not resolve, else
+    `unsupported: compile error: <the compiler's message>`;
+  - an exception or error thrown while the compiler, a transformation of Groovy itself, the type
+    checker or the reader works on a file refuses the artefact at its class,
+    `unresolved: <exception>: <cause>` when a class cannot be found or loaded (`@Slf4j` without
+    the logging jar), else `unsupported: the compiler failed: <exception>`;
+  - a read file that is not UTF-8 text is refused at line 1 and not compiled;
+  - a failure that names no file refuses every artefact still being read at line 1,
+    `unsupported: no file can be blamed: <what failed>`;
+  - the files left are compiled again after each file is taken out, so a file that fails only
+    once another is gone is refused too, and each round takes out at least one file.
 
-  In each, a resolve-only file is left out instead, and every other artefact is read. A plain
-  Groovy package with such a name in a static scope is refused the same way, where the read ended.
+  Conditions that ended a read and are now a refusal or read: a `src/java` class that extends or
+  implements a class of a `CODESPEC_GROOVY_CLASSPATH` jar (now defined where those jars are
+  visible, so a Groovy file naming it resolves); a class of a jar whose own dependency is on no
+  jar (`NoClassDefFoundError`) or that comes from a stub jar of API-only class files
+  (`ClassFormatError: Absent Code attribute`), `unresolved: <class>: …`; an annotation member
+  naming a constant of a class on no jar; a name in a static method whose class's file was
+  refused or left out; `Unable to load logging class`; `X.super.m()` on a trait whose file was
+  left out; a syntax error. What still ends a read is listed in the README.
 
 ## 0.8.0
 
