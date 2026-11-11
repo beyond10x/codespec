@@ -185,6 +185,28 @@ public final class ReaderTest {
         cases.put("a_class_of_a_jar_that_needs_javax_activation_or_jaxb_which_this_jdk_does_not_ship_refuses_the_service_naming_it",
             t::aClassThatNeedsARemovedJdkPackageRefusesTheFileNamingIt);
         cases.put("a_service_that_is_not_utf_8_text_is_refused_and_the_rest_is_read", t::aServiceThatIsNotUtf8IsRefused);
+        // Call lists: the holds application under testdata/holds. Code the reader refuses stays in
+        // the call graph: a foreign statement lists its calls, a refused method or a method of a
+        // refused class is an opaque function.
+        cases.put("holds_a_foreign_statement_lists_its_calls_a_call_before_its_receiver_and_arguments_a_closure_as_a_lambda",
+            t::holdsForeignStatementsListTheirCalls);
+        cases.put("holds_a_method_refused_at_its_declaration_is_an_opaque_function_with_its_reason_and_calls",
+            t::holdsARefusedMethodIsOpaque);
+        cases.put("holds_every_method_and_constructor_of_a_class_refused_as_a_whole_is_an_opaque_function",
+            t::holdsARefusedClassIsOpaque);
+        cases.put("holds_two_overloads_are_two_functions_and_a_call_names_the_one_the_type_checker_picked",
+            t::holdsOverloadsAreTwoFunctions);
+        cases.put("holds_reach_from_check_in_reaches_the_notice_method_called_only_from_a_refused_method",
+            t::holdsReachFromCheckIn);
+        cases.put("holds_read_twice_gives_the_same_canonical_bytes_and_codespec_check_accepts_them",
+            t::holdsReadTwiceIsCanonical);
+        cases.put("holds_read_equals_the_checked_in_document", t::holdsEqualsTheCheckedInDocument);
+        cases.put("every_foreign_statement_of_every_fixture_carries_a_call_list", t::everyForeignStatementCarriesACallList);
+        cases.put("a_call_ref_names_what_the_type_checker_resolved_in_and_outside_the_module", t::callRefsNameTheirTargets);
+        cases.put("a_class_refused_at_its_fields_and_a_method_named_by_no_identifier_are_opaque_and_the_document_reads_strictly",
+            t::fieldRefusedClassAndQuotedNameAreOpaque);
+        cases.put("classes_with_one_simple_name_yield_no_opaque_function_and_a_call_of_one_is_a_value_call",
+            t::duplicateSimpleNamesYieldNoOpaqueFunction);
         String only = args.length == 4 ? args[3] : null;
         if (only != null) {
             cases.keySet().removeIf(k -> !k.contains(only));
@@ -1699,6 +1721,304 @@ public final class ReaderTest {
         refusedAsAWhole(doc, svc, 1, "unsupported: the file is not UTF-8 text", "LatinService.name");
         nothingReadFrom(doc, svc);
         check(list(doc.get("refusals")).size() == 1, "refusals " + Json.write(doc.get("refusals")));
+    }
+
+    // ---- call lists and opaque functions: testdata/holds ----
+
+    private static final String DESK = "grails-app/services/holds/DeskService.groovy";
+    private static final String RECALL = "grails-app/services/holds/RecallService.groovy";
+    private static final String EXTENDS_NOTICE = "unsupported: class extends holds.NoticeService: inheritance is outside cir/1";
+
+    private Path holdsDir() {
+        return testdata.resolve("holds");
+    }
+
+    private Map<String, Object> holds() throws Exception {
+        return Main.read(holdsDir(), List.of());
+    }
+
+    /** {@code <file>:<line>} of the line of {@code file}, a path in the holds application, holding {@code text}. */
+    private String holdsPos(String file, String text) throws IOException {
+        return file + ":" + lineOf(holdsDir().resolve(file), text);
+    }
+
+    private static String ref(String k, String path, String recv, String name, String pos) {
+        return "{\"k\":\"" + k + "\"," + (path.isEmpty() ? "" : "\"path\":\"" + path + "\",")
+            + (recv.isEmpty() ? "" : "\"recv\":\"" + recv + "\",") + "\"name\":\"" + name + "\",\"pos\":\"" + pos + "\"}";
+    }
+
+    private static String method(String path, String recv, String name, String pos) {
+        return ref("method", path, recv, name, pos);
+    }
+
+    private static String func(String path, String name, String pos) {
+        return ref("func", path, "", name, pos);
+    }
+
+    private static String made(String path, String name, String pos) {
+        return ref("new", path, "", name, pos);
+    }
+
+    private static String value(String sig, String pos) {
+        return "{\"k\":\"value\",\"sig\":\"" + sig + "\",\"pos\":\"" + pos + "\"}";
+    }
+
+    private static String lambda(String calls, String pos) {
+        return "{\"k\":\"lambda\",\"sig\":\"groovy.lang.Closure\",\"calls\":[" + calls + "],\"pos\":\"" + pos + "\"}";
+    }
+
+    private static Map<String, Object> opaqueOrNull(Map<String, Object> doc, String key) {
+        for (Object o : list(doc.get("opaque"))) {
+            Map<String, Object> m = map(o);
+            String k = m.containsKey("recv") ? m.get("recv") + "." + m.get("name") : (String) m.get("name");
+            if (key.equals(k)) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    /** The opaque function {@code key} at {@code pos} with {@code reason}, its call list {@code [calls]}. */
+    private static void opaqueIs(Map<String, Object> doc, String key, String pos, String reason, String calls) {
+        Map<String, Object> o = opaqueOrNull(doc, key);
+        check(o != null, "no opaque function " + key + " in " + Json.write(doc.getOrDefault("opaque", List.of())));
+        check(pos.equals(o.get("pos")), key + " is at " + o.get("pos") + ", not " + pos);
+        check(reason.equals(o.get("reason")), key + " has the reason " + o.get("reason") + ", not " + reason);
+        check(same(o.get("calls"), "[" + calls + "]"), key + " calls " + Json.write(o.get("calls")));
+        check(funcByKeyOrNull(doc, key) == null, key + " is also a function");
+    }
+
+    private static void foreignCalls(Map<String, Object> doc, String pos, String calls) {
+        for (Map<String, Object> f : foreigns(doc.get("funcs"))) {
+            if (pos.equals(f.get("pos"))) {
+                check(same(f.get("calls"), "[" + calls + "]"), "the foreign statement at " + pos + " calls " + Json.write(f.get("calls")));
+                return;
+            }
+        }
+        throw new AssertionError("no foreign statement at " + pos);
+    }
+
+    private void holdsForeignStatementsListTheirCalls() throws Exception {
+        Map<String, Object> doc = holds();
+        String shelve = holdsPos(DESK, "shelve(hold, today)");
+        foreignCalls(doc, shelve, method("", "DeskService", "shelve", shelve));
+        String each = holdsPos(DESK, "waiting.each");
+        foreignCalls(doc, each, func("org.codehaus.groovy.runtime.DefaultGroovyMethods", "each", each) + ","
+            + lambda(method("", "DeskService", "renew2", each), each));
+    }
+
+    private void holdsARefusedMethodIsOpaque() throws Exception {
+        Map<String, Object> doc = holds();
+        String call = holdsPos(DESK, "noticeService.pickupReady");
+        opaqueIs(doc, "DeskService.shelve", holdsPos(DESK, "def shelve"),
+            "dynamic: shelve returns def: its result has the type of whatever it returns",
+            method("", "NoticeService", "pickupReady", call) + "," + method("", "Hold", "daysWaiting", call));
+        check(reasonsAt(doc, holdsPos(DESK, "def shelve")).equals(
+            List.of("dynamic: shelve returns def: its result has the type of whatever it returns")),
+            "the refusal of shelve: " + reasonsAt(doc, holdsPos(DESK, "def shelve")));
+    }
+
+    private void holdsARefusedClassIsOpaque() throws Exception {
+        Map<String, Object> doc = holds();
+        check(byNameOrNull(list(doc.get("types")), "RecallService") == null, "RecallService, which extends a class, is a type");
+        String grace = holdsPos(RECALL, "sent = graceDays()");
+        opaqueIs(doc, "NewRecallService", holdsPos(RECALL, "RecallService() {"), EXTENDS_NOTICE,
+            method("", "RecallService", "graceDays", grace));
+        String renew = holdsPos(RECALL, "deskService.renew(hold)");
+        String remind = holdsPos(RECALL, "remind(today");
+        String slip = holdsPos(RECALL, "new Slip");
+        String trim = holdsPos(RECALL, "slip.text().trim()");
+        String archive = holdsPos(RECALL, "hold.archive(line)");
+        opaqueIs(doc, "RecallService.recall", holdsPos(RECALL, "void recall"), EXTENDS_NOTICE,
+            method("", "DeskService", "renew", renew) + "," + method("", "NoticeService", "remind", remind) + ","
+            + func("holds.Slip", "<init>", slip) + "," + made("holds", "Slip", slip) + ","
+            + method("java.lang", "String", "trim", trim) + "," + method("holds", "Slip", "text", trim) + ","
+            + value("groovy dynamic call of archive", archive));
+        opaqueIs(doc, "RecallService.graceDays", holdsPos(RECALL, "static int graceDays"), EXTENDS_NOTICE, "");
+        check(list(doc.get("opaque")).size() == 5, "opaque functions: " + Json.write(doc.get("opaque")));
+    }
+
+    private void holdsOverloadsAreTwoFunctions() throws Exception {
+        Map<String, Object> doc = holds();
+        Map<String, Object> first = funcByKey(doc, "DeskService.renew");
+        check(holdsPos(DESK, "void renew(Hold hold) {").equals(first.get("pos")), "DeskService.renew is at " + first.get("pos"));
+        String remind = holdsPos(DESK, "noticeService.remind(days)");
+        opaqueIs(doc, "DeskService.renew2", holdsPos(DESK, "void renew(Hold hold, int days)"),
+            "unsupported: a second method named renew: overloading is outside cir/1", method("", "NoticeService", "remind", remind));
+        // The call with one argument names the first, the call with two the second.
+        check(same(list(opaqueOrNull(doc, "RecallService.recall").get("calls")).get(0),
+            method("", "DeskService", "renew", holdsPos(RECALL, "deskService.renew(hold)"))), "recall does not call DeskService.renew");
+        String each = holdsPos(DESK, "waiting.each");
+        Map<String, Object> closure = map(list(foreigns(funcByKey(doc, "DeskService.renewAll")).get(0).get("calls")).get(1));
+        check(same(closure.get("calls"), "[" + method("", "DeskService", "renew2", each) + "]"),
+            "the closure of renewAll calls " + Json.write(closure.get("calls")));
+        String readme = Files.readString(root.resolve("adapters/groovy/README.md"));
+        check(readme.contains("`renew2`"), "README.md does not say how the second of two overloads is named");
+    }
+
+    /** {@code codespec <args>}: its exit status and what it printed on stdout. */
+    private Object[] codespecPrints(String name, String... args) throws Exception {
+        Path out = work.resolve(name);
+        List<String> command = new ArrayList<>(List.of(codespec.toString()));
+        command.addAll(List.of(args));
+        Process p = new ProcessBuilder(command).redirectOutput(out.toFile()).redirectError(ProcessBuilder.Redirect.INHERIT).start();
+        return new Object[] {p.waitFor(), Files.readString(out)};
+    }
+
+    /**
+     * {@code NoticeService.pickupReady} is called by {@code DeskService.shelve} alone, which returns
+     * {@code def} and so is refused at its declaration; {@code checkIn}, the entry, calls {@code
+     * shelve} in a statement kept foreign. Without call lists the path ends at that statement.
+     */
+    private void holdsReachFromCheckIn() throws Exception {
+        Path doc = work.resolve("holds.reach.cir.json");
+        Files.writeString(doc, Json.write(holds()), StandardCharsets.UTF_8);
+        Object[] ran = codespecPrints("holds.reach.json", "reach", doc.toString(), "--entry", "holds.DeskService.checkIn");
+        check(ran[0].equals(0), "codespec reach exit " + ran[0]);
+        Map<String, Object> module = map(list(map(Json.parse((String) ran[1])).get("modules")).get(0));
+        List<Object> reached = list(module.get("reached"));
+        List<Object> unreached = list(module.get("unreached"));
+        check(reached.contains("DeskService.checkIn"), "the entry is not reached: " + reached);
+        check(reached.contains("NoticeService.pickupReady") && !unreached.contains("NoticeService.pickupReady"),
+            "NoticeService.pickupReady is not reached from DeskService.checkIn: reached " + reached + ", unreached " + unreached);
+        check(reached.contains("DeskService.shelve"), "DeskService.shelve, the refused method between them, is not reached: " + reached);
+        check(unreached.contains("NoticeService.remind"), "NoticeService.remind, which checkIn does not reach, is not unreached: "
+            + unreached);
+    }
+
+    private void holdsReadTwiceIsCanonical() throws Exception {
+        String a = Json.write(holds());
+        check(a.equals(Json.write(holds())), "two reads of holds differ");
+        Path doc = work.resolve("holds.raw.json");
+        Files.writeString(doc, a, StandardCharsets.UTF_8);
+        Object[] valid = codespecPrints("holds.validate.txt", "validate", "--canonical", doc.toString());
+        check(valid[0].equals(0), "codespec validate --canonical failed on the holds read");
+        // A check reads the call lists of foreign statements and opaque functions; exit 2 is an
+        // input it refuses.
+        Object[] checked = codespecPrints("holds.check.txt", "check", "unbounded-growth", doc.toString());
+        check(checked[0].equals(0), "codespec check unbounded-growth exit " + checked[0] + ": " + checked[1]);
+    }
+
+    private void holdsEqualsTheCheckedInDocument() throws Exception {
+        Path checkedIn = testdata.resolve("holds.read.cir.json");
+        check(Files.isRegularFile(checkedIn), "no " + checkedIn);
+        check(Json.write(holds()).equals(Files.readString(checkedIn)), "the holds read differs from " + checkedIn
+            + "; regenerate it with task examples");
+        check(!list(map(Json.parse(Files.readString(checkedIn))).get("opaque")).isEmpty(), checkedIn + " holds no opaque function");
+    }
+
+    private void everyForeignStatementCarriesACallList() throws Exception {
+        List<String> bad = new ArrayList<>();
+        Map<String, Map<String, Object>> docs = new LinkedHashMap<>();
+        try (Stream<Path> dirs = Files.list(testdata.resolve("refuse"))) {
+            for (Path d : dirs.sorted().toList()) {
+                docs.put("refuse/" + d.getFileName(), Reader.read(d));
+            }
+        }
+        docs.put("lending", lending());
+        docs.put("holds", holds());
+        int seen = 0;
+        for (Map.Entry<String, Map<String, Object>> e : docs.entrySet()) {
+            for (Map<String, Object> f : foreigns(e.getValue().get("funcs"))) {
+                seen++;
+                if (!(f.get("calls") instanceof List)) {
+                    bad.add(e.getKey() + " " + f.get("pos"));
+                }
+            }
+        }
+        check(seen > 20, "only " + seen + " foreign statements in the fixtures");
+        check(bad.isEmpty(), "foreign statements without a call list: " + bad);
+    }
+
+    /**
+     * One refused method making a call of each kind. In the module: a constructor is the function
+     * {@code New<Class>} and a value made, a static method a function, an instance method a method.
+     * Outside it, as the Java reader names an extern: a static method and a constructor ({@code
+     * <init>}) are functions of the class's qualified name, an instance method a method of the
+     * class in its package, a GDK method the static method that implements it. A call the checker
+     * does not resolve, a call of a closure and a method pointer name no function.
+     */
+    private void callRefsNameTheirTargets() throws Exception {
+        Path dir = work.resolve("call-refs");
+        write(dir.resolve("Counter.groovy"), "package tally\n\nclass Counter {\n\n    int total = 0\n\n"
+            + "    Counter(int start) {\n        total = start\n    }\n\n"
+            + "    static int twice(int n) {\n        return n + n\n    }\n\n"
+            + "    int bump() {\n        total = total + 1\n        return total\n    }\n\n"
+            + "    def mixed(def other, Closure<Integer> step, List<String> names) {\n"
+            + "        Counter c = new Counter(twice(2))\n"
+            + "        c.bump()\n"
+            + "        String s = String.valueOf(Math.max(1, 2)).trim()\n"
+            + "        StringBuilder b = new StringBuilder()\n"
+            + "        new StringBuilder()\n"
+            + "        other.poke()\n"
+            + "        step.call()\n"
+            + "        names.each { String n -> b.append(n) }\n"
+            + "        def p = c.&bump\n"
+            + "        return s\n"
+            + "    }\n}\n");
+        Map<String, Object> doc = Reader.read(dir);
+        String at = "Counter.groovy:";
+        opaqueIs(doc, "Counter.mixed", at + 20, "dynamic: mixed returns def: its result has the type of whatever it returns",
+            func("", "NewCounter", at + 21) + "," + made("", "Counter", at + 21) + "," + func("", "twice", at + 21) + ","
+            + method("", "Counter", "bump", at + 22) + ","
+            + method("java.lang", "String", "trim", at + 23) + "," + func("java.lang.String", "valueOf", at + 23) + ","
+            + func("java.lang.Math", "max", at + 23) + ","
+            + func("java.lang.StringBuilder", "<init>", at + 24) + "," + made("java.lang", "StringBuilder", at + 24) + ","
+            + func("java.lang.StringBuilder", "<init>", at + 25) + ","
+            + value("groovy dynamic call of poke", at + 26) + ","
+            + value("groovy.lang.Closure", at + 27) + ","
+            + func("org.codehaus.groovy.runtime.DefaultGroovyMethods", "each", at + 28) + ","
+            + lambda(method("java.lang", "StringBuilder", "append", at + 28), at + 28) + ","
+            + lambda(value("groovy dynamic call of bump", at + 29), at + 29));
+        check(list(doc.get("opaque")).size() == 1, "opaque functions: " + Json.write(doc.get("opaque")));
+    }
+
+    /**
+     * A class none of whose members is read because a field of it is refused, and a method whose
+     * quoted name is no identifier: each method is an opaque function under the name the source
+     * gives it, and strict reading takes the document.
+     */
+    private void fieldRefusedClassAndQuotedNameAreOpaque() throws Exception {
+        Path dir = work.resolve("opaque-names");
+        write(dir.resolve("Book.groovy"), "package shelf\n\nclass Book {\n\n    String title\n\n"
+            + "    int width() {\n        return title.length()\n    }\n}\n");
+        write(dir.resolve("Calc.groovy"), "package shelf\n\nclass Calc {\n\n"
+            + "    long \"add two\"(long a, long b) {\n        return Math.max(a, b)\n    }\n\n"
+            + "    long plus(long a, long b) {\n        return a + b\n    }\n}\n");
+        Map<String, Object> doc = Reader.read(dir);
+        Map<String, Object> width = opaqueOrNull(doc, "Book.width");
+        check(width != null && ((String) width.get("reason")).startsWith("type: property title holds null until assigned"),
+            "Book.width: " + Json.write(doc.getOrDefault("opaque", List.of())));
+        check(same(width.get("calls"), "[" + method("java.lang", "String", "length", "Book.groovy:8") + "]"),
+            "Book.width calls " + Json.write(width.get("calls")));
+        Map<String, Object> quoted = opaqueOrNull(doc, "Calc.add two");
+        check(quoted != null && same(quoted.get("calls"), "[" + func("java.lang.Math", "max", "Calc.groovy:6") + "]"),
+            "Calc.\"add two\": " + Json.write(doc.getOrDefault("opaque", List.of())));
+        check(funcByKeyOrNull(doc, "Calc.plus") != null, "Calc.plus, beside it, was not read");
+        Path out = work.resolve("opaque-names.json");
+        Files.writeString(out, Json.write(doc), StandardCharsets.UTF_8);
+        Object[] valid = codespecPrints("opaque-names.validate.txt", "validate", "--canonical", out.toString());
+        check(valid[0].equals(0), "codespec validate --canonical refused the read");
+    }
+
+    /**
+     * Two classes of one simple name are both refused, and one module has one namespace: a method
+     * of either has no name there, so neither is a function, and a call of one says so instead of
+     * naming the other's.
+     */
+    private void duplicateSimpleNamesYieldNoOpaqueFunction() throws Exception {
+        Path app = work.resolve("duplicate-opaque-app");
+        write(app.resolve("application.properties"), "app.grails.version=2.5.6\napp.name=dup\n");
+        write(app.resolve("grails-app/domain/a/Book.groovy"),
+            "package a\n\nclass Book {\n    int pages = 0\n\n    int size() {\n        return pages\n    }\n}\n");
+        write(app.resolve("grails-app/domain/b/Book.groovy"),
+            "package b\n\nclass Book {\n    int copies = 0\n\n    int size() {\n        return copies\n    }\n}\n");
+        String svc = "grails-app/services/a/ShelfService.groovy";
+        write(app.resolve(svc), "package a\n\nclass ShelfService {\n    def count(Book book) {\n        return book.size()\n    }\n}\n");
+        Map<String, Object> doc = Main.read(app, List.of());
+        check(opaqueOrNull(doc, "Book.size") == null, "a Book.size is an opaque function: " + Json.write(doc.get("opaque")));
+        opaqueIs(doc, "ShelfService.count", svc + ":4", "dynamic: count returns def: its result has the type of whatever it returns",
+            value("groovy call of a.Book.size, which the module holds no function for", svc + ":5"));
     }
 
     // ---- adversary: reads whose meaning differs from Groovy's ----

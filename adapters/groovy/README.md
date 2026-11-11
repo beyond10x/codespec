@@ -34,7 +34,88 @@ call, is `x /= y`; any other target is an assignment of the division.
 and an enum. Each directory under `testdata/refuse` holds one construct the reader keeps as
 `foreign` or refuses; its line is marked `// refused <category>`. `testdata/lending` is a small
 Grails application; `testdata/lending/EXPECTED.md` is what the reader reads of it, and
-`testdata/lending.read.cir.json` is that read.
+`testdata/lending.read.cir.json` is that read. `testdata/holds` is a second one, most of whose
+calls go through code the reader refuses: a method that returns `def`, a second overload, a closure
+and a service that extends another. `testdata/holds.read.cir.json` is its read, and "Call lists"
+below is what it shows.
+
+## Call lists
+
+Code the reader does not read still calls what it calls, and the document says so, so that
+`codespec reach`, `cq` and `calls` answer over an application whose bodies are mostly outside
+`cir/1`:
+
+- Every `foreign` statement carries `calls`: the calls the statement makes.
+- A method or constructor refused at its declaration is an `opaque` function of the module, with
+  the `reason` of its refusal and the `calls` of its body. So is every method and constructor of a
+  class refused as a whole, with the class's reason, and of a class none of whose members is read
+  because one of its fields is refused, with the reason of the first such field.
+
+In `testdata/holds`, `DeskService.checkIn` calls `shelve`, which returns `def` and is refused, and
+only `shelve` calls `NoticeService.pickupReady`:
+
+```console
+$ codespec reach adapters/groovy/testdata/holds.read.cir.json --entry holds.DeskService.checkIn
+```
+
+reaches `DeskService.shelve` and `NoticeService.pickupReady`, where without call lists the path
+ended at the `foreign` statement in `checkIn`.
+
+What a call list holds, a call before its receiver and its arguments, otherwise in source order:
+
+| The source | The call ref |
+| --- | --- |
+| a call the type checker resolved to a method of the module | `method`, `recv` its class; `func` for a static method that is read and for a constructor, `New<Class>` |
+| one it resolved to a class outside the module, a resolve-only class of the application among them | as the Java reader names an extern: `method` with `path` the package and `recv` the class; `func` with `path` the qualified class name for a static method and for a constructor, `<init>` |
+| one it resolved to a GDK method, `names.each { … }` | `func`, the static method that implements it: `path` `org.codehaus.groovy.runtime.DefaultGroovyMethods`, `name` `each` |
+| a call it did not resolve | `value`, `sig` `groovy dynamic call of <name>`: it names no function, and the fact base holds it as a call whose target is unknown |
+| `new T(…)` | the constructor call, then `new` of `T`, once for each class in a list |
+| a closure | `lambda` of `sig` `groovy.lang.Closure`, holding the calls of its body |
+| a method pointer, `x.&name` | `lambda` holding one `value` call, `groovy dynamic call of <name>`: Groovy resolves it when it runs |
+| a call of a closure, `step.call()` or `step()` | `value`, `sig` `groovy.lang.Closure` |
+
+A list holds what is written as a call. It does not hold what Groovy calls for a construct that is
+not one: an operator (`a + b` is `a.plus(b)`), a property read or write (`hold.title` is
+`getTitle()`), Groovy truth, a for-each loop's iteration, a coercion or a GString's `toString`.
+Nor does it hold a call of a member the compiler generates for a class of the module, a property's
+getter or setter called by its name.
+
+A call of a declared method the module holds no function for, a method without a body or one of
+two classes with one simple name, is a `value` call,
+`groovy call of <class>.<name>, which the module holds no function for`; so is a call into a class
+without a package, which has no `path` that is not the module's own.
+
+### Overloads are functions of their own
+
+`cir/1` keys a function by its receiver type and its name, and Groovy overloads. The reader reads
+the first declaration of a name and refuses each later one,
+`unsupported: a second method named <name>: overloading is outside cir/1`. The refused overload is
+an `opaque` function of its own, not part of the first: `cir/1` refuses two functions of one key,
+an `opaque` function has no field that says it stands for several declarations, and one function
+could not hold both the read body of the first and the call list of the second.
+
+A refused declaration keeps its name where no function of the module has it. Where one has, it
+takes the lowest number from 2 that is free: the second `renew` of `DeskService` in
+`testdata/holds` is `renew2`, the function `DeskService.renew2`; a third would be `renew3`, and a
+refused second constructor of `Desk` is `NewDesk2`, as the Java reader names a second constructor. The numbers follow source order. A call
+names the overload the type checker picked for it: `renew(hold)` is a call of `DeskService.renew`,
+`renew(hold, days)` one of `DeskService.renew2`. The number is the reader's; the source's name is
+the `what` of the refusal at the same position.
+
+A refused static method is `<Class>.<name>` too, with `recv` its class, where a static method that
+is read is the function `<name>`: two refused classes may each declare a static method of one name.
+A nested class of the module, which is refused, is the receiver `Outer$Inner`, the name the JVM
+gives it; outside the module it is `Outer.Inner`, as the Java reader names one.
+
+### What yields no function
+
+- A method without a body: it calls nothing.
+- A class refused for a duplicate simple name: neither of the two has a name in the module.
+- An artefact refused as a whole at file level, for an import that does not resolve or a failure
+  while it is compiled: the file is taken out of the compilation, so there is no body to list.
+- The statements of a script outside any method, and a field's initializer in a class that is
+  refused: a call there is in no call list.
+- A class refused as a whole that declares no constructor has no `New<Class>`.
 
 ## Grails 2.5.6 applications
 
@@ -305,6 +386,11 @@ them.
 - The overload Groovy picks at run time is the one the type checker picks. Groovy chooses by the
   run-time types of the arguments, the checker by their static types; they differ only where an
   argument's run-time type is a subtype that has its own overload.
+- A call list names the method the type checker resolved a call to, in the receiver's static type.
+  Where the receiver is an instance of a subclass that overrides the method, the override runs and
+  the list does not name it. A call the checker did not resolve names no target at all, so no
+  answer over the call graph rests on a target the reader guessed; what such a call reaches is
+  unknown, not nothing.
 - Every reference parameter of a method is not null.
 - The program runs under `Locale.ROOT`: `sprintf` prints ASCII digits.
 - Transactions: Grails 2 services are transactional by default, and the reader does not model a

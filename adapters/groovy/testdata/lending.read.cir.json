@@ -509,7 +509,8 @@
           "lang": "groovy",
           "src": "int end = returnedDay < 0 ? today : returnedDay // expect: refused unsupported",
           "reason": "unsupported: c ? a : b is outside cir/1",
-          "pos": "grails-app/domain/lending/Loan.groovy:21"
+          "pos": "grails-app/domain/lending/Loan.groovy:21",
+          "calls": []
         },
         {
           "k": "if",
@@ -1261,7 +1262,8 @@
           "lang": "groovy",
           "src": "long total = dailyFeeCents * days // expect: refused unsupported",
           "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1",
-          "pos": "grails-app/domain/lending/Tool.groovy:23"
+          "pos": "grails-app/domain/lending/Tool.groovy:23",
+          "calls": []
         },
         {
           "k": "return",
@@ -1656,7 +1658,14 @@
           "lang": "groovy",
           "src": "return Tool.get(id) // expect: refused gorm",
           "reason": "gorm: get on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/CatalogService.groovy:8"
+          "pos": "grails-app/services/lending/CatalogService.groovy:8",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of get",
+              "pos": "grails-app/services/lending/CatalogService.groovy:8"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:7"
@@ -1697,7 +1706,14 @@
           "lang": "groovy",
           "src": "return Tool.findByName(n) // expect: refused gorm",
           "reason": "gorm: findByName on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/CatalogService.groovy:12"
+          "pos": "grails-app/services/lending/CatalogService.groovy:12",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of findByName",
+              "pos": "grails-app/services/lending/CatalogService.groovy:12"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:11"
@@ -1741,7 +1757,26 @@
           "lang": "groovy",
           "src": "return Tool.withCriteria { // expect: refused gorm\n            eq('shelf', shelfName)\n        }",
           "reason": "gorm: withCriteria on Tool: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/CatalogService.groovy:16"
+          "pos": "grails-app/services/lending/CatalogService.groovy:16",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of withCriteria",
+              "pos": "grails-app/services/lending/CatalogService.groovy:16"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [
+                {
+                  "k": "value",
+                  "sig": "groovy dynamic call of eq",
+                  "pos": "grails-app/services/lending/CatalogService.groovy:17"
+                }
+              ],
+              "pos": "grails-app/services/lending/CatalogService.groovy:16"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:15"
@@ -1782,7 +1817,8 @@
           "lang": "groovy",
           "src": "return tool?.shelf // expect: refused groovy-semantics",
           "reason": "groovy-semantics: ?. gives null when the receiver is null",
-          "pos": "grails-app/services/lending/CatalogService.groovy:22"
+          "pos": "grails-app/services/lending/CatalogService.groovy:22",
+          "calls": []
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:21"
@@ -1825,7 +1861,8 @@
           "lang": "groovy",
           "src": "return name ?: fallback // expect: refused groovy-semantics",
           "reason": "groovy-semantics: ?: gives the right side when the left is null, empty or zero (Groovy truth)",
-          "pos": "grails-app/services/lending/CatalogService.groovy:26"
+          "pos": "grails-app/services/lending/CatalogService.groovy:26",
+          "calls": []
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:25"
@@ -1872,7 +1909,21 @@
           "lang": "groovy",
           "src": "return tools.collect { Tool t -> t.name } // expect: refused closure",
           "reason": "closure: a closure passed to collect: functions as values are outside cir/1",
-          "pos": "grails-app/services/lending/CatalogService.groovy:30"
+          "pos": "grails-app/services/lending/CatalogService.groovy:30",
+          "calls": [
+            {
+              "k": "func",
+              "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+              "name": "collect",
+              "pos": "grails-app/services/lending/CatalogService.groovy:30"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [],
+              "pos": "grails-app/services/lending/CatalogService.groovy:30"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:29"
@@ -1936,7 +1987,21 @@
           "lang": "groovy",
           "src": "tools.each { Tool t -> // expect: refused closure\n            lent = lent + t.timesLent\n        }",
           "reason": "closure: a closure passed to each: functions as values are outside cir/1",
-          "pos": "grails-app/services/lending/CatalogService.groovy:35"
+          "pos": "grails-app/services/lending/CatalogService.groovy:35",
+          "calls": [
+            {
+              "k": "func",
+              "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+              "name": "each",
+              "pos": "grails-app/services/lending/CatalogService.groovy:35"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [],
+              "pos": "grails-app/services/lending/CatalogService.groovy:35"
+            }
+          ]
         },
         {
           "k": "return",
@@ -1988,7 +2053,14 @@
           "lang": "groovy",
           "src": "return item.label() // expect: refused dynamic",
           "reason": "dynamic: call of label, which the type checker does not resolve: Groovy looks it up at run time",
-          "pos": "grails-app/services/lending/CatalogService.groovy:42"
+          "pos": "grails-app/services/lending/CatalogService.groovy:42",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of label",
+              "pos": "grails-app/services/lending/CatalogService.groovy:42"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:41"
@@ -2020,7 +2092,14 @@
           "lang": "groovy",
           "src": "return countShelves() // expect: refused dynamic",
           "reason": "dynamic: call of countShelves, which the type checker does not resolve: Groovy looks it up at run time",
-          "pos": "grails-app/services/lending/CatalogService.groovy:46"
+          "pos": "grails-app/services/lending/CatalogService.groovy:46",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of countShelves",
+              "pos": "grails-app/services/lending/CatalogService.groovy:46"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:45"
@@ -2046,7 +2125,8 @@
           "lang": "groovy",
           "src": "Tool.metaClass.defaultShelf = \"front\" // expect: refused dynamic",
           "reason": "dynamic: metaClass: a class changed through its metaclass at run time",
-          "pos": "grails-app/services/lending/CatalogService.groovy:50"
+          "pos": "grails-app/services/lending/CatalogService.groovy:50",
+          "calls": []
         }
       ],
       "pos": "grails-app/services/lending/CatalogService.groovy:49"
@@ -2196,7 +2276,23 @@
           "lang": "groovy",
           "src": "for (String shelf : perShelf.keySet()) { // expect: refused unsupported\n            total = total + perShelf.get(shelf)\n        }",
           "reason": "unsupported: a TreeMap the reader did not see built with new TreeMap<>() may carry any comparator; sorted_keys is the natural order",
-          "pos": "grails-app/services/lending/CatalogService.groovy:60"
+          "pos": "grails-app/services/lending/CatalogService.groovy:60",
+          "calls": [
+            {
+              "k": "method",
+              "path": "java.util",
+              "recv": "TreeMap",
+              "name": "keySet",
+              "pos": "grails-app/services/lending/CatalogService.groovy:60"
+            },
+            {
+              "k": "method",
+              "path": "java.util",
+              "recv": "TreeMap",
+              "name": "get",
+              "pos": "grails-app/services/lending/CatalogService.groovy:61"
+            }
+          ]
         },
         {
           "k": "return",
@@ -2507,7 +2603,8 @@
           "lang": "groovy",
           "src": "long fee = DAILY_LATE_FEE_CENTS * daysLate // expect: refused unsupported",
           "reason": "unsupported: a value of type int32 where a value of type int64 is expected: implicit conversions are outside cir/1",
-          "pos": "grails-app/services/lending/FeeService.groovy:12"
+          "pos": "grails-app/services/lending/FeeService.groovy:12",
+          "calls": []
         },
         {
           "k": "return",
@@ -3518,7 +3615,8 @@
           "lang": "groovy",
           "src": "return \"share \" + (cents / parts) // expect: refused groovy-semantics",
           "reason": "groovy-semantics: integer / integer is a BigDecimal division in Groovy, not a truncating one",
-          "pos": "grails-app/services/lending/FeeService.groovy:65"
+          "pos": "grails-app/services/lending/FeeService.groovy:65",
+          "calls": []
         }
       ],
       "pos": "grails-app/services/lending/FeeService.groovy:64"
@@ -3561,7 +3659,8 @@
           "lang": "groovy",
           "src": "return \"${memberName} overdue: ${overdue}\" // expect: refused groovy-semantics",
           "reason": "groovy-semantics: a GString value of type bool: only String and integer values are read, as Groovy prints them with toString",
-          "pos": "grails-app/services/lending/FeeService.groovy:69"
+          "pos": "grails-app/services/lending/FeeService.groovy:69",
+          "calls": []
         }
       ],
       "pos": "grails-app/services/lending/FeeService.groovy:68"
@@ -3605,7 +3704,8 @@
           "lang": "groovy",
           "src": "if (loans) { // expect: refused groovy-semantics\n            return \"has loans\"\n        }",
           "reason": "groovy-semantics: Groovy truth: a value of type []*Loan as a condition is true when it is not null, empty or zero",
-          "pos": "grails-app/services/lending/FeeService.groovy:73"
+          "pos": "grails-app/services/lending/FeeService.groovy:73",
+          "calls": []
         },
         {
           "k": "return",
@@ -3722,7 +3822,15 @@
           "lang": "groovy",
           "src": "return DueDates.dueDay(lentOnDay) // expect: refused unsupported",
           "reason": "unsupported: call of DueDates.dueDay, which is not read",
-          "pos": "grails-app/services/lending/LoanService.groovy:9"
+          "pos": "grails-app/services/lending/LoanService.groovy:9",
+          "calls": [
+            {
+              "k": "func",
+              "path": "lending.DueDates",
+              "name": "dueDay",
+              "pos": "grails-app/services/lending/LoanService.groovy:9"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:8"
@@ -3779,7 +3887,14 @@
           "lang": "groovy",
           "src": "member.addToLoans(loan) // expect: refused gorm",
           "reason": "gorm: addToLoans on Member: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/LoanService.groovy:13"
+          "pos": "grails-app/services/lending/LoanService.groovy:13",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of addToLoans",
+              "pos": "grails-app/services/lending/LoanService.groovy:13"
+            }
+          ]
         },
         {
           "k": "expr",
@@ -3809,7 +3924,14 @@
           "lang": "groovy",
           "src": "loan.save() // expect: refused gorm",
           "reason": "gorm: save on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/LoanService.groovy:15"
+          "pos": "grails-app/services/lending/LoanService.groovy:15",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of save",
+              "pos": "grails-app/services/lending/LoanService.groovy:15"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:12"
@@ -3846,7 +3968,14 @@
           "lang": "groovy",
           "src": "loan.delete() // expect: refused gorm",
           "reason": "gorm: delete on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/LoanService.groovy:19"
+          "pos": "grails-app/services/lending/LoanService.groovy:19",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of delete",
+              "pos": "grails-app/services/lending/LoanService.groovy:19"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:18"
@@ -3894,7 +4023,14 @@
           "lang": "groovy",
           "src": "return Loan.findAllByMember(member) // expect: refused gorm",
           "reason": "gorm: findAllByMember on Loan: GORM persistence is outside cir/1 until it has a persistence boundary",
-          "pos": "grails-app/services/lending/LoanService.groovy:23"
+          "pos": "grails-app/services/lending/LoanService.groovy:23",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of findAllByMember",
+              "pos": "grails-app/services/lending/LoanService.groovy:23"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:22"
@@ -3933,7 +4069,14 @@
           "lang": "groovy",
           "src": "return catalogService.toolById(toolId).name // expect: refused spring",
           "reason": "spring: call through an injected dependency, catalogService.toolById: Spring sets it at run time",
-          "pos": "grails-app/services/lending/LoanService.groovy:27"
+          "pos": "grails-app/services/lending/LoanService.groovy:27",
+          "calls": [
+            {
+              "k": "value",
+              "sig": "groovy dynamic call of toolById",
+              "pos": "grails-app/services/lending/LoanService.groovy:27"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:26"
@@ -3984,7 +4127,21 @@
           "lang": "groovy",
           "src": "return feeService.lateFeeCents(loan.daysLate(today)) // expect: refused spring",
           "reason": "spring: call through an injected dependency, feeService.lateFeeCents: Spring sets it at run time",
-          "pos": "grails-app/services/lending/LoanService.groovy:31"
+          "pos": "grails-app/services/lending/LoanService.groovy:31",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "FeeService",
+              "name": "lateFeeCents",
+              "pos": "grails-app/services/lending/LoanService.groovy:31"
+            },
+            {
+              "k": "method",
+              "recv": "Loan",
+              "name": "daysLate",
+              "pos": "grails-app/services/lending/LoanService.groovy:31"
+            }
+          ]
         }
       ],
       "pos": "grails-app/services/lending/LoanService.groovy:30"
@@ -4219,6 +4376,15 @@
       "pos": "grails-app/services/lending/TransactionalAuditService.groovy:3",
       "what": "import grails.transaction.Transactional // expect: refused unresolved",
       "reason": "unresolved: grails.transaction.Transactional"
+    }
+  ],
+  "opaque": [
+    {
+      "name": "methodMissing",
+      "recv": "Tool",
+      "pos": "grails-app/domain/lending/Tool.groovy:40",
+      "reason": "dynamic: methodMissing declared: Groovy calls it at run time for names the class does not declare",
+      "calls": []
     }
   ]
 }

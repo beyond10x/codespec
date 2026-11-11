@@ -4,6 +4,19 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-groovy` writes the calls of the code it does not read, so `codespec reach`, `cq`
+  and `calls` answer over a Groovy module whose bodies are mostly refused. Every `foreign`
+  statement carries `calls`; a method or constructor refused at its declaration, and every one of
+  a class refused as a whole, is an `opaque` function with its `reason` and its `calls`. A call
+  names the method the type checker resolved, in the module or outside it as the Java reader names
+  an extern; a call it did not resolve is a `value` call, which names no function; a closure is a
+  `lambda` with its own calls. A refused overload is an `opaque` function of its own, numbered
+  from 2: the second `renew` of a class is `renew2`. A document read before gains `calls` on its
+  `foreign` statements and `opaque`, and nothing else changes
+  (`adapters/groovy/README.md`, "Call lists"; fixture `adapters/groovy/testdata/holds`).
+
 ### Changed
 
 - `codespec-read-groovy` runs no local AST transformation of a `CODESPEC_GROOVY_CLASSPATH` jar,

@@ -1,0 +1,1170 @@
+{
+  "format": "cir/1",
+  "name": "holds",
+  "reader": {
+    "language": "groovy",
+    "name": "codespec-read-groovy",
+    "version": "0.8.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "Hold",
+      "exported": true,
+      "fields": [
+        {
+          "name": "title",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "placedOnDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        },
+        {
+          "name": "shelvedOnDay",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/domain/holds/Hold.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "DeskService",
+      "exported": true,
+      "fields": [],
+      "pos": "grails-app/services/holds/DeskService.groovy:3"
+    },
+    {
+      "k": "struct",
+      "name": "NoticeService",
+      "exported": true,
+      "fields": [
+        {
+          "name": "sent",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "pos": "grails-app/services/holds/NoticeService.groovy:3"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "NewHold",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Hold"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "Hold",
+                "fields": [
+                  {
+                    "name": "title",
+                    "value": {
+                      "k": "lit",
+                      "value": "\"\"",
+                      "t": {
+                        "k": "string"
+                      }
+                    }
+                  },
+                  {
+                    "name": "placedOnDay",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  },
+                  {
+                    "name": "shelvedOnDay",
+                    "value": {
+                      "k": "lit",
+                      "value": "-1",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "Hold"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Hold"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/holds/Hold.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "Hold"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/domain/holds/Hold.groovy:3"
+        }
+      ],
+      "pos": "grails-app/domain/holds/Hold.groovy:3"
+    },
+    {
+      "name": "daysWaiting",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Hold"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": "-",
+              "x": {
+                "k": "var",
+                "name": "today",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Hold"
+                    }
+                  }
+                },
+                "name": "placedOnDay",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/domain/holds/Hold.groovy:14"
+        }
+      ],
+      "pos": "grails-app/domain/holds/Hold.groovy:13"
+    },
+    {
+      "name": "isShelved",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "Hold"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "binop",
+              "op": ">=",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Hold"
+                    }
+                  }
+                },
+                "name": "shelvedOnDay",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "0",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "bool"
+              }
+            }
+          ],
+          "pos": "grails-app/domain/holds/Hold.groovy:18"
+        }
+      ],
+      "pos": "grails-app/domain/holds/Hold.groovy:17"
+    },
+    {
+      "name": "NewDeskService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "DeskService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "DeskService",
+                "fields": [],
+                "t": {
+                  "k": "named",
+                  "name": "DeskService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "DeskService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "DeskService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/holds/DeskService.groovy:3"
+    },
+    {
+      "name": "checkIn",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "DeskService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "hold",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Hold"
+            }
+          }
+        },
+        {
+          "name": "today",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "waited"
+          ],
+          "rhs": [
+            {
+              "k": "method",
+              "x": {
+                "k": "var",
+                "name": "hold",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Hold"
+                  }
+                }
+              },
+              "name": "daysWaiting",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "today",
+                  "t": {
+                    "k": "int",
+                    "width": "32",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:8"
+        },
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "shelve(hold, today)",
+          "reason": "unsupported: call of DeskService.shelve, which is not read",
+          "pos": "grails-app/services/holds/DeskService.groovy:9",
+          "calls": [
+            {
+              "k": "method",
+              "recv": "DeskService",
+              "name": "shelve",
+              "pos": "grails-app/services/holds/DeskService.groovy:9"
+            }
+          ]
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "waited",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:10"
+        }
+      ],
+      "pos": "grails-app/services/holds/DeskService.groovy:7"
+    },
+    {
+      "name": "renew",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "DeskService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "hold",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "named",
+              "name": "Hold"
+            }
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "hold",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "Hold"
+                  }
+                }
+              },
+              "name": "placedOnDay",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "hold",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "Hold"
+                    }
+                  }
+                },
+                "name": "placedOnDay",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "7",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:20"
+        }
+      ],
+      "pos": "grails-app/services/holds/DeskService.groovy:19"
+    },
+    {
+      "name": "renewAll",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "DeskService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "waiting",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "ptr",
+              "elem": {
+                "k": "named",
+                "name": "Hold"
+              }
+            }
+          }
+        },
+        {
+          "name": "days",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "groovy",
+          "src": "waiting.each { Hold h -> renew(h, days) }",
+          "reason": "closure: a closure passed to each: functions as values are outside cir/1",
+          "pos": "grails-app/services/holds/DeskService.groovy:29",
+          "calls": [
+            {
+              "k": "func",
+              "path": "org.codehaus.groovy.runtime.DefaultGroovyMethods",
+              "name": "each",
+              "pos": "grails-app/services/holds/DeskService.groovy:29"
+            },
+            {
+              "k": "lambda",
+              "sig": "groovy.lang.Closure",
+              "calls": [
+                {
+                  "k": "method",
+                  "recv": "DeskService",
+                  "name": "renew2",
+                  "pos": "grails-app/services/holds/DeskService.groovy:29"
+                }
+              ],
+              "pos": "grails-app/services/holds/DeskService.groovy:29"
+            }
+          ]
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "conv",
+              "name": "int32",
+              "x": {
+                "k": "intrinsic",
+                "name": "len",
+                "args": [
+                  {
+                    "k": "var",
+                    "name": "waiting",
+                    "t": {
+                      "k": "slice",
+                      "elem": {
+                        "k": "ptr",
+                        "elem": {
+                          "k": "named",
+                          "name": "Hold"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/DeskService.groovy:30"
+        }
+      ],
+      "pos": "grails-app/services/holds/DeskService.groovy:28"
+    },
+    {
+      "name": "NewNoticeService",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "NoticeService"
+          }
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "this"
+          ],
+          "rhs": [
+            {
+              "k": "unop",
+              "op": "&",
+              "x": {
+                "k": "struct",
+                "name": "NoticeService",
+                "fields": [
+                  {
+                    "name": "sent",
+                    "value": {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "32",
+                        "signed": true
+                      }
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "named",
+                  "name": "NoticeService"
+                }
+              },
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "NoticeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/NoticeService.groovy:3"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "this",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "named",
+                  "name": "NoticeService"
+                }
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/NoticeService.groovy:3"
+        }
+      ],
+      "pos": "grails-app/services/holds/NoticeService.groovy:3"
+    },
+    {
+      "name": "pickupReady",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "NoticeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "daysWaited",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "NoticeService"
+                  }
+                }
+              },
+              "name": "sent",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "NoticeService"
+                    }
+                  }
+                },
+                "name": "sent",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/NoticeService.groovy:8"
+        }
+      ],
+      "pos": "grails-app/services/holds/NoticeService.groovy:7"
+    },
+    {
+      "name": "remind",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "NoticeService"
+          }
+        }
+      },
+      "params": [
+        {
+          "name": "daysLeft",
+          "t": {
+            "k": "int",
+            "width": "32",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "NoticeService"
+                  }
+                }
+              },
+              "name": "sent",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "binop",
+              "op": "+",
+              "x": {
+                "k": "field",
+                "x": {
+                  "k": "var",
+                  "name": "this",
+                  "t": {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "named",
+                      "name": "NoticeService"
+                    }
+                  }
+                },
+                "name": "sent",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "y": {
+                "k": "lit",
+                "value": "1",
+                "t": {
+                  "k": "int",
+                  "width": "32",
+                  "signed": true
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/NoticeService.groovy:12"
+        }
+      ],
+      "pos": "grails-app/services/holds/NoticeService.groovy:11"
+    },
+    {
+      "name": "sentCount",
+      "exported": true,
+      "recv": {
+        "name": "this",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "NoticeService"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "32",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "this",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "NoticeService"
+                  }
+                }
+              },
+              "name": "sent",
+              "t": {
+                "k": "int",
+                "width": "32",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "grails-app/services/holds/NoticeService.groovy:16"
+        }
+      ],
+      "pos": "grails-app/services/holds/NoticeService.groovy:15"
+    }
+  ],
+  "layout": [
+    "type:Hold",
+    "func:NewHold",
+    "func:Hold.daysWaiting",
+    "func:Hold.isShelved",
+    "type:DeskService",
+    "func:NewDeskService",
+    "func:DeskService.checkIn",
+    "func:DeskService.renew",
+    "func:DeskService.renewAll",
+    "type:NoticeService",
+    "func:NewNoticeService",
+    "func:NoticeService.pickupReady",
+    "func:NoticeService.remind",
+    "func:NoticeService.sentCount"
+  ],
+  "refusals": [
+    {
+      "pos": "grails-app/domain/holds/Hold.groovy:9",
+      "what": "Hold.constraints",
+      "reason": "gorm: mapping metadata constraints"
+    },
+    {
+      "pos": "grails-app/services/holds/DeskService.groovy:5",
+      "what": "DeskService.noticeService",
+      "reason": "spring: injected dependency"
+    },
+    {
+      "pos": "grails-app/services/holds/DeskService.groovy:9",
+      "what": "shelve(hold, today)",
+      "reason": "unsupported: call of DeskService.shelve, which is not read"
+    },
+    {
+      "pos": "grails-app/services/holds/DeskService.groovy:13",
+      "what": "DeskService.shelve(…)",
+      "reason": "dynamic: shelve returns def: its result has the type of whatever it returns"
+    },
+    {
+      "pos": "grails-app/services/holds/DeskService.groovy:23",
+      "what": "DeskService.renew(…)",
+      "reason": "unsupported: a second method named renew: overloading is outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/holds/DeskService.groovy:29",
+      "what": "waiting.each { Hold h -> renew(h, days) }",
+      "reason": "closure: a closure passed to each: functions as values are outside cir/1"
+    },
+    {
+      "pos": "grails-app/services/holds/RecallService.groovy:3",
+      "what": "RecallService",
+      "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1"
+    }
+  ],
+  "opaque": [
+    {
+      "name": "shelve",
+      "recv": "DeskService",
+      "pos": "grails-app/services/holds/DeskService.groovy:13",
+      "reason": "dynamic: shelve returns def: its result has the type of whatever it returns",
+      "calls": [
+        {
+          "k": "method",
+          "recv": "NoticeService",
+          "name": "pickupReady",
+          "pos": "grails-app/services/holds/DeskService.groovy:15"
+        },
+        {
+          "k": "method",
+          "recv": "Hold",
+          "name": "daysWaiting",
+          "pos": "grails-app/services/holds/DeskService.groovy:15"
+        }
+      ]
+    },
+    {
+      "name": "renew2",
+      "recv": "DeskService",
+      "pos": "grails-app/services/holds/DeskService.groovy:23",
+      "reason": "unsupported: a second method named renew: overloading is outside cir/1",
+      "calls": [
+        {
+          "k": "method",
+          "recv": "NoticeService",
+          "name": "remind",
+          "pos": "grails-app/services/holds/DeskService.groovy:25"
+        }
+      ]
+    },
+    {
+      "name": "NewRecallService",
+      "pos": "grails-app/services/holds/RecallService.groovy:7",
+      "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1",
+      "calls": [
+        {
+          "k": "method",
+          "recv": "RecallService",
+          "name": "graceDays",
+          "pos": "grails-app/services/holds/RecallService.groovy:8"
+        }
+      ]
+    },
+    {
+      "name": "recall",
+      "recv": "RecallService",
+      "pos": "grails-app/services/holds/RecallService.groovy:11",
+      "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1",
+      "calls": [
+        {
+          "k": "method",
+          "recv": "DeskService",
+          "name": "renew",
+          "pos": "grails-app/services/holds/RecallService.groovy:12"
+        },
+        {
+          "k": "method",
+          "recv": "NoticeService",
+          "name": "remind",
+          "pos": "grails-app/services/holds/RecallService.groovy:13"
+        },
+        {
+          "k": "func",
+          "path": "holds.Slip",
+          "name": "<init>",
+          "pos": "grails-app/services/holds/RecallService.groovy:14"
+        },
+        {
+          "k": "new",
+          "path": "holds",
+          "name": "Slip",
+          "pos": "grails-app/services/holds/RecallService.groovy:14"
+        },
+        {
+          "k": "method",
+          "path": "java.lang",
+          "recv": "String",
+          "name": "trim",
+          "pos": "grails-app/services/holds/RecallService.groovy:15"
+        },
+        {
+          "k": "method",
+          "path": "holds",
+          "recv": "Slip",
+          "name": "text",
+          "pos": "grails-app/services/holds/RecallService.groovy:15"
+        },
+        {
+          "k": "value",
+          "sig": "groovy dynamic call of archive",
+          "pos": "grails-app/services/holds/RecallService.groovy:16"
+        }
+      ]
+    },
+    {
+      "name": "graceDays",
+      "recv": "RecallService",
+      "pos": "grails-app/services/holds/RecallService.groovy:19",
+      "reason": "unsupported: class extends holds.NoticeService: inheritance is outside cir/1",
+      "calls": []
+    }
+  ]
+}

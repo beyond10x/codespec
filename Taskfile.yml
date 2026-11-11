@@ -336,6 +336,7 @@ tasks:
       - '{{.CODESPEC}} write --lang go examples/ledger/ledger.read.cir.json --out examples/ledger/out/go --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} write --lang rust examples/ledger/ledger.cir.json --out examples/ledger/out/rust --adapters {{.ADAPTERS}}'
       - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/lending --out adapters/groovy/testdata/lending.read.cir.json --adapters {{.ADAPTERS}}'
+      - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy adapters/groovy/testdata/holds --out adapters/groovy/testdata/holds.read.cir.json --adapters {{.ADAPTERS}}'
       - 'env -u CODESPEC_GROOVY_CLASSPATH {{.CODESPEC}} read --lang groovy examples/fees/source --out examples/fees/fees.read.cir.json --adapters {{.ADAPTERS}}'
       - '{{.CODESPEC}} measure examples/fees/fees.read.cir.json > examples/fees/fees.measure.txt'
       - '{{.CODESPEC}} read --lang go examples/envcheck/source --out examples/envcheck/envcheck.read.cir.json --adapters {{.ADAPTERS}}'
