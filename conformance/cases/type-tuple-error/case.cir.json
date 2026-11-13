@@ -4,7 +4,7 @@
   "reader": {
     "language": "go",
     "name": "codespec-read-go",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "types": [],
   "errors": [

@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "c",
-    "version": "0.9.0",
-    "manifest_sha256": "e6a28dbf9ba85932dffa71a9b8647e01e7f0cb921f9f1dd0b598cf40afabc309"
+    "version": "0.10.0",
+    "manifest_sha256": "8d721a410ac01ac59f018630121804682e136256a5932b723457a676e4e726fd"
   },
   "kit": {
-    "version": "0.9.0",
-    "sha256": "c6c67aef6822ba649263bb8c4026f8dd616593c1c539f724475aca1837943bb1"
+    "version": "0.10.0",
+    "sha256": "a59ad2b6506ca2240a83e1fb0436087d3fafe616adfc44d9c4bbd7b93465d147"
   },
-  "codespec": "0.9.0",
+  "codespec": "0.10.0",
   "features": [
     {
       "id": "assign.add",
