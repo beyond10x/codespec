@@ -191,6 +191,7 @@
 //! |---|---|
 //! | size | `Cargo.toml` and each source file up to [`MAX_SOURCE_BYTES`], 4 MiB each, read no further than one byte past it; a module file past it is a refusal at its `mod` declaration |
 //! | files | [`MAX_FILES`], 4096 files, and [`MAX_CRATE_BYTES`], 64 MiB of source over all of them: a crate past either is refused |
+//! | module depth | [`MAX_MODULE_DEPTH`], 64 modules deep (`crate::a::b` is 2): a `mod` declaring a deeper module is refused at its line |
 //! | nesting | [`MAX_NESTING`], 256 levels per file, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`; a module file past it is a refusal at its `mod` declaration). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item (an identifier other than `else` or `as`, an attribute or doc comment, a label or a literal follows it); a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
 //! | stack | parsing, lifting and dropping the syntax tree run on a thread with a 256 MiB stack |
 
@@ -199,7 +200,7 @@ mod calls;
 mod files;
 mod names;
 
-pub use files::{MAX_CRATE_BYTES, MAX_FILES};
+pub use files::{MAX_CRATE_BYTES, MAX_FILES, MAX_MODULE_DEPTH};
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -274,6 +275,7 @@ fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
         files,
         span_files,
         refusals,
+        apart,
     } = tree;
     let modules: Vec<String> = items.iter().map(|(_, m)| m.clone()).collect();
     let mut ast = syn::File {
@@ -297,6 +299,7 @@ fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
     r.refusals = refusals;
     r.tables = tables;
     r.item_modules = modules;
+    r.apart = apart;
     r.scan(&ast);
     Ok(r.module(name, &ast))
 }
@@ -335,6 +338,8 @@ fn call_tables(f: &syn::File, modules: &[String]) -> calls::Tables {
             }
             syn::Item::Enum(e) => {
                 t.types.insert(e.ident.to_string());
+                t.variants
+                    .extend(e.variants.iter().map(|v| v.ident.to_string()));
             }
             syn::Item::Union(u) => {
                 t.types.insert(u.ident.to_string());
@@ -870,6 +875,9 @@ pub(crate) struct Reader {
     pub at: RefCell<(String, Option<String>)>,
     /// The functions refused whole, with their calls.
     pub opaque: Vec<codespec_model::Opaque>,
+    /// The functions and impls refused for a name two modules declare, each with its module's
+    /// path and the reason: read as opaque functions only.
+    pub apart: Vec<(syn::Item, String, String)>,
 }
 
 /// The type parameters in scope while an item is read, a generic function's or impl's, and the
@@ -1099,6 +1107,7 @@ impl Reader {
             item_modules: Vec::new(),
             at: RefCell::new(("crate".into(), None)),
             opaque: Vec::new(),
+            apart: Vec::new(),
         }
     }
 
@@ -3006,6 +3015,7 @@ impl Reader {
             r.reason = one_line(&r.reason);
         }
         refusals.sort_by_key(|r| self.pos_key(&r.pos));
+        self.push_apart();
         let mut opaque = self.opaque_named_apart(&funcs);
         for o in &mut opaque {
             o.reason = one_line(&o.reason);
@@ -3077,6 +3087,51 @@ impl Reader {
             no_body: false,
             calls,
         });
+    }
+
+    /// The functions and impls refused for a name two modules declare: each function an opaque
+    /// one, named as the reader names a function it reads, listing its calls.
+    fn push_apart(&mut self) {
+        for (item, module, reason) in std::mem::take(&mut self.apart) {
+            let self_ty = match &item {
+                syn::Item::Impl(im) => impl_type_name(&im.self_ty),
+                _ => None,
+            };
+            *self.at.borrow_mut() = (module, self_ty.clone());
+            let push = |r: &mut Self,
+                        recv: Option<String>,
+                        name: String,
+                        f: (&syn::Signature, &syn::Block)| {
+                let calls = calls::of_block(r, f.1);
+                r.opaque.push(codespec_model::Opaque {
+                    name,
+                    recv,
+                    pos: r.pos(f.0.ident.span()),
+                    reason: reason.clone(),
+                    no_body: false,
+                    calls,
+                });
+            };
+            match &item {
+                syn::Item::Fn(f) => {
+                    let name = calls::fn_name(&f.sig.ident.to_string(), is_pub(&f.vis));
+                    push(self, None, name, (&f.sig, &f.block));
+                }
+                syn::Item::Impl(im) => {
+                    let Some(t) = self_ty else { continue };
+                    for ii in &im.items {
+                        let syn::ImplItem::Fn(f) = ii else { continue };
+                        let base = calls::fn_name(&f.sig.ident.to_string(), is_pub(&f.vis));
+                        if matches!(f.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+                            push(self, Some(t.clone()), base, (&f.sig, &f.block));
+                        } else {
+                            push(self, None, format!("{base}{t}"), (&f.sig, &f.block));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Every function of an impl refused whole, each an opaque function.

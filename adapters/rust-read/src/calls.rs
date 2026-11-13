@@ -8,11 +8,13 @@
 //! | `self.m(…)`, `m` a method of the impl's type | `method` of that type |
 //! | `a::b::f(…)` outside the crate, the module's `use` declarations resolving `a` | `func` with `path` `a::b` (`std::process::Command::new` is `path` `std::process::Command`, `name` `new`) |
 //! | `x.m(…)`, any other receiver | `named`, form `method`, the method's name: the reader does not know the receiver's type |
-//! | `f(…)`, `f` neither the crate's function nor imported (a closure, a local function value) | `value`, `sig` empty |
-//! | `m!(…)`, `a::m!(…)` | `named`, form `macro`, `path` as written or as the module's `use` gives it; the arguments are read as expressions where they parse as a comma-separated list (`format!`, `println!`, `assert_eq!`, `vec!`), and their calls listed |
-//! | `T(…)`, `T::V(…)`, `Some(…)`, `Ok(…)` (a name starting with an upper-case letter) | not a call: a tuple struct or variant made |
+//! | `<T as Tr>::f(…)`, `<T>::f(…)` | as `T::f(…)`; `named`, form `method`, `f` when `T` is no path (`<[u8]>::len`) |
+//! | `f(…)`, `f` neither the crate's function nor imported by name (a closure or function value, a function of an `extern` block, of a glob import or of the prelude) | `named`, form `func`, `f` |
+//! | `(e)(…)`, any other callee expression | `value`, `sig` empty |
+//! | `m!(…)`, `a::m!(…)` | `named`, form `macro`, `path` as written or as the module's `use` gives it; the arguments are read as expressions where they parse as a comma-separated list (`format!`, `println!`, `assert_eq!`, `vec!`), and their calls listed, except of a macro that does not evaluate them (`stringify!`, `concat!`, `env!`, `include_str!` and the like) |
+//! | `T(…)`, `T::V(…)`, `Self(…)`, `Some(…)`, `Ok(…)`, `Err(…)`: `T` a type of the crate, `V` a name starting with an upper-case letter | not a call: a tuple struct or variant made |
 //! | a closure's body | its calls, listed as the enclosing function's |
-//! | an item inside a body | not listed: it is a function of its own |
+//! | a function, impl, constant or static inside a body | its calls, listed as the enclosing function's (it runs only from there); a call of such a function by its name is not listed again |
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -33,6 +35,8 @@ pub(crate) struct Tables {
     pub assoc: BTreeMap<(String, String), (Option<String>, String)>,
     /// The type names the crate declares.
     pub types: BTreeSet<String>,
+    /// The names of the variants of the crate's enums, which a glob import may bring in.
+    pub variants: BTreeSet<String>,
     /// Every module path of the crate (`crate`, `crate::wire`).
     pub modules: BTreeSet<String>,
     /// Each module's imports: the name brought in and the full path it names, `crate` first for
@@ -161,12 +165,47 @@ pub(crate) fn fn_name(rust: &str, public: bool) -> String {
     }
 }
 
+/// The macros of the standard library that do not evaluate their arguments: a call written
+/// inside one never runs.
+const UNEVALUATED: &[&str] = &[
+    "stringify",
+    "concat",
+    "concat_idents",
+    "env",
+    "option_env",
+    "include",
+    "include_str",
+    "include_bytes",
+    "cfg",
+    "compile_error",
+    "file",
+    "line",
+    "column",
+    "module_path",
+];
+
+/// The variants of the prelude a call may make.
+const PRELUDE_VARIANTS: &[&str] = &["Some", "None", "Ok", "Err"];
+
 /// Lists the calls of a piece of Rust.
 pub(crate) struct Lister<'r> {
     r: &'r Reader,
     module: String,
     self_ty: Option<String>,
+    /// The functions declared inside the piece, by name: their calls are listed in place.
+    locals: BTreeSet<String>,
     pub out: Vec<CallRef>,
+}
+
+/// The names of the functions declared inside a piece of Rust, at any depth.
+#[derive(Default)]
+struct Locals(BTreeSet<String>);
+
+impl<'ast> Visit<'ast> for Locals {
+    fn visit_item_fn(&mut self, f: &'ast syn::ItemFn) {
+        self.0.insert(f.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, f);
+    }
 }
 
 impl<'r> Lister<'r> {
@@ -176,8 +215,29 @@ impl<'r> Lister<'r> {
             r,
             module,
             self_ty,
+            locals: BTreeSet::new(),
             out: Vec::new(),
         }
+    }
+
+    /// Whether the call of `full`, resolved, makes a value instead: a tuple struct or a variant
+    /// of the crate, of `Self` or of the prelude.
+    fn makes(&self, full: &[String]) -> bool {
+        let t = &self.r.tables;
+        let Some(last) = full.last() else {
+            return false;
+        };
+        if !last.starts_with(|c: char| c.is_uppercase()) {
+            return false;
+        }
+        if full.len() == 1 {
+            return PRELUDE_VARIANTS.contains(&last.as_str()) || t.variants.contains(last);
+        }
+        if full.first().map(String::as_str) != Some("crate") {
+            return false;
+        }
+        let owner = &full[full.len() - 2];
+        t.types.contains(last) || t.types.contains(owner)
     }
 
     fn pos(&self, n: &impl Spanned) -> String {
@@ -186,13 +246,19 @@ impl<'r> Lister<'r> {
 
     fn path_call(&mut self, p: &syn::Path, at: &impl Spanned) {
         let segs: Vec<String> = p.segments.iter().map(|s| s.ident.to_string()).collect();
-        let Some(last) = segs.last() else { return };
-        if last.starts_with(|c: char| c.is_uppercase()) {
+        self.segs_call(&segs, at);
+    }
+
+    fn segs_call(&mut self, segs: &[String], at: &impl Spanned) {
+        if segs.is_empty() {
             return;
         }
         let t = &self.r.tables;
         let pos = self.pos(at);
-        let full = t.resolve(&self.module, self.self_ty.as_deref(), &segs);
+        let full = t.resolve(&self.module, self.self_ty.as_deref(), segs);
+        if self.makes(&full) {
+            return;
+        }
         if full.first().map(String::as_str) == Some("crate") {
             let name = full.last().cloned().unwrap_or_default();
             let owner = (full.len() >= 3).then(|| full[full.len() - 2].clone());
@@ -231,8 +297,13 @@ impl<'r> Lister<'r> {
             return;
         }
         if full.len() == 1 {
-            self.out.push(CallRef::Value {
-                sig: String::new(),
+            if self.locals.contains(&full[0]) {
+                return;
+            }
+            self.out.push(CallRef::Named {
+                form: "func".into(),
+                path: String::new(),
+                name: full[0].clone(),
                 pos,
             });
             return;
@@ -273,6 +344,10 @@ impl<'r> Lister<'r> {
             name: name.clone(),
             pos: self.pos(m),
         });
+        let std_path = path.is_empty() || matches!(path[0].as_str(), "std" | "core");
+        if std_path && UNEVALUATED.contains(&name.as_str()) {
+            return;
+        }
         use syn::parse::Parser;
         let list = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated;
         if let Ok(args) = list.parse2(m.tokens.clone()) {
@@ -296,6 +371,38 @@ impl<'ast> Visit<'ast> for Lister<'_> {
     fn visit_expr_call(&mut self, c: &'ast syn::ExprCall) {
         match &*c.func {
             syn::Expr::Path(p) if p.qself.is_none() => self.path_call(&p.path, &p.path),
+            syn::Expr::Path(p) => {
+                let q = p.qself.as_ref().expect("a qualified path");
+                let rest: Vec<String> = p
+                    .path
+                    .segments
+                    .iter()
+                    .skip(q.position)
+                    .map(|s| s.ident.to_string())
+                    .collect();
+                match &*q.ty {
+                    syn::Type::Path(tp) if tp.qself.is_none() => {
+                        let mut segs: Vec<String> = tp
+                            .path
+                            .segments
+                            .iter()
+                            .map(|s| s.ident.to_string())
+                            .collect();
+                        segs.extend(rest);
+                        self.segs_call(&segs, &p.path);
+                    }
+                    _ => {
+                        if let Some(name) = rest.last() {
+                            self.out.push(CallRef::Named {
+                                form: "method".into(),
+                                path: String::new(),
+                                name: name.clone(),
+                                pos: self.pos(&p.path),
+                            });
+                        }
+                    }
+                }
+            }
             other => {
                 self.visit_expr(other);
                 self.out.push(CallRef::Value {
@@ -346,7 +453,83 @@ impl<'ast> Visit<'ast> for Lister<'_> {
         self.mac(m);
     }
 
-    fn visit_item(&mut self, _: &'ast syn::Item) {}
+    /// An item inside the piece: the calls of its bodies, listed as the piece's. `self` inside
+    /// it is not the enclosing impl's.
+    fn visit_item(&mut self, i: &'ast syn::Item) {
+        let outer = self.self_ty.take();
+        match i {
+            syn::Item::Fn(f) => self.visit_block(&f.block),
+            syn::Item::Impl(im) => {
+                for ii in &im.items {
+                    match ii {
+                        syn::ImplItem::Fn(f) => self.visit_block(&f.block),
+                        syn::ImplItem::Const(c) => self.visit_expr(&c.expr),
+                        _ => {}
+                    }
+                }
+            }
+            syn::Item::Trait(t) => {
+                for ti in &t.items {
+                    match ti {
+                        syn::TraitItem::Fn(f) => {
+                            if let Some(b) = &f.default {
+                                self.visit_block(b);
+                            }
+                        }
+                        syn::TraitItem::Const(c) => {
+                            if let Some((_, e)) = &c.default {
+                                self.visit_expr(e);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            syn::Item::Const(c) => self.visit_expr(&c.expr),
+            syn::Item::Static(s) => self.visit_expr(&s.expr),
+            syn::Item::Mod(m) => {
+                for it in m.content.iter().flat_map(|(_, items)| items) {
+                    self.visit_item(it);
+                }
+            }
+            syn::Item::Macro(m) if !m.mac.path.is_ident("macro_rules") => self.mac(&m.mac),
+            _ => {}
+        }
+        self.self_ty = outer;
+    }
+}
+
+/// A piece of Rust whose calls are listed.
+trait Piece {
+    fn walk<'a, V: Visit<'a>>(&'a self, v: &mut V);
+}
+
+impl Piece for syn::Stmt {
+    fn walk<'a, V: Visit<'a>>(&'a self, v: &mut V) {
+        v.visit_stmt(self);
+    }
+}
+
+impl Piece for syn::Expr {
+    fn walk<'a, V: Visit<'a>>(&'a self, v: &mut V) {
+        v.visit_expr(self);
+    }
+}
+
+impl Piece for syn::Block {
+    fn walk<'a, V: Visit<'a>>(&'a self, v: &mut V) {
+        v.visit_block(self);
+    }
+}
+
+/// The calls of `p`, in source order.
+fn list(r: &Reader, p: &impl Piece) -> Vec<CallRef> {
+    let mut locals = Locals::default();
+    p.walk(&mut locals);
+    let mut l = Lister::new(r);
+    l.locals = locals.0;
+    p.walk(&mut l);
+    l.out
 }
 
 /// Source whose calls a `foreign` statement lists.
@@ -357,22 +540,16 @@ pub(crate) trait Listed {
 
 impl Listed for syn::Stmt {
     fn listed(&self, r: &Reader) -> Vec<CallRef> {
-        let mut l = Lister::new(r);
-        l.visit_stmt(self);
-        l.out
+        list(r, self)
     }
 }
 
 impl Listed for syn::Expr {
     fn listed(&self, r: &Reader) -> Vec<CallRef> {
-        let mut l = Lister::new(r);
-        l.visit_expr(self);
-        l.out
+        list(r, self)
     }
 }
 
 pub(crate) fn of_block(r: &Reader, b: &syn::Block) -> Vec<CallRef> {
-    let mut l = Lister::new(r);
-    l.visit_block(b);
-    l.out
+    list(r, b)
 }

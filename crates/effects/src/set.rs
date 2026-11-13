@@ -653,10 +653,12 @@ impl<'a> Graph<'a> {
                 } else {
                     format!("{path}.{name}")
                 };
-                let reason = if form == "macro" {
-                    format!("macro invocation, not expanded: {what}")
-                } else {
-                    format!("method call on a value of a type the reader did not know: {what}")
+                let reason = match form.as_str() {
+                    "macro" => format!("macro invocation, not expanded: {what}"),
+                    "func" => format!("call of a name the reader did not resolve: {what}"),
+                    _ => {
+                        format!("method call on a value of a type the reader did not know: {what}")
+                    }
                 };
                 self.unknown(holder, pos, reason);
             }

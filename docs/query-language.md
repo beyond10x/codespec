@@ -175,7 +175,9 @@ hot(F, C, N) :- call{func: F, callee: C}, N = count{ call{func: F, callee: C} },
 - `~"regex"` matches a string field: `callee: ~"^strconv\.Parse(Int|Uint)$"`. The dialect, linear
   in the string: literals, `.`, `^`, `$`, classes, `\d \w \s` and their negations, the word
   boundary `\b` and `\B`, groups, `|`, the quantifiers `* + ? {n,m}`, and a leading `(?i)` that
-  matches letters in either case (`N ~ "(?i)\btoken\b"`). The crate doc of `crates/query`
+  matches letters in either case (`N ~ "(?i)\btoken\b"`): every letter with a one-character
+  lower and upper case folds, beyond ASCII too (`ä` matches `Ä`), while `\w`, `\b` and `\B`
+  stay ASCII, so a non-ASCII letter is no word character. The crate doc of `crates/query`
   (`regex.rs`) states it in full.
 - `in @names.receive` tests membership in a named list from a data file (R9). Lists ship with the
   checks and can be replaced with `--names <file>`.

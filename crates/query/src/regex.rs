@@ -6,7 +6,8 @@
 //! trailing `?` is accepted; only whether a match exists is asked). A leading `(?i)` makes the
 //! whole expression match letters in either case: a character of the string also matches as its
 //! lower and its upper case, each where it is one character, so `(?i)[^a-z]` matches no letter of
-//! `A-Z`; a flag anywhere else is refused.
+//! `A-Z`; a flag anywhere else is refused. The folding is Unicode's (`ä` matches `Ä`), while `\w`,
+//! `\b` and `\B` are ASCII: a non-ASCII letter is no word character.
 //!
 //! An expression compiles to a program of at most [`MAX_PROGRAM`] instructions, groups nest at
 //! most [`MAX_GROUPS`] deep and a count is at most [`MAX_COUNT`]; it runs as a Pike VM, every
@@ -585,6 +586,18 @@ mod tests {
             let e = Regex::new(re).unwrap_err();
             assert!(e.contains("(?i)") || e.contains("flag"), "{re}: {e}");
         }
+    }
+
+    /// `(?i)` folds every letter with a one-character lower and upper case, beyond ASCII too;
+    /// `\w` and `\b` stay ASCII, so a non-ASCII letter is no word character.
+    #[test]
+    fn the_case_flag_folds_beyond_ascii_and_word_classes_stay_ascii() {
+        assert!(m("(?i)^ärger$", "ÄRGER"));
+        assert!(m("(?i)^ω$", "Ω"));
+        assert!(m("(?i)^[α-ω]+$", "ΑΒΓ"));
+        assert!(!m("^ärger$", "ÄRGER"));
+        assert!(!m(r"^\w$", "é"));
+        assert!(m(r"^a\b", "aé"), "é is no word character");
     }
 
     #[test]

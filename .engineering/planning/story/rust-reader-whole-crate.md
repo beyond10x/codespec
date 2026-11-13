@@ -2,12 +2,16 @@
 format: aep.planning-md/3
 id: story:rust-reader-whole-crate
 kind: story
-status: draft
+status: implemented
 title: The Rust reader reads a whole crate
 summary: Follow mod declarations to file and inline modules; one cir/1 module per crate, positions naming each file
 relations:
 - decomposes: epic:codebase-transformations
-revision: 1
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-13T14:18:42Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-13T14:18:42Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-13T14:18:42Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader reads a whole crate
 
@@ -17,13 +21,13 @@ revision: 1
 binary target when it has no library): it follows `mod` declarations to file modules (`foo.rs`,
 `foo/mod.rs`, a `#[path]` attribute) and into inline `mod foo { … }` blocks, and prints one
 `cir/1` module for the crate. Every position names the file it stands in, relative to the crate's
-`src/` directory (`lib.rs:12`, `wire.rs:40`, `net/mod.rs:3`), so a crate of one file reads to the
-same bytes as before.
+`src/` directory (`lib.rs:12`, `wire.rs:40`, `net/mod.rs:3`); a crate of one file reads as its
+root file read alone does.
 
 ## Why
 
 The reader reads `src/lib.rs` only. A crate whose code lives in module files is mostly not read:
-a workspace of 30 crates measured with 234 non-test source files gave 30 files read. Reading each
+a workspace of 31 crates measured with 234 non-test source files gave 30 files read. Reading each
 file as its own crate instead loses the names of its sibling modules (more refusals) and every
 position names `lib.rs`.
 

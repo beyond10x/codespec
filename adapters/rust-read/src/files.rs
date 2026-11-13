@@ -8,14 +8,21 @@
 //! `<dir>/<stem>` for any other file; a `#[path = "…"]` attribute names it relative to the
 //! declaring file's directory (inside an inline module, to that module's directory). A module
 //! file that is missing, found twice, read already, outside the crate's directory, past a limit
-//! or not parsed is a refusal at its `mod` declaration, and the crate reads on. A module marked
-//! `#[cfg(test)]`, and any item marked so, is not part of the crate's build and is not read.
+//! or not parsed is a refusal at its `mod` declaration, and the crate reads on; so is a module
+//! nested deeper than [`MAX_MODULE_DEPTH`]. The crate's root file outside the crate's directory
+//! is an error. A module marked `#[cfg(test)]`, a module file whose inner attributes say
+//! `#![cfg(test)]`, and any item marked so, is not part of the crate's build and is not read.
+//!
+//! A file is inside the crate's directory when its path is, `.` and `..` taken out, and when the
+//! file it resolves to through every symbolic link is.
 //!
 //! Two items of one kind (a type, a trait, a function, a constant or static) and one name in two
 //! modules are each refused at their line, and so is every impl of such a type: the reader
-//! resolves a name by its last segment and could not tell which one a use names.
+//! resolves a name by its last segment and could not tell which one a use names. Such a function,
+//! and every function of such an impl, is kept apart with the reason, so the reader lists the
+//! calls of its body as an opaque function's.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use codespec_model::Refusal;
@@ -30,6 +37,10 @@ pub const MAX_FILES: usize = 4096;
 /// The most bytes of source the reader reads for one crate, over all its files; a crate of more
 /// is refused.
 pub const MAX_CRATE_BYTES: u64 = 64 << 20;
+
+/// The deepest a module of a crate nests (`crate::a::b` is 2 deep); a `mod` declaring a deeper
+/// one is refused.
+pub const MAX_MODULE_DEPTH: usize = 64;
 
 /// What a crate's files give the reader: their items in order, each with its module path.
 pub(crate) struct Tree {
@@ -47,6 +58,9 @@ pub(crate) struct Tree {
     pub span_files: BTreeMap<String, String>,
     /// Refusals of module declarations and of items of one name in two modules.
     pub refusals: Vec<Refusal>,
+    /// The functions and impls refused for a name declared in two modules, each with its
+    /// module's path and the reason: opaque functions whose calls are listed.
+    pub apart: Vec<(syn::Item, String, String)>,
 }
 
 impl Tree {
@@ -60,6 +74,36 @@ impl Tree {
             .unwrap_or_default();
         format!("{file}:{}", span.start().line)
     }
+}
+
+/// Why a file is not read: the crate past one of its limits, which ends the read, or the file
+/// alone, which is a refusal at its `mod` declaration.
+enum Fail {
+    Crate(String),
+    File(String),
+}
+
+impl Fail {
+    fn text(self) -> String {
+        match self {
+            Fail::Crate(e) | Fail::File(e) => e,
+        }
+    }
+}
+
+/// Whether `file` is inside the directory `krate`: its path with `.` and `..` taken out, and the
+/// file every symbolic link of it resolves to.
+fn inside(file: &Path, krate: &Path) -> bool {
+    let abs = |p: &Path| std::path::absolute(p).map(|a| lexical(&a));
+    let lexically = match (abs(file), abs(krate)) {
+        (Ok(f), Ok(k)) => f.starts_with(k),
+        _ => false,
+    };
+    lexically
+        && match (file.canonicalize(), krate.canonicalize()) {
+            (Ok(f), Ok(k)) => f.starts_with(k),
+            _ => false,
+        }
 }
 
 /// Where the files of a crate are looked up; `None` for a source read alone, whose file modules
@@ -91,9 +135,15 @@ struct Walk {
 }
 
 /// The crate whose root file is `root` (a `lib.rs` or `main.rs`), every module file it names
-/// read; the crate's directory is `krate`. An error of the root file, or a crate past
-/// [`MAX_FILES`] or [`MAX_CRATE_BYTES`], is an error.
+/// read; the crate's directory is `krate`. An error of the root file, a root file outside
+/// `krate`, or a crate past [`MAX_FILES`] or [`MAX_CRATE_BYTES`], is an error.
 pub(crate) fn crate_tree(krate: &Path, root: &Path) -> Result<Tree, String> {
+    if root.is_file() && !inside(root, krate) {
+        return Err(format!(
+            "{}: the crate root is outside the crate's directory, which the reader does not read",
+            root.display()
+        ));
+    }
     let root_dir = root.parent().unwrap_or(Path::new("")).to_path_buf();
     let rel = root
         .file_name()
@@ -114,7 +164,7 @@ pub(crate) fn crate_tree(krate: &Path, root: &Path) -> Result<Tree, String> {
         module: "crate".into(),
         inline: false,
     };
-    let mut ast = w.parse(&rel, &src)?;
+    let mut ast = w.parse(&rel, &src).map_err(Fail::text)?;
     w.tree.attrs = std::mem::take(&mut ast.attrs);
     w.file(ast, src, &at)?;
     Ok(w.finish())
@@ -124,7 +174,7 @@ pub(crate) fn crate_tree(krate: &Path, root: &Path) -> Result<Tree, String> {
 /// refused.
 pub(crate) fn source_tree(file: &str, src: &str) -> Result<Tree, String> {
     let mut w = Walk::new(None);
-    let mut ast = w.parse(file, src)?;
+    let mut ast = w.parse(file, src).map_err(Fail::text)?;
     w.tree.attrs = std::mem::take(&mut ast.attrs);
     let at = At {
         rel: file.to_string(),
@@ -148,6 +198,7 @@ impl Walk {
                 files: Vec::new(),
                 span_files: BTreeMap::new(),
                 refusals: Vec::new(),
+                apart: Vec::new(),
             },
             seen: BTreeMap::new(),
             bytes: 0,
@@ -156,25 +207,26 @@ impl Walk {
 
     /// `src` parsed as the file `rel`, after the nesting bound; counted against the crate's
     /// limits.
-    fn parse(&mut self, rel: &str, src: &str) -> Result<syn::File, String> {
+    fn parse(&mut self, rel: &str, src: &str) -> Result<syn::File, Fail> {
         if self.tree.files.len() == MAX_FILES {
-            return Err(format!(
+            return Err(Fail::Crate(format!(
                 "the crate has more than {MAX_FILES} files, this reader's limit"
-            ));
+            )));
         }
         self.bytes += src.len() as u64;
         if self.bytes > MAX_CRATE_BYTES {
-            return Err(format!(
+            return Err(Fail::Crate(format!(
                 "the crate's files hold more than {MAX_CRATE_BYTES} bytes, this reader's limit"
-            ));
+            )));
         }
         let (depth, line) = nesting(src);
         if depth > MAX_NESTING {
-            return Err(format!(
+            return Err(Fail::File(format!(
                 "{rel}:{line}: nested deeper than {MAX_NESTING} levels, this reader's limit"
-            ));
+            )));
         }
-        syn::parse_file(src).map_err(|e| format!("{rel}:{}: {e}", e.span().start().line))
+        syn::parse_file(src)
+            .map_err(|e| Fail::File(format!("{rel}:{}: {e}", e.span().start().line)))
     }
 
     /// The items of the parsed file `ast`, standing at `at`.
@@ -209,6 +261,22 @@ impl Walk {
             let name = name.strip_prefix("r#").unwrap_or(&name).to_string();
             let module = format!("{}::{name}", at.module);
             let path = path_attr(&m.attrs);
+            let pos = format!("{}:{}", at.rel, m.span().start().line);
+            if module.matches("::").count() > MAX_MODULE_DEPTH {
+                let what = if m.content.is_some() {
+                    format!("mod {name}")
+                } else {
+                    format!("mod {name};")
+                };
+                self.refuse(
+                    pos,
+                    what,
+                    format!(
+                        "the module {module} is nested deeper than {MAX_MODULE_DEPTH} modules, this reader's limit"
+                    ),
+                );
+                continue;
+            }
             if let Some((_, inner)) = m.content {
                 let children = match &path {
                     Some(p) => at.children.join(p),
@@ -224,7 +292,6 @@ impl Walk {
                 self.items(inner, &inner_at)?;
                 continue;
             }
-            let pos = format!("{}:{}", at.rel, m.span().start().line);
             let what = format!("mod {name};");
             let Some(dirs) = &self.dirs else {
                 self.refuse(
@@ -272,12 +339,7 @@ impl Walk {
                 }
             };
             let rel = rel_to(&dirs.root, &file);
-            let inside = lexical(&file).starts_with(lexical(&dirs.krate))
-                && match (file.canonicalize(), dirs.krate.canonicalize()) {
-                    (Ok(f), Ok(k)) => f.starts_with(k),
-                    _ => false,
-                };
-            if !inside {
+            if !inside(&file, &dirs.krate) {
                 self.refuse(
                     pos,
                     what,
@@ -306,12 +368,15 @@ impl Walk {
             };
             let ast = match self.parse(&rel, &src) {
                 Ok(a) => a,
-                Err(e) if e.contains("this reader's limit") && !e.contains(':') => return Err(e),
-                Err(e) => {
+                Err(Fail::Crate(e)) => return Err(e),
+                Err(Fail::File(e)) => {
                     self.refuse(pos, what, format!("the file of the module {module}: {e}"));
                     continue;
                 }
             };
+            if cfg_test(&ast.attrs) {
+                continue;
+            }
             let dir = file.parent().unwrap_or(Path::new("")).to_path_buf();
             let mod_rs = file.file_name().is_some_and(|n| n == "mod.rs");
             let children = if mod_rs {
@@ -340,7 +405,7 @@ impl Walk {
                 by_name.entry((ns, name)).or_default().push(k);
             }
         }
-        let mut drop = BTreeSet::new();
+        let mut drop: BTreeMap<usize, String> = BTreeMap::new();
         let mut dup_types: BTreeMap<String, String> = BTreeMap::new();
         let mut late = Vec::new();
         for ((ns, name), ks) in by_name {
@@ -358,8 +423,12 @@ impl Walk {
                     "{kind} {name} is declared in more than one module ({}): the reader resolves a name by its last segment, so it reads none of them",
                     paths.join(", ")
                 );
-                late.push((self.tree.pos(item.span()), format!("{kind} {name}"), reason));
-                drop.insert(k);
+                late.push((
+                    self.tree.pos(item.span()),
+                    format!("{kind} {name}"),
+                    reason.clone(),
+                ));
+                drop.insert(k, reason);
             }
             if ns == "type" {
                 dup_types.insert(name.clone(), paths.join(", "));
@@ -378,21 +447,24 @@ impl Walk {
                 late.push((
                     self.tree.pos(item.span()),
                     first_line(&src_of(item)),
-                    reason,
+                    reason.clone(),
                 ));
-                drop.insert(k);
+                drop.insert(k, reason);
             }
         }
         for (pos, what, reason) in late {
             self.refuse(pos, what, reason);
         }
         let items = std::mem::take(&mut self.tree.items);
-        self.tree.items = items
-            .into_iter()
-            .enumerate()
-            .filter(|(k, _)| !drop.contains(k))
-            .map(|(_, it)| it)
-            .collect();
+        for (k, (item, module)) in items.into_iter().enumerate() {
+            match drop.remove(&k) {
+                None => self.tree.items.push((item, module)),
+                Some(reason) if matches!(item, syn::Item::Fn(_) | syn::Item::Impl(_)) => {
+                    self.tree.apart.push((item, module, reason));
+                }
+                Some(_) => {}
+            }
+        }
         self.tree
     }
 }

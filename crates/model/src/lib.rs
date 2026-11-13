@@ -714,20 +714,25 @@ pub enum CallRef {
     /// A call the reader names as the source writes it but does not resolve to a target, one of
     /// [`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not
     /// know (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is
-    /// written with or the module's imports give it (empty when written bare). A `macro` entry
-    /// names the invocation, not what it expands to; the calls inside its arguments are listed as
-    /// entries of their own. Neither links to a function of the module.
+    /// written with or the module's imports give it (empty when written bare); `func`, a
+    /// function called by the name `name` alone, which the reader does not resolve (a function
+    /// value, a function of a glob import, of the language's prelude or of a foreign-function
+    /// block; `path` empty). A `macro` entry names the invocation, not what it expands to; the
+    /// calls inside its arguments are listed as entries of their own. None links to a function
+    /// of the module.
     Named {
+        #[schemars(extend("enum" = ["method", "macro", "func"]))]
         form: String,
         #[serde(default, skip_serializing_if = "String::is_empty")]
         path: String,
+        #[schemars(length(min = 1))]
         name: String,
         pos: Pos,
     },
 }
 
 /// The forms of [`CallRef::Named`] a document may hold.
-pub const NAMED_FORMS: &[&str] = &["method", "macro"];
+pub const NAMED_FORMS: &[&str] = &["method", "macro", "func"];
 
 impl CallRef {
     pub fn pos(&self) -> &Pos {
@@ -2765,8 +2770,8 @@ impl Module {
         }
     }
 
-    /// Every `named` call is of a form of [`NAMED_FORMS`], names something, and a `method` one
-    /// has no path.
+    /// Every `named` call is of a form of [`NAMED_FORMS`], names something, and only a `macro`
+    /// one has a path.
     fn check_named_calls(&self) -> Result<(), String> {
         let mut err = None;
         self.each_call_ref(&mut |c| {
@@ -2786,9 +2791,9 @@ impl Module {
                     ));
                 } else if name.is_empty() {
                     err = Some(format!("the named call at {pos} names nothing"));
-                } else if form == "method" && !path.is_empty() {
+                } else if form != "macro" && !path.is_empty() {
                     err = Some(format!(
-                        "the named method call {name} at {pos} has a path, which only a macro has"
+                        "the named {form} call {name} at {pos} has a path, which only a macro has"
                     ));
                 }
             }

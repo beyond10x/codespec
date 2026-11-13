@@ -69,6 +69,9 @@ fn show(calls: &[CallRef]) -> Vec<String> {
             match c {
                 CallRef::Func { path, name, .. } => format!("func {path}.{name} {line}"),
                 CallRef::Method { recv, name, .. } => format!("method {recv}.{name} {line}"),
+                CallRef::Named { form, name, .. } if form == "func" => {
+                    format!("name {name} {line}")
+                }
                 CallRef::Named {
                     form, path, name, ..
                 } => format!("{form} {path}.{name} {line}"),
@@ -188,4 +191,110 @@ fn a_query_sees_the_listed_calls_and_reaches_links_the_crate_s_functions() {
         foreign.contains("true") && !foreign.contains("false"),
         "{foreign}"
     );
+}
+
+const CALLEES: &str = r#"use log::info;
+use std::mem::*;
+
+extern "C" {
+    fn GetTickCount() -> u32;
+}
+
+#[derive(Clone)]
+pub struct Counter {
+    n: i64,
+}
+
+pub enum Kind {
+    One(i64),
+}
+
+pub fn helper(x: i64) -> i64 {
+    x + 1
+}
+
+pub fn outer<T: Clone>(_t: T) -> i64 {
+    fn inner(x: i64) -> i64 {
+        helper(x)
+    }
+    let a = Some(Kind::One(1));
+    let c = Counter { n: 1 };
+    info!("{}", inner(2));
+    let _s = stringify!(helper(3));
+    let _t = unsafe { GetTickCount() };
+    let _u = <Counter as Clone>::clone(&c);
+    let (mut p, mut q) = (1, 2);
+    swap(&mut p, &mut q);
+    drop(a);
+    0
+}
+
+pub fn reads(x: i64) -> i64 {
+    fn twice(y: i64) -> i64 {
+        helper(y) * 2
+    }
+    x
+}
+"#;
+
+fn read_callees() -> Module {
+    let m = codespec_read_rust::read_source("probe", "lib.rs", CALLEES).expect("read");
+    Module::from_json(m.to_json().as_bytes()).expect("the module is valid cir/1")
+}
+
+/// Every callee is listed by its name unless it is a type or a variant made: a function of an
+/// extern block, of a glob import or of the prelude by its name, a call through a qualified
+/// `Self` by its function's name, a macro by the path its `use` gives it; a nested function's
+/// calls as the enclosing function's, a call of it not again; the arguments of a macro that
+/// does not evaluate them not at all.
+#[test]
+fn a_callee_is_named_unless_a_type_or_variant_is_made() {
+    let m = read_callees();
+    let o = m
+        .opaque
+        .iter()
+        .find(|o| o.name == "Outer")
+        .unwrap_or_else(|| panic!("no opaque Outer: {:?}", m.opaque));
+    assert_eq!(
+        show(&o.calls),
+        [
+            "func .Helper 23",
+            "macro log.info 27",
+            "macro .stringify 28",
+            "name GetTickCount 29",
+            "method .clone 30",
+            "name swap 32",
+            "name drop 33",
+        ]
+    );
+}
+
+/// An item inside a function body read is a `foreign` statement that lists the calls of the
+/// item's body, not an empty list.
+#[test]
+fn a_nested_function_s_foreign_statement_lists_its_calls() {
+    let m = read_callees();
+    let f = m.funcs.iter().find(|f| f.name == "Reads").expect("Reads");
+    let Some(Stmt::Foreign {
+        calls: Some(calls), ..
+    }) = f.body.first()
+    else {
+        panic!("{:?}", f.body);
+    };
+    assert_eq!(show(calls), ["func .Helper 39"]);
+}
+
+/// A callee named but not resolved is a `named` call in a query, with an unknown site.
+#[test]
+fn a_query_sees_a_callee_named_by_its_name_as_unknown() {
+    let m = read_callees();
+    let text = answer(
+        r#"?- call{func: "probe.Outer", listed: true, kind: "named", callee: C, line: L}."#,
+        &m,
+    );
+    for want in ["GetTickCount\t29", "swap\t32", "drop\t33", "clone\t30"] {
+        assert!(text.contains(want), "{want} in:\n{text}");
+    }
+    let unknown = answer(r#"?- unknown{func: "probe.Outer", reason: R}."#, &m);
+    assert!(unknown.contains("GetTickCount"), "{unknown}");
 }

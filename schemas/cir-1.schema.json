@@ -398,18 +398,24 @@
           ]
         },
         {
-          "description": "A call the reader names as the source writes it but does not resolve to a target, one of\n[`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not\nknow (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is\nwritten with or the module's imports give it (empty when written bare). A `macro` entry\nnames the invocation, not what it expands to; the calls inside its arguments are listed as\nentries of their own. Neither links to a function of the module.",
+          "description": "A call the reader names as the source writes it but does not resolve to a target, one of\n[`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not\nknow (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is\nwritten with or the module's imports give it (empty when written bare); `func`, a\nfunction called by the name `name` alone, which the reader does not resolve (a function\nvalue, a function of a glob import, of the language's prelude or of a foreign-function\nblock; `path` empty). A `macro` entry names the invocation, not what it expands to; the\ncalls inside its arguments are listed as entries of their own. None links to a function\nof the module.",
           "type": "object",
           "properties": {
             "form": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "method",
+                "macro",
+                "func"
+              ]
             },
             "k": {
               "type": "string",
               "const": "named"
             },
             "name": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "path": {
               "type": "string"

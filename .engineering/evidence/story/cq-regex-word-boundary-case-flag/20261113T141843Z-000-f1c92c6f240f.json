@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-13T14:18:43Z",
+  "actor": "human:timo",
+  "artifact": "story:cq-regex-word-boundary-case-flag",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (worktree rust-whole-crate on e6140212, uncommitted)"
+  }
+}
