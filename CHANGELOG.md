@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.10.0
+
 ### Added
 
 - `codespec-read-rust` reads a whole crate: its root file (`[lib] path`, `src/lib.rs`, or

@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "groovy",
-    "version": "0.9.0",
-    "manifest_sha256": "6f27230174a722bdedc980ab8eb8042f482f8708a99d26c4b450b603729da54f"
+    "version": "0.10.0",
+    "manifest_sha256": "7f54488618730fc0b555b0611b364860a704190941341c9ac13364b59ae3e11f"
   },
   "kit": {
-    "version": "0.9.0",
-    "sha256": "c6c67aef6822ba649263bb8c4026f8dd616593c1c539f724475aca1837943bb1"
+    "version": "0.10.0",
+    "sha256": "a59ad2b6506ca2240a83e1fb0436087d3fafe616adfc44d9c4bbd7b93465d147"
   },
   "corpus": {
     "sha256": "2e089a5d418ed33c63ac4cca5ef2563b76697c2bc9384943ac1b2325894be4c8"
   },
-  "codespec": "0.9.0",
+  "codespec": "0.10.0",
   "features": [
     {
       "id": "assign.add",

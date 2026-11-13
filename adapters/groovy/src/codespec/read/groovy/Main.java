@@ -21,7 +21,7 @@ import java.util.Map;
  */
 public final class Main {
     /** The workspace version; written into every document as {@code reader.version}. */
-    public static final String VERSION = "0.9.0";
+    public static final String VERSION = "0.10.0";
 
     /**
      * The reader's claim: every feature whose kit cases in the Groovy corpus {@code
