@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-13T14:18:41Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-whole-crate",
+  "kind": "story",
+  "revision": 2,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check (worktree rust-whole-crate on e6140212, uncommitted)"
+  }
+}

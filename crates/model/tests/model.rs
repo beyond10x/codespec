@@ -925,6 +925,54 @@ fn an_opaque_function_with_the_name_of_a_declared_function_is_refused() {
     assert!(refused(&v).contains("opaque function T.M is declared twice"));
 }
 
+/// A call named as written but not resolved: a method call on a value of a type the reader does
+/// not know, and a macro invocation. Each reads, writes back to the same bytes, and links to no
+/// function; a form other than `method` or `macro`, an empty name or a method with a path is
+/// refused.
+#[test]
+fn a_named_call_reads_and_a_named_call_of_another_form_is_refused() {
+    let named = serde_json::json!([
+        {"k": "named", "form": "method", "name": "unwrap", "pos": "m.go:10"},
+        {"k": "named", "form": "macro", "path": "std", "name": "println", "pos": "m.go:11"},
+        {"k": "named", "form": "macro", "name": "panic", "pos": "m.go:11"}
+    ]);
+    let mut v = with_calls();
+    v["opaque"][0]["calls"] = named.clone();
+    v["funcs"][0]["body"][0]["calls"][6]["calls"] = named.clone();
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert!(matches!(
+        &m.opaque[0].calls[1],
+        codespec_model::CallRef::Named { form, path, name, .. }
+            if form == "macro" && path == "std" && name == "println"
+    ));
+    let text = m.to_json();
+    let again = Module::from_json(text.as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), text);
+    for (k, field, value, why) in [
+        (
+            0,
+            "form",
+            serde_json::json!("closure"),
+            "has the form \"closure\"",
+        ),
+        (0, "name", serde_json::json!(""), "names nothing"),
+        (
+            0,
+            "path",
+            serde_json::json!("std"),
+            "has a path, which only a macro has",
+        ),
+    ] {
+        let mut w = v.clone();
+        w["opaque"][0]["calls"][k][field] = value.clone();
+        let e = refused(&w);
+        assert!(e.contains(why), "{field}: {e}");
+        let mut w = v.clone();
+        w["funcs"][0]["body"][0]["calls"][6]["calls"][k][field] = value;
+        assert!(refused(&w).contains(why), "in a lambda's list: {field}");
+    }
+}
+
 #[test]
 fn a_call_of_an_unknown_kind_is_refused() {
     let mut v = with_calls();
@@ -1744,4 +1792,59 @@ fn a_transactional_mark_on_a_function_the_module_lacks_is_refused() {
         err.contains("transactional") && err.contains("nope"),
         "{err}"
     );
+}
+
+/// A `named` call of the form `func` names a function by its name alone, and a `named` call in
+/// the module's `inits` is checked like one in any other list.
+#[test]
+fn a_named_function_call_reads_and_a_named_call_in_inits_is_checked() {
+    let mut v = with_calls();
+    v["opaque"][0]["calls"] = serde_json::json!([
+        {"k": "named", "form": "func", "name": "swap", "pos": "m.go:10"}
+    ]);
+    Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    let mut w = v.clone();
+    w["opaque"][0]["calls"][0]["path"] = serde_json::json!("std::mem");
+    assert!(refused(&w).contains("has a path, which only a macro has"));
+    let mut w = v.clone();
+    w["inits"] = serde_json::json!([
+        {"k": "named", "form": "closure", "name": "f", "pos": "m.go:1"}
+    ]);
+    assert!(refused(&w).contains("has the form \"closure\""));
+}
+
+/// The schema says what strict reading says of a `named` call: its form is one of
+/// `NAMED_FORMS` and its name is not empty.
+#[test]
+fn the_schema_of_a_named_call_lists_its_forms_and_wants_a_name() {
+    let schema: serde_json::Value =
+        serde_json::from_str(&codespec_model::schema_json()).expect("json");
+    let mut named = None;
+    fn find<'a>(v: &'a serde_json::Value, out: &mut Option<&'a serde_json::Value>) {
+        match v {
+            serde_json::Value::Object(o) => {
+                if o.get("properties")
+                    .and_then(|p| p.get("k"))
+                    .and_then(|k| k.get("const"))
+                    == Some(&serde_json::json!("named"))
+                    && o["properties"].get("form").is_some()
+                {
+                    *out = Some(v);
+                }
+                o.values().for_each(|x| find(x, out));
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| find(x, out)),
+            _ => {}
+        }
+    }
+    find(&schema, &mut named);
+    let props = &named.expect("a named call in the schema")["properties"];
+    let forms: Vec<&str> = props["form"]["enum"]
+        .as_array()
+        .unwrap_or_else(|| panic!("form: {}", props["form"]))
+        .iter()
+        .map(|f| f.as_str().unwrap())
+        .collect();
+    assert_eq!(forms, codespec_model::NAMED_FORMS);
+    assert_eq!(props["name"]["minLength"], serde_json::json!(1));
 }

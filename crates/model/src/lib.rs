@@ -711,7 +711,28 @@ pub enum CallRef {
         name: String,
         pos: Pos,
     },
+    /// A call the reader names as the source writes it but does not resolve to a target, one of
+    /// [`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not
+    /// know (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is
+    /// written with or the module's imports give it (empty when written bare); `func`, a
+    /// function called by the name `name` alone, which the reader does not resolve (a function
+    /// value, a function of a glob import, of the language's prelude or of a foreign-function
+    /// block; `path` empty). A `macro` entry names the invocation, not what it expands to; the
+    /// calls inside its arguments are listed as entries of their own. None links to a function
+    /// of the module.
+    Named {
+        #[schemars(extend("enum" = ["method", "macro", "func"]))]
+        form: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        path: String,
+        #[schemars(length(min = 1))]
+        name: String,
+        pos: Pos,
+    },
 }
+
+/// The forms of [`CallRef::Named`] a document may hold.
+pub const NAMED_FORMS: &[&str] = &["method", "macro", "func"];
 
 impl CallRef {
     pub fn pos(&self) -> &Pos {
@@ -722,7 +743,8 @@ impl CallRef {
             | CallRef::Value { pos, .. }
             | CallRef::Ref { pos, .. }
             | CallRef::Lambda { pos, .. }
-            | CallRef::New { pos, .. } => pos,
+            | CallRef::New { pos, .. }
+            | CallRef::Named { pos, .. } => pos,
         }
     }
 }
@@ -1640,6 +1662,7 @@ impl Module {
         m.check_assigns().map_err(ReadError::Invalid)?;
         m.check_captures().map_err(ReadError::Invalid)?;
         m.check_opaque().map_err(ReadError::Invalid)?;
+        m.check_named_calls().map_err(ReadError::Invalid)?;
         m.check_embedded().map_err(ReadError::Invalid)?;
         m.check_interfaces().map_err(ReadError::Invalid)?;
         m.check_generics().map_err(ReadError::Invalid)?;
@@ -2698,6 +2721,84 @@ impl Module {
             }
         }
         Ok(())
+    }
+
+    /// Every call list of the module, at any depth: those of `foreign` statements (in lambda
+    /// bodies too), of opaque functions, of `inits`, and the targets of method sets.
+    fn each_call_ref<'a>(&'a self, f: &mut dyn FnMut(&'a CallRef)) {
+        fn list<'a>(calls: &'a [CallRef], f: &mut dyn FnMut(&'a CallRef)) {
+            for c in calls {
+                f(c);
+                if let CallRef::Lambda { calls, .. } = c {
+                    list(calls, f);
+                }
+            }
+        }
+        fn body<'a>(stmts: &'a [Stmt], f: &mut dyn FnMut(&'a CallRef)) {
+            walk::walk_stmts(stmts, &mut |s| {
+                if let Stmt::Foreign {
+                    calls: Some(calls), ..
+                } = s
+                {
+                    list(calls, f);
+                }
+            });
+            walk::body_exprs(stmts, &mut |e| {
+                if let Expr::Lambda { body: b, .. } = e {
+                    walk::walk_stmts(b, &mut |s| {
+                        if let Stmt::Foreign {
+                            calls: Some(calls), ..
+                        } = s
+                        {
+                            list(calls, f);
+                        }
+                    });
+                }
+            });
+        }
+        for func in &self.funcs {
+            body(&func.body, f);
+        }
+        for o in &self.opaque {
+            list(&o.calls, f);
+        }
+        list(&self.inits, f);
+        for ms in &self.methods {
+            for me in &ms.methods {
+                list(std::slice::from_ref(&me.target), f);
+            }
+        }
+    }
+
+    /// Every `named` call is of a form of [`NAMED_FORMS`], names something, and only a `macro`
+    /// one has a path.
+    fn check_named_calls(&self) -> Result<(), String> {
+        let mut err = None;
+        self.each_call_ref(&mut |c| {
+            if err.is_some() {
+                return;
+            }
+            if let CallRef::Named {
+                form,
+                path,
+                name,
+                pos,
+            } = c
+            {
+                if !NAMED_FORMS.contains(&form.as_str()) {
+                    err = Some(format!(
+                        "the named call {name} at {pos} has the form {form:?}, not one of {NAMED_FORMS:?}"
+                    ));
+                } else if name.is_empty() {
+                    err = Some(format!("the named call at {pos} names nothing"));
+                } else if form != "macro" && !path.is_empty() {
+                    err = Some(format!(
+                        "the named {form} call {name} at {pos} has a path, which only a macro has"
+                    ));
+                }
+            }
+        });
+        err.map_or(Ok(()), Err)
     }
 
     /// The names of the methods every `iface_call` of the module's bodies, and every call

@@ -642,6 +642,26 @@ impl<'a> Graph<'a> {
                     }
                 }
             }
+            CallRef::Named {
+                form,
+                path,
+                name,
+                pos,
+            } => {
+                let what = if path.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{path}.{name}")
+                };
+                let reason = match form.as_str() {
+                    "macro" => format!("macro invocation, not expanded: {what}"),
+                    "func" => format!("call of a name the reader did not resolve: {what}"),
+                    _ => {
+                        format!("method call on a value of a type the reader did not know: {what}")
+                    }
+                };
+                self.unknown(holder, pos, reason);
+            }
         }
     }
 

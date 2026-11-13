@@ -4,6 +4,52 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-rust` reads a whole crate: its root file (`[lib] path`, `src/lib.rs`, or
+  `src/main.rs` for a crate without a library) and every module file a `mod` declaration names
+  (`foo.rs`, `foo/mod.rs`, a `#[path]` attribute), with the items of inline modules, into one
+  `cir/1` module. Every position names its own file relative to the root file's directory
+  (`wire.rs:40`, `net/mod.rs:3`); a crate of one file reads as its root file read alone does. A
+  module file that is missing, found twice, read already, outside the crate's directory (through
+  `..`, an absolute path or a symbolic link), past a limit or not parsed is a refusal at its `mod`
+  line, and so is a module nested more than 64 deep. `Cargo.toml` and the root file are read only
+  as regular files inside the crate's directory, checked before they are opened: one outside it,
+  or a named pipe, a device or a directory in their place, is an error, and a manifest that does
+  not parse is an error naming its line without quoting it. A module or item built only when
+  testing (`#[cfg(test)]`, or `#[cfg(all(…))]` with `test` among its conditions), and a module
+  file whose inner attribute says so, is not read; `any(test, …)` and `not(test)` are read. Two
+  items of one kind and name in two modules are each refused, as a name resolves by its last
+  segment, and such a function, and every function of an impl of such a type, is an
+  `opaque` function listing its calls. A crate of more than 4096 files or 64 MiB of source is
+  refused.
+- `codespec-read-rust` lists the calls of the code it does not read. A function or method it
+  refuses whole is an `opaque` function with its reason and the calls of its body, and every
+  `foreign` statement carries `calls`. A call of the crate's own function or method links to it; a
+  path outside the crate is listed as the module's `use` declarations resolve it
+  (`std::process::Command.new`); a method call on a value of a type the reader does not know is
+  listed by its name, a function called by a name the reader does not resolve (a function value, a
+  glob import, the prelude, an `extern` block) by that name, a call through `<T as Trait>::f` as
+  `T::f`, and a macro by its name, with the calls of its arguments unless it does not evaluate
+  them (`stringify!`, unless the crate defines a macro of that name). The calls of a function,
+  impl, trait, constant, static or enum declared inside a body (its bodies, constants,
+  discriminants and item macros) are listed as the enclosing function's, and a call of such a
+  function by its name is listed by that name. A tuple struct or variant made is no call.
+- `cir/1` has the call ref `named` (`form` `method`, `macro` or `func`, `path`, `name`, `pos`): a
+  call a reader names as the source writes it without resolving it to a target. Additive: every
+  earlier document reads and writes as before. `codespec query` gives each a `call` row of kind
+  `named` (an `unknown` site, as a call through an interface is) or `macro` (linked to nothing);
+  `codespec effects` and `reach` count each as unknown.
+- cq regular expressions take the word boundary `\b`, its negation `\B`, and a leading `(?i)`
+  that matches letters in either case. `(?i)` folds every letter with a one-character lower and
+  upper case, beyond ASCII too; `\w`, `\b` and `\B` stay ASCII.
+
+### Fixed
+
+- `codespec query` links a call of a module's own function within that module when the module
+  has no `path` (a Rust crate): two such documents queried together each declaring a function of
+  one name no longer link each other's calls to the first one's, and `reaches` over each holds.
+
 ## 0.9.0
 
 ### Added

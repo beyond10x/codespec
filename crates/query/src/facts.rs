@@ -179,7 +179,7 @@ pub const RELATIONS: &[Relation] = &[
             ("line", I),
             ("listed", B),
         ],
-        about: "every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value); callee <path>.<name> or <path>.<type>.<name>",
+        about: "every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value), and for a listed call a reader names without resolving it named (a method name or a function's name alone, type empty) or macro (a macro invocation, path as written); callee <path>.<name> or <path>.<type>.<name>",
         group: Group::Documents,
     },
     Relation {
@@ -1499,7 +1499,7 @@ impl Walker<'_> {
             self.stmt(st, &format!("{base}{k}"), parent);
         }
         let mut flow = Flow {
-            own: self.m.path.clone(),
+            own: label(self.m).to_string(),
             raising: self.b.raising.clone(),
             ..Flow::default()
         };
@@ -1846,6 +1846,12 @@ impl Walker<'_> {
                 CallRef::Ref {
                     path, recv, name, ..
                 } => ("ref", self.own(path), recv.clone(), name.clone()),
+                CallRef::Named {
+                    form, path, name, ..
+                } => {
+                    let kind = if form == "macro" { "macro" } else { "named" };
+                    (kind, path.clone(), String::new(), name.clone())
+                }
                 CallRef::Lambda { calls, .. } => {
                     self.call_list(calls, &format!("{site}.calls."));
                     continue;
@@ -1919,15 +1925,28 @@ impl Walker<'_> {
             ],
         );
         match kind {
+            // A call of the module's own function links within the module: by its label, as
+            // the index holds it, where the module has no path.
             "func" | "method" | "ref" => self.links.push(Link {
                 site: site.to_string(),
-                path: path.to_string(),
+                path: if path.is_empty() {
+                    label(self.m).to_string()
+                } else {
+                    path.to_string()
+                },
                 recv: recv.to_string(),
                 name: name.to_string(),
             }),
+            // A macro invocation is no call of a function: the calls of its arguments are
+            // listed as calls of their own.
+            "macro" => {}
             _ => {
                 let reason = if kind == "value" {
                     "call of a function value, not linked by calls".to_string()
+                } else if kind == "named" {
+                    format!(
+                        "call of {name}, named as written and not resolved by the reader (a method on a value of a type it did not know, or a function by its name alone), not linked by calls"
+                    )
                 } else {
                     format!(
                         "call through the interface {}, not linked by calls",
@@ -2278,7 +2297,11 @@ impl FactBase {
                                 .recv
                                 .as_ref()
                                 .map(|r| codespec_model::receiver_type_name(&r.t).to_string());
-                            (m.path.clone(), recv.unwrap_or_default(), f.name.clone())
+                            (
+                                label(m).to_string(),
+                                recv.unwrap_or_default(),
+                                f.name.clone(),
+                            )
                         })
                     })
                     .collect(),
@@ -2353,7 +2376,7 @@ impl FactBase {
                     .map(|r| codespec_model::receiver_type_name(&r.t).to_string())
                     .unwrap_or_default();
                 index
-                    .entry((m.path.clone(), recv.clone(), f.name.clone()))
+                    .entry((label(m).to_string(), recv.clone(), f.name.clone()))
                     .or_insert_with(|| id.clone());
                 let kind = if f.recv.is_some() {
                     "method"
@@ -2406,7 +2429,7 @@ impl FactBase {
                 let id = format!("{l}.{}", o.key());
                 let recv = o.recv.clone().unwrap_or_default();
                 index
-                    .entry((m.path.clone(), recv.clone(), o.name.clone()))
+                    .entry((label(m).to_string(), recv.clone(), o.name.clone()))
                     .or_insert_with(|| id.clone());
                 b.add(
                     "func",

@@ -1137,3 +1137,37 @@ fn a_caller_sees_what_its_callees_raise_across_the_set() {
         "a report without raises writes no field: {text}"
     );
 }
+
+/// A call a reader names but does not resolve leaves its holder incomplete, each with a reason
+/// naming what was called: a macro, a method on a value of an unknown type, a function by its
+/// name.
+#[test]
+fn a_named_call_is_unknown_with_what_it_names() {
+    let m = doc(
+        "p",
+        "",
+        vec![],
+        json!({"opaque": [opaque("Raw", 5, vec![
+            json!({"k": "named", "form": "macro", "path": "log", "name": "info", "pos": "m.go:6"}),
+            json!({"k": "named", "form": "method", "name": "unwrap", "pos": "m.go:7"}),
+            json!({"k": "named", "form": "func", "name": "swap", "pos": "m.go:8"}),
+        ])]}),
+    );
+    let r = analyze(&m, &[std_summary()]);
+    let reasons: Vec<(&str, &str)> = entry(&r, "Raw")
+        .unknown
+        .iter()
+        .map(|u| (u.pos.as_str(), u.reason.as_str()))
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            ("m.go:6", "macro invocation, not expanded: log.info"),
+            (
+                "m.go:7",
+                "method call on a value of a type the reader did not know: unwrap"
+            ),
+            ("m.go:8", "call of a name the reader did not resolve: swap"),
+        ]
+    );
+}

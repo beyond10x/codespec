@@ -1,7 +1,13 @@
 //! The regular expressions of `~"…"`, searching anywhere in the string unless anchored.
 //! Literals, `.`, `^`, `$`, classes `[a-z]` and `[^…]`, the escapes `\d \w \s \D \W \S` and any
-//! escaped punctuation, groups `(…)` and `(?:…)`, alternation `|` and the quantifiers
-//! `* + ? {n} {n,} {n,m}` (a trailing `?` is accepted; only whether a match exists is asked).
+//! escaped punctuation, the word boundary `\b` and its negation `\B` (between a character `\w`
+//! matches and one it does not, the ends of the string counting as neither; never quantified),
+//! groups `(…)` and `(?:…)`, alternation `|` and the quantifiers `* + ? {n} {n,} {n,m}` (a
+//! trailing `?` is accepted; only whether a match exists is asked). A leading `(?i)` makes the
+//! whole expression match letters in either case: a character of the string also matches as its
+//! lower and its upper case, each where it is one character, so `(?i)[^a-z]` matches no letter of
+//! `A-Z`; a flag anywhere else is refused. The folding is Unicode's (`ä` matches `Ä`), while `\w`,
+//! `\b` and `\B` are ASCII: a non-ASCII letter is no word character.
 //!
 //! An expression compiles to a program of at most [`MAX_PROGRAM`] instructions, groups nest at
 //! most [`MAX_GROUPS`] deep and a count is at most [`MAX_COUNT`]; it runs as a Pike VM, every
@@ -36,6 +42,8 @@ enum Atom {
     Class(Ranges, bool),
     Start,
     End,
+    /// `\b` (true) and `\B` (false).
+    Boundary(bool),
     Group(Vec<Vec<Piece>>),
 }
 
@@ -53,6 +61,7 @@ enum Inst {
     Class(Ranges, bool),
     Start,
     End,
+    Boundary(bool),
     Split(usize, usize),
     Jmp(usize),
     Match,
@@ -62,6 +71,8 @@ enum Inst {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Regex {
     prog: Vec<Inst>,
+    /// A leading `(?i)`: a character also matches as its one-character lower and upper case.
+    fold: bool,
 }
 
 struct Parser<'a> {
@@ -102,7 +113,9 @@ impl Parser<'_> {
             }
             let atom = self.atom()?;
             let (min, max) = self.quantifier()?;
-            if (min, max) != (1, Some(1)) && matches!(atom, Atom::Start | Atom::End) {
+            if (min, max) != (1, Some(1))
+                && matches!(atom, Atom::Start | Atom::End | Atom::Boundary(_))
+            {
                 return Err(self.err("a quantified anchor"));
             }
             seq.push(Piece { atom, min, max });
@@ -172,6 +185,8 @@ impl Parser<'_> {
             'S' => Atom::Class(SPACE.into(), true),
             'n' => Atom::Char('\n'),
             't' => Atom::Char('\t'),
+            'b' => Atom::Boundary(true),
+            'B' => Atom::Boundary(false),
             c if c.is_ascii_alphanumeric() => return Err(self.err("an unknown escape")),
             c => Atom::Char(c),
         })
@@ -193,6 +208,10 @@ impl Parser<'_> {
                 }
                 if self.chars[self.i..].starts_with(&['?', ':']) {
                     self.i += 2;
+                } else if self.peek() == Some('?') {
+                    return Err(self.err(
+                        "a group flag other than (?:…), or a (?i) flag other than at the start",
+                    ));
                 }
                 self.depth += 1;
                 let alts = self.alts()?;
@@ -230,7 +249,7 @@ impl Parser<'_> {
                         ranges.extend(r.iter().copied());
                         continue;
                     }
-                    _ => return Err(self.err("a negated class inside a class")),
+                    _ => return Err(self.err("a negated class or an assertion inside a class")),
                 }
             } else {
                 c
@@ -347,6 +366,7 @@ impl Compiler {
             Atom::Class(r, n) => self.emit(Inst::Class(Rc::clone(r), *n)).map(|_| ()),
             Atom::Start => self.emit(Inst::Start).map(|_| ()),
             Atom::End => self.emit(Inst::End).map(|_| ()),
+            Atom::Boundary(b) => self.emit(Inst::Boundary(*b)).map(|_| ()),
             Atom::Group(g) => self.alts(g),
         }
     }
@@ -360,6 +380,10 @@ impl Regex {
             i: 0,
             depth: 0,
         };
+        let fold = p.chars.starts_with(&['(', '?', 'i', ')']);
+        if fold {
+            p.i = 4;
+        }
         let alts = p.alts()?;
         if p.i != p.chars.len() {
             return Err(p.err("an unopened )"));
@@ -368,35 +392,52 @@ impl Regex {
         c.alts(&alts)
             .map_err(|e| format!("regex {src:?}: {}", e.trim_start_matches("regex: ")))?;
         c.emit(Inst::Match)?;
-        Ok(Regex { prog: c.prog })
+        Ok(Regex { prog: c.prog, fold })
+    }
+
+    /// The forms `c` is matched as: itself, and under `(?i)` its lower and upper case where each
+    /// is one character.
+    fn forms(&self, c: char) -> [char; 3] {
+        if !self.fold {
+            return [c; 3];
+        }
+        fn one(mut it: impl Iterator<Item = char>) -> Option<char> {
+            let first = it.next()?;
+            it.next().is_none().then_some(first)
+        }
+        let lo = one(c.to_lowercase()).unwrap_or(c);
+        let up = one(c.to_uppercase()).unwrap_or(c);
+        [c, lo, up]
     }
 
     /// Whether the expression matches somewhere in `s`.
     pub fn is_match(&self, s: &str) -> bool {
         let chars: Vec<char> = s.chars().collect();
-        let n = chars.len();
         let mut mark = vec![usize::MAX; self.prog.len()];
         let mut stack = Vec::new();
         let mut cur: Vec<usize> = Vec::new();
-        if self.add(&mut cur, &mut mark, &mut stack, 0, 0, n) {
+        if self.add(&mut cur, &mut mark, &mut stack, 0, 0, &chars) {
             return true;
         }
         for (pos, &c) in chars.iter().enumerate() {
             let mut next = Vec::new();
             let step = pos + 1;
+            let forms = self.forms(c);
             for &pc in &cur {
                 let hit = match &self.prog[pc] {
-                    Inst::Char(x) => c == *x,
+                    Inst::Char(x) => forms.contains(x),
                     Inst::Any => true,
-                    Inst::Class(ranges, negated) => in_class(ranges, c) != *negated,
+                    Inst::Class(ranges, negated) => {
+                        forms.iter().any(|&f| in_class(ranges, f)) != *negated
+                    }
                     _ => false,
                 };
-                if hit && self.add(&mut next, &mut mark, &mut stack, pc + 1, step, n) {
+                if hit && self.add(&mut next, &mut mark, &mut stack, pc + 1, step, &chars) {
                     return true;
                 }
             }
             // A match may also start here.
-            if self.add(&mut next, &mut mark, &mut stack, 0, step, n) {
+            if self.add(&mut next, &mut mark, &mut stack, 0, step, &chars) {
                 return true;
             }
             cur = next;
@@ -406,7 +447,8 @@ impl Regex {
 
     /// Adds the thread at `pc` to `list` at `pos`, following jumps, splits and anchors with an
     /// explicit stack; whether it reaches `Match`. `mark` holds the position each instruction was
-    /// last added at, so each is added once per position.
+    /// last added at, so each is added once per position. A word boundary lies between a
+    /// character `\w` matches and one it does not, the ends of `chars` counting as neither.
     fn add(
         &self,
         list: &mut Vec<usize>,
@@ -414,8 +456,13 @@ impl Regex {
         stack: &mut Vec<usize>,
         pc: usize,
         pos: usize,
-        len: usize,
+        chars: &[char],
     ) -> bool {
+        let len = chars.len();
+        let word = |k: Option<usize>| {
+            k.and_then(|k| chars.get(k))
+                .is_some_and(|&c| in_class(WORD, c))
+        };
         stack.clear();
         stack.push(pc);
         while let Some(pc) = stack.pop() {
@@ -437,6 +484,11 @@ impl Regex {
                 }
                 Inst::End => {
                     if pos == len {
+                        stack.push(pc + 1);
+                    }
+                }
+                Inst::Boundary(b) => {
+                    if (word(pos.checked_sub(1)) != word(Some(pos))) == *b {
                         stack.push(pc + 1);
                     }
                 }
@@ -497,6 +549,55 @@ mod tests {
         }
         let deep = format!("{}a{}", "(".repeat(65), ")".repeat(65));
         assert!(Regex::new(&deep).unwrap_err().contains("limit of cq"));
+    }
+
+    #[test]
+    fn a_word_boundary_matches_between_a_word_character_and_another() {
+        assert!(m(r"\bunsafe\b", "unsafe {"));
+        assert!(m(r"\bunsafe\b", "x unsafe"));
+        assert!(m(r"\bunsafe\b", "unsafe"));
+        assert!(m(r"\bunsafe\b", "(unsafe)"));
+        assert!(!m(r"\bunsafe\b", "unsafely"));
+        assert!(!m(r"\bunsafe\b", "is_unsafe"));
+        assert!(m(r"\Bsafe", "unsafe"));
+        assert!(!m(r"\Bsafe", "safe"));
+        assert!(!m(r"\Bsafe", "a safe"));
+        assert!(!m(r"^\b$", ""));
+        assert!(m(r"^\B$", ""));
+        assert!(m(r"a\b", "a"));
+        assert!(m(r"\b\.", "a.b"));
+        assert!(!m(r"\b\.", " ."));
+        assert!(Regex::new(r"\b*").is_err());
+        assert!(Regex::new(r"a\B+").is_err());
+    }
+
+    #[test]
+    fn a_leading_case_flag_matches_letters_in_any_case() {
+        assert!(m("(?i)token", "Token"));
+        assert!(m("(?i)token", "API_TOKEN"));
+        assert!(m("(?i)TOKEN", "token"));
+        assert!(!m("(?i)token", "tokem"));
+        assert!(m("(?i)^[a-c]+$", "aBC"));
+        assert!(!m("(?i)^[^a-z]$", "Q"));
+        assert!(m("(?i)^[^a-z]$", "1"));
+        assert!(m(r"(?i)\bkey\b", "API KEY"));
+        assert!(!m("token", "Token"), "without the flag case matters");
+        for re in ["a(?i)b", "(?i", "(?x)a", "(?i)(?i)a", "((?i)a)"] {
+            let e = Regex::new(re).unwrap_err();
+            assert!(e.contains("(?i)") || e.contains("flag"), "{re}: {e}");
+        }
+    }
+
+    /// `(?i)` folds every letter with a one-character lower and upper case, beyond ASCII too;
+    /// `\w` and `\b` stay ASCII, so a non-ASCII letter is no word character.
+    #[test]
+    fn the_case_flag_folds_beyond_ascii_and_word_classes_stay_ascii() {
+        assert!(m("(?i)^ärger$", "ÄRGER"));
+        assert!(m("(?i)^ω$", "Ω"));
+        assert!(m("(?i)^[α-ω]+$", "ΑΒΓ"));
+        assert!(!m("^ärger$", "ÄRGER"));
+        assert!(!m(r"^\w$", "é"));
+        assert!(m(r"^a\b", "aé"), "é is no word character");
     }
 
     #[test]

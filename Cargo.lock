@@ -235,6 +235,7 @@ dependencies = [
  "b10x-codespec-conformance",
  "b10x-codespec-model",
  "b10x-codespec-passes",
+ "b10x-codespec-query",
  "proc-macro2",
  "serde",
  "serde_json",

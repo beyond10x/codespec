@@ -511,6 +511,15 @@ impl<'a> Walker<'_, 'a> {
                 }
                 CallRef::Iface { iface, name, .. } => format!("{iface}.{name}"),
                 CallRef::Value { sig, .. } => format!("func value {sig}"),
+                CallRef::Named {
+                    form, path, name, ..
+                } => {
+                    if path.is_empty() {
+                        format!("{form} {name}")
+                    } else {
+                        format!("{form} {path}.{name}")
+                    }
+                }
             };
             let p = self.probe(&mut |g, s| g.callref(s, mi, c));
             out.extend(self.render(&name, &pos, p, level));

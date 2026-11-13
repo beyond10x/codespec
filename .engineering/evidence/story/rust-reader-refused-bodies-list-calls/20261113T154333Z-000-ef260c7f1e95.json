@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-13T15:43:33Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-refused-bodies-list-calls",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check exit 0, ended 2026-11-13T15:43Z, on 21367f29 with the round-3 changes (B1, B2, S1-S4) uncommitted, worktree rust-whole-crate"
+  }
+}

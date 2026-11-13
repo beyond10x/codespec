@@ -1128,9 +1128,11 @@ impl<'r> Fx<'r> {
         go
     }
 
-    fn foreign(&mut self, n: &impl Spanned, reason: String) -> Stmt {
+    fn foreign(&mut self, n: &(impl Spanned + crate::calls::Listed), reason: String) -> Stmt {
         let pos = self.pos(n);
         let src = src_of(n);
+        let calls = n.listed(self.r);
+        let reason = crate::one_line(&reason);
         self.refusals.push(Refusal {
             pos: pos.clone(),
             what: first_line(&src),
@@ -1141,7 +1143,7 @@ impl<'r> Fx<'r> {
             src,
             reason,
             pos,
-            calls: None,
+            calls: Some(calls),
         }
     }
 
@@ -3208,6 +3210,31 @@ impl<'r> Fx<'r> {
     }
 
     /// A path in value position: `self`, a local, a constant, a unit variant, a sentinel error.
+    /// `segs`, a path written in the item being read, without the module path of the crate it
+    /// starts with (`wire::frame`, `crate::net::Port::new`, `super::helper`): the reader resolves
+    /// a name by its last segment, a function of a type by its last two. A path of another crate
+    /// is kept as written.
+    fn crate_relative(&self, segs: Vec<String>) -> Vec<String> {
+        if segs.len() < 2 {
+            return segs;
+        }
+        let (module, self_ty) = self.r.at.borrow().clone();
+        let full = self.r.tables.resolve(&module, self_ty.as_deref(), &segs);
+        if full.first().map(String::as_str) != Some("crate") {
+            return segs;
+        }
+        let mut k = 1;
+        while k + 1 < full.len() && self.r.tables.modules.contains(&full[..=k].join("::")) {
+            k += 1;
+        }
+        let rest = full[k..].to_vec();
+        if rest.len() < segs.len() && segs.ends_with(&rest) {
+            rest
+        } else {
+            segs
+        }
+    }
+
     fn path_value(&mut self, p: &syn::Path) -> R<Expr> {
         let segs = path_idents(p);
         match segs.as_slice() {
@@ -3629,7 +3656,10 @@ impl<'r> Fx<'r> {
             }
             _ => return Err("a call of something other than a path".into()),
         };
-        let segs = path_idents(&p.path);
+        let segs = self.crate_relative(path_idents(&p.path));
+        // The segments of the written path `segs` starts at: a module path of the crate is
+        // left out.
+        let base = p.path.segments.len() - segs.len();
         let arg = |i: usize| c.args.iter().nth(i);
         match segs.as_slice() {
             [n] if n == "Some" || n == "Ok" || n == "Err" => {
@@ -3637,7 +3667,7 @@ impl<'r> Fx<'r> {
             }
             [n] => {
                 if let Some(sig) = self.r.sigs.get(&(None, n.clone())).cloned() {
-                    let written = self.seg_targs(&p.path.segments[0])?;
+                    let written = self.seg_targs(&p.path.segments[base])?;
                     return self.call_fn(&sig, written, &c.args, want);
                 }
                 if let Some(Decl::Newtype(under)) = self.r.decls.get(n).cloned() {
@@ -3807,9 +3837,9 @@ impl<'r> Fx<'r> {
                     let mut written = if by_self {
                         self.r.scope.borrow().self_targs.clone()
                     } else {
-                        self.seg_targs(&p.path.segments[0])?
+                        self.seg_targs(&p.path.segments[base])?
                     };
-                    written.extend(self.seg_targs(&p.path.segments[1])?);
+                    written.extend(self.seg_targs(&p.path.segments[base + 1])?);
                     if by_self && written.len() != sig.tparams.len() {
                         written.clear();
                     }
