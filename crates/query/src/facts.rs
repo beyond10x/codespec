@@ -179,7 +179,7 @@ pub const RELATIONS: &[Relation] = &[
             ("line", I),
             ("listed", B),
         ],
-        about: "every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value); callee <path>.<name> or <path>.<type>.<name>",
+        about: "every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value), and for a listed call a reader names without resolving it named (a method name, type empty) or macro (a macro invocation, path as written); callee <path>.<name> or <path>.<type>.<name>",
         group: Group::Documents,
     },
     Relation {
@@ -1846,6 +1846,12 @@ impl Walker<'_> {
                 CallRef::Ref {
                     path, recv, name, ..
                 } => ("ref", self.own(path), recv.clone(), name.clone()),
+                CallRef::Named {
+                    form, path, name, ..
+                } => {
+                    let kind = if form == "macro" { "macro" } else { "named" };
+                    (kind, path.clone(), String::new(), name.clone())
+                }
                 CallRef::Lambda { calls, .. } => {
                     self.call_list(calls, &format!("{site}.calls."));
                     continue;
@@ -1925,9 +1931,16 @@ impl Walker<'_> {
                 recv: recv.to_string(),
                 name: name.to_string(),
             }),
+            // A macro invocation is no call of a function: the calls of its arguments are
+            // listed as calls of their own.
+            "macro" => {}
             _ => {
                 let reason = if kind == "value" {
                     "call of a function value, not linked by calls".to_string()
+                } else if kind == "named" {
+                    format!(
+                        "call of the method {name} on a value of a type the reader did not know, not linked by calls"
+                    )
                 } else {
                     format!(
                         "call through the interface {}, not linked by calls",

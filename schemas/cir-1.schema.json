@@ -396,6 +396,35 @@
             "name",
             "pos"
           ]
+        },
+        {
+          "description": "A call the reader names as the source writes it but does not resolve to a target, one of\n[`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not\nknow (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is\nwritten with or the module's imports give it (empty when written bare). A `macro` entry\nnames the invocation, not what it expands to; the calls inside its arguments are listed as\nentries of their own. Neither links to a function of the module.",
+          "type": "object",
+          "properties": {
+            "form": {
+              "type": "string"
+            },
+            "k": {
+              "type": "string",
+              "const": "named"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "form",
+            "name",
+            "pos"
+          ]
         }
       ]
     },

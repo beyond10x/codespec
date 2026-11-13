@@ -1,9 +1,14 @@
-//! The Rust reader: one crate's `src/lib.rs` to one `cir/1` module, parsed with `syn`, every name
-//! and type resolved by the reader itself for the subset of Rust `cir/1` expresses. Nothing is
-//! guessed: a construct the reader cannot type or map is kept as a `foreign` statement in `rust`
-//! (its source and the reason), with a refusal at its position; an item it cannot map (a function
-//! with a bound `cir/1` has no constraint for, a trait outside the subset, a type outside it) is
-//! listed as a refusal and left out.
+//! The Rust reader: one crate to one `cir/1` module, parsed with `syn`, every name and type
+//! resolved by the reader itself for the subset of Rust `cir/1` expresses. The crate is its root
+//! file (`[lib] path`, `src/lib.rs`, or `src/main.rs` for a crate without a library) and every
+//! module file its `mod` declarations name, the items of all its modules read as one list
+//! (`files`); a position names the file it stands in, relative to the root file's directory
+//! (`lib.rs:12`, `wire.rs:40`, `net/mod.rs:3`). Nothing is guessed: a construct the reader cannot
+//! type or map is kept as a `foreign` statement in `rust` (its source, the reason and the calls it
+//! makes), with a refusal at its position; an item it cannot map (a function with a bound `cir/1`
+//! has no constraint for, a trait outside the subset, a type outside it) is listed as a refusal
+//! and left out, and a function among them is an `opaque` function with the calls of its body
+//! (`calls`).
 //!
 //! `cir/1` is Go-shaped: the passes and writers expect `(T, error)` results, `(T, bool)` comma-ok
 //! results, pointer receivers, sentinel errors and channels of `any`. The reader maps Rust's idioms
@@ -35,7 +40,8 @@
 //! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
 //! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
-//! | `use` | nothing: names resolve by their last path segment |
+//! | `use` | nothing for what is read: names resolve by their last path segment. The calls an `opaque` function or a `foreign` statement lists resolve a path through the module's `use` declarations (`calls`) |
+//! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a `#[cfg(test)]` module or item is not read. Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
 //!
 //! # Types
 //!
@@ -183,12 +189,17 @@
 //!
 //! | bound | limit |
 //! |---|---|
-//! | size | `Cargo.toml` and `src/lib.rs` up to [`MAX_SOURCE_BYTES`], 4 MiB each, read no further than one byte past it |
-//! | nesting | [`MAX_NESTING`], 256 levels, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item (an identifier other than `else` or `as`, an attribute or doc comment, a label or a literal follows it); a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
+//! | size | `Cargo.toml` and each source file up to [`MAX_SOURCE_BYTES`], 4 MiB each, read no further than one byte past it; a module file past it is a refusal at its `mod` declaration |
+//! | files | [`MAX_FILES`], 4096 files, and [`MAX_CRATE_BYTES`], 64 MiB of source over all of them: a crate past either is refused |
+//! | nesting | [`MAX_NESTING`], 256 levels per file, counted on the source's tokens before it is parsed (`lib.rs:<line>: nested deeper than 256 levels, this reader's limit`; a module file past it is a refusal at its `mod` declaration). A level is a delimited group, a keyword or a punctuation character but `:`, `,` and `'` (`&&` is two, as `!!x` is), counted from the start of its group, a `;`, a `=>` or a block that ends a statement or an item (an identifier other than `else` or `as`, an attribute or doc comment, a label or a literal follows it); a `,` goes back to the count at the last unclosed `<` or `|`. That counts every level `syn` and the reader recurse on: parentheses, blocks, unary and binary operators, `else if`, method chains, `return`, generic arguments, closures |
 //! | stack | parsing, lifting and dropping the syntax tree run on a thread with a 256 MiB stack |
 
 mod body;
+mod calls;
+mod files;
 mod names;
+
+pub use files::{MAX_CRATE_BYTES, MAX_FILES};
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -204,7 +215,9 @@ use syn::visit_mut::VisitMut;
 /// This reader's version, recorded in every module it reads.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Read `<dir>/src/lib.rs`; the module is named after the crate's `[package] name`.
+/// Read the crate in `dir`: its library's root file (`[lib] path`, else `src/lib.rs`), or
+/// `src/main.rs` for a crate without a library, and every module file it names (`files`). The
+/// module is named after the crate's `[package] name`.
 pub fn read_crate(dir: &Path) -> Result<Module, String> {
     let manifest = dir.join("Cargo.toml");
     let text = read_bounded(&manifest)?;
@@ -216,52 +229,170 @@ pub fn read_crate(dir: &Path) -> Result<Module, String> {
         .and_then(|n| n.as_str())
         .ok_or_else(|| format!("{}: no [package] name", manifest.display()))?
         .replace('-', "_");
-    let lib = dir.join("src/lib.rs");
-    let src = read_bounded(&lib)?;
-    read_source(&name, "lib.rs", &src)
+    let lib = table
+        .get("lib")
+        .and_then(|l| l.get("path"))
+        .and_then(|p| p.as_str())
+        .map(|p| dir.join(p));
+    let root = match lib {
+        Some(p) => p,
+        None if dir.join("src/lib.rs").is_file() || !dir.join("src/main.rs").is_file() => {
+            dir.join("src/lib.rs")
+        }
+        None => dir.join("src/main.rs"),
+    };
+    on_read_thread(|| read_tree(&name, files::crate_tree(dir, &root)?))
 }
 
-/// Read one source file as the module `name`; positions are `<file>:<line>`. A source nested
-/// deeper than [`MAX_NESTING`] is refused before it is parsed; parsing and lifting run on a thread
-/// with a stack of [`STACK_BYTES`].
+/// Read one source file as the module `name`, the root of a crate of one file: its inline
+/// modules are read, a `mod` naming a file is refused. Positions are `<file>:<line>`. A source
+/// nested deeper than [`MAX_NESTING`] is refused before it is parsed.
 pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> {
-    let (depth, line) = nesting(src);
-    if depth > MAX_NESTING {
-        return Err(format!(
-            "{file}:{line}: nested deeper than {MAX_NESTING} levels, this reader's limit"
-        ));
-    }
+    on_read_thread(|| read_tree(name, files::source_tree(file, src)?))
+}
+
+/// `f` run on a thread with a stack of [`STACK_BYTES`]: parsing, lifting and dropping the syntax
+/// trees. Spans name their file per thread, so every file of a crate is parsed on this one.
+fn on_read_thread(f: impl FnOnce() -> Result<Module, String> + Send) -> Result<Module, String> {
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("rust-read".into())
             .stack_size(STACK_BYTES)
-            .spawn_scoped(s, || parse_and_read(name, file, src))
+            .spawn_scoped(s, f)
             .map_err(|e| format!("cannot start a thread to read on: {e}"))?
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     })
 }
 
-fn parse_and_read(name: &str, file: &str, src: &str) -> Result<Module, String> {
-    let mut ast = syn::parse_file(src).map_err(|e| {
-        let at = e.span().start();
-        format!("{file}:{}: {e}", at.line)
-    })?;
-    Unraw::of(&ast, src).visit_file_mut(&mut ast);
-    let mut r = Reader::new(file);
-    r.ordered_maps = src.parse::<proc_macro2::TokenStream>().is_ok_and(|ts| {
-        let mut names = Taken::default();
-        Unraw::plain_idents(ts, &mut names);
-        names.names.contains("BTreeMap") || names.names.contains("BTreeSet")
+/// The module of a crate's files: their items read as those of one file.
+fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
+    let files::Tree {
+        attrs,
+        items,
+        sources,
+        files,
+        span_files,
+        refusals,
+    } = tree;
+    let modules: Vec<String> = items.iter().map(|(_, m)| m.clone()).collect();
+    let mut ast = syn::File {
+        shebang: None,
+        frontmatter: None,
+        attrs,
+        items: items.into_iter().map(|(item, _)| item).collect(),
+    };
+    Unraw::of(&ast, &sources).visit_file_mut(&mut ast);
+    let tables = call_tables(&ast, &modules);
+    let mut r = Reader::new(files.first().map(String::as_str).unwrap_or("lib.rs"));
+    r.ordered_maps = sources.iter().any(|src| {
+        src.parse::<proc_macro2::TokenStream>().is_ok_and(|ts| {
+            let mut names = Taken::default();
+            Unraw::plain_idents(ts, &mut names);
+            names.names.contains("BTreeMap") || names.names.contains("BTreeSet")
+        })
     });
+    r.span_files = span_files;
+    r.file_order = files.into_iter().enumerate().map(|(k, f)| (f, k)).collect();
+    r.refusals = refusals;
+    r.tables = tables;
+    r.item_modules = modules;
     r.scan(&ast);
     Ok(r.module(name, &ast))
+}
+
+/// The name of the type an impl is of: the last segment of its path, through references.
+fn impl_type_name(t: &syn::Type) -> Option<String> {
+    match t {
+        syn::Type::Path(p) if p.qself.is_none() => {
+            p.path.segments.last().map(|s| s.ident.to_string())
+        }
+        syn::Type::Reference(r) => impl_type_name(&r.elem),
+        syn::Type::Paren(p) => impl_type_name(&p.elem),
+        _ => None,
+    }
+}
+
+/// How the crate names each function in `cir/1`, read or opaque alike, with its types, its
+/// modules and each module's imports: what [`calls::Lister`] resolves a call with.
+fn call_tables(f: &syn::File, modules: &[String]) -> calls::Tables {
+    let mut t = calls::Tables::default();
+    let mut pub_traits = BTreeSet::new();
+    for m in modules {
+        let mut p = String::new();
+        for seg in m.split("::") {
+            if !p.is_empty() {
+                p.push_str("::");
+            }
+            p.push_str(seg);
+            t.modules.insert(p.clone());
+        }
+    }
+    for item in &f.items {
+        match item {
+            syn::Item::Struct(s) => {
+                t.types.insert(s.ident.to_string());
+            }
+            syn::Item::Enum(e) => {
+                t.types.insert(e.ident.to_string());
+            }
+            syn::Item::Union(u) => {
+                t.types.insert(u.ident.to_string());
+            }
+            syn::Item::Type(a) => {
+                t.types.insert(a.ident.to_string());
+            }
+            syn::Item::Trait(tr) => {
+                t.types.insert(tr.ident.to_string());
+                if is_pub(&tr.vis) {
+                    pub_traits.insert(tr.ident.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    for (item, module) in f.items.iter().zip(modules) {
+        match item {
+            syn::Item::Fn(func) => {
+                let rust = func.sig.ident.to_string();
+                t.fns
+                    .insert(rust.clone(), calls::fn_name(&rust, is_pub(&func.vis)));
+            }
+            syn::Item::Impl(im) => {
+                let Some(ty) = impl_type_name(&im.self_ty) else {
+                    continue;
+                };
+                let trait_pub = im.trait_.as_ref().map(|(p, _)| {
+                    p.segments
+                        .last()
+                        .is_some_and(|s| pub_traits.contains(&s.ident.to_string()))
+                });
+                for ii in &im.items {
+                    let syn::ImplItem::Fn(func) = ii else {
+                        continue;
+                    };
+                    let rust = func.sig.ident.to_string();
+                    let public = trait_pub.unwrap_or_else(|| is_pub(&func.vis));
+                    let has_self = matches!(func.sig.inputs.first(), Some(syn::FnArg::Receiver(_)));
+                    let entry = if has_self {
+                        (Some(ty.clone()), calls::fn_name(&rust, public))
+                    } else {
+                        (None, format!("{}{ty}", calls::fn_name(&rust, public)))
+                    };
+                    t.assoc.entry((ty.clone(), rust)).or_insert(entry);
+                }
+            }
+            syn::Item::Use(u) => t.add_use(module, u),
+            _ => {}
+        }
+    }
+    t
 }
 
 /// The deepest a source may nest, as [`too_deep`] counts it: deeper is refused before parsing.
 pub const MAX_NESTING: usize = 256;
 
-/// The largest `Cargo.toml` and `src/lib.rs` the reader reads, in bytes.
+/// The largest `Cargo.toml` and source file the reader reads, in bytes.
 pub const MAX_SOURCE_BYTES: u64 = 4 << 20;
 
 /// The stack parsing and lifting run on: each recurses a few frames per level, and dropping the
@@ -486,12 +617,14 @@ impl Taken {
 }
 
 impl Unraw {
-    fn of(f: &syn::File, src: &str) -> Unraw {
+    fn of(f: &syn::File, srcs: &[String]) -> Unraw {
         let mut taken = Taken::default();
         let mut raw = BTreeSet::new();
-        if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
-            Unraw::plain_idents(ts.clone(), &mut taken);
-            Unraw::raw_idents(ts, &mut raw);
+        for src in srcs {
+            if let Ok(ts) = src.parse::<proc_macro2::TokenStream>() {
+                Unraw::plain_idents(ts.clone(), &mut taken);
+                Unraw::raw_idents(ts, &mut raw);
+            }
         }
         // `r#type_` is the plain name `type_`: it is taken as a plain one is.
         for bare in &raw {
@@ -673,7 +806,13 @@ impl Sig {
 }
 
 pub(crate) struct Reader {
+    /// The root file's position name, for a span of no file read.
     pub file: String,
+    /// The position name of each file read, by the file name its spans carry.
+    pub span_files: BTreeMap<String, String>,
+    /// Each file's place in the order the files were read: refusals are sorted by it, then by
+    /// line.
+    pub file_order: BTreeMap<String, usize>,
     pub known: BTreeSet<String>,
     pub decls: BTreeMap<String, Decl>,
     /// The closed error enum's name and its variants by Rust name.
@@ -723,6 +862,14 @@ pub(crate) struct Reader {
     /// The type parameters in scope while an item is read.
     pub scope: RefCell<Scope>,
     pub refusals: Vec<Refusal>,
+    /// How the crate names its functions, types, modules and imports, for listing calls.
+    pub tables: calls::Tables,
+    /// The module path of each item of the file read, in order.
+    pub item_modules: Vec<String>,
+    /// The module path and the impl type of the item being read, for listing its calls.
+    pub at: RefCell<(String, Option<String>)>,
+    /// The functions refused whole, with their calls.
+    pub opaque: Vec<codespec_model::Opaque>,
 }
 
 /// The type parameters in scope while an item is read, a generic function's or impl's, and the
@@ -921,6 +1068,8 @@ impl Reader {
     fn new(file: &str) -> Reader {
         Reader {
             file: file.to_string(),
+            span_files: BTreeMap::new(),
+            file_order: BTreeMap::new(),
             known: BTreeSet::new(),
             decls: BTreeMap::new(),
             error_enum: None,
@@ -946,6 +1095,10 @@ impl Reader {
             type_params: BTreeMap::new(),
             scope: RefCell::new(Scope::default()),
             refusals: Vec::new(),
+            tables: calls::Tables::default(),
+            item_modules: Vec::new(),
+            at: RefCell::new(("crate".into(), None)),
+            opaque: Vec::new(),
         }
     }
 
@@ -1165,6 +1318,33 @@ impl Reader {
         Ok((name, Scope { params, self_targs }))
     }
 
+    /// The first named type `t` mentions that the module does not declare: a struct, newtype,
+    /// enum or union refused, or a crate trait not read as an interface.
+    fn undeclared(&self, t: &Type) -> Option<String> {
+        match t {
+            Type::Named { name, targs } => {
+                let declared = self.decls.contains_key(name)
+                    || matches!(self.traits.get(name), Some(Some(_)))
+                    || self.message_enums.contains(name);
+                if !declared {
+                    return Some(name.clone());
+                }
+                targs.iter().find_map(|a| self.undeclared(a))
+            }
+            Type::Ptr { elem } | Type::Slice { elem } | Type::Array { elem, .. } => {
+                self.undeclared(elem)
+            }
+            Type::Chan { elem, .. } => self.undeclared(elem),
+            Type::Map { key, elem } => self.undeclared(key).or_else(|| self.undeclared(elem)),
+            Type::Tuple { elems } => elems.iter().find_map(|e| self.undeclared(e)),
+            Type::Func { params, results } => params
+                .iter()
+                .chain(results)
+                .find_map(|e| self.undeclared(e)),
+            _ => None,
+        }
+    }
+
     /// Whether `t` is a crate trait read as an interface.
     pub fn is_iface(&self, t: &Type) -> Option<&TraitInfo> {
         match t {
@@ -1207,7 +1387,17 @@ impl Reader {
     }
 
     pub fn pos(&self, span: proc_macro2::Span) -> String {
-        format!("{}:{}", self.file, span.start().line)
+        let file = self.span_files.get(&span.file()).unwrap_or(&self.file);
+        format!("{file}:{}", span.start().line)
+    }
+
+    /// Where a position `<file>:<line>` sorts: by the order the files were read, then by line.
+    fn pos_key(&self, p: &str) -> (usize, usize) {
+        let (file, line) = p.rsplit_once(':').unwrap_or((p, ""));
+        (
+            self.file_order.get(file).copied().unwrap_or(0),
+            line.parse().unwrap_or(0),
+        )
     }
 
     fn refuse(&mut self, span: proc_macro2::Span, what: &str, reason: impl Into<String>) {
@@ -1416,7 +1606,7 @@ impl Reader {
                         Ok(Type::Error)
                     }
                     // A generic struct, with as many type arguments as it declares parameters.
-                    (n, a) if self.type_params.contains_key(n) => {
+                    (n, a) if self.type_params.contains_key(n) && self.decls.contains_key(n) => {
                         let declared = self.type_params[n].len();
                         if a.len() != declared {
                             return Err(format!(
@@ -2070,6 +2260,41 @@ impl Reader {
                 }
             }
         }
+        // A struct read before a type it names was refused (a field of a struct declared later)
+        // names a type the module does not declare: it is refused in turn, until none does.
+        loop {
+            let dangling: Vec<(String, String)> = self
+                .decls
+                .iter()
+                .filter_map(|(n, d)| match d {
+                    Decl::Struct(fields) => fields.iter().find_map(|fl| {
+                        self.undeclared(&fl.t).map(|u| {
+                            (
+                                n.clone(),
+                                format!("field {}: type {u}, which is not read", fl.rust),
+                            )
+                        })
+                    }),
+                    Decl::Newtype(t) => self
+                        .undeclared(t)
+                        .map(|u| (n.clone(), format!("type {u}, which is not read"))),
+                    _ => None,
+                })
+                .collect();
+            if dangling.is_empty() {
+                break;
+            }
+            for (n, why) in dangling {
+                self.decls.remove(&n);
+                if let Some(s) = pending.iter().find_map(|i| match i {
+                    syn::Item::Struct(s) if s.ident == n => Some(s),
+                    _ => None,
+                }) {
+                    deferred.push((s.span(), n, why));
+                }
+            }
+        }
+        self.type_params.retain(|n, _| self.decls.contains_key(n));
         // `#[derive(Default)]` makes Go's zero value only when every field's default is its
         // zero: an integer, float, `bool`, `String`, collection or array of such, or a type of
         // the crate whose derived default is its zero in turn. An `Rc<RefCell<T>>` field's default
@@ -2336,7 +2561,7 @@ impl Reader {
                 self.refused_displays.insert(t, why);
             }
         }
-        deferred.sort_by_key(|(span, _, _)| span.start().line);
+        deferred.sort_by_key(|(span, _, _)| self.pos_key(&self.pos(*span)));
         for (span, what, reason) in deferred {
             self.refuse(span, &what, reason);
         }
@@ -2352,7 +2577,17 @@ impl Reader {
         let mut vars = Vec::new();
         let mut interfaces = Vec::new();
         let mut late_refusals: Vec<Refusal> = Vec::new();
-        for item in &f.items {
+        for (k, item) in f.items.iter().enumerate() {
+            let module = self
+                .item_modules
+                .get(k)
+                .cloned()
+                .unwrap_or_else(|| "crate".into());
+            let self_ty = match item {
+                syn::Item::Impl(im) => impl_type_name(&im.self_ty),
+                _ => None,
+            };
+            *self.at.borrow_mut() = (module, self_ty);
             match item {
                 syn::Item::Struct(s) => {
                     let n = s.ident.to_string();
@@ -2516,6 +2751,7 @@ impl Reader {
                                     .err()
                                     .unwrap_or_default(),
                             };
+                            self.push_opaque(None, &func.sig, &func.block, &reason);
                             late_refusals.push(Refusal {
                                 pos: self.pos(func.sig.ident.span()),
                                 what: format!("fn {}", func.sig.ident),
@@ -2528,6 +2764,7 @@ impl Reader {
                     let (t, scope) = match self.impl_scope(im) {
                         Ok(ts) => ts,
                         Err(reason) => {
+                            self.push_opaque_impl(im, &reason);
                             late_refusals.push(Refusal {
                                 pos: self.pos(im.span()),
                                 what: format!("impl {}", src_of(&im.self_ty)),
@@ -2543,10 +2780,12 @@ impl Reader {
                     if let Some(tr) = &crate_trait
                         && let Some(reason) = self.trait_clashes.get(&(t.clone(), tr.clone()))
                     {
+                        let reason = reason.clone();
+                        self.push_opaque_impl(im, &reason);
                         late_refusals.push(Refusal {
                             pos: self.pos(im.span()),
                             what: format!("impl {tr} for {t}"),
-                            reason: reason.clone(),
+                            reason,
                         });
                         continue;
                     }
@@ -2558,12 +2797,14 @@ impl Reader {
                             _ => None,
                         })
                     {
+                        let reason = format!(
+                            "{t} has an inherent method {clash} too: Go has one method per name"
+                        );
+                        self.push_opaque_impl(im, &reason);
                         late_refusals.push(Refusal {
                             pos: self.pos(im.span()),
                             what: format!("impl {tr} for {t}"),
-                            reason: format!(
-                                "{t} has an inherent method {clash} too: Go has one method per name"
-                            ),
+                            reason,
                         });
                         continue;
                     }
@@ -2619,6 +2860,7 @@ impl Reader {
                                                 .err()
                                                 .unwrap_or_default(),
                                         };
+                                        self.push_opaque(Some(&t), &func.sig, &func.block, &reason);
                                         late_refusals.push(Refusal {
                                             pos: self.pos(func.sig.ident.span()),
                                             what: format!("fn {t}::{}", func.sig.ident),
@@ -2650,20 +2892,25 @@ impl Reader {
                                         funcs.push(fu);
                                     }
                                     Ok(None) => {}
-                                    Err(reason) => late_refusals.push(Refusal {
-                                        pos: self.pos(im.span()),
-                                        what: format!("impl Display for {t}"),
-                                        reason,
-                                    }),
+                                    Err(reason) => {
+                                        self.push_opaque_impl(im, &reason);
+                                        late_refusals.push(Refusal {
+                                            pos: self.pos(im.span()),
+                                            what: format!("impl Display for {t}"),
+                                            reason,
+                                        })
+                                    }
                                 }
                                 continue;
                             }
+                            let reason = format!(
+                                "an impl of {tr}, which is not a trait of the crate, is outside cir/1"
+                            );
+                            self.push_opaque_impl(im, &reason);
                             late_refusals.push(Refusal {
                                 pos: self.pos(im.span()),
                                 what: format!("impl {tr} for {t}"),
-                                reason: format!(
-                                    "an impl of {tr}, which is not a trait of the crate, is outside cir/1"
-                                ),
+                                reason,
                             });
                         }
                         None => unreachable!("an inherent impl is read by the arm above"),
@@ -2754,13 +3001,15 @@ impl Reader {
         }
         let mut refusals = std::mem::take(&mut self.refusals);
         refusals.extend(late_refusals);
-        let line = |p: &str| -> usize {
-            p.rsplit(':')
-                .next()
-                .and_then(|l| l.parse().ok())
-                .unwrap_or(0)
-        };
-        refusals.sort_by_key(|r| line(&r.pos));
+        for r in &mut refusals {
+            r.what = one_line(&r.what);
+            r.reason = one_line(&r.reason);
+        }
+        refusals.sort_by_key(|r| self.pos_key(&r.pos));
+        let mut opaque = self.opaque_named_apart(&funcs);
+        for o in &mut opaque {
+            o.reason = one_line(&o.reason);
+        }
         Module {
             format: codespec_model::FORMAT.into(),
             name: name.into(),
@@ -2780,7 +3029,7 @@ impl Reader {
             facts: None,
             refusals,
             path: String::new(),
-            opaque: vec![],
+            opaque,
             methods: vec![],
             linknames: vec![],
             inits: vec![],
@@ -2791,6 +3040,77 @@ impl Reader {
             transactional: vec![],
             persistence: vec![],
         }
+    }
+
+    /// A function refused whole, kept as an opaque function with the calls of its body: named
+    /// as the crate names it in `cir/1` (`ty` the impl's type, for a function of an impl).
+    fn push_opaque(
+        &mut self,
+        ty: Option<&str>,
+        sig: &syn::Signature,
+        block: &syn::Block,
+        reason: &str,
+    ) {
+        let rust = sig.ident.to_string();
+        let (recv, name) = match ty {
+            None => (
+                None,
+                self.tables
+                    .fns
+                    .get(&rust)
+                    .cloned()
+                    .unwrap_or_else(|| calls::fn_name(&rust, false)),
+            ),
+            Some(t) => self
+                .tables
+                .assoc
+                .get(&(t.to_string(), rust.clone()))
+                .cloned()
+                .unwrap_or_else(|| (Some(t.to_string()), calls::fn_name(&rust, false))),
+        };
+        let calls = calls::of_block(self, block);
+        self.opaque.push(codespec_model::Opaque {
+            name,
+            recv,
+            pos: self.pos(sig.ident.span()),
+            reason: reason.to_string(),
+            no_body: false,
+            calls,
+        });
+    }
+
+    /// Every function of an impl refused whole, each an opaque function.
+    fn push_opaque_impl(&mut self, im: &syn::ItemImpl, reason: &str) {
+        let Some(t) = impl_type_name(&im.self_ty) else {
+            return;
+        };
+        for ii in &im.items {
+            if let syn::ImplItem::Fn(func) = ii {
+                self.push_opaque(Some(&t), &func.sig, &func.block, reason);
+            }
+        }
+    }
+
+    /// The opaque functions, each key once and none a key of `funcs`: a later one whose key is
+    /// taken (two trait impls of one type with a method of one name, `fmt` of `Display` and of
+    /// `Debug`) is named with `_2`, `_3`, … after its name.
+    fn opaque_named_apart(
+        &mut self,
+        funcs: &[codespec_model::Func],
+    ) -> Vec<codespec_model::Opaque> {
+        let mut taken: BTreeSet<String> = funcs.iter().map(|f| f.key()).collect();
+        let mut out = Vec::new();
+        for mut o in std::mem::take(&mut self.opaque) {
+            let base = o.name.clone();
+            let mut k = 2;
+            while taken.contains(&o.key()) {
+                o.name = format!("{base}_{k}");
+                k += 1;
+            }
+            taken.insert(o.key());
+            out.push(o);
+        }
+        out
     }
 
     /// The sentinel errors of `enum Error`, their messages read off its `Display` impl.
@@ -2919,6 +3239,22 @@ fn value_from_impls(f: &syn::File, name: &str, variants: &[String]) -> Result<Ve
 
 pub(crate) fn src_of(n: &impl Spanned) -> String {
     n.span().source_text().unwrap_or_default()
+}
+
+/// `s` as text `cir/1` admits outside `doc`, `src`, `value` and `message`: a line break or tab as a
+/// space, any other control or format character written as its escape.
+pub(crate) fn one_line(s: &str) -> String {
+    let flat: String = s
+        .chars()
+        .map(|c| {
+            if matches!(c, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    codespec_model::printable(&flat).into_owned()
 }
 
 pub(crate) fn first_line(s: &str) -> String {

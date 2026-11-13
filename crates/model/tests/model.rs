@@ -925,6 +925,54 @@ fn an_opaque_function_with_the_name_of_a_declared_function_is_refused() {
     assert!(refused(&v).contains("opaque function T.M is declared twice"));
 }
 
+/// A call named as written but not resolved: a method call on a value of a type the reader does
+/// not know, and a macro invocation. Each reads, writes back to the same bytes, and links to no
+/// function; a form other than `method` or `macro`, an empty name or a method with a path is
+/// refused.
+#[test]
+fn a_named_call_reads_and_a_named_call_of_another_form_is_refused() {
+    let named = serde_json::json!([
+        {"k": "named", "form": "method", "name": "unwrap", "pos": "m.go:10"},
+        {"k": "named", "form": "macro", "path": "std", "name": "println", "pos": "m.go:11"},
+        {"k": "named", "form": "macro", "name": "panic", "pos": "m.go:11"}
+    ]);
+    let mut v = with_calls();
+    v["opaque"][0]["calls"] = named.clone();
+    v["funcs"][0]["body"][0]["calls"][6]["calls"] = named.clone();
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert!(matches!(
+        &m.opaque[0].calls[1],
+        codespec_model::CallRef::Named { form, path, name, .. }
+            if form == "macro" && path == "std" && name == "println"
+    ));
+    let text = m.to_json();
+    let again = Module::from_json(text.as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), text);
+    for (k, field, value, why) in [
+        (
+            0,
+            "form",
+            serde_json::json!("closure"),
+            "has the form \"closure\"",
+        ),
+        (0, "name", serde_json::json!(""), "names nothing"),
+        (
+            0,
+            "path",
+            serde_json::json!("std"),
+            "has a path, which only a macro has",
+        ),
+    ] {
+        let mut w = v.clone();
+        w["opaque"][0]["calls"][k][field] = value.clone();
+        let e = refused(&w);
+        assert!(e.contains(why), "{field}: {e}");
+        let mut w = v.clone();
+        w["funcs"][0]["body"][0]["calls"][6]["calls"][k][field] = value;
+        assert!(refused(&w).contains(why), "in a lambda's list: {field}");
+    }
+}
+
 #[test]
 fn a_call_of_an_unknown_kind_is_refused() {
     let mut v = with_calls();

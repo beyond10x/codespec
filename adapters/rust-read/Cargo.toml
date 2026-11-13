@@ -1,6 +1,6 @@
 [package]
 name = "codespec-read-rust"
-description = "Reads a Rust crate's src/lib.rs into one cir/1 module with syn and its own name and type resolution for the cir/1 subset"
+description = "Reads a Rust crate, its root file and every module file it names, into one cir/1 module with syn and its own name and type resolution for the cir/1 subset"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,10 +19,11 @@ path = "src/main.rs"
 b10x-codespec-model = { path = "../../crates/model" }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde.workspace = true
-syn = { workspace = true, features = ["visit-mut"] }
+syn = { workspace = true, features = ["visit", "visit-mut"] }
 toml.workspace = true
 
 [dev-dependencies]
 b10x-codespec-conformance = { path = "../../crates/conformance" }
 b10x-codespec-passes = { path = "../../crates/passes" }
+b10x-codespec-query = { path = "../../crates/query" }
 serde_json.workspace = true

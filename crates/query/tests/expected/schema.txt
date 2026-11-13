@@ -22,7 +22,7 @@ let_name{stmt: node, index: int, name: string, last: bool}
 field_init{expr: node, index: int, name: string, value: node}
     every field of a struct literal
 call{site: node, func: node, kind: string, callee: string, path: string, type: string, name: string, recv: node, args: int, pos: string, line: int, listed: bool}
-    every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value); callee <path>.<name> or <path>.<type>.<name>
+    every call, read or listed (foreign statements, opaque functions): kind func, method, iface, value or ref (a function used as a value), and for a listed call a reader names without resolving it named (a method name, type empty) or macro (a macro invocation, path as written); callee <path>.<name> or <path>.<type>.<name>
 call_by{site: node, by: string}
     every listed call whose target a convention gave, not the source language's type information: by the convention the reader names (Groovy: grails-gorm, grails-service-field); calls links such a call as any other
 type{id: type, kind: string, name: string, path: string, bits: int, signed: bool, elem: type, key: type, fields: int, under: type, decl: string}

@@ -269,7 +269,7 @@ pub fn ref_calls<'a>(m: &Module, calls: &'a [CallRef], in_lambda: bool, out: &mu
                 ref_calls(m, calls, true, out);
                 continue;
             }
-            CallRef::New { .. } => continue,
+            CallRef::New { .. } | CallRef::Named { .. } => continue,
         };
         out.push(Call {
             kind,

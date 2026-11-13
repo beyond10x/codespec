@@ -62,7 +62,7 @@ A type of the module that a dependency-injection container creates and holds: it
 
 A call a construct makes, named from the source language's own type information where the construct is outside `cir/1` (a `foreign` statement, an [`Opaque`] function). A signature `sig` is the source language's spelling of a function type without parameter names, every named type qualified by its full import path: `func([]byte) (int, error)`.
 
-A tagged union: the field `k` names the kind. 7 kinds.
+A tagged union: the field `k` names the kind. 8 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
@@ -73,6 +73,7 @@ A tagged union: the field `k` names the kind. 7 kinds.
 | `ref` | `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`: `string`; `sig`\*: `string` | The function `name` of `path` (empty: this module), or with `recv` the method, used as a value of the signature `sig`: it may run wherever a value of `sig` is called. |
 | `lambda` | `calls`\*: list of [`CallRef`](#callref); `pos`\*: `string`; `sig`\*: `string` | A function literal of the signature `sig`. Its calls belong to the function that holds it, and it may run wherever a value of `sig` is called. |
 | `new` | `name`\*: `string`; `path`: `string`; `pos`\*: `string` | Not a call: a value of the named type `name` of the module `path` (empty: this module) is made here (a composite literal, `new`, a conversion, a constant or a zero value of that type, or a struct holding one in a field), so a call through an interface may reach its methods. |
+| `named` | `form`\*: `string`; `name`\*: `string`; `path`: `string`; `pos`\*: `string` | A call the reader names as the source writes it but does not resolve to a target, one of [`NAMED_FORMS`]: `method`, a method `name` called on a value whose type the reader does not know (`path` empty); `macro`, a macro invocation `name`, `path` the module path it is written with or the module's imports give it (empty when written bare). A `macro` entry names the invocation, not what it expands to; the calls inside its arguments are listed as entries of their own. Neither links to a function of the module. |
 
 ## Case
 

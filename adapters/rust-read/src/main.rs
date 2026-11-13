@@ -1,4 +1,5 @@
-//! `codespec-read-rust`: reads `<crate dir>/src/lib.rs` and prints one `cir/1` module on stdout.
+//! `codespec-read-rust`: reads the crate in `<crate dir>`, its root file and every module file it
+//! names, and prints one `cir/1` module on stdout.
 //!
 //! ```console
 //! codespec-read-rust <crate dir>
@@ -6,8 +7,8 @@
 //!
 //! The module name is the crate's `[package] name` (`-` as `_`). What the reader maps, and how, is
 //! the crate doc of the library (`src/lib.rs`). A construct it cannot type or map is kept as a
-//! `foreign` statement in Rust with a refusal at its position; a crate that does not parse, or has
-//! no `src/lib.rs`, is an error: exit 1, nothing printed.
+//! `foreign` statement in Rust with a refusal at its position; a crate whose root file does not
+//! parse, or that has no root file, is an error: exit 1, nothing printed.
 //!
 //! `codespec-read-rust --describe` prints the reader's `codespec-adapter/1` manifest
 //! (`codespec_model::manifest`): the features it reads, outside a `foreign` statement, from the

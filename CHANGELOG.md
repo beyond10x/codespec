@@ -4,6 +4,31 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-rust` reads a whole crate: its root file (`[lib] path`, `src/lib.rs`, or
+  `src/main.rs` for a crate without a library) and every module file a `mod` declaration names
+  (`foo.rs`, `foo/mod.rs`, a `#[path]` attribute), with the items of inline modules, into one
+  `cir/1` module. Every position names its own file relative to the root file's directory
+  (`wire.rs:40`, `net/mod.rs:3`), so a crate of one file reads to the same bytes as before. A
+  module file that is missing, found twice, read already, outside the crate's directory, past a
+  limit or not parsed is a refusal at its `mod` line; a `#[cfg(test)]` module or item is not
+  read; two items of one kind and name in two modules are each refused, as a name resolves by its
+  last segment. A crate of more than 4096 files or 64 MiB of source is refused.
+- `codespec-read-rust` lists the calls of the code it does not read. A function or method it
+  refuses whole is an `opaque` function with its reason and the calls of its body, and every
+  `foreign` statement carries `calls`. A call of the crate's own function or method links to it; a
+  path outside the crate is listed as the module's `use` declarations resolve it
+  (`std::process::Command.new`); a method call on a value of a type the reader does not know is
+  listed by its name, and a macro by its name, with the calls of its arguments.
+- `cir/1` has the call ref `named` (`form` `method` or `macro`, `path`, `name`, `pos`): a call a
+  reader names as the source writes it without resolving it to a target. Additive: every earlier
+  document reads and writes as before. `codespec query` gives each a `call` row of kind `named`
+  (an `unknown` site, as a call through an interface is) or `macro` (linked to nothing);
+  `codespec effects` and `reach` count each as unknown.
+- cq regular expressions take the word boundary `\b`, its negation `\B`, and a leading `(?i)`
+  that matches letters in either case.
+
 ## 0.9.0
 
 ### Added
