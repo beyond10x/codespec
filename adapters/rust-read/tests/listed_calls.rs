@@ -260,6 +260,7 @@ fn a_callee_is_named_unless_a_type_or_variant_is_made() {
         [
             "func .Helper 23",
             "macro log.info 27",
+            "name inner 27",
             "macro .stringify 28",
             "name GetTickCount 29",
             "method .clone 30",
@@ -297,4 +298,52 @@ fn a_query_sees_a_callee_named_by_its_name_as_unknown() {
     }
     let unknown = answer(r#"?- unknown{func: "probe.Outer", reason: R}."#, &m);
     assert!(unknown.contains("GetTickCount"), "{unknown}");
+}
+
+fn opaque_calls(src: &str, name: &str) -> Vec<String> {
+    let m = codespec_read_rust::read_source("probe", "lib.rs", src).expect("read");
+    let m = Module::from_json(m.to_json().as_bytes()).expect("the module is valid cir/1");
+    let o = m
+        .opaque
+        .iter()
+        .find(|o| o.name == name)
+        .unwrap_or_else(|| panic!("no opaque {name}: {:?}", m.opaque));
+    show(&o.calls)
+}
+
+/// A macro the crate defines is no standard macro: the calls in its arguments are listed though
+/// its name is one of the standard library's that do not evaluate them; `std::stringify!` still
+/// lists none.
+#[test]
+fn a_crate_s_own_macro_of_a_standard_name_lists_the_calls_of_its_arguments() {
+    let src = "macro_rules! env {\n    ($e:expr) => {\n        $e\n    };\n}\n\npub fn helper(x: i64) -> i64 {\n    x\n}\n\npub fn uses<T: Clone>(_t: T) -> i64 {\n    let a = env!(helper(1));\n    let _b = std::stringify!(helper(2));\n    a\n}\n";
+    assert_eq!(
+        opaque_calls(src, "Uses"),
+        ["macro .env 12", "func .Helper 12", "macro std.stringify 13"]
+    );
+}
+
+/// A bare call is listed by its name though a function of that name is declared somewhere in
+/// the body: here the parameter `f` is called, and the inner `fn f` is out of its scope.
+#[test]
+fn a_bare_call_is_listed_though_a_nested_function_shares_its_name() {
+    let src = "pub fn takes<T: Clone>(f: fn(i64) -> i64, _t: T) -> i64 {\n    {\n        fn f(x: i64) -> i64 {\n            x\n        }\n    }\n    f(1)\n}\n";
+    assert_eq!(opaque_calls(src, "Takes"), ["name f 7"]);
+}
+
+/// The calls of a body's nested items are listed whole: an enum's discriminant expressions and
+/// the macro invocations standing as items of a nested impl and trait.
+#[test]
+fn nested_discriminants_and_item_macros_list_their_calls() {
+    let src = "pub fn helper(x: i64) -> i64 {\n    x\n}\n\npub fn nests<T: Clone>(_t: T) -> i64 {\n    enum E {\n        A = helper(1),\n    }\n    struct S;\n    impl S {\n        my_macro!(helper(2));\n    }\n    trait Tr {\n        other!(helper(3));\n    }\n    0\n}\n";
+    assert_eq!(
+        opaque_calls(src, "Nests"),
+        [
+            "func .Helper 7",
+            "macro .my_macro 11",
+            "func .Helper 11",
+            "macro .other 14",
+            "func .Helper 14",
+        ]
+    );
 }

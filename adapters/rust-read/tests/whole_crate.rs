@@ -574,3 +574,124 @@ fn a_function_declared_in_two_modules_is_opaque_with_its_calls() {
     assert_eq!(get.pos, "a.rs:11");
     assert_eq!(get.calls.len(), 1);
 }
+
+/// `read_crate(dir)` on a thread of its own, given `secs` seconds: a read that blocks (a named
+/// pipe without a writer) fails the test instead of hanging it.
+fn read_within(dir: &Path, secs: u64) -> Result<Module, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let d = dir.to_path_buf();
+    std::thread::spawn(move || {
+        let _ = tx.send(codespec_read_rust::read_crate(&d));
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(secs))
+        .unwrap_or_else(|_| panic!("read_crate did not return within {secs} s: it blocked on a file that is no regular file"))
+}
+
+/// A named pipe at `p`, its directory made.
+#[cfg(unix)]
+fn fifo(p: &Path) {
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    let _ = std::fs::remove_file(p);
+    let st = std::process::Command::new("mkfifo")
+        .arg(p)
+        .status()
+        .expect("mkfifo runs");
+    assert!(st.success(), "mkfifo {}", p.display());
+}
+
+/// A crate root that is no regular file is refused before anything opens it: a named pipe as
+/// `src/lib.rs`, `src/lib.rs` linking to a named pipe outside the crate, and a `[lib] path` of
+/// the process's standard input. None blocks, none is read as the crate.
+#[cfg(unix)]
+#[test]
+fn a_crate_root_that_is_no_regular_file_is_refused_before_it_is_opened() {
+    let pipe = krate("root-fifo", &[("Cargo.toml", MANIFEST)]);
+    fifo(&pipe.join("src/lib.rs"));
+    let e = read_within(&pipe, 10).expect_err("a named pipe is no crate root");
+    assert!(e.contains("not a regular file"), "{e}");
+
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("whole-crate")
+        .join("root-fifo-outside");
+    fifo(&out);
+    let link = krate(
+        "root-fifo-link",
+        &[("Cargo.toml", MANIFEST), ("src/keep", "")],
+    );
+    std::os::unix::fs::symlink(&out, link.join("src/lib.rs")).unwrap();
+    assert!(read_within(&link, 10).is_err(), "a link to a named pipe");
+
+    for dev in ["/dev/stdin", "/dev/fd/0"] {
+        let d = krate(
+            &format!("root-{}", dev.replace('/', "-")),
+            &[("Cargo.toml", &with_lib(dev))],
+        );
+        match read_within(&d, 10) {
+            Ok(m) => panic!("{dev} read as the crate {}", m.name),
+            Err(e) => assert!(
+                e.contains("not a regular file") || e.contains("outside the crate's directory"),
+                "{dev}: {e}"
+            ),
+        }
+    }
+}
+
+/// `Cargo.toml` is read only as a regular file inside the crate's directory: one linking out of
+/// the crate, and a named pipe in its place, are each an error before it is opened; a manifest
+/// that does not parse is an error naming the line, not quoting it.
+#[cfg(unix)]
+#[test]
+fn a_manifest_outside_the_crate_or_no_regular_file_is_refused() {
+    let elsewhere = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("whole-crate")
+        .join("manifest-outside.toml");
+    std::fs::write(&elsewhere, "[package]\nname = \"leaked\"\n").unwrap();
+    let link = krate(
+        "manifest-link",
+        &[("src/lib.rs", "pub fn one() -> i64 {\n    1\n}\n")],
+    );
+    std::os::unix::fs::symlink(&elsewhere, link.join("Cargo.toml")).unwrap();
+    match read_within(&link, 10) {
+        Ok(m) => panic!("a manifest outside the crate named the module {}", m.name),
+        Err(e) => assert!(e.contains("outside the crate's directory"), "{e}"),
+    }
+
+    let pipe = krate(
+        "manifest-fifo",
+        &[("src/lib.rs", "pub fn one() -> i64 {\n    1\n}\n")],
+    );
+    fifo(&pipe.join("Cargo.toml"));
+    let e = read_within(&pipe, 10).expect_err("a named pipe is no manifest");
+    assert!(e.contains("not a regular file"), "{e}");
+
+    let bad = krate(
+        "manifest-bad",
+        &[
+            ("Cargo.toml", "[package]\nname = \"x\"\nprivate_value = \n"),
+            ("src/lib.rs", ""),
+        ],
+    );
+    let e = read_within(&bad, 10).expect_err("the manifest does not parse");
+    assert!(e.contains("line 3"), "{e}");
+    assert!(!e.contains("private_value"), "the line is not echoed: {e}");
+}
+
+/// A module or item built only when testing, `#[cfg(test)]` or `#[cfg(all(test, …))]`, is not
+/// read, so none of its calls is listed; one under `#[cfg(any(test, …))]` or `#[cfg(not(test))]`
+/// is built outside tests too and is read.
+#[test]
+fn an_item_built_only_for_tests_is_not_read() {
+    let src = "#[cfg(all(test, feature = \"x\"))]\nmod tests {\n    pub fn probe<T: Clone>(_t: T) {\n        panic!(\"only in tests\");\n    }\n}\n\n#[cfg(all(feature = \"y\", all(test)))]\npub fn deep<T: Clone>(_t: T) {\n    panic!(\"only in tests\");\n}\n\n#[cfg(any(test, feature = \"x\"))]\npub fn either<T: Clone>(_t: T) {\n    panic!(\"maybe\");\n}\n\n#[cfg(not(test))]\npub fn live<T: Clone>(_t: T) {\n    panic!(\"always\");\n}\n";
+    let m = codespec_read_rust::read_source("probe", "lib.rs", src).expect("read");
+    Module::from_json(m.to_json().as_bytes()).expect("the module is valid cir/1");
+    let panics: Vec<String> = m
+        .opaque
+        .iter()
+        .flat_map(|o| o.calls.iter().map(move |c| (o, c)))
+        .filter(
+            |(_, c)| matches!(c, codespec_model::CallRef::Named { name, .. } if name == "panic"),
+        )
+        .map(|(o, c)| format!("{} {}", o.name, c.pos()))
+        .collect();
+    assert_eq!(panics, ["Either lib.rs:15", "Live lib.rs:20"]);
+}

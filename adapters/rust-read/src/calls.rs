@@ -14,7 +14,7 @@
 //! | `m!(…)`, `a::m!(…)` | `named`, form `macro`, `path` as written or as the module's `use` gives it; the arguments are read as expressions where they parse as a comma-separated list (`format!`, `println!`, `assert_eq!`, `vec!`), and their calls listed, except of a macro that does not evaluate them (`stringify!`, `concat!`, `env!`, `include_str!` and the like) |
 //! | `T(…)`, `T::V(…)`, `Self(…)`, `Some(…)`, `Ok(…)`, `Err(…)`: `T` a type of the crate, `V` a name starting with an upper-case letter | not a call: a tuple struct or variant made |
 //! | a closure's body | its calls, listed as the enclosing function's |
-//! | a function, impl, constant or static inside a body | its calls, listed as the enclosing function's (it runs only from there); a call of such a function by its name is not listed again |
+//! | a function, impl, trait, constant, static or enum inside a body | its calls (of its bodies, constants, discriminants and the macros standing as its items), listed as the enclosing function's (it runs only from there); a call of such a function by its name is listed by that name too, as the reader does not resolve a name to a function declared inside a body |
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -35,6 +35,8 @@ pub(crate) struct Tables {
     pub assoc: BTreeMap<(String, String), (Option<String>, String)>,
     /// The type names the crate declares.
     pub types: BTreeSet<String>,
+    /// The names of the crate's own `macro_rules!` macros, which shadow a standard macro's name.
+    pub macros: BTreeSet<String>,
     /// The names of the variants of the crate's enums, which a glob import may bring in.
     pub variants: BTreeSet<String>,
     /// Every module path of the crate (`crate`, `crate::wire`).
@@ -192,20 +194,7 @@ pub(crate) struct Lister<'r> {
     r: &'r Reader,
     module: String,
     self_ty: Option<String>,
-    /// The functions declared inside the piece, by name: their calls are listed in place.
-    locals: BTreeSet<String>,
     pub out: Vec<CallRef>,
-}
-
-/// The names of the functions declared inside a piece of Rust, at any depth.
-#[derive(Default)]
-struct Locals(BTreeSet<String>);
-
-impl<'ast> Visit<'ast> for Locals {
-    fn visit_item_fn(&mut self, f: &'ast syn::ItemFn) {
-        self.0.insert(f.sig.ident.to_string());
-        syn::visit::visit_item_fn(self, f);
-    }
 }
 
 impl<'r> Lister<'r> {
@@ -215,7 +204,6 @@ impl<'r> Lister<'r> {
             r,
             module,
             self_ty,
-            locals: BTreeSet::new(),
             out: Vec::new(),
         }
     }
@@ -297,9 +285,6 @@ impl<'r> Lister<'r> {
             return;
         }
         if full.len() == 1 {
-            if self.locals.contains(&full[0]) {
-                return;
-            }
             self.out.push(CallRef::Named {
                 form: "func".into(),
                 path: String::new(),
@@ -344,7 +329,11 @@ impl<'r> Lister<'r> {
             name: name.clone(),
             pos: self.pos(m),
         });
-        let std_path = path.is_empty() || matches!(path[0].as_str(), "std" | "core");
+        // A bare name is the standard library's unless the crate defines a macro of it.
+        let std_path = match path.first().map(String::as_str) {
+            None => !self.r.tables.macros.contains(name),
+            Some(p) => matches!(p, "std" | "core" | "alloc"),
+        };
         if std_path && UNEVALUATED.contains(&name.as_str()) {
             return;
         }
@@ -464,6 +453,7 @@ impl<'ast> Visit<'ast> for Lister<'_> {
                     match ii {
                         syn::ImplItem::Fn(f) => self.visit_block(&f.block),
                         syn::ImplItem::Const(c) => self.visit_expr(&c.expr),
+                        syn::ImplItem::Macro(m) => self.mac(&m.mac),
                         _ => {}
                     }
                 }
@@ -481,12 +471,20 @@ impl<'ast> Visit<'ast> for Lister<'_> {
                                 self.visit_expr(e);
                             }
                         }
+                        syn::TraitItem::Macro(m) => self.mac(&m.mac),
                         _ => {}
                     }
                 }
             }
             syn::Item::Const(c) => self.visit_expr(&c.expr),
             syn::Item::Static(s) => self.visit_expr(&s.expr),
+            syn::Item::Enum(e) => {
+                for v in &e.variants {
+                    if let Some((_, d)) = &v.discriminant {
+                        self.visit_expr(d);
+                    }
+                }
+            }
             syn::Item::Mod(m) => {
                 for it in m.content.iter().flat_map(|(_, items)| items) {
                     self.visit_item(it);
@@ -524,10 +522,7 @@ impl Piece for syn::Block {
 
 /// The calls of `p`, in source order.
 fn list(r: &Reader, p: &impl Piece) -> Vec<CallRef> {
-    let mut locals = Locals::default();
-    p.walk(&mut locals);
     let mut l = Lister::new(r);
-    l.locals = locals.0;
     p.walk(&mut l);
     l.out
 }

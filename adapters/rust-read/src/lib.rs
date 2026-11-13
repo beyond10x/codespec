@@ -218,12 +218,27 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Read the crate in `dir`: its library's root file (`[lib] path`, else `src/lib.rs`), or
 /// `src/main.rs` for a crate without a library, and every module file it names (`files`). The
-/// module is named after the crate's `[package] name`.
+/// module is named after the crate's `[package] name`. `Cargo.toml` and the root file are read
+/// only as regular files inside `dir`; a manifest that does not parse is an error naming its
+/// line, without quoting it.
 pub fn read_crate(dir: &Path) -> Result<Module, String> {
     let manifest = dir.join("Cargo.toml");
+    files::regular_inside(&manifest, dir, "the manifest")?;
     let text = read_bounded(&manifest)?;
-    let table: toml::Table =
-        toml::from_str(&text).map_err(|e| format!("{}: {e}", manifest.display()))?;
+    let table: toml::Table = toml::from_str(&text).map_err(|e| {
+        let at = e
+            .span()
+            .map(|s| {
+                let line = text[..s.start.min(text.len())].matches('\n').count() + 1;
+                format!(" at line {line}")
+            })
+            .unwrap_or_default();
+        format!(
+            "{}: not a valid manifest{at}: {}",
+            manifest.display(),
+            one_line(e.message())
+        )
+    })?;
     let name = table
         .get("package")
         .and_then(|p| p.get("name"))
@@ -388,6 +403,11 @@ fn call_tables(f: &syn::File, modules: &[String]) -> calls::Tables {
                 }
             }
             syn::Item::Use(u) => t.add_use(module, u),
+            syn::Item::Macro(m) if m.mac.path.is_ident("macro_rules") => {
+                if let Some(id) = &m.ident {
+                    t.macros.insert(id.to_string());
+                }
+            }
             _ => {}
         }
     }

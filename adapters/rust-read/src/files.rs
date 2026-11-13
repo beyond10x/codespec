@@ -106,6 +106,29 @@ fn inside(file: &Path, krate: &Path) -> bool {
         }
 }
 
+/// That `file` is a regular file (through its symbolic links) inside the directory `krate`,
+/// checked before anything opens it: a named pipe, a device or a directory is never opened, and
+/// no file outside the crate is read. `what` names the file in the error.
+pub(crate) fn regular_inside(file: &Path, krate: &Path, what: &str) -> Result<(), String> {
+    match std::fs::metadata(file) {
+        Err(e) => return Err(format!("{}: {e}", file.display())),
+        Ok(m) if !m.is_file() => {
+            return Err(format!(
+                "{}: {what} is not a regular file, which the reader does not open",
+                file.display()
+            ));
+        }
+        Ok(_) => {}
+    }
+    if !inside(file, krate) {
+        return Err(format!(
+            "{}: {what} is outside the crate's directory, which the reader does not read",
+            file.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Where the files of a crate are looked up; `None` for a source read alone, whose file modules
 /// are refused.
 struct Dirs {
@@ -135,15 +158,11 @@ struct Walk {
 }
 
 /// The crate whose root file is `root` (a `lib.rs` or `main.rs`), every module file it names
-/// read; the crate's directory is `krate`. An error of the root file, a root file outside
-/// `krate`, or a crate past [`MAX_FILES`] or [`MAX_CRATE_BYTES`], is an error.
+/// read; the crate's directory is `krate`. An error of the root file, a root file that is no
+/// regular file or is outside `krate`, or a crate past [`MAX_FILES`] or [`MAX_CRATE_BYTES`], is
+/// an error.
 pub(crate) fn crate_tree(krate: &Path, root: &Path) -> Result<Tree, String> {
-    if root.is_file() && !inside(root, krate) {
-        return Err(format!(
-            "{}: the crate root is outside the crate's directory, which the reader does not read",
-            root.display()
-        ));
-    }
+    regular_inside(root, krate, "the crate root")?;
     let root_dir = root.parent().unwrap_or(Path::new("")).to_path_buf();
     let rel = root
         .file_name()
@@ -509,11 +528,26 @@ fn attrs_of(item: &syn::Item) -> &[syn::Attribute] {
     }
 }
 
-/// Whether `attrs` hold `#[cfg(test)]`: the item is built for the crate's tests only.
+/// Whether `attrs` hold a `cfg` that holds only when testing: `#[cfg(test)]`, or
+/// `#[cfg(all(…))]` with `test` among its conditions (at any depth of `all`). The item is built
+/// for the crate's tests only. `any(test, …)` and `not(test)` hold outside tests too.
 fn cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|a| {
-        a.path().is_ident("cfg") && a.parse_args::<syn::Ident>().is_ok_and(|i| i == "test")
+        a.path().is_ident("cfg") && a.parse_args::<syn::Meta>().is_ok_and(|m| test_only(&m))
     })
+}
+
+/// Whether the `cfg` condition `m` holds only when testing.
+fn test_only(m: &syn::Meta) -> bool {
+    match m {
+        syn::Meta::Path(p) => p.is_ident("test"),
+        syn::Meta::List(l) if l.path.is_ident("all") => l
+            .parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|all| all.iter().any(test_only)),
+        _ => false,
+    }
 }
 
 /// The file a `#[path = "…"]` attribute names.

@@ -13,10 +13,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   (`wire.rs:40`, `net/mod.rs:3`); a crate of one file reads as its root file read alone does. A
   module file that is missing, found twice, read already, outside the crate's directory (through
   `..`, an absolute path or a symbolic link), past a limit or not parsed is a refusal at its `mod`
-  line, and so is a module nested more than 64 deep; a root file outside the crate's directory is
-  an error. A `#[cfg(test)]` module or item, and a module file marked `#![cfg(test)]`, is not
-  read; two items of one kind and name in two modules are each refused, as a name resolves by its
-  last segment, and such a function, and every function of an impl of such a type, is an
+  line, and so is a module nested more than 64 deep. `Cargo.toml` and the root file are read only
+  as regular files inside the crate's directory, checked before they are opened: one outside it,
+  or a named pipe, a device or a directory in their place, is an error, and a manifest that does
+  not parse is an error naming its line without quoting it. A module or item built only when
+  testing (`#[cfg(test)]`, or `#[cfg(all(…))]` with `test` among its conditions), and a module
+  file whose inner attribute says so, is not read; `any(test, …)` and `not(test)` are read. Two
+  items of one kind and name in two modules are each refused, as a name resolves by its last
+  segment, and such a function, and every function of an impl of such a type, is an
   `opaque` function listing its calls. A crate of more than 4096 files or 64 MiB of source is
   refused.
 - `codespec-read-rust` lists the calls of the code it does not read. A function or method it
@@ -27,12 +31,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   listed by its name, a function called by a name the reader does not resolve (a function value, a
   glob import, the prelude, an `extern` block) by that name, a call through `<T as Trait>::f` as
   `T::f`, and a macro by its name, with the calls of its arguments unless it does not evaluate
-  them (`stringify!`). The calls of a function, impl or constant declared inside a body are
-  listed as the enclosing function's. A tuple struct or variant made is no call.
+  them (`stringify!`, unless the crate defines a macro of that name). The calls of a function,
+  impl, trait, constant, static or enum declared inside a body (its bodies, constants,
+  discriminants and item macros) are listed as the enclosing function's, and a call of such a
+  function by its name is listed by that name. A tuple struct or variant made is no call.
 - `cir/1` has the call ref `named` (`form` `method`, `macro` or `func`, `path`, `name`, `pos`): a
   call a reader names as the source writes it without resolving it to a target. Additive: every
-  earlier document reads and writes as before. `codespec query` gives each a `call` row of kind `named`
-  (an `unknown` site, as a call through an interface is) or `macro` (linked to nothing);
+  earlier document reads and writes as before. `codespec query` gives each a `call` row of kind
+  `named` (an `unknown` site, as a call through an interface is) or `macro` (linked to nothing);
   `codespec effects` and `reach` count each as unknown.
 - cq regular expressions take the word boundary `\b`, its negation `\B`, and a leading `(?i)`
   that matches letters in either case. `(?i)` folds every letter with a one-character lower and
