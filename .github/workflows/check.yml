@@ -77,7 +77,7 @@ jobs:
           TASK_SHA256: 02c679ffae53dca791804847d78b31731615894e292948397c971c87ac9e95bd
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/task.tar.gz" \
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 15 --retry-all-errors --output "$RUNNER_TEMP/task.tar.gz" \
             "https://github.com/go-task/task/releases/download/v$TASK_VERSION/task_linux_amd64.tar.gz"
           echo "$TASK_SHA256  $RUNNER_TEMP/task.tar.gz" | sha256sum --check --strict
           mkdir -p "$RUNNER_TEMP/task-bin"
@@ -90,7 +90,7 @@ jobs:
           GROOVY_SHA256: 1c4dff3b6edf9a8ced3bca658ee1857cee90cfed1ee3474a2790045033c317a9
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/groovy.zip" \
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 15 --retry-all-errors --output "$RUNNER_TEMP/groovy.zip" \
             "https://repo1.maven.org/maven2/org/codehaus/groovy/groovy-binary/$GROOVY_VERSION/groovy-binary-$GROOVY_VERSION.zip"
           echo "$GROOVY_SHA256  $RUNNER_TEMP/groovy.zip" | sha256sum --check --strict
           unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
