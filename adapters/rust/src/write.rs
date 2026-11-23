@@ -22,12 +22,12 @@
 //! | type in `displays` | `impl fmt::Display`, padded so a width applies: its `Error()` / `String()` on a value receiver, else the enum's value or the newtype's inner value; a struct with only a pointer-receiver method has none, and printing it is refused | `displays` |
 //! | `chan<- any` | `std::sync::mpsc::Sender<Message>`, `enum Message` over the `messages` types | `messages` |
 //! | sentinel errors, structs with `Error() string`, `errorf` | one closed `enum Error`: a unit variant per sentinel, a tuple variant per error struct, `Msg(String)` for `errorf` | — |
-//! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map | `unordered_iteration` |
+//! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map; where the body writes an entry, over a snapshot of the keys, each value read when its iteration starts (as Go reads an entry updated by an earlier iteration) and a key no longer held skipped; a body that also rebinds the map refused | `unordered_iteration` |
 //! | `for … range` over a map not listed | refused | `unordered_iteration` |
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
 //! | `x := make(…)` or an empty literal, `x` never mutated or bound more than once in the function | `let x: T = T::new();`: nothing after it need fix the element types; a mutated one bound once stays `let mut x = T::new();` | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
-//! | `for … range` over a slice | the length read once, each element read when its iteration starts | — |
+//! | `for … range` over a slice | the length read once, each element read when its iteration starts; where the body rebinds the slice (`append` among the ways), read from a copy made when the loop starts, the storage Go ranges over; a body that also writes an element, or calls what can reach the slice, refused | — |
 //! | `sorted_keys(m)` | a new `Vec` of the keys: integers in the `BTreeMap`'s order, strings sorted by UTF-16 code unit (`encode_utf16`), as cir/1 defines; other keys refused; a `for … range` over it binds it once | — |
 //! | `conv` to a built-in integer type (`int32(len(xs))`) | `as`, which truncates and sign-extends as a Go conversion does | — |
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
@@ -2134,6 +2134,21 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
     }
 }
 
+/// `e` and each operand it reads through, outermost first: `a.b[i]`, `a.b`, `a` for `a.b[i]`,
+/// a dereference's operand the same way.
+fn place_chain(e: &Expr) -> Vec<&Expr> {
+    let mut out = vec![e];
+    let mut cur = e;
+    loop {
+        cur = match cur {
+            Expr::Field { x, .. } | Expr::Index { x, .. } => x,
+            Expr::Unop { op, x, .. } if op == "*" => x,
+            _ => return out,
+        };
+        out.push(cur);
+    }
+}
+
 /// Whether `e` calls a function or method anywhere inside it.
 fn calls(e: &Expr) -> bool {
     let mut found = false;
@@ -2794,7 +2809,9 @@ impl Fx<'_, '_> {
                 pos,
             } => {
                 let b = self.looped(Vec::new(), body)?;
-                let r = self.range(key, val, over, pos, b).map_err(|e| at(pos, e))?;
+                let r = self
+                    .range(key, val, over, pos, (body, b))
+                    .map_err(|e| at(pos, e))?;
                 Ok(vec![r])
             }
             Stmt::For {
@@ -3192,19 +3209,97 @@ impl Fx<'_, '_> {
         self.store(x, Rx::atom(quote! { #cur.#method(#one) }), true)
     }
 
-    /// A `for … range`. Over a map: a snapshot in key order. Over a slice: as Go does it, the
-    /// length fixed when the loop starts and each element read when its iteration starts.
+    /// What the body of a loop over `over`, a slice or map variable or field, may do to it:
+    /// rebind `over` (assign it or a place holding it; `append` too, which in Go may move the
+    /// slice to new storage), and write an element of what it holds. A call that can reach
+    /// `over`'s storage may do both: one passed `over`'s root, a method on it that `read_only`
+    /// does not list, and, where `over` is reached through a shared value or a cell, one passed
+    /// any shared value or cell. An assignment through another shared value or cell may too.
+    fn loop_effects(&self, over: &Expr, body: &[Stmt]) -> (bool, bool) {
+        let chain = place_chain(over);
+        let root = *chain.last().expect("a chain holds its expression");
+        let aliased = self.writes_through_shared(over);
+        let reaches = |e: &Expr| {
+            let mut found = false;
+            walk_expr(e, &mut |x| found |= x == root);
+            found
+        };
+        let (mut rebinds, mut writes) = (false, false);
+        walk_stmts(body, &mut |s| {
+            let targets: Vec<&Expr> = match s {
+                Stmt::Assign { lhs, .. } => lhs.iter().collect(),
+                Stmt::Incr { x, .. } | Stmt::Decr { x, .. } => vec![x],
+                _ => vec![],
+            };
+            for t in targets {
+                let places = place_chain(t);
+                rebinds |= chain.contains(&t);
+                writes |= places
+                    .iter()
+                    .any(|p| matches!(p, Expr::Index { x, .. } if **x == *over));
+                if aliased && places.last() != Some(&root) && self.writes_through_shared(t) {
+                    (rebinds, writes) = (true, true);
+                }
+            }
+            for e in stmt_exprs(s) {
+                walk_expr(e, &mut |x| {
+                    let reach = match x {
+                        Expr::Call { args, .. } | Expr::Extern { args, .. } => args
+                            .iter()
+                            .any(|a| reaches(a) || (aliased && self.borrows(a))),
+                        Expr::Method { x, name, args, .. } => {
+                            let key = format!("{}.{}", receiver_type_name(x.t()), name);
+                            let read_only = self.w.facts.read_only.contains(&key);
+                            (reaches(x) && !read_only)
+                                || (aliased && self.borrows(x))
+                                || args
+                                    .iter()
+                                    .any(|a| reaches(a) || (aliased && self.borrows(a)))
+                        }
+                        Expr::ExternMethod { recv, args, .. } => std::iter::once(&**recv)
+                            .chain(args)
+                            .any(|a| reaches(a) || (aliased && self.borrows(a))),
+                        _ => false,
+                    };
+                    if reach {
+                        (rebinds, writes) = (true, true);
+                    }
+                });
+            }
+        });
+        (rebinds, writes)
+    }
+
+    /// A `for … range`. Over a map: in key order, over a snapshot of the map, or, where the body
+    /// writes an entry, over a snapshot of its keys, each value read when its iteration starts
+    /// and a key no longer held skipped. Over a slice: as Go does it, the length fixed when the
+    /// loop starts and each element read when its iteration starts, from a copy made when the
+    /// loop starts where the body rebinds the slice. A body that both rebinds its source and
+    /// writes an element is refused: Go reads the storage the loop started with, which neither
+    /// the source nor a copy of it holds once both happened.
     fn range(
         &self,
         key: &str,
         val: &str,
         over: &Expr,
         pos: &str,
-        body: Vec<TokenStream>,
+        body: (&[Stmt], Vec<TokenStream>),
     ) -> R<TokenStream> {
+        let (stmts, body) = body;
         let src = self.place(over)?.recv();
         let k = self.binding(key);
         let v = self.binding(val);
+        let effects = || {
+            let (rebinds, writes) = self.loop_effects(over, stmts);
+            if rebinds && writes {
+                return Err(format!(
+                    "a loop over the {} whose body rebinds it and writes an element of it: Go \
+                     reads the storage the loop started with",
+                    type_name(over.t())
+                ));
+            }
+            Ok((rebinds, writes))
+        };
         match over.t() {
             Type::Map { elem, .. } => {
                 if !self.w.facts.unordered_iteration.iter().any(|p| p == pos) {
@@ -3216,12 +3311,36 @@ impl Fx<'_, '_> {
                 if key == "_" && val == "_" {
                     return Ok(quote! { for _ in #src.clone() { #(#body)* } });
                 }
-                Ok(quote! { for (#k, #v) in #src.clone() { #(#body)* } })
+                if val == "_" || !effects()?.1 {
+                    return Ok(quote! { for (#k, #v) in #src.clone() { #(#body)* } });
+                }
+                let keys = self.fresh("keys");
+                let (k, name) = if key == "_" {
+                    let k = self.fresh("key");
+                    (quote! { #k }, quote! { #k })
+                } else {
+                    let n = self.w.names.local(key);
+                    (k, quote! { #n })
+                };
+                Ok(quote! {
+                    {
+                        let #keys: Vec<_> = #src.keys().cloned().collect();
+                        for #k in #keys {
+                            let Some(#v) = #src.get(&#name).cloned() else { continue; };
+                            #(#body)*
+                        }
+                    }
+                })
             }
             Type::Slice { elem } => {
                 // sorted_keys gives a new slice nothing else holds: bound once, as Go evaluates
-                // a range expression once.
+                // a range expression once. A slice the body rebinds is copied when the loop
+                // starts: Go reads the storage the loop started with from then on.
                 let (bind, src) = match over {
+                    Expr::Var { .. } | Expr::Field { .. } if val != "_" && effects()?.0 => {
+                        let b = self.fresh("over");
+                        (quote! { let #b = #src.clone(); }, quote! { #b })
+                    }
                     Expr::Var { .. } | Expr::Field { .. } => (quote! {}, src),
                     Expr::Intrinsic { name, .. } if name == "sorted_keys" => {
                         let b = self.fresh("over");

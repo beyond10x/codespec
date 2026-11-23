@@ -893,3 +893,252 @@ fn a_function_holding_raise_is_refused_by_name_at_the_raise() {
     let lib = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
     assert!(!lib.contains("fn check"), "{lib}");
 }
+
+// ----- a `for … range` sees its source as Go's does (review 2026-11-23, A3 and A6) -------------
+
+fn slice_int() -> Value {
+    serde_json::json!({"k": "slice", "elem": int()})
+}
+
+fn map_int() -> Value {
+    serde_json::json!({"k": "map", "key": {"k": "string"}, "elem": int()})
+}
+
+fn let_(name: &str, rhs: Value, pos: &str) -> Value {
+    serde_json::json!({"k": "let", "names": [name], "rhs": [rhs], "pos": pos})
+}
+
+fn assign(op: &str, lhs: Value, rhs: Value, pos: &str) -> Value {
+    let mut a = serde_json::json!({"k": "assign", "lhs": [lhs], "rhs": [rhs], "pos": pos});
+    if !op.is_empty() {
+        a["op"] = op.into();
+    }
+    a
+}
+
+fn make(t: Value) -> Value {
+    serde_json::json!({"k": "make", "t": t})
+}
+
+fn index(x: Value, i: Value) -> Value {
+    serde_json::json!({"k": "index", "x": x, "index": i, "t": int()})
+}
+
+fn str_lit(s: &str) -> Value {
+    lit(&format!("{s:?}"), serde_json::json!({"k": "string"}))
+}
+
+/// `xs := []int{}; xs = append(xs, 1); xs = append(xs, 2); s := 0`.
+fn one_two() -> Vec<Value> {
+    let xs = || var("xs", slice_int());
+    let push = |v: &str, pos: &str| {
+        let app = serde_json::json!({
+            "k": "intrinsic", "name": "append", "args": [xs(), lit(v, int())], "t": slice_int(),
+        });
+        assign("", xs(), app, pos)
+    };
+    vec![
+        let_("xs", make(slice_int()), "r.go:2"),
+        push("1", "r.go:3"),
+        push("2", "r.go:4"),
+        let_("s", lit("0", int()), "r.go:5"),
+    ]
+}
+
+/// `func <name>() int { <prelude>; for <key>, <val> := range <over> { <body> }; return s }`.
+fn ranging(
+    name: &str,
+    prelude: Vec<Value>,
+    key: &str,
+    val: &str,
+    over: Value,
+    body: Vec<Value>,
+    pos: &str,
+) -> Value {
+    let mut stmts = prelude;
+    stmts.push(serde_json::json!({
+        "k": "for_range", "key": key, "val": val, "over": over, "body": body, "pos": pos,
+    }));
+    stmts.push(ret(vec![var("s", int())], "r.go:30"));
+    serde_json::json!({
+        "name": name, "exported": true, "params": [], "results": [int()],
+        "body": stmts, "pos": "r.go:1",
+    })
+}
+
+fn ranges(funcs: Vec<Value>, unordered: Vec<&str>) -> Value {
+    let layout: Vec<String> = funcs
+        .iter()
+        .map(|f| format!("func:{}", f["name"].as_str().unwrap()))
+        .collect();
+    serde_json::json!({
+        "format": "cir/1",
+        "name": "ranges",
+        "reader": {"language": "go", "name": "codespec-read-go", "version": "0.0.0"},
+        "types": [],
+        "funcs": funcs,
+        "layout": layout,
+        "facts": {"shared": [], "unordered_iteration": unordered},
+    })
+}
+
+/// Write `doc` with no refusal, build it with `-D warnings` beside a `main` that prints each of
+/// `calls` (functions of the crate `ranges`), run it and return what it printed.
+fn ranges_print(doc: &Value, name: &str, calls: &[&str]) -> String {
+    let (out, lib) = write_ok(doc, name);
+    let refusals = std::fs::read_to_string(out.join("refusals.json")).unwrap();
+    assert_eq!(refusals.trim(), "[]", "{lib}");
+    let prints: String = calls
+        .iter()
+        .map(|c| format!("    println!(\"{{}}\", ranges::{c}());\n"))
+        .collect();
+    std::fs::write(
+        out.join("src/main.rs"),
+        format!("fn main() {{\n{prints}}}\n"),
+    )
+    .unwrap();
+    let target = scratch(&format!("{name}-target"));
+    let o = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(out.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target)
+        .env("RUSTFLAGS", "-D warnings")
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "cargo build failed:\n{}\n{lib}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let o = Command::new(target.join("debug/ranges")).output().unwrap();
+    assert!(
+        o.status.success(),
+        "{}\n{lib}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    String::from_utf8(o.stdout).unwrap()
+}
+
+/// A3. Go ranges over the slice the loop started with: `for _, x := range xs { s += x; xs =
+/// []int{} }` over `[1, 2]` sums `3`, though `xs` is empty after the first iteration. An element
+/// written while `xs` still holds that slice is seen: `xs[1] = 10` in the first iteration of a
+/// loop that never rebinds `xs` sums `11`.
+#[test]
+fn a_slice_loop_reads_the_slice_it_started_with_after_its_variable_is_rebound() {
+    let xs = || var("xs", slice_int());
+    let s = || var("s", int());
+    let x = || var("x", int());
+    let rebound = ranging(
+        "Rebound",
+        one_two(),
+        "_",
+        "x",
+        xs(),
+        vec![
+            assign("+=", s(), x(), "r.go:7"),
+            assign("", xs(), make(slice_int()), "r.go:8"),
+        ],
+        "r.go:6",
+    );
+    let first = serde_json::json!({
+        "k": "if",
+        "cond": {"k": "binop", "op": "==", "x": var("i", int()), "y": lit("0", int()), "t": bool_t()},
+        "then": [assign("", index(xs(), lit("1", int())), lit("10", int()), "r.go:9")],
+        "pos": "r.go:8",
+    });
+    let written = ranging(
+        "Written",
+        one_two(),
+        "i",
+        "x",
+        xs(),
+        vec![assign("+=", s(), x(), "r.go:7"), first],
+        "r.go:6",
+    );
+    let printed = ranges_print(
+        &ranges(vec![rebound, written], vec![]),
+        "range-rebound",
+        &["rebound", "written"],
+    );
+    assert_eq!(printed, "3\n11\n");
+}
+
+/// A3. A loop whose body both writes an element of its slice and rebinds the variable cannot be
+/// written over the live variable (it would read the new slice) nor over a copy made when it
+/// starts (it would miss the write): it is refused, naming the reason.
+#[test]
+fn a_slice_loop_that_writes_an_element_and_rebinds_its_variable_is_refused() {
+    let xs = || var("xs", slice_int());
+    let f = ranging(
+        "Both",
+        one_two(),
+        "_",
+        "x",
+        xs(),
+        vec![
+            assign("+=", var("s", int()), var("x", int()), "r.go:7"),
+            assign("", index(xs(), lit("1", int())), lit("10", int()), "r.go:8"),
+            assign("", xs(), make(slice_int()), "r.go:9"),
+        ],
+        "r.go:6",
+    );
+    let (out, lib) = write_ok(&ranges(vec![f], vec![]), "range-both");
+    let (name, reason) = only_refusal(&out);
+    assert_eq!(name, "Both", "{lib}");
+    assert!(
+        reason.contains("rebinds") && reason.contains("element"),
+        "{reason}"
+    );
+}
+
+/// A6. Go reads each value of a map when its iteration reaches the key: a loop over `{a: 1, b:
+/// 1}` that adds the value and sets both entries to 5 sums `6` in either order.
+#[test]
+fn a_map_loop_reads_each_value_as_the_earlier_iterations_left_it() {
+    let m = || var("m", map_int());
+    let set = |k: &str, v: &str, pos: &str| assign("", index(m(), str_lit(k)), lit(v, int()), pos);
+    let prelude = vec![
+        let_("m", make(map_int()), "r.go:2"),
+        set("a", "1", "r.go:3"),
+        set("b", "1", "r.go:4"),
+        let_("s", lit("0", int()), "r.go:5"),
+    ];
+    let updated = ranging(
+        "Updated",
+        prelude.clone(),
+        "_",
+        "v",
+        m(),
+        vec![
+            assign("+=", var("s", int()), var("v", int()), "r.go:7"),
+            set("a", "5", "r.go:8"),
+            set("b", "5", "r.go:9"),
+        ],
+        "r.go:6",
+    );
+    let keyed = ranging(
+        "Keyed",
+        prelude,
+        "k",
+        "v",
+        m(),
+        vec![
+            assign("+=", var("s", int()), var("v", int()), "r.go:7"),
+            assign(
+                "",
+                index(m(), var("k", serde_json::json!({"k": "string"}))),
+                lit("7", int()),
+                "r.go:8",
+            ),
+            set("b", "9", "r.go:9"),
+        ],
+        "r.go:16",
+    );
+    let printed = ranges_print(
+        &ranges(vec![updated, keyed], vec!["r.go:6", "r.go:16"]),
+        "range-map",
+        &["updated", "keyed"],
+    );
+    assert_eq!(printed, "6\n10\n");
+}
