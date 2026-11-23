@@ -227,10 +227,12 @@ collect_source :: proc(r: ^Reader, label, src: string) {
 		if pl.type.results != nil {
 			for field in pl.type.results.list {
 				t := field_type(r, field)
-				// The parser gives each parenthesized unnamed result one empty Ident.
+				// Unnamed fields get a synthetic identifier at the type's position.
+				// An explicit name always appears before its colon and type.
 				for name in field.names {
-					id, ok := name.derived_expr.(^ast.Ident)
-					if !ok || id.name != "" { reject_decl(r, field.pos, "named result outside the subset") }
+					if name.pos.offset != field.type.pos.offset {
+						reject_decl(r, field.pos, "named result outside the subset")
+					}
 				}
 				append(&f.results, t)
 			}
