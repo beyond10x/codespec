@@ -8,7 +8,7 @@
 //! its wild facts (a field of a wild fact matches anything, `Top`), the upper bound of what the
 //! documents could hold.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
@@ -1635,6 +1635,7 @@ fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec
             comp_of[v] = k;
         }
     }
+    finite(derived, rules, &comp_of)?;
     let mut strata = vec![1; n];
     for (k, comp) in comps.iter().enumerate() {
         let mut s = 1;
@@ -1659,6 +1660,122 @@ fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec
         }
     }
     Ok(strata)
+}
+
+/// Refuses a recursion that can derive without end: a rule that scans a relation of its own
+/// head's component (a recursive rule) and puts into its head a new value, one that arithmetic or
+/// a builtin made from a value of the recursion. Every value of a recursive relation is then a
+/// constant, a value of a relation outside the recursion, or one made from those alone: finitely
+/// many, so evaluation reaches its fixed point.
+///
+/// A variable of a recursive rule is finite when a relation outside the recursion, a names
+/// list, a path or an aggregate binds it, or when it is made from finite variables alone; it
+/// is derived when the recursion binds it, or it is a copy of a derived one; else it is new.
+fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(), String> {
+    const FINITE: u8 = 0;
+    const DERIVED: u8 = 1;
+    const NEW: u8 = 2;
+    const UNBOUND: u8 = 3;
+    fn vars(a: &Arg, out: &mut Vec<usize>) {
+        match a {
+            Arg::Var(x) => out.push(*x),
+            Arg::Arith(x, _, y) => {
+                vars(x, out);
+                vars(y, out);
+            }
+            Arg::Val(_) | Arg::Any => {}
+        }
+    }
+    for r in rules {
+        let own = |rel: &Rel| matches!(rel, Rel::Derived(d) if comp_of[*d] == comp_of[r.head]);
+        if !r
+            .steps
+            .iter()
+            .any(|s| matches!(s, Step::Scan(rel, _) if own(rel)))
+        {
+            continue;
+        }
+        let mut class = vec![UNBOUND; r.vars];
+        fn set(class: &mut [u8], a: &Arg, c: u8) {
+            if let Arg::Var(x) = a {
+                class[*x] = class[*x].min(c);
+            }
+        }
+        for s in &r.steps {
+            match s {
+                Step::Scan(rel, args) => {
+                    let c = if own(rel) { DERIVED } else { FINITE };
+                    args.iter().for_each(|a| set(&mut class, a, c));
+                }
+                Step::In(a, _, false) => set(&mut class, a, FINITE),
+                Step::Agg { var, .. } => class[*var] = FINITE,
+                Step::Path(p) => {
+                    if !p.neg {
+                        set(&mut class, &p.from, FINITE);
+                        set(&mut class, &p.to, FINITE);
+                    }
+                    if let Some(w) = p.witness {
+                        class[w] = FINITE;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // What a term holds: a variable's class; arithmetic is finite over finite inputs alone.
+        let of = |class: &[u8], a: &Arg| -> u8 {
+            match a {
+                Arg::Var(x) => class[*x],
+                Arg::Val(_) | Arg::Any => FINITE,
+                Arg::Arith(..) => {
+                    let mut vs = Vec::new();
+                    vars(a, &mut vs);
+                    if vs.iter().all(|&x| class[x] == FINITE) {
+                        FINITE
+                    } else {
+                        NEW
+                    }
+                }
+            }
+        };
+        loop {
+            let before = class.clone();
+            for s in &r.steps {
+                match s {
+                    Step::Cmp(x, Op::Bind, y) => {
+                        let (cx, cy) = (of(&class, x), of(&class, y));
+                        set(&mut class, x, cy);
+                        set(&mut class, y, cx);
+                    }
+                    Step::Builtin(which, args) => {
+                        let (_, _, inputs) = Builtin::of(match which {
+                            Builtin::Word => "word",
+                            Builtin::Int => "int",
+                            Builtin::Replace => "replace",
+                            Builtin::Concat => "concat",
+                        })
+                        .expect("a builtin");
+                        let made = if args[..inputs].iter().all(|a| of(&class, a) == FINITE) {
+                            FINITE
+                        } else {
+                            NEW
+                        };
+                        args[inputs..].iter().for_each(|a| set(&mut class, a, made));
+                    }
+                    _ => {}
+                }
+            }
+            if class == before {
+                break;
+            }
+        }
+        if r.args.iter().any(|a| of(&class, a) == NEW) {
+            let name = derived[r.head].name.trim_start_matches('_');
+            return Err(format!(
+                "{name}: a rule of a recursion puts a new value into its head, made by arithmetic or a builtin from a value the recursion derived: it could derive without end; make the value from facts outside the recursion, or bound it by a relation of the fact base"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The user's rules under the stratum of their heads, then the query.
@@ -1726,6 +1843,10 @@ struct Eval<'a> {
     /// Sites the evaluation names beyond the fact base's, numbered after them: the values of a
     /// listed call nothing read that a register met.
     extra: RefCell<Vec<crate::Site>>,
+    /// How many functions the `reaches_path` witnesses built so far hold, all together.
+    witness_elems: Cell<usize>,
+    /// The `reaches_path` facts of a scan with an end bound, by (from, to, upper).
+    paths: RefCell<HashMap<PathEnds, Rc<Store>>>,
 }
 
 /// The graphs path patterns and properties walk, built from the fact base once.
@@ -1737,6 +1858,8 @@ struct Graphs {
     cfg_nodes: BTreeSet<Rc<str>>,
     /// The linked calls: each function's callees, sorted.
     calls: BTreeMap<Rc<str>, Vec<Rc<str>>>,
+    /// The linked calls reversed: each function's callers, sorted.
+    callers: HashMap<Rc<str>, Vec<Rc<str>>>,
     funcs: BTreeSet<Rc<str>>,
     /// The functions a linked call from outside their own strongly connected component reaches.
     called: HashSet<Rc<str>>,
@@ -1814,6 +1937,17 @@ impl Graphs {
         match over {
             Over::Cfg => self.cfg.get(u).map_or(&[], Vec::as_slice),
             Over::Calls => self.calls.get(u).map_or(&[], Vec::as_slice),
+        }
+    }
+
+    /// Whether `u` is a node of the graph: a node of the control flow, or a function declared
+    /// or linked by a call. Only such a node has a path of no edge to itself.
+    fn has(&self, over: Over, u: &str) -> bool {
+        match over {
+            Over::Cfg => self.cfg_nodes.contains(u),
+            Over::Calls => {
+                self.funcs.contains(u) || self.calls.contains_key(u) || self.callers.contains_key(u)
+            }
         }
     }
 }
@@ -1929,6 +2063,10 @@ const UNREAD: &[&str] = &["recv", "args"];
 /// Each function, the functions it reaches and the unknown sites it reaches ([`Eval::closure`]).
 type Closure = Rc<Vec<(Rc<str>, Vec<Rc<str>>, Ann)>>;
 
+/// The ends of a `reaches_path` scan, `from` and `to` (a bound one `Some`), and whether its upper
+/// bound is asked for ([`Eval::paths_between`]).
+type PathEnds = (Option<V>, Option<V>, bool);
+
 /// The relations of the call graph whose upper bound [`Eval::graph_wild`] computes.
 const GRAPH_WILD: &[&str] = &["effect", "syscall", "scc", "reached"];
 
@@ -1996,6 +2134,7 @@ impl<'a> Eval<'a> {
                 let t = walk(|u| g.succ(Over::Calls, u), f, |_| false, None, false);
                 for n in &t.reached {
                     let w = t.path(n).expect("a node reached has a path");
+                    self.witness_elems.set(self.witness_elems.get() + w.len());
                     st.insert(
                         vec![
                             V::Str(f.clone()),
@@ -2040,6 +2179,91 @@ impl<'a> Eval<'a> {
         }
         let st = Rc::new(st);
         self.base.borrow_mut().insert((name, upper), st.clone());
+        st
+    }
+
+    /// The store a scan or a negation of `rel` with the arguments `args` reads under `b`: for
+    /// `reaches_path` with an end bound, only the facts of that end ([`Eval::paths_between`]);
+    /// else every fact of `rel`.
+    fn scan_store(&self, rel: Rel, args: &[Arg], b: &[Option<V>], mode: Mode) -> StoreRef<'_> {
+        if rel == Rel::Base("reaches_path") {
+            let end = |k: usize| args.get(k).and_then(|a| value_of(a, b));
+            let (from, to) = (end(0), end(1));
+            let wild = from.iter().chain(&to).any(V::has_top);
+            if (from.is_some() || to.is_some()) && !wild {
+                return StoreRef::Shared(self.paths_between(from, to, mode == Mode::Upper));
+            }
+        }
+        self.store(rel, mode)
+    }
+
+    /// The `reaches_path` facts from `from` and to `to` (at least one bound), each witness
+    /// built only for a pair asked for: the walk starts at the bound start, or, with only the end
+    /// bound, at each function the reversed calls lead back to from it. With `upper`, the wild
+    /// facts of the functions from which an unknown site is reached, as [`Eval::base_store`] has
+    /// them. Computed once per ends.
+    fn paths_between(&self, from: Option<V>, to: Option<V>, upper: bool) -> Rc<Store> {
+        let key = (from, to, upper);
+        if let Some(s) = self.paths.borrow().get(&key) {
+            return s.clone();
+        }
+        let mut st = Store::default();
+        let name = |v: &Option<V>| match v {
+            Some(V::Str(s)) => Some(Some(s.clone())),
+            Some(_) => None,
+            None => Some(None),
+        };
+        if let (Some(from), Some(to)) = (name(&key.0), name(&key.1)) {
+            let g = self.graphs();
+            let roots: Vec<Rc<str>> = match (&from, &to) {
+                (Some(f), _) => g
+                    .calls
+                    .contains_key(f)
+                    .then(|| f.clone())
+                    .into_iter()
+                    .collect(),
+                (None, Some(t)) => {
+                    // Every function with a path of one or more calls to `t`.
+                    let mut seen: BTreeSet<Rc<str>> = BTreeSet::new();
+                    let mut stack: Vec<&Rc<str>> = g.callers.get(t).into_iter().flatten().collect();
+                    while let Some(f) = stack.pop() {
+                        if seen.insert(f.clone()) {
+                            stack.extend(g.callers.get(f).into_iter().flatten());
+                        }
+                    }
+                    seen.into_iter().collect()
+                }
+                (None, None) => unreachable!("an end is bound"),
+            };
+            for f in &roots {
+                let t = walk(|u| g.succ(Over::Calls, u), f, |_| false, None, false);
+                let ends: Vec<&Rc<str>> = match &to {
+                    Some(n) => vec![n],
+                    None => t.reached.iter().collect(),
+                };
+                for n in ends {
+                    let Some(w) = t.path(n) else { continue };
+                    self.witness_elems.set(self.witness_elems.get() + w.len());
+                    st.insert(
+                        vec![
+                            V::Str(f.clone()),
+                            V::Str(n.clone()),
+                            V::List(w.into_iter().map(V::Str).collect()),
+                        ],
+                        Vec::new(),
+                    );
+                }
+            }
+            if upper {
+                for (f, _, sites) in self.closure().iter() {
+                    if !sites.is_empty() && from.as_ref().is_none_or(|x| x == f) {
+                        st.insert(vec![V::Str(f.clone()), V::Top, V::Top], sites.clone());
+                    }
+                }
+            }
+        }
+        let st = Rc::new(st);
+        self.paths.borrow_mut().insert(key, st.clone());
         st
     }
 
@@ -2199,6 +2423,7 @@ impl<'a> Eval<'a> {
             let caller = func_of.get(&site);
             if let Some(f) = caller {
                 g.calls.entry(f.clone()).or_default().push(t.clone());
+                g.callers.entry(t.clone()).or_default().push(f.clone());
             }
             // A call within the callee's own strongly connected component (recursion) does not
             // make it a callee: it is still an entry if nothing outside calls it.
@@ -2243,6 +2468,7 @@ impl<'a> Eval<'a> {
             .cfg
             .values_mut()
             .chain(g.calls.values_mut())
+            .chain(g.callers.values_mut())
             .chain(g.targets.values_mut())
         {
             v.sort();
@@ -2348,14 +2574,16 @@ impl<'a> Eval<'a> {
         let succ = |u: &str| g.succ(p.over, u);
         let mut ways = Vec::new();
         for (src, bind_from) in sources {
-            let tdef = walk(succ, &src, |n| def.contains(n), p.max, true);
+            // A path of no edge only from a node of the graph: bound text naming none has none.
+            let zero = g.has(p.over, &src);
+            let tdef = walk(succ, &src, |n| def.contains(n), p.max, zero);
             let tall = (!maybe.is_empty()).then(|| {
                 walk(
                     succ,
                     &src,
                     |n| def.contains(n) || maybe.contains_key(n),
                     p.max,
-                    true,
+                    zero,
                 )
             });
             let mut wild: Ann = Vec::new();
@@ -2399,7 +2627,7 @@ impl<'a> Eval<'a> {
                             &src,
                             |n| def.contains(n) || maybe.contains_key(n) || up.contains_key(n),
                             p.max,
-                            true,
+                            zero,
                         )
                         .path(&t)
                         .is_none())
@@ -2863,13 +3091,13 @@ impl<'a> Eval<'a> {
         let none = || Ways::Binds(Vec::new());
         match &r.steps[k] {
             Step::Scan(rel, args) => {
-                let st = self.store(*rel, mode);
+                let st = self.scan_store(*rel, args, b, mode);
                 let only = delta.filter(|(j, _)| *j == k).map(|(_, d)| d);
                 let ts = self.matches(&st, args, b, only, mode);
                 Ways::Tuples { st, args, ts }
             }
             Step::Neg(rel, args) => {
-                let low = self.store(*rel, Mode::Lower);
+                let low = self.scan_store(*rel, args, b, Mode::Lower);
                 let found = self.matches(&low, args, b, None, Mode::Lower);
                 let mut a2 = ann.clone();
                 match mode {
@@ -2883,7 +3111,7 @@ impl<'a> Eval<'a> {
                             union(&mut a2, &low.anns[t]);
                         }
                         if self.has_upper(*rel) {
-                            let up = self.store(*rel, Mode::Upper);
+                            let up = self.scan_store(*rel, args, b, Mode::Upper);
                             for t in self.matches(&up, args, b, None, Mode::Upper) {
                                 union(&mut a2, &up.anns[t]);
                             }
@@ -3318,6 +3546,11 @@ impl std::ops::Deref for StoreRef<'_> {
 
 /// Run a compiled program over a fact base.
 pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
+    evaluate_counting(c, fb).0
+}
+
+/// [`evaluate`], with how many functions the `reaches_path` witnesses it built hold.
+fn evaluate_counting(c: &Compiled, fb: &FactBase) -> (Answer, usize) {
     let n = c.derived.len();
     // The relations the query needs, and those it needs an upper bound of.
     let mut need = vec![false; n];
@@ -3395,6 +3628,8 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
         closure: RefCell::new(None),
         graphs: RefCell::new(None),
         extra: RefCell::new(Vec::new()),
+        witness_elems: Cell::new(0),
+        paths: RefCell::new(HashMap::new()),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {
@@ -3410,7 +3645,7 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
     let q = &ev.lower[c.query];
     let mut rows: Vec<(Vec<V>, &Ann)> = q.tuples.iter().cloned().zip(&q.anns).collect();
     rows.sort();
-    Answer {
+    let answer = Answer {
         vars: c.vars.clone(),
         rows: rows
             .into_iter()
@@ -3432,12 +3667,78 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
                 }
             })
             .collect(),
-    }
+    };
+    (answer, ev.witness_elems.get())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::words;
+    use super::{compile, evaluate_counting, words};
+    use crate::{FactBase, Names, parse};
+
+    /// A module of `n` functions `f000` … each calling the next: a chain.
+    fn chain(n: usize) -> FactBase {
+        let funcs: Vec<serde_json::Value> = (0..n)
+            .map(|k| {
+                let body: Vec<serde_json::Value> = (k + 1 < n)
+                    .then(|| {
+                        serde_json::json!({
+                            "k": "expr",
+                            "x": {"k": "call", "name": format!("f{:03}", k + 1), "args": [], "t": {"k": "unit"}},
+                            "pos": format!("chain.go:{}", 2 * k + 2),
+                        })
+                    })
+                    .into_iter()
+                    .collect();
+                serde_json::json!({
+                    "name": format!("f{k:03}"), "exported": false, "params": [], "results": [],
+                    "body": body, "pos": format!("chain.go:{}", 2 * k + 1),
+                })
+            })
+            .collect();
+        let doc = serde_json::json!({
+            "format": "cir/1", "name": "chain", "path": "example.com/chain",
+            "reader": {"language": "go", "name": "hand-written", "version": "0"},
+            "types": [], "funcs": funcs,
+            "layout": (0..n).map(|k| format!("func:f{k:03}")).collect::<Vec<_>>(),
+        });
+        let m = codespec_model::Module::from_json(&serde_json::to_vec(&doc).unwrap()).unwrap();
+        FactBase::build(&[m])
+    }
+
+    /// The text answer of `query` on `fb`, with how many functions its witnesses held.
+    fn counted(query: &str, fb: &FactBase) -> (String, usize) {
+        let c = compile(&parse(query).unwrap(), &Names::default()).unwrap();
+        let (a, n) = evaluate_counting(&c, fb);
+        (a.to_text(), n)
+    }
+
+    /// Review finding Q2: a `reaches_path` with an end bound builds the witnesses of that end
+    /// only, not those of every pair (Θ(n³) functions on a chain of n).
+    #[test]
+    fn a_bound_reaches_path_builds_only_the_witnesses_it_asks_for() {
+        let id = |k: usize| format!("\"example.com/chain.f{k:03}\"");
+        for n in [40, 120] {
+            let fb = chain(n);
+            let (out, built) = counted(&format!("?- reaches_path({}, {}, W).", id(0), id(1)), &fb);
+            assert_eq!(out, "[example.com/chain.f000, example.com/chain.f001]\n");
+            assert_eq!(built, 2, "both ends bound, n = {n}");
+            // f005 is reached from f000 … f004: witnesses of 6, 5, 4, 3 and 2 functions.
+            let (out, built) = counted(&format!("?- reaches_path(F, {}, W).", id(5)), &fb);
+            assert_eq!(out.lines().count(), 5, "{out}");
+            assert_eq!(built, 20, "the end bound, n = {n}");
+            // f<n-4> reaches the last three: witnesses of 2, 3 and 4 functions.
+            let (out, built) = counted(&format!("?- reaches_path({}, G, W).", id(n - 4)), &fb);
+            assert_eq!(out.lines().count(), 3, "{out}");
+            assert_eq!(built, 9, "the start bound, n = {n}");
+            let (_, built) = counted(&format!("?- !reaches_path({}, {}, _).", id(1), id(0)), &fb);
+            assert_eq!(built, 0, "a negation with both ends bound, n = {n}");
+        }
+        // Unbound, every pair is the answer: n(n-1)/2 witnesses, Σ (d+1) functions.
+        let (out, built) = counted("?- reaches_path(F, G, W).", &chain(10));
+        assert_eq!(out.lines().count(), 45);
+        assert_eq!(built, (1..10).map(|d| (10 - d) * (d + 1)).sum::<usize>());
+    }
 
     #[test]
     fn words_split_as_codespec_check_splits_them() {

@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:20:59Z",
+  "actor": "human:timo",
+  "artifact": "story:review-query-engine-bounds",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-query --locked: all 9 test targets ok (engine::tests::a_bound_reaches_path_builds_only_the_witnesses_it_asks_for, query::a_recursion_that_makes_new_values_is_refused, paths::a_path_of_no_edge_needs_its_node_in_the_graph red before, green after)"
+  }
+}
