@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -137,6 +138,86 @@ func (f *front) whole(s ast.Stmt, read func() []Stmt) []Stmt {
 		}
 	}
 	return parts
+}
+
+// constLit is the constant expression e as the literal of the value go/types computed for it.
+func (f *front) constLit(e ast.Expr, t *Type) (Expr, bool) {
+	val := f.info.Types[e].Value
+	if val == nil {
+		return f.no("constant without a value")
+	}
+	if bits := floatBits(f.info.TypeOf(e)); bits != 0 {
+		v, ok := floatSpelling(val, bits)
+		if !ok {
+			return f.no("constant that is not a finite float")
+		}
+		return Expr{K: "float", Value: v, T: t}, true
+	}
+	return Expr{K: "lit", Value: val.ExactString(), T: t}, true
+}
+
+// declStmt reads a declaration inside a function. A `var` spec without values is one `var` per
+// name; one with values a `let` of its names, which is what `:=` reads as, each value converted to
+// the declared type as an assignment converts it and kept only when it then has that type. A
+// `const` is no statement: each use reads as the literal of its value (expr). A `type` is outside
+// cir/1.
+func (f *front) declStmt(s *ast.DeclStmt, results []Type) []Stmt {
+	gd, ok := s.Decl.(*ast.GenDecl)
+	if !ok {
+		return []Stmt{f.stmt(s, results)}
+	}
+	switch gd.Tok {
+	case token.CONST:
+		return nil
+	case token.TYPE:
+		return []Stmt{f.foreign(s, "type declaration inside a function: outside cir/1")}
+	}
+	pos := f.pos(s.Pos())
+	return f.whole(s, func() []Stmt {
+		var out []Stmt
+		for _, sp := range gd.Specs {
+			vs := sp.(*ast.ValueSpec)
+			names := make([]string, len(vs.Names))
+			for i, n := range vs.Names {
+				names[i] = f.name(n)
+			}
+			if len(vs.Values) == 0 {
+				for i, n := range vs.Names {
+					t := f.typ(f.info.TypeOf(n))
+					out = append(out, Stmt{K: "var", Names: []string{names[i]}, T: &t, Pos: pos})
+				}
+				continue
+			}
+			rhs, ok := f.exprs(vs.Values)
+			if !ok {
+				return []Stmt{f.foreign(s, f.exprReason())}
+			}
+			if vs.Type != nil {
+				other := []Stmt{f.foreign(s, "declaration whose value has another type than the declared one")}
+				if len(rhs) == len(vs.Names) {
+					for i := range rhs {
+						want := f.info.TypeOf(vs.Names[i])
+						if rhs[i].K == "nil" && rhs[i].T != nil && rhs[i].T.K == "nil" {
+							rhs[i].T = ptrT(f.typ(want))
+						}
+						rhs[i] = f.coerce(rhs[i], want)
+						if rhs[i].T == nil || !reflect.DeepEqual(*rhs[i].T, f.typ(want)) {
+							return other
+						}
+					}
+				} else {
+					tup, _ := f.info.TypeOf(vs.Values[0]).(*types.Tuple)
+					for i, n := range vs.Names {
+						if tup == nil || i >= tup.Len() || !types.Identical(tup.At(i).Type(), f.info.TypeOf(n)) {
+							return other
+						}
+					}
+				}
+			}
+			out = append(out, Stmt{K: "let", Names: names, Rhs: rhs, Pos: pos})
+		}
+		return out
+	})
 }
 
 func isBlank(e ast.Expr) bool {
@@ -895,6 +976,10 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 			out = append(out, parts...)
 			continue
 		}
+		if ds, ok := s.(*ast.DeclStmt); ok {
+			out = append(out, f.declStmt(ds, results)...)
+			continue
+		}
 		out = append(out, f.stmt(s, results))
 	}
 	return out
@@ -1076,7 +1161,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Tok == token.DEFINE {
 			var names []string
 			for _, l := range s.Lhs {
-				names = append(names, l.(*ast.Ident).Name)
+				names = append(names, f.name(l.(*ast.Ident)))
 			}
 			return Stmt{K: "let", Names: names, Rhs: rhs, Pos: pos}
 		}
@@ -1304,6 +1389,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			if o.Pkg() == nil {
 				return Expr{K: "lit", Value: e.Name, T: t}, true
 			}
+			if o.Parent() != o.Pkg().Scope() {
+				return f.constLit(e, t) // a constant declared inside a function
+			}
 			return Expr{K: "const", Name: e.Name, T: t}, true
 		case *types.Var:
 			if o.Parent() == f.pkg.Scope() {
@@ -1318,7 +1406,7 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 				}
 				return f.no("use of a refused package variable")
 			}
-			return Expr{K: "var", Name: e.Name, T: t}, true
+			return Expr{K: "var", Name: f.name(e), T: t}, true
 		case *types.Func:
 			// A function of the package used as a value; an instance of a generic one has no
 			// cir/1 form (func_ref carries no type arguments).
@@ -1335,7 +1423,7 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			return f.no("builtin " + e.Name + " used as a value")
 		}
 		if f.info.Defs[e] != nil {
-			return Expr{K: "var", Name: e.Name, T: t}, true
+			return Expr{K: "var", Name: f.name(e), T: t}, true
 		}
 		if e.Name == "_" {
 			return f.no("`_` as an operand")
