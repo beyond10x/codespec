@@ -206,7 +206,7 @@ fn every_fixture_of_a_written_check_gives_the_findings_of_codespec_check() {
     }
     assert_eq!(
         (cases, skipped),
-        (21, vec!["unreached/library".to_string()]),
+        (22, vec!["unreached/library".to_string()]),
         "the fixtures the CHANGELOG names"
     );
 }
