@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T03:59:16Z",
+  "actor": "human:timo",
+  "artifact": "story:review-query-facts-and-cache",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-query --locked (query 25 passed, paths 13, checks 4, adversary 31); cargo test -p b10x-codespec-cli --test query --test query_adversary1 --test query_adversary2 (13 passed)"
+  }
+}

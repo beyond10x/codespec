@@ -288,8 +288,10 @@ pub enum Cmd {
     /// named-field record patterns over the fact base --schema prints, and print one row per
     /// answer. Exit 0 with no row, 1 with rows, 2 on an error.
     ///
-    /// The fact base is built once per set of documents and cached next to the first as
-    /// .cq/<digest>.facts, the digest a SHA-256 of the documents and the codespec version. Rules
+    /// The fact base is built once per set of documents and cached as <digest>.facts in
+    /// $CODESPEC_CACHE_DIR, else $XDG_CACHE_HOME/codespec/facts, else ~/.cache/codespec/facts,
+    /// the digest a SHA-256 of the documents and the codespec version; never in or under a
+    /// document's directory, and read only after the documents are validated. Rules
     /// may recurse, negate (stratified) and aggregate (count, min, max, sum, collect). A row that
     /// rests on a negation crossing code the fact base cannot see (an opaque function, a foreign
     /// statement without a call list, an unresolved call) is marked possible, with the unknown

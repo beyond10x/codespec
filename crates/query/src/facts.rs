@@ -299,7 +299,7 @@ pub const RELATIONS: &[Relation] = &[
     Relation {
         name: "def",
         fields: &[("var", S), ("node", N)],
-        about: "node sets the local var (<body>$<name>): let, var, assign, incr, decr, for_range, lookup_else; a parameter at its body",
+        about: "node sets the local var (<body>$<name>; <body>$<name>@<node> for each later binding of that name in the same body, such as a shadow in a nested block): let, var, assign, incr, decr, for_range, lookup_else; a parameter at its body",
         group: Group::Bodies,
     },
     Relation {
@@ -1403,6 +1403,18 @@ struct Scope {
     captures: Vec<String>,
 }
 
+/// One lexical block, as the evaluator opens them: a function's or a function literal's
+/// parameters and top-level statements, a branch, a case, a loop and its body. Each binding it
+/// declares has its own var.
+#[derive(Default)]
+struct Block {
+    /// A function literal's outermost block: only these names of the blocks around it are in
+    /// scope inside it.
+    captures: Option<Vec<String>>,
+    /// (name, var), in the order declared.
+    names: Vec<(String, String)>,
+}
+
 struct Walker<'a> {
     b: &'a mut Builder,
     m: &'a Module,
@@ -1412,9 +1424,32 @@ struct Walker<'a> {
     ancestors: Vec<String>,
     guards: Vec<(String, bool)>,
     scopes: Vec<Scope>,
+    /// The lexical blocks open at the node walked, outermost first.
+    blocks: Vec<Block>,
+    /// Every var a binding of this function took so far: a later binding of the same name in
+    /// the same body takes `<body>$<name>@<declaring node>`.
+    taken: BTreeSet<String>,
     locals: BTreeMap<String, Locals>,
     /// The position of every statement walked so far, by id.
     positions: HashMap<String, String>,
+}
+
+impl<'a> Walker<'a> {
+    fn new(b: &'a mut Builder, m: &'a Module, links: &'a mut Vec<Link>, func: String) -> Self {
+        Walker {
+            b,
+            m,
+            links,
+            func,
+            ancestors: Vec::new(),
+            guards: Vec::new(),
+            scopes: Vec::new(),
+            blocks: vec![Block::default()],
+            taken: BTreeSet::new(),
+            locals: BTreeMap::new(),
+            positions: HashMap::new(),
+        }
+    }
 }
 
 impl Walker<'_> {
@@ -1430,7 +1465,20 @@ impl Walker<'_> {
         }
     }
 
+    /// The var `name` names here: the binding of the innermost block that declares it, else,
+    /// for a name no block in scope declares, `<body>$<name>` of the body it belongs to.
     fn var(&self, name: &str) -> String {
+        for b in self.blocks.iter().rev() {
+            if let Some((_, v)) = b.names.iter().rev().find(|(n, _)| n == name) {
+                return v.clone();
+            }
+            if b.captures
+                .as_ref()
+                .is_some_and(|c| !c.iter().any(|c| c == name))
+            {
+                break;
+            }
+        }
         for sc in self.scopes.iter().rev() {
             if !sc.captures.iter().any(|c| c == name) {
                 return format!("{}${name}", sc.owner);
@@ -1445,11 +1493,59 @@ impl Walker<'_> {
             .map_or_else(|| self.func.clone(), |s| s.owner.clone())
     }
 
+    /// Opens a lexical block; `captures` for a function literal's outermost one.
+    fn open(&mut self, captures: Option<Vec<String>>) {
+        self.blocks.push(Block {
+            captures,
+            names: Vec::new(),
+        });
+    }
+
+    fn close(&mut self) {
+        self.blocks.pop();
+    }
+
+    /// `name` bound at `node` in the innermost block: a new var, unless `fresh` is false and
+    /// the block already declares `name` (`:=` assigns that one, as the evaluator does).
+    fn bind(&mut self, name: &str, node: &str, fresh: bool) {
+        if name == "_" || name.is_empty() {
+            return;
+        }
+        let block = self.blocks.last().expect("a block");
+        let held = (!fresh)
+            .then(|| block.names.iter().rev().find(|(n, _)| n == name))
+            .flatten()
+            .map(|(_, v)| v.clone());
+        let v = match held {
+            Some(v) => v,
+            None => {
+                let plain = format!("{}${name}", self.owner());
+                let v = if self.taken.insert(plain.clone()) {
+                    plain
+                } else {
+                    format!("{plain}@{node}")
+                };
+                self.blocks
+                    .last_mut()
+                    .expect("a block")
+                    .names
+                    .push((name.to_string(), v.clone()));
+                v
+            }
+        };
+        self.defined(v, node);
+    }
+
+    /// `name` set at `node`: the var in scope.
     fn def(&mut self, name: &str, node: &str) {
         if name == "_" || name.is_empty() {
             return;
         }
         let v = self.var(name);
+        self.defined(v, node);
+    }
+
+    fn defined(&mut self, v: String, node: &str) {
         self.b.add("def", vec![s(&v), s(node)]);
         let owner = self.owner();
         self.locals
@@ -1480,12 +1576,12 @@ impl Walker<'_> {
         if let Some(r) = recv {
             let t = self.b.ty(self.m, &r.t);
             self.b.add("param", vec![s(owner), i(-1), s(&r.name), s(t)]);
-            self.def(&r.name, owner);
+            self.bind(&r.name, owner, true);
         }
         for (k, p) in params.iter().enumerate() {
             let t = self.b.ty(self.m, &p.t);
             self.b.add("param", vec![s(owner), i(k), s(&p.name), s(t)]);
-            self.def(&p.name, owner);
+            self.bind(&p.name, owner, true);
         }
         for (k, r) in results.iter().enumerate() {
             let t = self.b.ty(self.m, r);
@@ -1655,13 +1751,13 @@ impl Walker<'_> {
                     e(self, x, "rhs", Some(k));
                 }
                 for n in names {
-                    self.def(n, &id);
+                    self.bind(n, &id, false);
                 }
             }
             Stmt::Var { name, t, .. } => {
                 self.b.ty(self.m, t);
                 self.b.makes(self.m, &self.func, t);
-                self.def(name, &id);
+                self.bind(name, &id, true);
             }
             Stmt::Assign { op, lhs, rhs, .. } => {
                 for (k, x) in lhs.iter().enumerate() {
@@ -1708,9 +1804,11 @@ impl Walker<'_> {
                 ..
             } => {
                 e(self, over, "over", None);
-                self.def(k, &id);
-                self.def(val, &id);
+                self.open(None);
+                self.bind(k, &id, true);
+                self.bind(val, &id, true);
                 self.body_stmts(body, &format!("{path}.body."), &id);
+                self.close();
             }
             Stmt::For {
                 init,
@@ -1719,6 +1817,7 @@ impl Walker<'_> {
                 body,
                 ..
             } => {
+                self.open(None);
                 if let Some(init) = init {
                     self.stmt(init, &format!("{path}.init"), &id);
                 }
@@ -1733,6 +1832,7 @@ impl Walker<'_> {
                 if cond.is_some() {
                     self.guards.pop();
                 }
+                self.close();
             }
             Stmt::Switch { tag, cases, .. } => {
                 if let Some(t) = tag {
@@ -1764,8 +1864,9 @@ impl Walker<'_> {
             } => {
                 e(self, map, "map", None);
                 e(self, index, "index", None);
-                self.def(name, &id);
+                // `name` is not bound inside `then`.
                 self.body_stmts(then, &format!("{path}.then."), &id);
+                self.bind(name, &id, false);
             }
             Stmt::Foreign {
                 lang,
@@ -1802,10 +1903,13 @@ impl Walker<'_> {
         self.ancestors.pop();
     }
 
+    /// A nested block's statements, in a lexical block of their own.
     fn body_stmts(&mut self, stmts: &[Stmt], base: &str, parent: &str) {
+        self.open(None);
         for (k, st) in stmts.iter().enumerate() {
             self.stmt(st, &format!("{base}{k}"), parent);
         }
+        self.close();
     }
 
     /// A call list's calls, a function literal's included, at `<base><k>`.
@@ -2167,10 +2271,12 @@ impl Walker<'_> {
                 owner: id.clone(),
                 captures: captures.clone(),
             });
+            self.open(Some(captures.clone()));
             self.params(&id, None, params, results);
             let guards = std::mem::take(&mut self.guards);
             self.body(&id, body, &format!("{path}.body."), &id);
             self.guards = guards;
+            self.close();
             self.scopes.pop();
         }
         self.ancestors.pop();
@@ -2401,17 +2507,7 @@ impl FactBase {
                 if !recv.is_empty() {
                     b.add("makes", vec![s(&id), s(key(&l, "", &recv))]);
                 }
-                let mut w = Walker {
-                    b: &mut b,
-                    m,
-                    links: &mut links,
-                    func: id.clone(),
-                    ancestors: Vec::new(),
-                    guards: Vec::new(),
-                    scopes: Vec::new(),
-                    locals: BTreeMap::new(),
-                    positions: HashMap::new(),
-                };
+                let mut w = Walker::new(&mut b, m, &mut links, id.clone());
                 w.params(&id, f.recv.as_ref(), &f.params, &f.results);
                 for t in &f.raises {
                     let t = w.b.ty(m, t);
@@ -2460,17 +2556,7 @@ impl FactBase {
                 if !o.calls.is_empty() {
                     has.insert((lang.clone(), "calls"));
                 }
-                let mut w = Walker {
-                    b: &mut b,
-                    m,
-                    links: &mut links,
-                    func: id.clone(),
-                    ancestors: Vec::new(),
-                    guards: Vec::new(),
-                    scopes: Vec::new(),
-                    locals: BTreeMap::new(),
-                    positions: HashMap::new(),
-                };
+                let mut w = Walker::new(&mut b, m, &mut links, id.clone());
                 w.call_list(&o.calls, &format!("{id}#calls."));
             }
             for r in &m.refusals {
@@ -2585,6 +2671,27 @@ impl FactBase {
 
     /// The cache encoding: `codespec-query-facts/1`, the same facts the same bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
+        self.encode(None)
+    }
+
+    /// [`FactBase::to_bytes`] with the digest of the documents the facts were built from, as a
+    /// cache file holds it.
+    pub fn to_cache_bytes(&self, digest: &str) -> Vec<u8> {
+        self.encode(Some(digest))
+    }
+
+    /// A cache file read back for the documents of `digest`: one that names another digest, or
+    /// none, is refused, so a file copied or renamed from other documents is not read.
+    pub fn from_cache_bytes(bytes: &[u8], digest: &str) -> Result<FactBase, String> {
+        let doc: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|e| format!("facts: {e}"))?;
+        if doc["digest"] != digest {
+            return Err("facts: built from other documents".into());
+        }
+        Self::from_doc(&doc)
+    }
+
+    fn encode(&self, digest: Option<&str>) -> Vec<u8> {
         use serde_json::{Map, Value as J, json};
         let v = |x: &Value| match x {
             Value::Str(x) => J::from(x.as_str()),
@@ -2621,13 +2728,16 @@ impl FactBase {
             .iter()
             .map(|x| json!({"site": x.site, "pos": x.pos, "reason": x.reason}))
             .collect();
-        let doc = json!({
+        let mut doc = json!({
             "format": FACTS_FORMAT,
             "version": env!("CARGO_PKG_VERSION"),
             "relations": rels,
             "wild": wild,
             "sites": sites,
         });
+        if let Some(d) = digest {
+            doc["digest"] = J::from(d);
+        }
         let mut out = doc.to_string().into_bytes();
         out.push(b'\n');
         out
@@ -2636,8 +2746,13 @@ impl FactBase {
     /// A cache file read back; a file of another format or version, or one whose facts do not
     /// fit the schema, is refused.
     pub fn from_bytes(bytes: &[u8]) -> Result<FactBase, String> {
+        let doc: serde_json::Value =
+            serde_json::from_slice(bytes).map_err(|e| format!("facts: {e}"))?;
+        Self::from_doc(&doc)
+    }
+
+    fn from_doc(doc: &serde_json::Value) -> Result<FactBase, String> {
         use serde_json::Value as J;
-        let doc: J = serde_json::from_slice(bytes).map_err(|e| format!("facts: {e}"))?;
         if doc["format"] != FACTS_FORMAT {
             return Err(format!("facts: not {FACTS_FORMAT}"));
         }
