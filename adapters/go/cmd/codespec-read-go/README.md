@@ -55,6 +55,11 @@ nothing when the package is initialized.
 - `_ = e` reads as `let _ = e`; an assignment with blank and named targets, `a, _ = f()`, as
   `let a_1, _ = f()` followed by `a = a_1`, when every named target is an identifier. A fresh name
   `<name>_<n>` is spelled nowhere else in the declaration being read.
+- An `if` or `switch` with an init statement reads as the init in front of it (cir/1 has no block
+  statement); a name the init declares is read under a fresh name where its spelling occurs
+  elsewhere in the function, and `else if init; c` as an `else` holding the init and the `if`. A
+  function or literal holding a `goto` keeps every such statement foreign, and so does an init or
+  condition outside `cir/1`.
 
 ## Refused
 

@@ -57,6 +57,9 @@ type front struct {
 	spelled map[string]map[types.Object]bool
 	fresh   map[string]bool
 	rename  map[types.Object]string
+	// gotoBody is the body gotoHas says holds a goto or not (canHoist).
+	gotoBody *ast.BlockStmt
+	gotoHas  bool
 }
 
 // beginDecl starts reading the package-level declaration n: no fresh name given, none renamed.
@@ -980,6 +983,14 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 			out = append(out, f.declStmt(ds, results)...)
 			continue
 		}
+		if is, ok := s.(*ast.IfStmt); ok && is.Init != nil && f.canHoist() {
+			out = append(out, f.hoistInit(is, is.Init, results)...)
+			continue
+		}
+		if ss, ok := s.(*ast.SwitchStmt); ok && ss.Init != nil && f.canHoist() {
+			out = append(out, f.hoistInit(ss, ss.Init, results)...)
+			continue
+		}
 		out = append(out, f.stmt(s, results))
 	}
 	return out
@@ -1268,23 +1279,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Init != nil {
 			return f.foreign(s, "switch with an init statement")
 		}
-		st := Stmt{K: "switch", Pos: pos}
-		if s.Tag != nil {
-			tag, ok := f.expr(s.Tag)
-			if !ok {
-				return f.foreign(s, f.exprReason())
-			}
-			st.Tag = &tag
-		}
-		for _, cl := range s.Body.List {
-			cc := cl.(*ast.CaseClause)
-			vs, ok := f.exprs(cc.List)
-			if !ok {
-				return f.foreign(s, f.exprReason())
-			}
-			st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
-		}
-		return st
+		return f.switchStmt(s, results)
 	case *ast.ReturnStmt:
 		rs, ok := f.exprs(s.Results)
 		if !ok {
@@ -1327,6 +1322,77 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	return f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))
 }
 
+// switchStmt reads s but for its init statement, which the caller has read or refused.
+func (f *front) switchStmt(s *ast.SwitchStmt, results []Type) Stmt {
+	st := Stmt{K: "switch", Pos: f.pos(s.Pos())}
+	if s.Tag != nil {
+		tag, ok := f.expr(s.Tag)
+		if !ok {
+			return f.foreign(s, f.exprReason())
+		}
+		st.Tag = &tag
+	}
+	for _, cl := range s.Body.List {
+		cc := cl.(*ast.CaseClause)
+		vs, ok := f.exprs(cc.List)
+		if !ok {
+			return f.foreign(s, f.exprReason())
+		}
+		st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
+	}
+	return st
+}
+
+// canHoist reports whether the function or literal body being read has no goto: a goto could
+// jump over a hoisted declaration to a use of it.
+func (f *front) canHoist() bool {
+	if f.gotoBody != f.fnBody {
+		f.gotoBody, f.gotoHas = f.fnBody, f.fnBody != nil && hasGoto(f.fnBody)
+	}
+	return f.fnBody != nil && !f.gotoHas
+}
+
+// hoistInit reads the `if` or `switch` s with the init statement init as the init in front of
+// it, for every init the planned 0.12.0 hoist (planHoists) left: cir/1 has no block statement to
+// keep the init's names scoped to s. A name the init declares keeps its spelling unless it
+// collides, spelled elsewhere in the declaration being read for something else; it is then read
+// under a fresh name, in the init and in every use inside s, so it neither shadows an outer
+// variable nor is shadowed. When the init or s is outside cir/1, s is kept foreign whole.
+func (f *front) hoistInit(s, init ast.Stmt, results []Type) []Stmt {
+	var renamed []types.Object
+	if as, ok := init.(*ast.AssignStmt); ok && as.Tok == token.DEFINE {
+		for _, l := range as.Lhs {
+			id, ok := l.(*ast.Ident)
+			if !ok || id.Name == "_" {
+				continue
+			}
+			if o := f.info.Defs[id]; o != nil && f.collides(id.Name, o) {
+				f.rename[o] = f.freshName(id.Name)
+				renamed = append(renamed, o)
+			}
+		}
+	}
+	parts := f.whole(s, func() []Stmt {
+		first := f.stmt(init, results)
+		if first.K == "foreign" {
+			return []Stmt{first}
+		}
+		switch s := s.(type) {
+		case *ast.IfStmt:
+			return []Stmt{first, f.ifStmt(s, results)}
+		case *ast.SwitchStmt:
+			return []Stmt{first, f.switchStmt(s, results)}
+		}
+		return []Stmt{first, f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))}
+	})
+	if len(parts) == 1 && parts[0].K == "foreign" {
+		for _, o := range renamed {
+			delete(f.rename, o)
+		}
+	}
+	return parts
+}
+
 // ifStmt reads s but for its init statement, which the caller has read or refused.
 func (f *front) ifStmt(s *ast.IfStmt, results []Type) Stmt {
 	c, ok := f.expr(s.Cond)
@@ -1338,7 +1404,11 @@ func (f *front) ifStmt(s *ast.IfStmt, results []Type) Stmt {
 	case *ast.BlockStmt:
 		st.Else = f.stmts(e.List, results)
 	case *ast.IfStmt:
-		st.Else = []Stmt{f.stmt(e, results)}
+		if e.Init != nil && f.canHoist() {
+			st.Else = f.hoistInit(e, e.Init, results) // else if init; c: the else list is the init and the if
+		} else {
+			st.Else = []Stmt{f.stmt(e, results)}
+		}
 	}
 	return st
 }
@@ -2212,7 +2282,11 @@ func (f *front) captures(lit *ast.FuncLit) []string {
 			return true
 		}
 		if v.Pos() < lit.Pos() || v.Pos() >= lit.End() {
-			seen[v.Name()] = true
+			name := v.Name()
+			if r, ok := f.rename[v]; ok {
+				name = r
+			}
+			seen[name] = true
 		}
 		return true
 	})

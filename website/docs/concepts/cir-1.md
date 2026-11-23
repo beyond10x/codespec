@@ -76,8 +76,11 @@ reader these constructs are:
 - `defer`;
 - named results;
 - an expression it has no node for;
-- an `if` with an init statement, unless hoisting the init in front of the `if` keeps the meaning.
-  The reader reads `if err := f(); err != nil { … }` as `err := f()` and the `if`.
+- an `if` or `switch` with an init statement in a function that holds a `goto`, or whose init or
+  condition is outside `cir/1`. Otherwise the reader reads the init in front of the statement:
+  `if err := f(); err != nil { … }` as `err := f()` and the `if`, a name the init declares renamed
+  to `<name>_<n>` where its spelling occurs elsewhere in the function, and `else if init; c` as an
+  `else` holding the init and the `if`.
 
 Two Go declarations declare nothing a body can name and do nothing at run time, so the Go reader
 omits them without a refusal: a package-level blank variable whose initializer has no run-time
