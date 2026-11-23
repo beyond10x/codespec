@@ -9,7 +9,7 @@
 //! | field | type | meaning |
 //! |---|---|---|
 //! | `format` | string | always `codespec-effects/1` |
-//! | `language` | string | the source language whose functions it summarises: `go`, `rust`, … |
+//! | `language` | string | the source language whose functions it summarises: `go`, `rust`, …; it applies only to the calls of modules whose `reader.language` is the same |
 //! | `externs` | array | one entry per function, sorted by `path` then `name`, each once |
 //!
 //! An entry is `{path, name, effects}`: the import path and name a module's `externs` use, and

@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T03:44:37Z",
+  "actor": "human:timo",
+  "artifact": "story:review-effects-summaries-and-roots",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-effects --locked: effects 31 passed, reach 7 passed, trace 3 passed"
+  }
+}

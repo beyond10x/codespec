@@ -72,7 +72,8 @@ struct Graph<'a> {
     nodes: Vec<Node>,
     by_path: HashMap<&'a str, usize>,
     keys: Vec<HashMap<String, usize>>,
-    summaries: HashMap<(&'a str, &'a str), &'a [String]>,
+    /// The effects of each summarised extern, by the summary's language, then path and name.
+    summaries: HashMap<(&'a str, &'a str, &'a str), &'a [String]>,
     numbered: HashMap<(&'a str, &'a str), usize>,
     fixed: HashMap<(&'a str, &'a str), Vec<usize>>,
     pure: HashSet<&'a str>,
@@ -293,7 +294,7 @@ impl<'a> Graph<'a> {
         for s in summaries {
             for x in &s.externs {
                 known
-                    .entry((x.path.as_str(), x.name.as_str()))
+                    .entry((s.language.as_str(), x.path.as_str(), x.name.as_str()))
                     .or_insert(x.effects.as_slice());
             }
         }
@@ -509,7 +510,10 @@ impl<'a> Graph<'a> {
                 return;
             }
         }
-        match self.summaries.get(&(path, name)) {
+        // A summary applies to the modules of its own language: a Rust summary naming the same
+        // path and name says nothing about a Go call.
+        let language = self.modules[mi].reader.language.as_str();
+        match self.summaries.get(&(language, path, name)) {
             Some(effects) => {
                 for e in effects.iter() {
                     self.set(holder, effect_bit(e), pos);
@@ -675,9 +679,12 @@ impl<'a> Graph<'a> {
                 }
                 None => self.unknown(holder, pos, format!("not in its module: {path}.{key}")),
             },
-            None => self.unknown(holder, pos, format!("extern without summary: {path}.{key}")),
+            // A method of a type outside the set: summarised as `<type>.<method>`, as the typed
+            // call of the same method (`extern_method`) is.
+            None => self.call_func(holder, mi, path, &key, &|_| None, pos),
         }
     }
+
     /// The calls of a body `cir/1` holds, at the position of the statement making each. The
     /// statements of a lambda's body are the holder's too (its calls count for the function that
     /// holds it); each lambda is also a node of its own, a candidate wherever a value of its
@@ -1088,16 +1095,16 @@ impl<'a> Graph<'a> {
             .iter()
             .filter_map(|(mi, key)| self.keys[*mi].get(key).copied())
             .collect();
-        for (mi, keys) in self.keys.iter().enumerate() {
-            if self.modules[mi].reader.language == "go"
-                && let Some(&n) = keys.get("init")
-            {
-                out.push(n);
-            }
-        }
+        // A Go package may declare several `init` functions: each is a node, the key names only
+        // the first, and every one of them runs.
         for (n, node) in self.nodes.iter().enumerate() {
-            if matches!(node.kind, Kind::Init(_)) {
-                out.push(n);
+            let init =
+                |mi: usize, key: String| self.modules[mi].reader.language == "go" && key == "init";
+            match node.kind {
+                Kind::Init(_) => out.push(n),
+                Kind::Func(mi, i) if init(mi, self.modules[mi].funcs[i].key()) => out.push(n),
+                Kind::Opaque(mi, i) if init(mi, self.modules[mi].opaque[i].key()) => out.push(n),
+                _ => {}
             }
         }
         out

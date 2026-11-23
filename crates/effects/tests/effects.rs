@@ -1171,3 +1171,88 @@ fn a_named_call_is_unknown_with_what_it_names() {
         ]
     );
 }
+
+// --- maintainer review 2026-11-23: listed methods and summary languages ---
+
+/// `T` calls `c.Write()` on a `net.Conn` as a typed `extern_method`; `L` makes the same call
+/// inside a foreign statement, listed as a `method` call ref of `net`.
+fn conn_write_pair() -> Module {
+    let conn = json!({"k": "extern", "path": "net", "name": "Conn"});
+    let typed = json!({"k": "expr", "pos": "m.go:2", "x": {
+        "k": "extern_method", "path": "net", "type": "Conn", "name": "Write",
+        "recv": {"k": "var", "name": "c", "t": conn}, "args": [], "t": s()}});
+    let listed = foreign(
+        5,
+        vec![
+            json!({"k": "method", "path": "net", "recv": "Conn", "name": "Write", "pos": "m.go:5"}),
+        ],
+    );
+    let mut t = unit_func("T", 1, vec![typed]);
+    t["params"] = json!([{"name": "c", "t": conn}]);
+    let method =
+        json!({"path": "net", "name": "Write", "recv": conn, "params": [], "results": [s()]});
+    doc(
+        "p",
+        "",
+        vec![t, unit_func("L", 4, vec![listed])],
+        json!({"externs": [method], "layout": ["func:T", "func:L"]}),
+    )
+}
+
+fn summary_in(language: &str, entries: &[(&str, &str, &[&str])]) -> Summary {
+    let doc = json!({
+        "format": "codespec-effects/1",
+        "language": language,
+        "externs": entries.iter().map(|(p, n, e)| json!({"path": p, "name": n, "effects": e})).collect::<Vec<_>>()
+    });
+    summary_from_json(doc.to_string().as_bytes()).expect("a valid summary")
+}
+
+/// Q3: a method of a type outside the set that a foreign statement lists takes its summary as
+/// the typed call of the same method does.
+#[test]
+fn a_listed_external_method_call_takes_the_summary_of_the_typed_call() {
+    let m = conn_write_pair();
+    let net = summary(&[("net", "Conn.Write", &["net"])]);
+    let r = analyze(&m, &[net]);
+    for name in ["T", "L"] {
+        let f = entry(&r, name);
+        assert_eq!(f.effects, ["net"], "{name}");
+        assert!(f.unknown.is_empty(), "{name}: {:?}", f.unknown);
+    }
+    let r = analyze(&m, &[]);
+    for name in ["T", "L"] {
+        let reasons: Vec<&str> = entry(&r, name)
+            .unknown
+            .iter()
+            .map(|u| u.reason.as_str())
+            .collect();
+        assert_eq!(
+            reasons,
+            ["extern without summary: net.Conn.Write"],
+            "{name}"
+        );
+    }
+}
+
+/// Q9: a summary applies to the modules its language reads; a Rust summary naming the same
+/// function pure clears nothing in a Go module, in either order.
+#[test]
+fn a_summary_of_another_language_does_not_apply() {
+    let m = conn_write_pair();
+    let go = summary_in("go", &[("net", "Conn.Write", &["net"])]);
+    let rust = summary_in("rust", &[("net", "Conn.Write", &[])]);
+    for summaries in [vec![rust.clone(), go.clone()], vec![go, rust.clone()]] {
+        let r = analyze(&m, &summaries);
+        for name in ["T", "L"] {
+            let f = entry(&r, name);
+            assert_eq!(f.effects, ["net"], "{name}");
+            assert!(f.unknown.is_empty(), "{name}: {:?}", f.unknown);
+        }
+    }
+    let r = analyze(&m, &[rust]);
+    let f = entry(&r, "T");
+    assert!(f.effects.is_empty(), "{:?}", f.effects);
+    let reasons: Vec<&str> = f.unknown.iter().map(|u| u.reason.as_str()).collect();
+    assert_eq!(reasons, ["extern without summary: net.Conn.Write"]);
+}
