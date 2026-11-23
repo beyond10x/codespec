@@ -45,11 +45,10 @@ Each adapter is written in the language whose tooling handles its target best:
 | Go writer | builds `go/ast` and prints it with `go/printer` |
 | Rust writer | builds `syn` trees and prints them with `prettyplease` |
 
-The Rust reader parses with `syn`, which the Rust
-writer already depends on, and resolves names and types itself for the subset of Rust that `cir/1`
-covers.
+The Rust reader parses with `syn`, which the Rust writer already depends on, and resolves
+names and types itself for the subset of Rust that `cir/1` covers.
 
-Two questions decide each adapter, and the harness answers both:
+For each adapter the harness answers:
 
 1. Does the reader capture enough detail to produce `cir/1`?
 2. Does the writer produce code that behaves like the original?
@@ -82,5 +81,5 @@ Decided on 2026-11-06.
 
 ## Later
 
-- ESS: a direction, not a plan; the [overview](/docs/#neighbours) says what it would add.
+- ESS: a direction, not a plan. The [overview](/docs/#neighbours) says what it would add.
 - More target languages through the same adapter boundary.

@@ -233,5 +233,4 @@ $ jq -c '.modules[0] | {reached, unreached}' work/netcheck.reach.json
 
 A third-party Go library of 234 documents is measured on
 [Static analysis](/docs/concepts/static-analysis#measured-a-third-party-go-library). Its syscall
-sets are wide for the reason step 5 shows: the current limit of dispatch, not a property of the
-library.
+sets are wide for the reason step 5 shows: the current limit of dispatch.

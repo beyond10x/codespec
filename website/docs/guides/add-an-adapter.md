@@ -96,8 +96,9 @@ Fix the adapter. The model's strictness does not change.
 
 A reader also needs `codespec-write-go` and `codespec-run-go`, which write its output as Go and run
 it, and `codespec-write-cir` and `codespec-run-cir`, the evaluator's pair, which judge a case the Go
-writer refuses (such as a tagged union); they are looked up only when a case needs them. Each kit
-case is then run, and every feature gets a verdict against the claim.
+writer refuses (such as a tagged union). They are looked up only when a case needs them.
+
+Each kit case is then run, and every feature gets a verdict against the claim.
 
 Here is the Go writer, run in this repository. `codespec-docs generate` writes this block from the
 checked-in report `website/data/conformance/writer-go.json`, and `task docs-check` fails when it

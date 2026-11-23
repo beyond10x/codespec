@@ -126,5 +126,5 @@ packages that informs users of which privileged operations a given package can a
 How use 2 differs:
 
 - Capslock stops at privileged standard library operations. codespec reads the standard library too
-  and stops at syscalls. It names each syscall and the line of your function that leads there.
+  and stops at syscalls. It lists each syscall and the line of your function that leads there.
 - codespec analyses `cir/1`, not Go. Today the only barrier is Go on linux/amd64.
