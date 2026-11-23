@@ -1,0 +1,6 @@
+name = "codespec_gleam_parser"
+version = "1.0.0"
+target = "erlang"
+
+[dependencies]
+glance = "7.0.0"
