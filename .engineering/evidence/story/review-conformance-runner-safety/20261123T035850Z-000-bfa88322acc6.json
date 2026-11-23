@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T03:58:50Z",
+  "actor": "human:timo",
+  "artifact": "story:review-conformance-runner-safety",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-conformance --locked (EXIT 0); cargo test -p b10x-codespec-cli --locked --test conform (EXIT 0); clippy -D warnings clean",
+    "reference": "target/green-conformance.log"
+  }
+}

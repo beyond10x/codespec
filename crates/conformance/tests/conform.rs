@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 
 use codespec_conformance::conform::{
     Exec, OUTPUT_LIMIT, Process, Program, Ran, ReaderPrograms, Reason, Report, Run, Target,
-    UNKNOWN_KIND, Verdict, claim, conform_adapter, conform_reader, conform_writer,
-    conform_writer_within, read_kit, read_report, reader_corpus, report_json,
+    UNKNOWN_KIND, Verdict, claim, conform_adapter, conform_adapter_within, conform_reader,
+    conform_writer, conform_writer_within, read_kit, read_report, reader_corpus, report_json,
+    tree_sha256,
 };
 use codespec_conformance::load_cases;
 use codespec_model::Module;
@@ -990,4 +991,226 @@ fn the_groovy_corpus_prefers_a_case_s_groovy_source_and_no_other_corpus_reads_it
             "the {lang} corpus holds the groovy source"
         );
     }
+}
+
+/// G5: a program whose own child exits at once while a descendant it started holds standard
+/// output open is stopped at the limit, not when the descendant lets go of the pipe.
+#[test]
+fn a_program_whose_descendant_holds_its_output_after_it_exits_times_out_at_the_limit() {
+    let script = work("descendant-holds-pipe").join("fork.sh");
+    std::fs::write(&script, "sleep 8 &\nexit 0\n").unwrap();
+    let start = Instant::now();
+    let ran = Process(PathBuf::from("sh"))
+        .exec_within(&[script.into_os_string()], None, Duration::from_secs(1))
+        .unwrap();
+    let took = start.elapsed();
+    assert!(matches!(ran, Ran::TimedOut), "{ran:?} after {took:?}");
+    assert!(took < Duration::from_secs(5), "{took:?}");
+}
+
+/// G5: an adapter's `--describe` runs within the limit the run is given, not the 300 s default.
+#[test]
+fn describe_runs_within_the_limit_conform_adapter_within_is_given() {
+    let w = work("describe-limit");
+    let k = mini_kit(&w, &["op-add"]);
+    let adapters = w.join("adapters");
+    std::fs::create_dir_all(&adapters).unwrap();
+    script(&adapters, "codespec-write-stub", "sleep 8");
+    script(&adapters, "codespec-run-stub", "exit 1");
+    let start = Instant::now();
+    let e = conform_adapter_within(
+        &Target {
+            adapters,
+            role: "writer".into(),
+            lang: "stub".into(),
+            kit: k,
+            corpus: None,
+            work: w.join("work"),
+        },
+        Duration::from_secs(1),
+    )
+    .expect_err("--describe ran past the limit");
+    let took = start.elapsed();
+    assert!(e.contains("--describe ran past 1 s"), "{e} after {took:?}");
+    assert!(took < Duration::from_secs(5), "{took:?}");
+}
+
+fn ended_by_signal() -> Result<Exec, String> {
+    Ok(Exec {
+        code: None,
+        stdout: Vec::new(),
+        stderr: String::new(),
+    })
+}
+
+/// G6: a writer ended by a signal did not refuse: the case fails with `run_failed`, claimed or
+/// not, and a writer that crashes on the unknown statement kind fails that boundary case.
+#[test]
+fn a_writer_ended_by_a_signal_fails_an_unclaimed_feature_and_the_unknown_kind_boundary() {
+    let w = work("stub-writer-signal");
+    let k = mini_kit(&w, &["op-add", "op-sub"]);
+    let m = manifest("writer", &["op.add".to_string()]);
+    let inner = stub_writer(|name| (name == "op_sub").then(ended_by_signal));
+    let writer = |args: &[OsString], stdin: Option<&[u8]>| {
+        if String::from_utf8_lossy(stdin.unwrap_or_default()).contains(UNKNOWN_KIND) {
+            return ended_by_signal();
+        }
+        inner.exec(args, stdin)
+    };
+    let r = Run {
+        manifest: &m,
+        kit: k,
+        work: w.join("work"),
+    };
+    let report = conform_writer(&r, &writer, &stub_runner(|_| None)).unwrap();
+    let sub = feature(&report, "op.sub");
+    assert_eq!(
+        (sub.claimed, sub.verdict, sub.reason),
+        (false, Verdict::Fail, Some(Reason::RunFailed)),
+        "{}",
+        report_json(&report)
+    );
+    assert!(
+        sub.detail.as_deref().is_some_and(|d| d.contains("signal")),
+        "{:?}",
+        sub.detail
+    );
+    let unknown = report
+        .boundary
+        .iter()
+        .find(|b| b.id == "unknown_kind")
+        .unwrap();
+    assert_eq!(unknown.verdict, Verdict::Fail, "{}", report_json(&report));
+    assert_eq!(report.summary.refused_unclaimed, 0);
+    assert!(!report.conforms);
+}
+
+/// G6: in a reader run, the reader, the Go writer and the evaluator's writer ended by a signal
+/// each fail the case with `run_failed`, though no feature is claimed: none of them refused.
+#[test]
+fn a_reader_run_program_ended_by_a_signal_fails_the_unclaimed_case_with_run_failed() {
+    let w = work("stub-reader-signal");
+    let corpus = stub_corpus_of(&w, &["op-add", "op-sub", "stmt-if"]);
+    let m = manifest("reader", &[]);
+    let reader = |args: &[OsString], stdin: Option<&[u8]>| {
+        if PathBuf::from(&args[0]).ends_with("op-add") {
+            return ended_by_signal();
+        }
+        kit_module_reader(args, stdin)
+    };
+    let go_writer = stub_writer(|name| match name {
+        "stmt_if" => Some(ended_by_signal()),
+        "op_sub" => Some(exec(1, "", "codespec-write-go: no form for it")),
+        _ => None,
+    });
+    let cir_writer = stub_writer(|name| (name == "op_sub").then(ended_by_signal));
+    let runner = stub_runner(|_| None);
+    let go_runner = stub_runner(|_| None);
+    let cir_runner = stub_runner(|_| None);
+    let report = conform_reader(
+        &Run {
+            manifest: &m,
+            kit: kit(),
+            work: w.join("work"),
+        },
+        &corpus,
+        &ReaderPrograms {
+            reader: &reader,
+            runner: &runner,
+            go_writer: &go_writer,
+            go_runner: &go_runner,
+            cir_writer: &cir_writer,
+            cir_runner: &cir_runner,
+        },
+    )
+    .unwrap();
+    let json = report_json(&report);
+    for (id, step) in [("op.add", 2), ("stmt.if", 4), ("op.sub", 4)] {
+        let f = feature(&report, id);
+        assert_eq!(
+            (f.claimed, f.verdict, f.reason, f.step),
+            (false, Verdict::Fail, Some(Reason::RunFailed), Some(step)),
+            "{id}: {json}"
+        );
+    }
+    assert_eq!(report.summary.refused_unclaimed, 0, "{json}");
+    assert!(!report.conforms);
+}
+
+/// G7: the tree digest reads only regular files inside its tree: a symbolic link to a file or a
+/// directory outside it, a linked root and a FIFO are refused, and a plain tree's digest is the
+/// documented one.
+#[test]
+fn a_tree_digest_refuses_links_and_special_files_and_keeps_its_format() {
+    use sha2::{Digest as _, Sha256};
+    use std::os::unix::fs::symlink;
+    let w = work("tree-digest-links");
+    let outside = w.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("secret.txt"), "outside\n").unwrap();
+    let t = w.join("tree");
+    std::fs::create_dir_all(t.join("cases/a")).unwrap();
+    std::fs::write(t.join("kit.json"), "{}\n").unwrap();
+    std::fs::write(t.join("cases/a/x.txt"), "x\n").unwrap();
+    let roots = ["kit.json", "cases"];
+
+    let mut h = Sha256::new();
+    h.update(b"cases/a/x.txt\n2\nx\nkit.json\n3\n{}\n");
+    let want: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(tree_sha256(&t, &roots).unwrap(), want);
+
+    let link = t.join("cases/a/leak.txt");
+    symlink(outside.join("secret.txt"), &link).unwrap();
+    let e = tree_sha256(&t, &roots).expect_err("a link to a file outside the tree");
+    assert!(e.contains("symbolic link"), "{e}");
+    std::fs::remove_file(&link).unwrap();
+
+    let link = t.join("cases/b");
+    symlink(&outside, &link).unwrap();
+    let e = tree_sha256(&t, &roots).expect_err("a link to a directory outside the tree");
+    assert!(e.contains("symbolic link"), "{e}");
+    std::fs::remove_file(&link).unwrap();
+
+    std::fs::rename(t.join("kit.json"), outside.join("kit.json")).unwrap();
+    symlink(outside.join("kit.json"), t.join("kit.json")).unwrap();
+    let e = tree_sha256(&t, &roots).expect_err("a linked root");
+    assert!(e.contains("symbolic link"), "{e}");
+    std::fs::remove_file(t.join("kit.json")).unwrap();
+    std::fs::rename(outside.join("kit.json"), t.join("kit.json")).unwrap();
+
+    let fifo = t.join("cases/a/pipe");
+    let made = Command::new("mkfifo").arg(&fifo).status().unwrap();
+    assert!(made.success());
+    let e = tree_sha256(&t, &roots).expect_err("a FIFO");
+    assert!(e.contains("not a regular file"), "{e}");
+    std::fs::remove_file(&fifo).unwrap();
+    assert_eq!(tree_sha256(&t, &roots).unwrap(), want);
+}
+
+/// G7: a writer's output is compared without following a link out of it: a run whose writer
+/// writes a symbolic link is an error naming it.
+#[test]
+fn a_writer_that_writes_a_symbolic_link_ends_the_run_with_an_error() {
+    let w = work("stub-writer-link");
+    let k = mini_kit(&w, &["op-add"]);
+    let outside = w.join("outside.txt");
+    std::fs::write(&outside, "outside\n").unwrap();
+    let m = manifest("writer", &["op.add".to_string()]);
+    let inner = stub_writer(|_| None);
+    let writer = |args: &[OsString], stdin: Option<&[u8]>| {
+        let r = inner.exec(args, stdin);
+        let out = PathBuf::from(&args[0]);
+        if out.join("module.json").is_file() {
+            std::os::unix::fs::symlink(&outside, out.join("leak.txt")).unwrap();
+        }
+        r
+    };
+    let r = Run {
+        manifest: &m,
+        kit: k,
+        work: w.join("work"),
+    };
+    let e =
+        conform_writer(&r, &writer, &stub_runner(|_| None)).expect_err("a written symbolic link");
+    assert!(e.contains("symbolic link"), "{e}");
 }
