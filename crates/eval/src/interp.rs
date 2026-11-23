@@ -866,7 +866,10 @@ impl<'m> Interp<'m> {
                 tbind,
                 expr,
             } => {
-                let mut scope: Vec<(&'m str, HeapId)> = captures.clone();
+                // The captured cells are a scope enclosing the body's, as the outer function's
+                // block encloses the literal: `x := …` in the body declares a new `x`, while
+                // `x = …` assigns the captured one.
+                let mut scope: Vec<(&'m str, HeapId)> = Vec::with_capacity(params.len());
                 for (p, v) in params.iter().zip(args) {
                     let id = self.alloc(v);
                     scope.push((p.name.as_str(), id));
@@ -878,7 +881,7 @@ impl<'m> Interp<'m> {
                 self.enter(
                     Frame {
                         home: *home,
-                        scopes: vec![scope],
+                        scopes: vec![captures.clone(), scope],
                         tbind: tbind.clone(),
                         results,
                     },
@@ -1385,7 +1388,7 @@ impl<'m> Interp<'m> {
                         self.traced("tested", &cv, node);
                         let cv = self.enter_slot(cv, v.t(), tag_t);
                         let tv = self.enter_slot(tagv.clone(), tag_t, v.t());
-                        if equal(&tv, &cv) {
+                        if self.equal_checked(&tv, &cv, node)? {
                             return self.exec_block(&c.body);
                         }
                     }
@@ -1576,6 +1579,12 @@ impl<'m> Interp<'m> {
         let v = self.eval(over)?;
         match v {
             Value::Int(n) => self.range_count(key, val, n, body, node),
+            // A nil channel is not an empty collection: its first receive blocks forever.
+            Value::Nil if matches!(self.resolve(over.t()), Type::Chan { .. }) => Err(self.halt(
+                StopKind::Blocked,
+                node,
+                "a range over a nil channel blocks forever",
+            )),
             Value::Nil => Ok(Flow::Next),
             Value::Slice { arr, off, len, .. } => {
                 // The length is fixed when the loop starts.
@@ -2419,6 +2428,63 @@ impl<'m> Interp<'m> {
         })
     }
 
+    /// Go's `==`, which panics when two interface values hold one dynamic type that is not
+    /// comparable (a map, a slice, a function, or a struct or array holding one); of different
+    /// dynamic types they are unequal without a panic.
+    fn equal_checked(&self, a: &Value<'m>, b: &Value<'m>, node: Node<'m>) -> R<'m, bool> {
+        match self.uncomparable(a, b) {
+            Some(t) => Err(self.panic(
+                node,
+                format!("comparing uncomparable type {}", type_name(&t)),
+            )),
+            None => Ok(equal(a, b)),
+        }
+    }
+
+    /// The dynamic type that makes Go's `a == b` panic, looked for as [`equal`] compares: two
+    /// interface values of one dynamic type, inside the values compared up to the first
+    /// unequal element.
+    fn uncomparable(&self, a: &Value<'m>, b: &Value<'m>) -> Option<Type> {
+        if let (Some((t, v)), Some((u, w))) = (dynamic(a), dynamic(b)) {
+            if t != u {
+                return None;
+            }
+            if !self.comparable(t) {
+                return Some(t.clone());
+            }
+            return self.uncomparable(v, w);
+        }
+        let pairs = match (a, b) {
+            (Value::Struct(n, xs), Value::Struct(m, ys)) if n == m => xs.iter().zip(ys),
+            (Value::Array(xs), Value::Array(ys)) | (Value::Tuple(xs), Value::Tuple(ys)) => {
+                xs.iter().zip(ys)
+            }
+            _ => return None,
+        };
+        for (x, y) in pairs {
+            if let Some(t) = self.uncomparable(x, y) {
+                return Some(t);
+            }
+            if !equal(x, y) {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Whether Go's `==` is defined on values of `t`.
+    fn comparable(&self, t: &Type) -> bool {
+        match self.resolve(t) {
+            Type::Map { .. } | Type::Slice { .. } | Type::Func { .. } => false,
+            Type::Array { elem, .. } => self.comparable(&elem),
+            Type::Named { name, .. } => self
+                .structs
+                .get(name.as_str())
+                .is_none_or(|(_, fields)| fields.iter().all(|f| self.comparable(&f.t))),
+            _ => true,
+        }
+    }
+
     pub(crate) fn compare(
         &self,
         op: &str,
@@ -2428,10 +2494,10 @@ impl<'m> Interp<'m> {
     ) -> R<'m, bool> {
         use std::cmp::Ordering;
         if op == "==" {
-            return Ok(equal(a, b));
+            return self.equal_checked(a, b, node);
         }
         if op == "!=" {
-            return Ok(!equal(a, b));
+            return Ok(!self.equal_checked(a, b, node)?);
         }
         let ord = match (a, b) {
             (Value::Int(x), Value::Int(y)) => Some(x.cmp(y)),
@@ -2533,10 +2599,21 @@ impl<'m> Interp<'m> {
                 let [x] = args else {
                     return Err(self.unsupported(node, "len of several"));
                 };
-                // An array's length is its type's: Go evaluates no array with a place for it.
-                if let Type::Array { len, .. } = self.resolve(x.t())
-                    && self.has_place(x)
-                {
+                // The length of an array, or of a pointer to one (nil too), is its type's. Go
+                // evaluates the operand only when it holds a call or a receive (spec § Length
+                // and capacity), and then for its effects alone.
+                let fixed = match self.resolve(x.t()) {
+                    Type::Array { len, .. } => Some(len),
+                    Type::Ptr { elem } => match self.resolve(&elem) {
+                        Type::Array { len, .. } => Some(len),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(len) = fixed {
+                    if calls_or_receives(x) {
+                        self.eval(x)?;
+                    }
                     return Ok(Value::Int(len as i128));
                 }
                 let n = match self.eval(x)? {
@@ -2586,13 +2663,18 @@ impl<'m> Interp<'m> {
                 })
             }
             "println" => {
+                // Every argument is evaluated, in order, before any is formatted: a `String()`
+                // method runs after the last argument's effects, as in Go.
+                let mut vals = Vec::with_capacity(args.len());
+                for a in args {
+                    vals.push(self.eval(a)?);
+                }
                 let mut line = Vec::new();
-                for (i, a) in args.iter().enumerate() {
+                for (i, (a, v)) in args.iter().zip(&vals).enumerate() {
                     if i > 0 {
                         line.push(b' ');
                     }
-                    let v = self.eval(a)?;
-                    let s = self.format_v(&v, a.t(), node)?;
+                    let s = self.format_v(v, a.t(), node)?;
                     line.extend_from_slice(&s);
                 }
                 line.push(b'\n');
@@ -3206,6 +3288,27 @@ impl<'m> Interp<'m> {
 }
 
 static NIL: Expr = Expr::Nil { t: Type::Unit };
+
+/// Whether `e` holds a function call or a channel receive outside a function literal's body:
+/// what makes Go evaluate the operand of `len` of an array.
+fn calls_or_receives(e: &Expr) -> bool {
+    let here = match e {
+        Expr::Call { .. }
+        | Expr::Method { .. }
+        | Expr::Extern { .. }
+        | Expr::ExternMethod { .. }
+        | Expr::Intrinsic { .. }
+        | Expr::CallValue { .. }
+        | Expr::IfaceCall { .. } => true,
+        Expr::Unop { op, .. } => op == "<-",
+        _ => false,
+    };
+    let mut found = here;
+    if !found {
+        walk::children(e, &mut |c| found = found || calls_or_receives(c));
+    }
+    found
+}
 
 /// For each module variable, the variables its initializer reads, directly or through the
 /// functions and methods it refers to: Go's initialization dependencies (a method called

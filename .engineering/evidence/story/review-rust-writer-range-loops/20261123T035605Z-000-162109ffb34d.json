@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T03:56:05Z",
+  "actor": "human:timo",
+  "artifact": "story:review-rust-writer-range-loops",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-write-rust --locked: 51 passed incl. tests/writer.rs a_slice_loop_reads_the_slice_it_started_with_after_its_variable_is_rebound, a_slice_loop_that_writes_an_element_and_rebinds_its_variable_is_refused, a_map_loop_reads_each_value_as_the_earlier_iterations_left_it; task examples-rust, examples-greeter, examples-inventory, examples-series green"
+  }
+}

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use codespec_model::Module;
-use codespec_query::{FactBase, Names, load_with, parse, run};
+use codespec_query::{FactBase, Names, load_in, parse, run};
 
 fn here() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests")
@@ -382,7 +382,8 @@ fn each_example_of_section_6_prints_its_expected_rows_twice_byte_equal() {
     ];
     assert_eq!(examples.len(), cases.len(), "{examples:?}");
     for (q, (doc, want, barrier)) in examples.iter().zip(cases) {
-        // A copy under the target directory: the cache lands beside it, not in the source tree.
+        // A copy under the target directory, and a cache directory beside it: nothing lands in
+        // the source tree or the cache of the user running the tests.
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("paths")
             .join(want);
@@ -393,7 +394,8 @@ fn each_example_of_section_6_prints_its_expected_rows_twice_byte_equal() {
         let barrier = barrier.map(|b| fixture(&format!("design/{b}")));
         let mut outs = Vec::new();
         for _ in 0..2 {
-            let loaded = load_with(&[dir.join(doc)], &[], barrier.as_deref()).unwrap();
+            let cache = dir.with_extension("facts");
+            let loaded = load_in(&[dir.join(doc)], &[], barrier.as_deref(), Some(&cache)).unwrap();
             outs.push(
                 run(&program, &loaded.facts, &Names::default())
                     .unwrap_or_else(|e| panic!("{q}: {e}"))

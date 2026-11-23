@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use codespec_conformance::{CALLS_FORMAT, Call, Calls};
-use codespec_eval::{Options, Run, run_calls};
+use codespec_eval::{Options, Run, StopKind, run_calls};
 use codespec_model::{Expr, Module, Stmt};
 
 fn fixtures() -> PathBuf {
@@ -392,4 +392,89 @@ fn adv2_mut_a_lookup_else_converts_its_key() {
     let r = run(&m, &[("Lookup", &[])]);
     assert_eq!(r.stop.as_ref().map(ToString::to_string), None);
     assert_eq!(r.stdout, "ok 5\n");
+}
+
+// ---- maintainer review of 2026-11-23 (`story:review-eval-go-semantics`) ----
+
+/// The one call `func` of the fixture `gosem` run alone: what it printed and how it stopped.
+fn gosem(func: &str) -> (String, Option<StopKind>) {
+    static M: OnceLock<Module> = OnceLock::new();
+    let r = run(M.get_or_init(|| read("gosem")), &[(func, &[])]);
+    (r.stdout, r.stop.map(|s| s.kind))
+}
+
+/// E1: `len` of an array or a pointer to one is its type's length, also for a nil pointer, and
+/// its operand is evaluated when it holds a call. `go run` prints `3`, `13`, `13`, `13`.
+#[test]
+fn review_e1_len_of_an_array_is_its_type_length_and_a_call_in_it_runs() {
+    for (func, go) in [
+        ("LenNilArrayPtr", "ok 3\n"),
+        ("LenCallField", "ok 13\n"),
+        ("LenCallNilPtr", "ok 13\n"),
+        ("LenCallIndex", "ok 13\n"),
+    ] {
+        assert_eq!(gosem(func), (go.to_string(), None), "{func}");
+    }
+}
+
+/// E2: `==`, `!=` and a `switch` case on two interface values of one dynamic type that is not
+/// comparable panic; of different dynamic types they are false. `go run` panics with
+/// `comparing uncomparable type map[string]int`, `[]int` and `[]int`, then prints `false` and
+/// `true`.
+#[test]
+fn review_e2_interface_equality_of_an_uncomparable_dynamic_type_panics() {
+    assert_eq!(gosem("IfaceMapEq"), (String::new(), Some(StopKind::Panic)));
+    assert_eq!(
+        gosem("IfaceSliceNe"),
+        (String::new(), Some(StopKind::Panic))
+    );
+    assert_eq!(gosem("IfaceSwitch"), (String::new(), Some(StopKind::Panic)));
+    assert_eq!(gosem("IfaceDiffTypes"), ("ok false\n".to_string(), None));
+    assert_eq!(gosem("IfaceInts"), ("ok true\n".to_string(), None));
+}
+
+/// E3: a range over a nil channel blocks forever (Go: `all goroutines are asleep - deadlock!`);
+/// over a nil slice it runs no iteration, `17`.
+#[test]
+fn review_e3_a_range_over_a_nil_channel_blocks() {
+    assert_eq!(
+        gosem("RangeNilChan"),
+        (String::new(), Some(StopKind::Blocked))
+    );
+    assert_eq!(gosem("RangeNilSlice"), ("ok 17\n".to_string(), None));
+}
+
+/// E5: a closure's `x := 2` declares its own `x`, leaving the captured outer one alone, while
+/// `x = 5` assigns the outer one. `go run` prints `31` and `5`.
+#[test]
+fn review_e5_a_closure_declaration_does_not_overwrite_the_captured_variable() {
+    assert_eq!(gosem("Shadow"), ("ok 31\n".to_string(), None));
+    assert_eq!(gosem("Assign"), ("ok 5\n".to_string(), None));
+}
+
+/// E6: `fmt.Println` evaluates every argument before formatting any, so `String()` of the
+/// first sees the second's increment. `go run` prints `after 1`.
+#[test]
+fn review_e6_println_evaluates_every_argument_before_formatting() {
+    assert_eq!(gosem("PrintOrder"), ("after 1\nok 1\n".to_string(), None));
+}
+
+/// E9: a foreign statement inside a package-level function literal is a refusal of the strict
+/// `cir` writer, named by the variable, and nothing is written.
+#[test]
+fn review_e9_the_strict_writer_refuses_a_foreign_statement_in_a_variable_initializer() {
+    use codespec_eval::runner::{Stops, refusals, write};
+    let m = read("globaldefer");
+    let found = refusals(&m);
+    assert!(
+        found
+            .iter()
+            .any(|r| r.name == "f" && r.reason.contains("foreign")),
+        "{found:?}"
+    );
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("review-e9-write");
+    let _ = std::fs::remove_dir_all(&out);
+    let e = write(m.to_json().as_bytes(), &out, Stops::Refuse).expect_err("refused");
+    assert!(e.iter().any(|l| l.contains("foreign")), "{e:?}");
+    assert!(!out.exists(), "nothing is written");
 }

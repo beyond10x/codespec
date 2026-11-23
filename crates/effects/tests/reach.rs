@@ -232,3 +232,31 @@ fn rapid_type_analysis_narrows_the_effects_of_an_interface_call() {
         "without entries the effects report keeps class-hierarchy analysis"
     );
 }
+
+/// Q4: a Go package with two `init` functions runs both; what only the second calls is reached.
+#[test]
+fn every_go_init_function_is_an_entry() {
+    let m = doc(
+        "main",
+        "example.com/p",
+        vec![
+            unit_func("main", 1, vec![]),
+            unit_func("init", 2, vec![foreign(3, vec![cfunc("First", 3)])]),
+            unit_func("init", 4, vec![foreign(5, vec![cfunc("Second", 5)])]),
+            unit_func("First", 6, vec![]),
+            unit_func("Second", 7, vec![println_body(8)]),
+            unit_func("Dead", 9, vec![]),
+        ],
+        json!({}),
+    );
+    for dispatch in [DispatchMode::Cha, DispatchMode::Rta] {
+        let r = reach(std::slice::from_ref(&m), &opts(&[], dispatch)).expect("entries");
+        let p = &r.modules[0];
+        assert_eq!(
+            p.reached,
+            ["First", "Second", "init", "main"],
+            "{dispatch:?}"
+        );
+        assert_eq!(p.unreached, ["Dead"], "{dispatch:?}");
+    }
+}

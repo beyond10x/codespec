@@ -61,7 +61,7 @@ postdominates{a: node, b: node}
 guards{cond: node, node: node, branch: bool}
     node runs only when cond, the condition of an if or a for, is branch
 def{var: string, node: node}
-    node sets the local var (<body>$<name>): let, var, assign, incr, decr, for_range, lookup_else; a parameter at its body
+    node sets the local var (<body>$<name>; <body>$<name>@<node> for each later binding of that name in the same body, such as a shadow in a nested block): let, var, assign, incr, decr, for_range, lookup_else; a parameter at its body
 use{var: string, node: node}
     the expression node reads the local var
 flows{from: node, to: node}
