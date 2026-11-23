@@ -18,7 +18,8 @@
 //! written) or by writing `<out dir>/refusals.json`, an array that is not empty; the case's
 //! `detail` is then its stderr, or each listed refusal as `name (pos): reason`, joined by `; `. A
 //! runner exits 0 with the output, 2 when it refuses the calls, 1 when the build or the program
-//! fails.
+//! fails. A program a signal ends (no exit code) did not refuse: a writer, a reader, the Go writer
+//! or the evaluator's writer that crashes fails its case with `run_failed`, claimed or not.
 //!
 //! # The run's inputs and its work directory
 //!
@@ -29,11 +30,15 @@
 //! by its canonical path; a runner is given the run's copy of `calls.json`
 //! (`<work>/cases/<case>/calls.json`), never the kit's, beside which lies `expected.txt`. A work
 //! directory that is, holds or lies inside the adapters directory, the kit or the corpus is
-//! refused ([`check_work`]).
+//! refused ([`check_work`]). The kit's and the corpus's digests, and the comparison of a writer's
+//! two writes, read regular files only, without following a link: a symbolic link or another kind
+//! of file in them is an error of the run ([`tree_sha256`]).
 //!
 //! Every program runs within a time limit, [`DEFAULT_TIMEOUT`] unless the caller gives one
-//! (`*_within`, `codespec conform --timeout`); a [`Process`] that overruns is killed with its
-//! process group, and the case records `timeout`.
+//! (`*_within`, `codespec conform --timeout`), the adapter's `--describe` included; a [`Process`]
+//! that overruns is killed with its process group, and the case records `timeout`. The limit
+//! holds for its pipes too: one a descendant still holds open after the program exited is waited
+//! for until the limit, then the group is killed and the case records `timeout`.
 //!
 //! # A writer
 //!
@@ -260,7 +265,10 @@ impl Program for Process {
     }
 
     /// Run in its own process group, killing the whole group (the program, its compiler, the
-    /// program it built) once `limit` has passed.
+    /// program it built) once `limit` has passed. The limit covers its pipes too: a descendant
+    /// that still holds standard output, standard error or standard input when the program has
+    /// exited is waited for until the limit, then its group is killed and the run timed out;
+    /// threads still blocked on a pipe then (a descendant that left the group) are left behind.
     fn exec_within(
         &self,
         args: &[OsString],
@@ -282,20 +290,30 @@ impl Program for Process {
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("{}: cannot start: {e}", what()))?;
+        // Each thread on a pipe says on `done` when it has finished, so the wait for the pipes
+        // keeps the deadline.
+        let (done, finished) = std::sync::mpsc::channel::<()>();
+        let mut pipes = 0;
         let feeder = stdin.map(|bytes| {
             let mut pipe = child.stdin.take().expect("stdin is piped");
             let bytes = bytes.to_vec();
+            let done = done.clone();
+            pipes += 1;
             // A program may exit before it reads everything; what it did is in its status.
             std::thread::spawn(move || {
                 let _ = pipe.write_all(&bytes);
+                drop(pipe);
+                let _ = done.send(());
             })
         });
         let drain = |r: Option<Box<dyn Read + Send>>| {
+            let done = done.clone();
             std::thread::spawn(move || {
                 let mut buf = Vec::new();
                 if let Some(r) = r {
                     let _ = r.take(OUTPUT_LIMIT).read_to_end(&mut buf);
                 }
+                let _ = done.send(());
                 buf
             })
         };
@@ -311,46 +329,75 @@ impl Program for Process {
                 .take()
                 .map(|p| Box::new(p) as Box<dyn Read + Send>),
         );
-        let start = Instant::now();
+        pipes += 2;
+        drop(done);
+        let group = child.id();
+        // `None`: no deadline (`Duration::MAX`).
+        let deadline = Instant::now().checked_add(limit);
         let status = loop {
             if let Some(s) = child.try_wait().map_err(|e| format!("{}: {e}", what()))? {
                 break Some(s);
             }
-            if start.elapsed() >= limit {
+            if deadline.is_some_and(|d| Instant::now() >= d) {
                 kill_group(&mut child);
                 break None;
             }
             std::thread::sleep(Duration::from_millis(10));
         };
+        if status.is_none() {
+            // Nothing of a program that overran is kept; a thread a descendant outside the group
+            // still blocks ends when that descendant lets go of the pipe.
+            return Ok(Ran::TimedOut);
+        }
+        while pipes > 0 {
+            let wait = deadline.map_or(Duration::MAX, |d| {
+                d.saturating_duration_since(Instant::now())
+            });
+            match finished.recv_timeout(wait) {
+                Ok(()) => pipes -= 1,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    // The program has exited and a descendant in its group holds a pipe.
+                    signal_group(group);
+                    return Ok(Ran::TimedOut);
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
         let stdout = out.join().unwrap_or_default();
         let stderr = err.join().unwrap_or_default();
         if let Some(f) = feeder {
             let _ = f.join();
         }
-        Ok(match status {
-            None => Ran::TimedOut,
-            Some(s) => Ran::Done(Exec {
-                code: s.code(),
-                stdout,
-                stderr: String::from_utf8_lossy(&stderr).into_owned(),
-            }),
-        })
+        let s = status.expect("the program exited");
+        Ok(Ran::Done(Exec {
+            code: s.code(),
+            stdout,
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        }))
     }
 }
 
-/// Kill a child started in its own process group, and the group, then reap it.
-fn kill_group(child: &mut std::process::Child) {
+/// Send SIGKILL to the process group `group`, which a child started with `process_group(0)` leads.
+fn signal_group(group: u32) {
     // Signal the group directly: a host may have no `kill` program (the GitHub Ubuntu runner has
     // none) and shells disagree on `kill`'s arguments (dash reads `--` as a pid), and then only
     // the child would die while its children keep its pipes open.
     #[cfg(unix)]
-    if let Ok(group) = libc::pid_t::try_from(child.id()) {
-        // SAFETY: kill(2) takes plain integers and touches no memory of this process; the group
-        // is the one the child leads, started with `process_group(0)`.
+    if let Ok(group) = libc::pid_t::try_from(group) {
+        // SAFETY: kill(2) takes plain integers and touches no memory of this process. After the
+        // leader is reaped its id stays reserved while a member of its group lives, and this is
+        // called then only when a member still holds one of its pipes.
         unsafe {
             libc::kill(-group, libc::SIGKILL);
         }
     }
+    #[cfg(not(unix))]
+    let _ = group;
+}
+
+/// Kill a child started in its own process group, and the group, then reap it.
+fn kill_group(child: &mut std::process::Child) {
+    signal_group(child.id());
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -359,13 +406,18 @@ impl Process {
     /// The manifest the program prints for `--describe`; it must exit 0 within
     /// [`DEFAULT_TIMEOUT`].
     pub fn describe(&self) -> Result<Vec<u8>, Error> {
-        let e = match self.exec_within(&["--describe".into()], None, DEFAULT_TIMEOUT)? {
+        self.describe_within(DEFAULT_TIMEOUT)
+    }
+
+    /// [`Process::describe`] within `limit`.
+    pub fn describe_within(&self, limit: Duration) -> Result<Vec<u8>, Error> {
+        let e = match self.exec_within(&["--describe".into()], None, limit)? {
             Ran::Done(e) => e,
             Ran::TimedOut => {
                 return Err(format!(
                     "{} --describe ran past {} s",
                     self.0.display(),
-                    DEFAULT_TIMEOUT.as_secs()
+                    limit.as_secs()
                 ));
             }
         };
@@ -585,7 +637,37 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn files_under(dir: &Path, rel: &str, out: &mut BTreeMap<String, Vec<u8>>) -> Result<(), Error> {
+/// Add `path`, of the kind `kind` read without following a link, as `rel` to `out`: a regular file
+/// by its path, a directory by the regular files under it. A symbolic link and any other kind of
+/// file (a FIFO, a socket, a device) are refused: a tree is read only inside itself, and only
+/// from files that end.
+fn add_entry(
+    path: &Path,
+    rel: String,
+    kind: std::fs::FileType,
+    out: &mut BTreeMap<String, PathBuf>,
+) -> Result<(), Error> {
+    if kind.is_symlink() {
+        return Err(format!(
+            "{}: a symbolic link; a tree is read without following links",
+            path.display()
+        ));
+    }
+    if kind.is_dir() {
+        return files_under(path, &rel, out);
+    }
+    if !kind.is_file() {
+        return Err(format!(
+            "{}: not a regular file or a directory",
+            path.display()
+        ));
+    }
+    out.insert(rel, path.to_path_buf());
+    Ok(())
+}
+
+/// The regular files under `dir`, by their `/`-separated path relative to it after `rel`.
+fn files_under(dir: &Path, rel: &str, out: &mut BTreeMap<String, PathBuf>) -> Result<(), Error> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .collect::<Result<_, _>>()
@@ -599,34 +681,67 @@ fn files_under(dir: &Path, rel: &str, out: &mut BTreeMap<String, Vec<u8>>) -> Re
             format!("{rel}/{name}")
         };
         let path = e.path();
-        if path.is_dir() {
-            files_under(&path, &rel, out)?;
-        } else {
-            let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            out.insert(rel, bytes);
+        let kind = e
+            .file_type()
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        add_entry(&path, rel, kind, out)?;
+    }
+    Ok(())
+}
+
+/// Hash the regular file `path` into `h` in pieces: first `head` of its length, then its bytes.
+/// The file is opened without following a link and must still be a regular file, of the length
+/// it had when opened.
+fn hash_file(h: &mut Sha256, path: &Path, head: impl FnOnce(u64) -> String) -> Result<(), Error> {
+    let at = |e: std::io::Error| format!("{}: {e}", path.display());
+    let mut open = std::fs::OpenOptions::new();
+    open.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut open, libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    let f = open.open(path).map_err(at)?;
+    let meta = f.metadata().map_err(at)?;
+    if !meta.is_file() {
+        return Err(format!(
+            "{}: not a regular file or a directory",
+            path.display()
+        ));
+    }
+    let len = meta.len();
+    h.update(head(len).as_bytes());
+    let mut buf = vec![0u8; 64 << 10];
+    let mut left = len;
+    let mut r = f.take(len);
+    while left > 0 {
+        let n = r.read(&mut buf).map_err(at)?;
+        if n == 0 {
+            return Err(format!(
+                "{}: changed while it was read, {left} of {len} bytes missing",
+                path.display()
+            ));
         }
+        h.update(&buf[..n]);
+        left -= n as u64;
     }
     Ok(())
 }
 
 /// The SHA-256, in lower-case hex, of the files under `dir` named by `roots` (files or
 /// directories, relative to `dir`): for each file in order of its `/`-separated relative path, the
-/// path, a newline, its length in decimal, a newline and its bytes.
+/// path, a newline, its length in decimal, a newline and its bytes. Only regular files and
+/// directories are read, each file in pieces; a symbolic link or another kind of file under `dir`,
+/// a root among them, is an error.
 pub fn tree_sha256(dir: &Path, roots: &[&str]) -> Result<String, Error> {
     let mut files = BTreeMap::new();
     for r in roots {
         let p = dir.join(r);
-        if p.is_dir() {
-            files_under(&p, r, &mut files)?;
-        } else {
-            let bytes = std::fs::read(&p).map_err(|e| format!("{}: {e}", p.display()))?;
-            files.insert((*r).to_string(), bytes);
-        }
+        let kind = std::fs::symlink_metadata(&p)
+            .map_err(|e| format!("{}: {e}", p.display()))?
+            .file_type();
+        add_entry(&p, (*r).to_string(), kind, &mut files)?;
     }
     let mut h = Sha256::new();
-    for (path, bytes) in files {
-        h.update(format!("{path}\n{}\n", bytes.len()).as_bytes());
-        h.update(&bytes);
+    for (rel, path) in files {
+        hash_file(&mut h, &path, |len| format!("{rel}\n{len}\n"))?;
     }
     Ok(hex(&h.finalize()))
 }
@@ -699,6 +814,15 @@ impl Ctx {
     fn overran(&self, what: &str) -> String {
         format!("{what} ran past the limit of {} s", self.limit.as_secs())
     }
+
+    /// `run_failed` for a program a signal ended: it did not refuse, it crashed.
+    fn crashed(&self, what: &str, stderr: &str) -> Outcome {
+        let said = match self.clean.text(stderr) {
+            Some(t) => format!("{what} was ended by a signal, with no exit code: {t}"),
+            None => format!("{what} was ended by a signal, with no exit code"),
+        };
+        not_pass(Reason::RunFailed, Some(said))
+    }
 }
 
 fn not_pass(reason: Reason, detail: Option<String>) -> Outcome {
@@ -748,13 +872,20 @@ fn put(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The files a writer wrote, or `None` when it wrote nothing.
+/// The files a writer wrote, each by the SHA-256 of its bytes, or `None` when it wrote nothing; a
+/// symbolic link or another kind of file it wrote is an error ([`tree_sha256`]).
 fn snapshot(dir: &Path) -> Result<Option<BTreeMap<String, Vec<u8>>>, Error> {
     if !dir.exists() {
         return Ok(None);
     }
+    let mut files = BTreeMap::new();
+    files_under(dir, "", &mut files)?;
     let mut out = BTreeMap::new();
-    files_under(dir, "", &mut out)?;
+    for (rel, path) in files {
+        let mut h = Sha256::new();
+        hash_file(&mut h, &path, |_| String::new())?;
+        out.insert(rel, h.finalize().to_vec());
+    }
     Ok((!out.is_empty()).then_some(out))
 }
 
@@ -763,6 +894,8 @@ enum Wrote {
     Refused(String),
     Done,
     TimedOut,
+    /// A signal ended it, with this standard error: no refusal, a failure.
+    Crashed(String),
 }
 
 /// Write `module` into `out`; also the writer's exit code, `None` when it timed out.
@@ -806,6 +939,9 @@ fn write_with(
         Ran::Done(e) => e,
         Ran::TimedOut => return Ok((Wrote::TimedOut, None)),
     };
+    if e.code.is_none() {
+        return Ok((Wrote::Crashed(e.stderr), None));
+    }
     if e.code != Some(0) {
         return Ok((Wrote::Refused(e.stderr), e.code));
     }
@@ -920,6 +1056,9 @@ fn evaluate(
                 not_pass(Reason::Timeout, Some(ctx.overran("the evaluator's writer"))),
                 EVAL_WRITER,
             ));
+        }
+        Wrote::Crashed(why) => {
+            return Ok((ctx.crashed("the evaluator's writer", &why), EVAL_WRITER));
         }
         Wrote::Done => {}
     }
@@ -1313,6 +1452,7 @@ pub fn conform_writer_within(
                 detail: ctx.clean.text(&why),
             },
             Wrote::TimedOut => not_pass(Reason::Timeout, Some(ctx.overran("the writer"))),
+            Wrote::Crashed(why) => ctx.crashed("the writer", &why),
             Wrote::Done => run_and_compare(
                 &ctx,
                 runner,
@@ -1341,6 +1481,12 @@ pub fn conform_writer_within(
                 Some(first.case.name.clone()),
                 Some(ctx.overran("the writer")),
             )),
+            (Wrote::Crashed(_), _) => Some((
+                Some(first.case.name.clone()),
+                Some(format!(
+                    "ended by a signal on a module with a statement of kind {UNKNOWN_KIND:?}, which it must refuse"
+                )),
+            )),
             _ => Some((
                 Some(first.case.name.clone()),
                 Some(format!(
@@ -1366,6 +1512,7 @@ pub fn conform_writer_within(
     let (w, code) = write(&ctx, writer, &module, &out)?;
     let no_facts = match w {
         Wrote::TimedOut => Some(ctx.overran("the writer")),
+        Wrote::Crashed(_) => Some("ended by a signal on a module without facts".into()),
         Wrote::Refused(why) if code == Some(0) => Some(format!(
             "listed refusals for a module without facts and exited 0: {}",
             ctx.clean.text(&why).unwrap_or_default()
@@ -1481,6 +1628,7 @@ fn reader_case(
                 None,
             ));
         }
+        Wrote::Crashed(why) => return Ok((at_step(ctx.crashed("the Go writer", &why), 4), None)),
         Wrote::Done => {}
     }
     let four = run_and_compare(
@@ -1524,6 +1672,9 @@ fn read_steps(
             )));
         }
     };
+    if first.code.is_none() {
+        return Ok(Err(at_step(ctx.crashed("the reader", &first.stderr), 2)));
+    }
     if first.code != Some(0) {
         let mut o = not_pass(Reason::ReadFailed, ctx.clean.text(&first.stderr));
         if let Outcome::NotPass { refusal, .. } = &mut o {
@@ -1724,7 +1875,7 @@ pub fn conform_adapter_within(t: &Target, limit: Duration) -> Result<Report, Err
         "writer" => program(&t.adapters, &format!("codespec-write-{}", t.lang))?,
         other => return Err(format!("role {other:?}, one of reader, writer")),
     };
-    let manifest = adapter.describe()?;
+    let manifest = adapter.describe_within(limit)?;
     let m = codespec_model::manifest_from_json(&manifest)
         .map_err(|e| format!("{} --describe: {e}", adapter.0.display()))?;
     if m.lang != t.lang {

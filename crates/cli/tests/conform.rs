@@ -155,3 +155,82 @@ fn conform_out_creates_the_missing_parent_directory() {
     );
     assert!(said.contains("writer-go.json: written"), "{said}");
 }
+
+/// G8: a report under the work directory would be erased by the run that checks it: `--check`
+/// and `--out` refuse a report inside `--work` before anything is cleared, and the report stays.
+#[test]
+fn conform_refuses_a_report_inside_the_work_directory_and_keeps_it() {
+    let base = root().join("target/conform-cli-test-overlap");
+    if base.exists() {
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+    let adapters = base.join("adapters");
+    std::fs::create_dir_all(&adapters).unwrap();
+    let built = Command::new("go")
+        .args(["build", "-o"])
+        .arg(format!("{}/", adapters.display()))
+        .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
+        .current_dir(root().join("adapters/go"))
+        .output()
+        .unwrap();
+    assert!(built.status.success(), "{}", text(&built));
+    let kit = base.join("kit");
+    let to = kit.join("cases/op-add");
+    std::fs::create_dir_all(&to).unwrap();
+    std::fs::copy(root().join("conformance/kit.json"), kit.join("kit.json")).unwrap();
+    for f in [
+        "calls.json",
+        "case.cir.json",
+        "case.go",
+        "expected.txt",
+        "features.json",
+    ] {
+        std::fs::copy(root().join("conformance/cases/op-add").join(f), to.join(f)).unwrap();
+    }
+    let work = base.join("work");
+    let conform = |extra: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_codespec"))
+            .arg("conform")
+            .args(extra)
+            .arg("--kit")
+            .arg(&kit)
+            .arg("--adapters")
+            .arg(&adapters)
+            .arg("--work")
+            .arg(&work)
+            .output()
+            .unwrap()
+    };
+    let outside = base.join("writer-go.json");
+    let first = conform(&[
+        "--lang",
+        "go",
+        "--role",
+        "writer",
+        "--out",
+        outside.to_str().unwrap(),
+    ]);
+    let written = std::fs::read(&outside).unwrap_or_else(|_| panic!("{}", text(&first)));
+
+    let inside = work.join("writer-go.json");
+    std::fs::write(&inside, &written).unwrap();
+    let check = conform(&["--check", inside.to_str().unwrap()]);
+    let said = text(&check);
+    assert_ne!(check.status.code(), Some(0), "{said}");
+    assert!(!said.contains("current"), "{said}");
+    assert!(said.contains("work directory"), "{said}");
+    assert_eq!(std::fs::read(&inside).ok(), Some(written.clone()), "{said}");
+
+    let out = conform(&[
+        "--lang",
+        "go",
+        "--role",
+        "writer",
+        "--out",
+        work.join("again.json").to_str().unwrap(),
+    ]);
+    let said = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{said}");
+    assert!(said.contains("work directory"), "{said}");
+    assert_eq!(std::fs::read(&inside).ok(), Some(written), "{said}");
+}

@@ -14,8 +14,8 @@ use std::process::{Command, ExitCode, Stdio};
 use clap::Parser as _;
 use codespec_cli::{Cli, Cmd};
 use codespec_conformance::conform::{
-    Reason, Target, Verdict, conform_adapter_within, differences, read_report, report_json,
-    summary_line,
+    Reason, Target, Verdict, check_work, conform_adapter_within, differences, read_report,
+    report_json, summary_line,
 };
 use codespec_model::{Module, features_json, schema_json};
 
@@ -393,12 +393,13 @@ struct Conform {
 }
 
 fn conform(c: Conform) -> Result<(), String> {
-    let old = match &c.check {
+    let (old, baseline) = match &c.check {
         Some(path) => {
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            Some(read_report(&bytes).map_err(|e| format!("{}: {e}", path.display()))?)
+            let r = read_report(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+            (Some(r), bytes)
         }
-        None => None,
+        None => (None, Vec::new()),
     };
     let (role, lang) = match &old {
         Some(r) => (r.adapter.role.clone(), r.adapter.lang.clone()),
@@ -410,6 +411,14 @@ fn conform(c: Conform) -> Result<(), String> {
     let work = c
         .work
         .unwrap_or_else(|| PathBuf::from(format!("target/conform/{role}-{lang}")));
+    // The run empties the work directory first: a report inside it would be erased by the run
+    // that checks or writes it.
+    let reports: Vec<(&str, &Path)> = [&c.check, &c.out]
+        .into_iter()
+        .flatten()
+        .map(|p| ("report", p.as_path()))
+        .collect();
+    check_work(&work, &reports)?;
     let report = conform_adapter_within(
         &Target {
             adapters: c.adapters,
@@ -425,6 +434,12 @@ fn conform(c: Conform) -> Result<(), String> {
     if let (Some(old), Some(path)) = (old, &c.check) {
         let diff = differences(&old, &report);
         if diff.is_empty() {
+            if std::fs::read(path).ok().as_ref() != Some(&baseline) {
+                return Err(format!(
+                    "{}: gone or changed during the run, so it is not current",
+                    path.display()
+                ));
+            }
             println!("{}: current", path.display());
             return Ok(());
         }
