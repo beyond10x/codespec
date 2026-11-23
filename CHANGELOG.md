@@ -4,6 +4,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec read` and `codespec write` support typed scalar functions in Elixir, Gleam and Odin. Each language has a native runner, a reader corpus and a writer conformance report.
+
 ## 0.11.0
 
 ### Changed

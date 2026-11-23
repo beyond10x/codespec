@@ -84,7 +84,7 @@ jobs:
     needs: [plan, tools]
     if: needs.plan.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.part == 'task docs-check' && 30 || 15 }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +125,21 @@ jobs:
           set -euo pipefail
           sh scripts/ci-tools.sh fetch "$RUNNER_TEMP/ci-tools" task groovy
           sh scripts/ci-tools.sh install "$RUNNER_TEMP/ci-tools" task groovy
+
+      - name: Install BEAM toolchains for the language adapters
+        if: startsWith(matrix.part, 'task ')
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: "29.0.6"
+          elixir-version: "1.20.4"
+          gleam-version: "1.19.0"
+
+      - name: Install the Odin compiler
+        if: startsWith(matrix.part, 'task ')
+        uses: laytan/setup-odin@447aa179880a3f4e94011007c65cb9efdb6dd6a0 # v2.11.0
+        with:
+          release: dev-2026-09
+          token: ${{ github.token }}
 
       - name: ${{ matrix.part }}
         env:

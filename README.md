@@ -2,7 +2,7 @@
 
 Code as typed data. codespec reads a source language into `cir/1`, a typed and canonical JSON
 model of what code does inside a module. Passes rewrite it and compute facts about it, and writers emit
-Go or Rust from it.
+Go, Rust, C, Elixir, Gleam or Odin from it.
 
 A harness runs the original and every output on the same seeded inputs and
 compares what they print, byte for byte. Nothing in the pipeline is a language model: what a
@@ -53,7 +53,7 @@ against `SHA256SUMS`. It holds `codespec` and the adapters `codespec-read-go`, `
 and `codespec-write-rust`. The directory you extract it into is the `--adapters` directory.
 
 Or build from source, with Rust 1.97 (`rust-toolchain.toml`), Go 1.23 or newer and
-[go-task](https://taskfile.dev):
+[go-task](https://taskfile.dev). Building every adapter also needs the JDK, Groovy, Erlang/OTP, Elixir, Gleam and Odin. The native versions used in CI are in [.github/workflows/check.yml](.github/workflows/check.yml).
 
 ```console
 git clone https://github.com/beyond10x/codespec && cd codespec
@@ -90,6 +90,7 @@ output.
 | `crates/docs` | `codespec-docs`, the generator of the site's derived pages |
 | `adapters/go` | the Go reader and the Go writer |
 | `adapters/rust` | the Rust writer |
+| `adapters/elixir`, `adapters/gleam`, `adapters/odin` | readers, writers and native runners for typed scalar functions ([translation guide](website/docs/guides/elixir-gleam-odin.md)) |
 | `schemas/cir-1.schema.json` | the JSON Schema, generated from the model |
 | `examples/orders`, `examples/greeter` | Go programs, their `cir/1` documents and their Go and Rust outputs |
 | `website/` | the documentation site |

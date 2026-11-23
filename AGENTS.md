@@ -111,7 +111,7 @@ through an authenticated `gh release download`. Steps, each task also runnable a
 | `eval-diff` | every exported function of `examples/series` and `examples/inventory` gets 200 seeded calls (`codespec_eval::diff`; a method through a generated probe), written and run by `codespec-write-cir`/`codespec-run-cir`, Go's and Rust's writer and runner, the Go and Rust outputs byte-equal to the evaluator's; a setup call that would return an error is skipped, so every call reaches its function, and fewer than half of a function's seeds reaching it fails; `Inventory.Find` listed with `--refused` as not run as Rust, an unlisted refusal, a stale listing or one for an example not run fails; nothing timed |
 | `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
-| `docs-check` | `cargo run -p codespec-docs -- generate --check`: every generated file current, the reader corpora `conformance/reader/{go,rust,java,groovy,c}` equal to what the kit's case sources build, the nine conformance reports equal to `codespec conform` run again on the Go, Rust, Java, Groovy and C readers, the Go, Rust and C writers and the evaluator's `cir` writer (needs `task build`), the support matrix equal to what the manifests and reports build, the sample run in `website/docs/guides/add-an-adapter.md` equal to what `website/data/conformance/writer-go.json` gives, no raw admonition title |
+| `docs-check` | `codespec-docs generate --check` rebuilds every reader corpus, runs all registered readers and writers (including the evaluator), and checks their reports, the support matrix, the Go conformance sample and the generated site files. It also checks admonition titles. |
 
 Not in the gate: `task examples-netcheck`, which reads `examples/netcheck/source` with every package
 it imports (needs Go 1.27.1, no network), runs `codespec effects`, `reach` and `trace` over the set
@@ -144,8 +144,8 @@ Never edit these by hand; change the generator and regenerate.
 | `schemas/cir-1.features.json` | `codespec features`, from `crates/model/src/features.rs` | `task schema` |
 | `website/docs/reference/{cli,crates,cir-1}.md` | `codespec-docs` (`crates/docs/src/cli.rs`, `crates.rs`, `cir.rs`) | `task docs-generate` |
 | `website/data/status.json` | `codespec-docs` from `CAPABILITIES` in `crates/docs/src/status.rs` | `task docs-generate` |
-| `conformance/reader/<lang>/**` | `codespec-docs`, by `codespec_conformance::conform::reader_corpus` from each case's `case.go`, `rust/case.rs`, `c/case.c` or `java/Case.java` (Groovy: `groovy/Case.groovy`, else `java/Case.java`, as `Case.groovy`) and `calls.json` | `task docs-generate` |
-| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs`, running `codespec_conformance::conform` with the programs in `target/adapters`, the kit `conformance/` and the reader corpus `conformance/reader/<lang>`: readers go, rust, java, groovy, c; writers go, rust, c, cir | `task docs-generate` |
+| `conformance/reader/<lang>/**` | `codespec-docs` uses the native source paths in `codespec_conformance::conform::reader_corpus` and `calls.json` from each case. | `task docs-generate` |
+| `website/data/conformance/{reader,writer}-<lang>.json` | `codespec-docs` runs every adapter in `REPORTS` against `conformance/` with the programs in `target/adapters`. | `task docs-generate` |
 | `website/data/support-matrix.json` | `codespec-docs` (`crates/docs/src/support.rs`) from `schemas/cir-1.features.json`, each adapter's `--describe` manifest and its report | `task docs-generate` |
 | `website/docs/examples/greeter.md`, `website/data/greeter-code-pair.json`, `website/static/img/greeter-cir.svg` | `codespec-docs` (`showcase.rs`, `diagram.rs`) from `examples/greeter` | `task docs-generate` |
 | `website/docs/examples/netcheck.md`, `website/docs/examples/call-trace.md` | `codespec-docs` (`netcheck.rs`, `calltrace.rs`) from `examples/netcheck` and `examples/envcheck` | `task docs-generate` |
@@ -267,6 +267,10 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `crates/docs/src/support.rs::a_matrix_from_fixture_manifests_and_reports_reaches_every_state`;
   every shipped capability rests on an existing check:
   `crates/docs/src/status.rs::every_shipped_capability_rests_on_a_test_that_exists`.
+
+## Elixir, Gleam and Odin
+
+The Elixir and Gleam adapters share a BEAM command host. Elixir parses source through `Code.string_to_quoted`. Gleam uses the locked Glance parser in `adapters/gleam/parser`. Its runner compiles the source with the Gleam Erlang backend. The Odin reader uses `core:odin/parser`, and the `codespec-odin` crate owns its writer and runner. `task language-adapters-check` reads each native input twice and compares all nine translations with their originals. Source cases live below `conformance/cases/<case>/{elixir,gleam,odin}`. The generated corpora, reports and matrix follow the existing `task docs-generate` rule.
 
 ## Builds and worktrees
 

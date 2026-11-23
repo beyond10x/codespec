@@ -19,8 +19,7 @@
 //!   reports and trees of `examples/netcheck`;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
-//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers, the Go,
-//!   Rust and C writers and the evaluator's `cir` writer
+//! - the conformance reports of the in-tree readers, writers and the evaluator
 //!   (`website/data/conformance/<role>-<lang>.json`), by running `codespec
 //!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
 //!   (`target/adapters`, `task build`);
@@ -251,6 +250,21 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "groovy",
     ),
     ("website/data/conformance/reader-c.json", "reader", "c"),
+    (
+        "website/data/conformance/reader-elixir.json",
+        "reader",
+        "elixir",
+    ),
+    (
+        "website/data/conformance/reader-gleam.json",
+        "reader",
+        "gleam",
+    ),
+    (
+        "website/data/conformance/reader-odin.json",
+        "reader",
+        "odin",
+    ),
     ("website/data/conformance/writer-go.json", "writer", "go"),
     (
         "website/data/conformance/writer-rust.json",
@@ -258,6 +272,21 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "rust",
     ),
     ("website/data/conformance/writer-c.json", "writer", "c"),
+    (
+        "website/data/conformance/writer-elixir.json",
+        "writer",
+        "elixir",
+    ),
+    (
+        "website/data/conformance/writer-gleam.json",
+        "writer",
+        "gleam",
+    ),
+    (
+        "website/data/conformance/writer-odin.json",
+        "writer",
+        "odin",
+    ),
     ("website/data/conformance/writer-cir.json", "writer", "cir"),
 ];
 
