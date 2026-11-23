@@ -923,8 +923,9 @@ fn never_fails(
 /// The parameters (function, index) every call of the set fills with a value of a `never-fail`
 /// type, or with such a parameter of its caller: the greatest fixed point over the calls of read
 /// bodies. A call through an interface counts for every method of its name; a function used as a
-/// value has no such parameter. The calls of opaque functions and `foreign` statements, whose
-/// arguments cir/1 does not show, are not counted.
+/// value has no such parameter. A function an opaque function or a `foreign` statement (a `defer`,
+/// a `go`) calls or uses as a value has none either: cir/1 does not show those arguments, so they
+/// may be any writer.
 fn never_fail_params(set: &Set, types: &[String]) -> HashSet<(usize, usize)> {
     let mut by_name: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, f) in set.funs.iter().enumerate() {
@@ -935,9 +936,9 @@ fn never_fail_params(set: &Set, types: &[String]) -> HashSet<(usize, usize)> {
     let mut sites: HashMap<usize, Vec<(usize, &[Expr])>> = HashMap::new();
     let mut unknown: HashSet<usize> = HashSet::new();
     let opaque_call = |c: &Call, unknown: &mut HashSet<usize>| {
-        if c.kind == Kind::Ref
-            && let Some(t) = set.target(c)
-        {
+        if c.kind == Kind::Iface {
+            unknown.extend(by_name.get(c.name.as_str()).into_iter().flatten());
+        } else if let Some(t) = set.target(c) {
             unknown.insert(t);
         }
     };
