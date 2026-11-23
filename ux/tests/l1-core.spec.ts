@@ -270,3 +270,34 @@ test.describe('round names the pages of its scroll containers', () => {
     ]);
   });
 });
+
+test.describe("round names the units it expected and did not get, and states the ratchet's verdict", () => {
+  test('missingUnits lists every scenario × viewport × theme without a result', async () => {
+    const { missingUnits } = await import('../core/round.ts');
+    const have = [
+      { scenario: 'page-a', viewport: '1366x768', theme: 'light' },
+      { scenario: 'page-a', viewport: '1366x768', theme: 'dark' },
+      { scenario: 'page-b', viewport: '1366x768', theme: 'dark' },
+    ];
+    expect(missingUnits(['page-a', 'page-b'], ['1366x768'], ['light', 'dark'], have)).toEqual(['page-b 1366x768 light']);
+    expect(missingUnits(['page-a'], ['1366x768'], ['light', 'dark'], have)).toEqual([]);
+  });
+
+  test('completenessLines prints the units, the Playwright totals and a red ratchet with its problems', async () => {
+    const { completenessLines, playwrightTotals } = await import('../core/round.ts');
+    const totals = playwrightTotals({ stats: { expected: 355, unexpected: 7, flaky: 0, skipped: 0 } });
+    expect(totals).toEqual({ passed: 355, failed: 7, flaky: 0, skipped: 0 });
+    expect(playwrightTotals(null)).toBeNull();
+    expect(completenessLines(288, ['page-docs 1366x768 light'], totals, ['worse: page-x layout.overflow 4 > baseline 0 + 0'])).toEqual([
+      '- Units: 287 of 288 page units measured; no result for `page-docs 1366x768 light`.',
+      '- Playwright: 355 passed, 7 failed, 0 flaky, 0 skipped.',
+      '- Ratchet: **red** against `baseline.json`, 1 problem:',
+      '  - worse: page-x layout.overflow 4 > baseline 0 + 0',
+    ]);
+    expect(completenessLines(4, [], null, [])).toEqual([
+      '- Units: 4 of 4 page units measured.',
+      '- Playwright: no report (`playwright.json` missing).',
+      '- Ratchet: green against `baseline.json` (no value worse, none missing, no improvement untaken).',
+    ]);
+  });
+});

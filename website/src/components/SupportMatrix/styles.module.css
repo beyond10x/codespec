@@ -129,16 +129,18 @@
 
 /* Coverage bars */
 
+/* A bar is as wide as its longest name ("Evaluator write") and its numbers need, so no label runs
+   past its column when a language is added (UXF-034). */
 .coverage {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   gap: 0.4rem 1.2rem;
   margin-bottom: 1rem;
 }
 
 .bar {
   display: grid;
-  grid-template-columns: 6.5rem 1fr;
+  grid-template-columns: max-content 1fr;
   grid-template-areas: 'name nums' 'track track';
   align-items: baseline;
   gap: 0.2rem 0.5rem;
@@ -266,21 +268,25 @@
   vertical-align: bottom;
 }
 
+/* Nine languages make 18 role columns. A role column is as wide as its header word and its cells
+   need, with narrow side padding, so the matrix and the legend fit the article column at 1280x720
+   without scrolling sideways (UXF-037). */
 .root .table .language {
   text-align: center;
   font-weight: 700;
   white-space: nowrap;
   border-left: 1px solid var(--sm-pair);
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
 }
 
 .root .table .role {
   text-align: center;
   font-weight: 500;
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--sm-muted);
-  min-width: 3.4rem;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
 }
 
 .root .table .pairStart {
@@ -311,6 +317,16 @@
   color: var(--sm-muted);
 }
 
+/* A state's meaning wraps in the legend's first column instead of widening it (UXF-037). */
+.root .legend .stick {
+  white-space: normal;
+}
+
+.legend .meaning {
+  min-width: 11rem;
+  max-width: 13rem;
+}
+
 .swatch {
   display: inline-flex;
   align-items: center;
@@ -325,6 +341,8 @@
 .root .table .count {
   text-align: center;
   font-variant-numeric: tabular-nums;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
 }
 
 .root .table .zero {
@@ -413,12 +431,13 @@
   border: 0;
 }
 
+/* The description wraps under the feature id instead of ending in an ellipsis, so every one reads in
+   place (UXF-021). */
 .root .table .description {
   display: block;
-  max-width: 17rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 10rem;
+  max-width: 13rem;
+  white-space: normal;
   font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.3;
@@ -430,7 +449,7 @@
   font-size: 1em;
   border: 0;
   color: inherit;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .root .table .cell {
@@ -438,6 +457,8 @@
   font-weight: 700;
   line-height: 1.2;
   cursor: default;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
 }
 
 .root .table .cell:focus-visible {
@@ -588,10 +609,6 @@
 @media (max-width: 600px) {
   .root .table {
     font-size: 0.8rem;
-  }
-
-  .root .table .role {
-    min-width: 2.6rem;
   }
 
   .meaning {

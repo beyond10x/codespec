@@ -169,3 +169,37 @@ test('UXF-030 support matrix features and Status headers and chips are at least 
   }
   expect(small).toEqual([]);
 });
+
+// UXF-034 and UXF-021: on Language support at a gating viewport, every coverage bar's name and
+// numbers end inside their bar, the legend and the matrix fit their column without scrolling
+// sideways, and no feature description is cut off.
+for (const vp of gating) {
+  test(`UXF-034 UXF-021 the support matrix, its legend and its bars fit at ${vp.width}x${vp.height}`, async ({ browser }) => {
+    const page = await open(browser, '/codespec/docs/reference/support', vp.width, vp.height);
+    const problems = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const bar of document.querySelectorAll('[data-support-matrix] [data-coverage]')) {
+        const r = bar.getBoundingClientRect().right;
+        for (const part of bar.querySelectorAll(':scope > span'))
+          if (part.getBoundingClientRect().right > r + 1) out.push(`bar ${bar.getAttribute('data-coverage')}: "${(part.textContent ?? '').trim()}" ends past its bar`);
+      }
+      for (const s of document.querySelectorAll('[data-support-matrix] [class*="scroll"]'))
+        if (s.scrollWidth > s.clientWidth + 1) out.push(`${s.getAttribute('aria-label') ?? 'matrix'}: ${s.scrollWidth} in ${s.clientWidth}`);
+      const cut = [...document.querySelectorAll('[data-description]')].filter((d) => d.scrollWidth > d.clientWidth + 1 || d.scrollHeight > d.clientHeight + 1);
+      if (cut.length) out.push(`${cut.length} descriptions cut off`);
+      return out;
+    });
+    expect(problems).toEqual([]);
+    await page.context().close();
+  });
+}
+
+// UXF-035: the status chips in a page's tables (the pipeline's adapter table) are 14 px or more, as
+// on Status.
+test('UXF-035 status chips in page tables are at least 14 px', async ({ browser }) => {
+  const page = await open(browser, '/codespec/docs/concepts/pipeline', 1366, 768);
+  const sizes = await page.evaluate(() => [...document.querySelectorAll('.markdown .b10x-chip')].map((e) => parseFloat(getComputedStyle(e).fontSize)));
+  expect(sizes.length, 'chips on the pipeline page').toBeGreaterThan(0);
+  expect(sizes.filter((px) => px < 14), 'chips under 14 px').toEqual([]);
+  await page.context().close();
+});

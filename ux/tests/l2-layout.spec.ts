@@ -85,7 +85,7 @@ for (const sc of SCENARIOS.filter((s) => s.page)) {
             if (!a) throw new Error(`keyboard target ${n} is not an always-visible element`);
             return { name: n, locate: a.locate };
           });
-          keyboard = await keyboardWalk(page, url, adapter.keyboard.skipLink, targets, adapter.keyboard.maxTabs);
+          keyboard = await keyboardWalk(page, url, adapter.keyboard.skipLink, targets, adapter.keyboard.maxTabs, adapter.keyboard.ready);
           if (!keyboard.skipLinkFirst) fail(5, 'keyboard:skip-link-first');
           else if (!keyboard.skipMovesFocus) fail(5, 'keyboard:skip-link-moves-focus');
           for (const [n, ok] of Object.entries(keyboard.reached)) if (!ok) fail(5, `keyboard:tab-reaches-${n}`);

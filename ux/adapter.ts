@@ -35,7 +35,7 @@ export const adapter: Adapter = {
   guidanceCue: null,
   protectedFocus: null,
   axeTags: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'],
-  keyboard: { skipLink: /skip to (main )?content/i, mustReach: ['search', 'navbar'], maxTabs: 40 },
+  keyboard: { skipLink: /skip to (main )?content/i, mustReach: ['search', 'navbar'], maxTabs: 40, ready: 'html[data-has-hydrated="true"]' },
   hubWords: ['documentation', 'docs', 'overview', 'reference', 'guides'],
   screenOnly: { maxActions: 15, maxScrolls: 6, viewport: '1366x768', theme: 'light' },
   settleMs: 750,

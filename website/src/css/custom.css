@@ -91,6 +91,31 @@ html .b10x-status-table .b10x-status {
   font-size: 0.875rem;
 }
 
+/* The same status word in a page's tables (the pipeline's adapter table) is a chip at 14 px too,
+   not 78 % of its cell (UXF-035). */
+html .markdown .b10x-chip {
+  font-size: 0.875rem;
+}
+
+/* The language support matrix is the page: on a page that holds it, the table of contents column
+   gives its width to the article, so the matrix fits at 1366x768 and 1280x720 (UXF-021, decision
+   R-08). */
+@media (min-width: 997px) {
+  main .row:has([data-support-matrix]) > .col--3 {
+    display: none;
+  }
+}
+
+/* The article column's 75 % cap is `!important` inside the theme's cascade layer, which an unlayered
+   `!important` cannot beat; the override sits in the same layer and wins by specificity. */
+@layer docusaurus.theme-classic {
+  @media (min-width: 997px) {
+    main .row:has([data-support-matrix]) > .col {
+      max-width: 100% !important;
+    }
+  }
+}
+
 /* The home page copy starts at the top of the hero instead of centring on the code pair beside it,
    so the actions are in the first screen at 1366x768 and 1280x720 (UXF-007). */
 main .b10x-hero__copy {

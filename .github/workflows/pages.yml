@@ -45,3 +45,36 @@ jobs:
           include-hidden-files: true
           retention-days: 30
           if-no-files-found: error
+
+  ux:
+    name: UX gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            website/package-lock.json
+            ux/package-lock.json
+      - name: Build the Docusaurus site
+        run: npm --prefix website ci && npm --prefix website run build
+      - name: Install the UX harness and Chromium
+        working-directory: ux
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Fetch the baseline on main for the ratchet
+        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+      - name: UX gate
+        working-directory: ux
+        timeout-minutes: 4
+        run: |
+          npx tsc --noEmit
+          node cli.ts findings
+          npx playwright test --workers=4
+          node cli.ts ratchet
