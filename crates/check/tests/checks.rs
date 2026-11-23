@@ -286,6 +286,22 @@ fn dropped_error_reports_writes_to_a_parameter_one_caller_fills_with_a_file() {
     );
 }
 
+/// A deferred call is a `foreign` statement whose call list does not show its arguments: the
+/// file it passes is unknown, so the parameter is not proven to hold a writer that cannot fail.
+#[test]
+fn dropped_error_reports_writes_to_a_parameter_a_deferred_caller_fills_with_a_file() {
+    let found = findings("dropped-error", "deferred");
+    assert_eq!(
+        functions(&found),
+        [
+            "deferred.Pair.write",
+            "deferred.Pair.write",
+            "deferred.Pair.write"
+        ],
+        "{found:#?}"
+    );
+}
+
 #[test]
 fn a_names_file_lists_the_writers_that_cannot_fail() {
     let names = Names::from_json(br#"{"never-fail": []}"#).unwrap();
@@ -386,6 +402,22 @@ fn error_eq_finds_a_wrapped_error_compared_with_ne() {
     assert_eq!(functions(&found), ["wrapped.Has"], "{found:#?}");
 }
 
+/// Only the definition of the local that reaches the comparison decides, in either order of the
+/// cause and the plain error, on one branch, and from an earlier turn of a loop.
+#[test]
+fn error_eq_resolves_the_definition_reaching_the_comparison() {
+    let found = findings("error-eq", "reaching");
+    assert_eq!(
+        functions(&found),
+        [
+            "reaching.CauseFirst",
+            "reaching.MaybeCause",
+            "reaching.InLoop"
+        ],
+        "{found:#?}"
+    );
+}
+
 #[test]
 fn timer_not_stopped_finds_a_teardown_that_leaves_a_timer_running() {
     hit_once_miss_never("timer-not-stopped", ".Tx.Close");
@@ -394,6 +426,14 @@ fn timer_not_stopped_finds_a_teardown_that_leaves_a_timer_running() {
 #[test]
 fn conn_leak_finds_an_error_return_that_leaves_a_connection_open() {
     hit_once_miss_never("conn-leak", ".Dial");
+}
+
+/// The dial's error variable is reassigned by a second call: its `err != nil` branch no longer says
+/// the connection is nil.
+#[test]
+fn conn_leak_finds_a_leak_when_the_open_error_variable_is_reused() {
+    let found = findings("conn-leak", "reused");
+    assert_eq!(functions(&found), ["reused.Send"], "{found:#?}");
 }
 
 #[test]

@@ -227,7 +227,7 @@ struct Open<'a> {
     /// Where it was opened.
     pos: &'a str,
     what: String,
-    /// The error the opening call gave beside it.
+    /// The error the opening call gave beside it, while that variable still holds it.
     err: Option<String>,
 }
 
@@ -237,12 +237,18 @@ struct Paths<'a> {
     out: Vec<Vec<Open<'a>>>,
 }
 
+/// The states joined; an open value whose error variable still holds the opening error on one
+/// path and not on another holds it on neither.
 fn union<'a>(states: impl IntoIterator<Item = Vec<Open<'a>>>) -> Option<Vec<Open<'a>>> {
     let mut out: Option<Vec<Open>> = None;
     for s in states {
         let o = out.get_or_insert_with(Vec::new);
         for x in s {
-            if !o.contains(&x) {
+            if let Some(y) = o.iter_mut().find(|y| y.var == x.var && y.pos == x.pos) {
+                if y.err != x.err {
+                    y.err = None;
+                }
+            } else {
                 o.push(x);
             }
         }
@@ -374,6 +380,24 @@ impl<'a> Leaks<'_, 'a> {
                 .iter()
                 .any(|e| self.closes(e, &o.var) || self.hands_on(e, &o.var))
         });
+        // A variable assigned here no longer holds the error an earlier open gave beside it.
+        let assigned: Vec<&str> = match s {
+            Stmt::Let { names, .. } => names.iter().map(String::as_str).collect(),
+            Stmt::Var { name, .. } => vec![name.as_str()],
+            Stmt::Assign { lhs, .. } => lhs
+                .iter()
+                .filter_map(|l| match l {
+                    Expr::Var { name, .. } => Some(name.as_str()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        for o in st.iter_mut() {
+            if o.err.as_deref().is_some_and(|e| assigned.contains(&e)) {
+                o.err = None;
+            }
+        }
         if let Some(o) = wrapped {
             st.push(o);
         } else if let Some((var, rhs, err)) = bound
