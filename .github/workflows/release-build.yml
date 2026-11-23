@@ -105,7 +105,11 @@ jobs:
           mkdir -p "dist/$package"
           cp -R "$RUNNER_TEMP/bin/." "dist/$package/"
           cp README.md LICENSE "dist/$package/"
-          tar -czf "dist/$package.tar.gz" -C "dist/$package" .
+          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-read-go codespec-write-go codespec-run-go \
+            codespec-read-rust codespec-write-rust codespec-run-rust codespec-write-c codespec-run-c \
+            codespec-write-cir codespec-run-cir codespec-read-elixir codespec-write-elixir codespec-run-elixir \
+            codespec-read-gleam codespec-write-gleam codespec-run-gleam codespec-read-odin codespec-write-odin codespec-run-odin \
+            beam README.md LICENSE
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
