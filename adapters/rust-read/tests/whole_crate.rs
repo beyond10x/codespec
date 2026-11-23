@@ -677,14 +677,15 @@ fn a_manifest_outside_the_crate_or_no_regular_file_is_refused() {
 }
 
 /// A module or item built only when testing, `#[cfg(test)]` or `#[cfg(all(test, …))]`, is not
-/// read, so none of its calls is listed; one under `#[cfg(any(test, …))]` or `#[cfg(not(test))]`
-/// is built outside tests too and is read.
+/// read, so none of its calls is listed; one under `#[cfg(not(test))]` is built and read, and one
+/// under `#[cfg(any(test, feature = "x"))]`, built as the feature is, which the reader cannot
+/// tell, is refused and lists its calls as an opaque function.
 #[test]
 fn an_item_built_only_for_tests_is_not_read() {
     let src = "#[cfg(all(test, feature = \"x\"))]\nmod tests {\n    pub fn probe<T: Clone>(_t: T) {\n        panic!(\"only in tests\");\n    }\n}\n\n#[cfg(all(feature = \"y\", all(test)))]\npub fn deep<T: Clone>(_t: T) {\n    panic!(\"only in tests\");\n}\n\n#[cfg(any(test, feature = \"x\"))]\npub fn either<T: Clone>(_t: T) {\n    panic!(\"maybe\");\n}\n\n#[cfg(not(test))]\npub fn live<T: Clone>(_t: T) {\n    panic!(\"always\");\n}\n";
     let m = codespec_read_rust::read_source("probe", "lib.rs", src).expect("read");
     Module::from_json(m.to_json().as_bytes()).expect("the module is valid cir/1");
-    let panics: Vec<String> = m
+    let mut panics: Vec<String> = m
         .opaque
         .iter()
         .flat_map(|o| o.calls.iter().map(move |c| (o, c)))
@@ -693,5 +694,13 @@ fn an_item_built_only_for_tests_is_not_read() {
         )
         .map(|(o, c)| format!("{} {}", o.name, c.pos()))
         .collect();
+    panics.sort();
     assert_eq!(panics, ["Either lib.rs:15", "Live lib.rs:20"]);
+    assert!(
+        m.refusals
+            .iter()
+            .any(|r| r.pos == "lib.rs:13" && r.reason.contains("cfg(any(test, feature = \"x\"))")),
+        "{:?}",
+        m.refusals
+    );
 }

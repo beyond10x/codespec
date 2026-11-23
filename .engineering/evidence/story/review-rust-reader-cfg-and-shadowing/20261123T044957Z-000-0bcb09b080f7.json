@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:49:57Z",
+  "actor": "human:timo",
+  "artifact": "story:review-rust-reader-cfg-and-shadowing",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust --test reader: 90 passed (5 new: A4, A5); whole_crate 20 passed; examples-inventory, examples-series, docs-check green"
+  }
+}

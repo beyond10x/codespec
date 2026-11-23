@@ -10,8 +10,16 @@
 //! file that is missing, found twice, read already, outside the crate's directory, past a limit
 //! or not parsed is a refusal at its `mod` declaration, and the crate reads on; so is a module
 //! nested deeper than [`MAX_MODULE_DEPTH`]. The crate's root file outside the crate's directory
-//! is an error. A module marked `#[cfg(test)]`, a module file whose inner attributes say
-//! `#![cfg(test)]`, and any item marked so, is not part of the crate's build and is not read.
+//! is an error.
+//!
+//! The reader reads a normal build of the crate, not its tests (`built`): a module, a module file
+//! whose inner attributes say `#![cfg(test)]`, an item, and inside an item a statement, a match
+//! arm, a struct literal's field, an impl's or trait's item, a field or a variant marked
+//! `#[cfg(test)]` (or `all(test, …)`, `not(not(test))`) is left out before anything is read;
+//! what `not(test)` marks is read. A condition the reader cannot resolve (a feature, a platform,
+//! `debug_assertions`) is not guessed: a statement under it is kept for the reader to make
+//! `foreign` with a refusal; a module or item under it, or an item holding any other part under
+//! it, is refused at its line, a function or impl among them kept apart as below.
 //!
 //! A file is inside the crate's directory when its path is, `.` and `..` taken out, and when the
 //! file it resolves to through every symbolic link is.
@@ -27,8 +35,83 @@ use std::path::{Component, Path, PathBuf};
 
 use codespec_model::Refusal;
 use syn::spanned::Spanned;
+use syn::visit_mut::VisitMut;
 
 use crate::{MAX_NESTING, first_line, nesting, read_bounded, src_of};
+
+/// The attributes of the item `$i`, `None` for an item that holds none: shared or mutable as the
+/// reference `$i` is.
+macro_rules! attrs_of {
+    ($i:expr) => {
+        match $i {
+            syn::Item::Const(syn::ItemConst { attrs, .. })
+            | syn::Item::Enum(syn::ItemEnum { attrs, .. })
+            | syn::Item::ExternCrate(syn::ItemExternCrate { attrs, .. })
+            | syn::Item::Fn(syn::ItemFn { attrs, .. })
+            | syn::Item::ForeignMod(syn::ItemForeignMod { attrs, .. })
+            | syn::Item::Impl(syn::ItemImpl { attrs, .. })
+            | syn::Item::Macro(syn::ItemMacro { attrs, .. })
+            | syn::Item::Mod(syn::ItemMod { attrs, .. })
+            | syn::Item::Static(syn::ItemStatic { attrs, .. })
+            | syn::Item::Struct(syn::ItemStruct { attrs, .. })
+            | syn::Item::Trait(syn::ItemTrait { attrs, .. })
+            | syn::Item::TraitAlias(syn::ItemTraitAlias { attrs, .. })
+            | syn::Item::Type(syn::ItemType { attrs, .. })
+            | syn::Item::Union(syn::ItemUnion { attrs, .. })
+            | syn::Item::Use(syn::ItemUse { attrs, .. }) => Some(attrs),
+            _ => None,
+        }
+    };
+}
+
+/// The attributes of the expression `$e`, `None` for verbatim tokens: shared or mutable as the
+/// reference `$e` is.
+macro_rules! expr_attrs {
+    ($e:expr) => {
+        match $e {
+            syn::Expr::Array(syn::ExprArray { attrs, .. })
+            | syn::Expr::Assign(syn::ExprAssign { attrs, .. })
+            | syn::Expr::Async(syn::ExprAsync { attrs, .. })
+            | syn::Expr::Await(syn::ExprAwait { attrs, .. })
+            | syn::Expr::Binary(syn::ExprBinary { attrs, .. })
+            | syn::Expr::Block(syn::ExprBlock { attrs, .. })
+            | syn::Expr::Break(syn::ExprBreak { attrs, .. })
+            | syn::Expr::Call(syn::ExprCall { attrs, .. })
+            | syn::Expr::Cast(syn::ExprCast { attrs, .. })
+            | syn::Expr::Closure(syn::ExprClosure { attrs, .. })
+            | syn::Expr::Const(syn::ExprConst { attrs, .. })
+            | syn::Expr::Continue(syn::ExprContinue { attrs, .. })
+            | syn::Expr::Field(syn::ExprField { attrs, .. })
+            | syn::Expr::ForLoop(syn::ExprForLoop { attrs, .. })
+            | syn::Expr::Group(syn::ExprGroup { attrs, .. })
+            | syn::Expr::If(syn::ExprIf { attrs, .. })
+            | syn::Expr::Index(syn::ExprIndex { attrs, .. })
+            | syn::Expr::Infer(syn::ExprInfer { attrs, .. })
+            | syn::Expr::Let(syn::ExprLet { attrs, .. })
+            | syn::Expr::Lit(syn::ExprLit { attrs, .. })
+            | syn::Expr::Loop(syn::ExprLoop { attrs, .. })
+            | syn::Expr::Macro(syn::ExprMacro { attrs, .. })
+            | syn::Expr::Match(syn::ExprMatch { attrs, .. })
+            | syn::Expr::MethodCall(syn::ExprMethodCall { attrs, .. })
+            | syn::Expr::Paren(syn::ExprParen { attrs, .. })
+            | syn::Expr::Path(syn::ExprPath { attrs, .. })
+            | syn::Expr::Range(syn::ExprRange { attrs, .. })
+            | syn::Expr::RawAddr(syn::ExprRawAddr { attrs, .. })
+            | syn::Expr::Reference(syn::ExprReference { attrs, .. })
+            | syn::Expr::Repeat(syn::ExprRepeat { attrs, .. })
+            | syn::Expr::Return(syn::ExprReturn { attrs, .. })
+            | syn::Expr::Struct(syn::ExprStruct { attrs, .. })
+            | syn::Expr::Try(syn::ExprTry { attrs, .. })
+            | syn::Expr::TryBlock(syn::ExprTryBlock { attrs, .. })
+            | syn::Expr::Tuple(syn::ExprTuple { attrs, .. })
+            | syn::Expr::Unary(syn::ExprUnary { attrs, .. })
+            | syn::Expr::Unsafe(syn::ExprUnsafe { attrs, .. })
+            | syn::Expr::While(syn::ExprWhile { attrs, .. })
+            | syn::Expr::Yield(syn::ExprYield { attrs, .. }) => Some(attrs),
+            _ => None,
+        }
+    };
+}
 
 /// The most files the reader reads for one crate, its root file included; a crate of more is
 /// refused.
@@ -267,13 +350,43 @@ impl Walk {
         self.tree.refusals.push(Refusal { pos, what, reason });
     }
 
+    /// `item`, of the module `module`, refused for `reason` and not read; a function or impl
+    /// kept apart, so its calls are listed as an opaque function's.
+    fn apart(&mut self, item: syn::Item, module: &str, reason: String) {
+        let what = match (&item, named(&item)) {
+            (syn::Item::Mod(m), _) => format!("mod {}", m.ident),
+            (_, Some((_, kind, name))) => format!("{kind} {name}"),
+            (_, None) => first_line(&src_of(&item)),
+        };
+        self.refuse(self.tree.pos(item.span()), what, reason.clone());
+        if matches!(item, syn::Item::Fn(_) | syn::Item::Impl(_)) {
+            self.tree.apart.push((item, module.to_string(), reason));
+        }
+    }
+
     fn items(&mut self, items: Vec<syn::Item>, at: &At) -> Result<(), String> {
-        for item in items {
-            if cfg_test(attrs_of(&item)) {
-                continue;
+        for mut item in items {
+            match built(attrs_of!(&item).map_or(&[], Vec::as_slice)) {
+                Built::No => continue,
+                Built::Unknown(c) => {
+                    self.apart(item, &at.module, unresolved(&c));
+                    continue;
+                }
+                Built::Yes => {}
             }
             let syn::Item::Mod(m) = item else {
-                self.tree.items.push((item, at.module.clone()));
+                if let Some(attrs) = attrs_of!(&mut item) {
+                    attrs.retain(|a| !is_cfg(a));
+                }
+                let mut prune = Prune::default();
+                prune.visit_item_mut(&mut item);
+                match prune.unknown {
+                    Some((line, c)) => {
+                        let reason = format!("a part of it at line {line} is {}", unresolved(&c));
+                        self.apart(item, &at.module, reason);
+                    }
+                    None => self.tree.items.push((item, at.module.clone())),
+                }
                 continue;
             };
             let name = m.ident.to_string();
@@ -393,8 +506,13 @@ impl Walk {
                     continue;
                 }
             };
-            if cfg_test(&ast.attrs) {
-                continue;
+            match built(&ast.attrs) {
+                Built::No => continue,
+                Built::Unknown(c) => {
+                    self.refuse(pos, what, format!("its file is {}", unresolved(&c)));
+                    continue;
+                }
+                Built::Yes => {}
             }
             let dir = file.parent().unwrap_or(Path::new("")).to_path_buf();
             let mod_rs = file.file_name().is_some_and(|n| n == "mod.rs");
@@ -507,46 +625,240 @@ fn named(item: &syn::Item) -> Option<(&'static str, &'static str, String)> {
     Some((ns, kind, n.strip_prefix("r#").unwrap_or(&n).to_string()))
 }
 
-fn attrs_of(item: &syn::Item) -> &[syn::Attribute] {
-    match item {
-        syn::Item::Const(i) => &i.attrs,
-        syn::Item::Enum(i) => &i.attrs,
-        syn::Item::ExternCrate(i) => &i.attrs,
-        syn::Item::Fn(i) => &i.attrs,
-        syn::Item::ForeignMod(i) => &i.attrs,
-        syn::Item::Impl(i) => &i.attrs,
-        syn::Item::Macro(i) => &i.attrs,
-        syn::Item::Mod(i) => &i.attrs,
-        syn::Item::Static(i) => &i.attrs,
-        syn::Item::Struct(i) => &i.attrs,
-        syn::Item::Trait(i) => &i.attrs,
-        syn::Item::TraitAlias(i) => &i.attrs,
-        syn::Item::Type(i) => &i.attrs,
-        syn::Item::Union(i) => &i.attrs,
-        syn::Item::Use(i) => &i.attrs,
-        _ => &[],
+// ----- conditional compilation ---------------------------------------------------------------
+
+/// Whether a normal build of the crate (its library or binary, not its tests) builds what a set
+/// of attributes marks (`built`).
+pub(crate) enum Built {
+    Yes,
+    No,
+    /// Built only when a condition the reader cannot resolve holds: that `cfg`'s source.
+    Unknown(String),
+}
+
+/// What the `cfg` attributes among `attrs` say of a normal build. `test` does not hold; `not`,
+/// `all` and `any` combine conditions as `rustc` does, `all(test, …)` not holding whatever the
+/// rest says and `any(test, x)` holding as `x` does; any other condition (a feature, a platform,
+/// `debug_assertions`) the reader cannot resolve, and does not guess. Several `cfg`s hold
+/// together. A `cfg_attr` that adds a `cfg` is a condition the reader cannot resolve.
+pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
+    let mut unknown = None;
+    for a in attrs.iter().filter(|a| is_cfg(a)) {
+        let holds = if a.path().is_ident("cfg") {
+            a.parse_args::<syn::Meta>().ok().and_then(|m| holds(&m))
+        } else {
+            None
+        };
+        match holds {
+            Some(false) => return Built::No,
+            Some(true) => {}
+            None => {
+                unknown.get_or_insert_with(|| src_of(&a.meta));
+            }
+        }
+    }
+    unknown.map_or(Built::Yes, Built::Unknown)
+}
+
+/// Why what is built only under the condition `c` (a `cfg`'s source) is refused.
+pub(crate) fn unresolved(c: &str) -> String {
+    format!(
+        "built only under `{c}`, a condition the reader cannot resolve: it reads a normal build, which leaves `test` out and knows no feature, platform or other setting"
+    )
+}
+
+/// Whether the condition `m` holds in a normal build; `None` when the reader cannot tell.
+fn holds(m: &syn::Meta) -> Option<bool> {
+    match m {
+        syn::Meta::Path(p) if p.is_ident("test") => Some(false),
+        syn::Meta::List(l) => {
+            let args = l
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            if l.path.is_ident("all") {
+                let mut all = Some(true);
+                for v in args.iter().map(holds) {
+                    match v {
+                        Some(false) => return Some(false),
+                        None => all = None,
+                        Some(true) => {}
+                    }
+                }
+                all
+            } else if l.path.is_ident("any") {
+                let mut any = Some(false);
+                for v in args.iter().map(holds) {
+                    match v {
+                        Some(true) => return Some(true),
+                        None => any = None,
+                        Some(false) => {}
+                    }
+                }
+                any
+            } else if l.path.is_ident("not") && args.len() == 1 {
+                holds(&args[0]).map(|b| !b)
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
-/// Whether `attrs` hold a `cfg` that holds only when testing: `#[cfg(test)]`, or
-/// `#[cfg(all(…))]` with `test` among its conditions (at any depth of `all`). The item is built
-/// for the crate's tests only. `any(test, …)` and `not(test)` hold outside tests too.
-fn cfg_test(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|a| {
-        a.path().is_ident("cfg") && a.parse_args::<syn::Meta>().is_ok_and(|m| test_only(&m))
-    })
+/// Whether `a` is a `cfg`, or a `cfg_attr` that adds one.
+fn is_cfg(a: &syn::Attribute) -> bool {
+    fn names_cfg(ts: proc_macro2::TokenStream) -> bool {
+        ts.into_iter().any(|t| match t {
+            proc_macro2::TokenTree::Ident(i) => i == "cfg",
+            proc_macro2::TokenTree::Group(g) => names_cfg(g.stream()),
+            _ => false,
+        })
+    }
+    a.path().is_ident("cfg")
+        || (a.path().is_ident("cfg_attr")
+            && matches!(&a.meta, syn::Meta::List(l) if names_cfg(l.tokens.clone())))
 }
 
-/// Whether the `cfg` condition `m` holds only when testing.
-fn test_only(m: &syn::Meta) -> bool {
-    match m {
-        syn::Meta::Path(p) => p.is_ident("test"),
-        syn::Meta::List(l) if l.path.is_ident("all") => l
-            .parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            )
-            .is_ok_and(|all| all.iter().any(test_only)),
-        _ => false,
+/// The attributes of the statement `s`: a `let`'s, an item's, a macro's, or those `syn` puts
+/// on the expression an expression statement starts with (`#[a] x += 1;` holds them on `x`).
+pub(crate) fn stmt_attrs(s: &syn::Stmt) -> &[syn::Attribute] {
+    fn first(e: &syn::Expr) -> &syn::Expr {
+        match e {
+            syn::Expr::Assign(a) => first(&a.left),
+            syn::Expr::Binary(b) => first(&b.left),
+            syn::Expr::Cast(c) => first(&c.expr),
+            e => e,
+        }
+    }
+    let attrs = match s {
+        syn::Stmt::Local(l) => Some(&l.attrs),
+        syn::Stmt::Macro(m) => Some(&m.attrs),
+        syn::Stmt::Item(i) => attrs_of!(i),
+        syn::Stmt::Expr(e, _) => expr_attrs!(first(e)),
+    };
+    attrs.map_or(&[], Vec::as_slice)
+}
+
+fn stmt_attrs_mut(s: &mut syn::Stmt) -> Option<&mut Vec<syn::Attribute>> {
+    fn first(e: &mut syn::Expr) -> &mut syn::Expr {
+        match e {
+            syn::Expr::Assign(a) => first(&mut a.left),
+            syn::Expr::Binary(b) => first(&mut b.left),
+            syn::Expr::Cast(c) => first(&mut c.expr),
+            e => e,
+        }
+    }
+    match s {
+        syn::Stmt::Local(l) => Some(&mut l.attrs),
+        syn::Stmt::Macro(m) => Some(&mut m.attrs),
+        syn::Stmt::Item(i) => attrs_of!(i),
+        syn::Stmt::Expr(e, _) => expr_attrs!(first(e)),
+    }
+}
+
+/// Takes out of an item what a normal build leaves out (`built`): statements, match arms,
+/// fields of a struct literal, items of an impl or trait, fields and variants. The `cfg`s of
+/// what stays are taken out with it, but for a statement under a condition the reader cannot
+/// resolve, which stays as it is for the reader to keep as `foreign`. Any other `cfg` left (one
+/// the reader cannot resolve, elsewhere) is `unknown`: its line and source.
+#[derive(Default)]
+struct Prune {
+    unknown: Option<(usize, String)>,
+}
+
+/// Whether what `attrs` mark stays: not when a normal build leaves it out; its `cfg`s taken out
+/// when a normal build builds it, kept when the reader cannot tell.
+fn keep(attrs: &mut Vec<syn::Attribute>) -> bool {
+    match built(attrs) {
+        Built::No => false,
+        Built::Yes => {
+            attrs.retain(|a| !is_cfg(a));
+            true
+        }
+        Built::Unknown(_) => true,
+    }
+}
+
+/// `p` without the elements `keep` drops, each kept one with its punctuation.
+fn kept<T, P>(
+    p: &mut syn::punctuated::Punctuated<T, P>,
+    attrs: impl Fn(&mut T) -> &mut Vec<syn::Attribute>,
+) {
+    *p = std::mem::take(p)
+        .into_pairs()
+        .filter_map(|mut pair| keep(attrs(pair.value_mut())).then_some(pair))
+        .collect();
+}
+
+impl VisitMut for Prune {
+    fn visit_block_mut(&mut self, b: &mut syn::Block) {
+        b.stmts.retain_mut(|s| stmt_attrs_mut(s).is_none_or(keep));
+        for s in &mut b.stmts {
+            if !matches!(built(stmt_attrs(s)), Built::Unknown(_)) {
+                self.visit_stmt_mut(s);
+            }
+        }
+    }
+
+    fn visit_expr_match_mut(&mut self, m: &mut syn::ExprMatch) {
+        m.arms.retain_mut(|a| keep(&mut a.attrs));
+        syn::visit_mut::visit_expr_match_mut(self, m);
+    }
+
+    fn visit_expr_struct_mut(&mut self, s: &mut syn::ExprStruct) {
+        kept(&mut s.fields, |f| &mut f.attrs);
+        syn::visit_mut::visit_expr_struct_mut(self, s);
+    }
+
+    fn visit_fields_named_mut(&mut self, f: &mut syn::FieldsNamed) {
+        kept(&mut f.named, |f| &mut f.attrs);
+        syn::visit_mut::visit_fields_named_mut(self, f);
+    }
+
+    fn visit_fields_unnamed_mut(&mut self, f: &mut syn::FieldsUnnamed) {
+        kept(&mut f.unnamed, |f| &mut f.attrs);
+        syn::visit_mut::visit_fields_unnamed_mut(self, f);
+    }
+
+    fn visit_item_enum_mut(&mut self, e: &mut syn::ItemEnum) {
+        kept(&mut e.variants, |v| &mut v.attrs);
+        syn::visit_mut::visit_item_enum_mut(self, e);
+    }
+
+    fn visit_item_impl_mut(&mut self, im: &mut syn::ItemImpl) {
+        im.items.retain_mut(|i| {
+            let attrs = match i {
+                syn::ImplItem::Const(c) => &mut c.attrs,
+                syn::ImplItem::Fn(f) => &mut f.attrs,
+                syn::ImplItem::Type(t) => &mut t.attrs,
+                syn::ImplItem::Macro(m) => &mut m.attrs,
+                _ => return true,
+            };
+            keep(attrs)
+        });
+        syn::visit_mut::visit_item_impl_mut(self, im);
+    }
+
+    fn visit_item_trait_mut(&mut self, t: &mut syn::ItemTrait) {
+        t.items.retain_mut(|i| {
+            let attrs = match i {
+                syn::TraitItem::Const(c) => &mut c.attrs,
+                syn::TraitItem::Fn(f) => &mut f.attrs,
+                syn::TraitItem::Type(t) => &mut t.attrs,
+                syn::TraitItem::Macro(m) => &mut m.attrs,
+                _ => return true,
+            };
+            keep(attrs)
+        });
+        syn::visit_mut::visit_item_trait_mut(self, t);
+    }
+
+    fn visit_attribute_mut(&mut self, a: &mut syn::Attribute) {
+        if self.unknown.is_none() && is_cfg(a) {
+            self.unknown = Some((a.span().start().line, src_of(&a.meta)));
+        }
     }
 }
 

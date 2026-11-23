@@ -27,7 +27,7 @@
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
 //! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
 //! | `impl std::error::Error for …` (empty) | absorbed |
-//! | `pub fn f`, `fn f` | `F`, `f` (Go spelling, golint's initialisms). Two functions (associated ones among them), two methods of one type, two constants or two statics of one Go spelling (`value_2`, `value2`) are each refused at their line and each use of them refused (a crate trait's impl with such a method is refused whole); so are two fields of a struct (refusing it), two parameters of a function (refusing it) and two methods of a trait (refusing it). Items of different kinds are apart in `cir/1` and keep their names; locals are renamed apart |
+//! | `pub fn f`, `fn f` | `F`, `f` (Go spelling, golint's initialisms). Two functions (associated ones among them), two methods of one type, two constants or two statics of one Go spelling (`value_2`, `value2`) are each refused at their line and each use of them refused (a crate trait's impl with such a method is refused whole); so are two fields of a struct (refusing it), two parameters of a function (refusing it) and two methods of a trait (refusing it). Items of different kinds are apart in `cir/1` and keep their names; locals are renamed apart, and a `let` of a function's or closure's outermost block that shadows a parameter binds a new name, as Go's parameters share that block's scope |
 //! | `impl T { fn m(&mut self) }` | method with receiver `*T`; once one method of `T` takes `&mut self`, every `&self` method of `T` has `*T` too, otherwise `&self` and `self` are `T` |
 //! | `impl T { fn f(…) }` without `self` | function `F<T>` (`new` → `NewT`) |
 //! | `const X: T = <literal>` | `const`; one whose type or value is refused is refused at its line, not declared, and each use of it refused naming it |
@@ -41,7 +41,7 @@
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
 //! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
 //! | `use` | nothing for what is read: names resolve by their last path segment. The calls an `opaque` function or a `foreign` statement lists resolve a path through the module's `use` declarations (`calls`) |
-//! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a `#[cfg(test)]` module or item is not read. Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
+//! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a module, item or part of one built only for tests (`#[cfg(test)]`) is not read, and one under a `cfg` the reader cannot resolve (a feature, a platform) is refused (`files`). Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
 //!
 //! # Types
 //!
@@ -71,6 +71,7 @@
 //!
 //! | Rust | cir/1 |
 //! |---|---|
+//! | `#[cfg(test)] s`, `#[cfg(all(test, …))] s`; `#[cfg(not(test))] s` | nothing, as a normal build has none; `s`. A statement under a condition the reader cannot resolve (`#[cfg(feature = "x")]`, `#[cfg(debug_assertions)]`) is `foreign` (`files`) |
 //! | `let x = e;` | `let` |
 //! | `let mut x: T = <zero of T>;` (`0`, `0.0`, `false`, `String::new()`, `Vec::new()`, `[<zero>; N]`) | `var x T` |
 //! | `let x: Rc<dyn Any> = e;` | `var x any`, then `x = e`, so that `x` holds `any` and not the type of `e` |

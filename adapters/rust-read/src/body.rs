@@ -1198,13 +1198,30 @@ impl<'r> Fx<'r> {
             return out;
         }
         self.scopes.push(Vec::new());
+        let out = self.stmts(stmts, tail);
+        self.scopes.pop();
+        out
+    }
+
+    /// The statements of a block in the current scope: a function's or closure's outermost
+    /// block, which shares its scope with the parameters as Go's does, so a `let` shadowing a
+    /// parameter binds a new name (`n := n + 5` does not compile); else the block's own scope.
+    fn stmts(&mut self, stmts: &[syn::Stmt], tail: bool) -> Vec<Stmt> {
         let mut out = Vec::new();
         let mut skip = false;
+        let plain = |s: &syn::Stmt| {
+            matches!(
+                crate::files::built(crate::files::stmt_attrs(s)),
+                crate::files::Built::Yes
+            )
+        };
         for (i, s) in stmts.iter().enumerate() {
             if std::mem::take(&mut skip) {
                 continue;
             }
             if let (syn::Stmt::Local(l), Some(next)) = (s, stmts.get(i + 1))
+                && plain(s)
+                && plain(next)
                 && let Some(r) = self.sorted_keys(l, next)
             {
                 skip = true;
@@ -1224,7 +1241,6 @@ impl<'r> Fx<'r> {
             out.extend(self.stmt(s, tail && i + 1 == stmts.len()));
             self.hint = None;
         }
-        self.scopes.pop();
         out
     }
 
@@ -1392,6 +1408,15 @@ impl<'r> Fx<'r> {
     }
 
     fn stmt(&mut self, s: &syn::Stmt, tail: bool) -> Vec<Stmt> {
+        // `files` took out what a normal build leaves out; a statement still under a `cfg` is
+        // built under a condition the reader cannot resolve.
+        match crate::files::built(crate::files::stmt_attrs(s)) {
+            crate::files::Built::Yes => {}
+            crate::files::Built::No => return Vec::new(),
+            crate::files::Built::Unknown(c) => {
+                return vec![self.foreign(s, crate::files::unresolved(&c))];
+            }
+        }
         let r = match s {
             syn::Stmt::Local(l) => self.local(l),
             syn::Stmt::Item(syn::Item::Fn(f)) if !f.sig.generics.params.is_empty() => {
@@ -2334,7 +2359,7 @@ impl<'r> Fx<'r> {
                 variadic: false,
             })
             .collect();
-        let stmts = self.block(&body.block.stmts, true);
+        let stmts = self.stmts(&body.block.stmts, true);
         let (_, captures) = self.lambdas.pop().expect("the closure's frame");
         self.scopes.pop();
         (self.results, self.shape, self.loops, self.hint) = saved;
@@ -4730,7 +4755,7 @@ pub(crate) fn func(
         _ => None,
     };
     fx.map_kinds = map_kinds(ssig, block);
-    let body = fx.block(&block.stmts, true);
+    let body = fx.stmts(&block.stmts, true);
     (
         Func {
             tparams: sig.tparams.clone(),
