@@ -118,12 +118,20 @@ defmodule Codespec.ElixirReaderTest do
       defmodule Text do
         @spec choose(flag :: boolean()) :: String.t()
         def choose(flag), do: if(flag, do: (Other.read("é")), else: "ok")
+        @spec choose_else(boolean()) :: String.t()
+        def choose_else(flag), do: if(flag, do: "ok", else: (Other.read("é")))
       end
       """)
 
     doc = Reader.read(file, "test")
-    assert [%{"what" => "(Other.read(\"é\"))", "pos" => "sample.ex:3"}] = doc["refusals"]
-    assert [%{"body" => [%{"else" => [%{"results" => [%{"value" => "\"ok\""}]}]}]}] = doc["funcs"]
+
+    assert Enum.map(doc["refusals"], &{&1["pos"], &1["what"]}) == [
+             {"sample.ex:3", "(Other.read(\"é\"))"},
+             {"sample.ex:5", "(Other.read(\"é\"))"}
+           ]
+
+    assert [%{"body" => [%{"else" => [%{"results" => [%{"value" => "\"ok\""}]}]}]} | _] =
+             doc["funcs"]
   end
 
   test "unsupported top-level code is never run", %{dir: dir} do

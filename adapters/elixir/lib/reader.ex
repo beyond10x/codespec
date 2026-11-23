@@ -362,7 +362,10 @@ defmodule Codespec.ElixirReader do
        when expected != nil do
     c = expr(condition, env, ctx) |> check!(@bool)
     {y, yr} = statements(block(yes), env, expected, ctx, location(else_m))
-    {n, nr} = statements(block(no), env, expected, ctx, location(m[:end]) || finish)
+
+    {n, nr} =
+      statements(block(no), env, expected, ctx, location(m[:end] || m[:closing]) || finish)
+
     {[%{"k" => "if", "cond" => ir(c), "then" => y, "else" => n, "pos" => p}], env, yr ++ nr}
   end
 
