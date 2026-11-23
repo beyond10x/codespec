@@ -15,7 +15,7 @@ use crate::growth::{Layout, grow_cap};
 use crate::host::Host;
 use crate::id::{Node, func_id, module_path, node_id, var_node_id};
 use crate::trace::{J, line};
-use crate::value::{Closure, ErrorVal, HeapId, Place, Step, Value};
+use crate::value::{Closure, ErrorVal, HeapId, MapStore, Place, Step, Value};
 use crate::{Stop, StopKind};
 
 /// How deep calls may nest before the run stops.
@@ -415,18 +415,25 @@ impl<'m> Interp<'m> {
 
     pub(crate) fn map_entries(&self, id: HeapId) -> &[(Value<'m>, Value<'m>)] {
         match &self.heap[id] {
-            Value::MapData(es) => es,
+            Value::MapData(es) => es.entries(),
             _ => &[],
+        }
+    }
+
+    /// The position of the entry for `k` in the map in `id`, if it has one.
+    pub(crate) fn map_position(&self, id: HeapId, k: &Value<'m>) -> Option<usize> {
+        match &self.heap[id] {
+            Value::MapData(es) => es.position(k),
+            _ => None,
         }
     }
 
     fn map_get(&self, m: &Value<'m>, k: &Value<'m>) -> Option<Value<'m>> {
         match m {
-            Value::Map(id) => self
-                .map_entries(*id)
-                .iter()
-                .find(|(ek, _)| equal(ek, k))
-                .map(|(_, v)| v.clone()),
+            Value::Map(id) => match &self.heap[*id] {
+                Value::MapData(es) => es.get(k).cloned(),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -436,10 +443,7 @@ impl<'m> Interp<'m> {
             self.record_entry(id, &k);
         }
         if let Value::MapData(es) = &mut self.heap[id] {
-            match es.iter_mut().find(|(ek, _)| equal(ek, &k)) {
-                Some(e) => e.1 = v,
-                None => es.push((k, v)),
-            }
+            es.set(k, v);
         }
     }
 
@@ -2245,7 +2249,7 @@ impl<'m> Interp<'m> {
                 self.convert(v, t, node)
             }
             Expr::Make { t } => match self.resolve(t) {
-                Type::Map { .. } => Ok(Value::Map(self.alloc(Value::MapData(Vec::new())))),
+                Type::Map { .. } => Ok(Value::Map(self.alloc(Value::MapData(MapStore::default())))),
                 Type::Slice { .. } => Ok(self.new_slice(Vec::new())),
                 Type::Chan { .. } => Ok(Value::Chan(self.alloc(Value::ChanData(
                     VecDeque::new(),
@@ -2743,14 +2747,22 @@ impl<'m> Interp<'m> {
         };
         let need = len + extra.len();
         if need <= cap {
-            let Value::Array(xs) = &mut self.heap[arr] else {
+            let Value::Array(xs) = &self.heap[arr] else {
                 return Err(self.unsupported(node, "a slice without an array"));
             };
+            let have = xs.len();
             for (i, v) in extra.into_iter().enumerate() {
                 let at = off + len + i;
-                if at < xs.len() {
-                    xs[at] = v;
-                } else {
+                if at < have {
+                    // An element another slice of the array may show: written as an assignment
+                    // is, so a fault's trace notes it when the array is older (review E4).
+                    let p = Place {
+                        cell: arr,
+                        path: vec![Step::Index(at)],
+                    };
+                    self.write(&p, v)
+                        .ok_or_else(|| self.unsupported(node, "a slice without an array"))?;
+                } else if let Value::Array(xs) = &mut self.heap[arr] {
                     xs.push(v);
                 }
             }

@@ -32,30 +32,32 @@ pub enum Node<'a> {
 }
 
 impl Node<'_> {
-    fn is_stmt(&self, s: &Stmt) -> bool {
-        matches!(self, Node::Stmt(t) if std::ptr::eq(*t, s))
-    }
-
-    fn is_expr(&self, e: &Expr) -> bool {
-        matches!(self, Node::Expr(t) if std::ptr::eq(*t, e))
+    /// Whether `self` and `other` are the same node: one address.
+    fn is(&self, other: Node<'_>) -> bool {
+        match (self, other) {
+            (Node::Stmt(a), Node::Stmt(b)) => std::ptr::eq(*a, b),
+            (Node::Expr(a), Node::Expr(b)) => std::ptr::eq(*a, b),
+            _ => false,
+        }
     }
 }
 
 /// The id of `node`, a node of `f`'s body, and the position of the innermost statement holding
 /// it; `None` when `node` is not in `f`.
 pub fn node_id(m: &Module, f: &Func, node: Node<'_>) -> Option<(String, String)> {
-    let mut path = Vec::new();
-    let mut pos = None;
-    if !block(&f.body, node, &mut path, &mut pos) {
-        return None;
-    }
-    // The body's own index is the first step, written without a field name.
-    let mut id = format!("{}#{}", func_id(m, f), path[0]);
-    for step in &path[1..] {
-        id.push('.');
-        id.push_str(step);
-    }
-    Some((id, pos.unwrap_or_default().to_string()))
+    let mut found = None;
+    Walk::new(&mut |n, path, pos| {
+        if !n.is(node) {
+            return false;
+        }
+        found = Some((
+            func_node_id(m, f, path),
+            pos.unwrap_or_default().to_string(),
+        ));
+        true
+    })
+    .block(&f.body);
+    found
 }
 
 /// The id of `node`, a node of the initializer of the module variable `v`, and the position of
@@ -63,13 +65,84 @@ pub fn node_id(m: &Module, f: &Func, node: Node<'_>) -> Option<(String, String)>
 /// `node` is not in it.
 pub fn var_node_id(m: &Module, v: &VarDecl, node: Node<'_>) -> Option<(String, String)> {
     let init = v.init.as_ref()?;
-    let mut path = vec!["init".to_string()];
-    let mut pos = None;
-    if !expr(init, node, &mut path, &mut pos) {
-        return None;
+    let mut found = None;
+    Walk::new(&mut |n, path, pos| {
+        if !n.is(node) {
+            return false;
+        }
+        found = Some((var_id(m, v, path), pos.unwrap_or(&v.pos).to_string()));
+        true
+    })
+    .field_expr("init", init);
+    found
+}
+
+/// Each node of `f`'s body that `want` picks, with its id and position as [`node_id`] gives
+/// them, in one traversal of the body.
+pub fn node_ids<'a>(
+    m: &Module,
+    f: &'a Func,
+    want: &mut dyn FnMut(Node<'a>) -> bool,
+) -> Vec<(Node<'a>, String, String)> {
+    let mut out = Vec::new();
+    Walk::new(&mut |n, path, pos| {
+        if want(n) {
+            out.push((
+                n,
+                func_node_id(m, f, path),
+                pos.unwrap_or_default().to_string(),
+            ));
+        }
+        false
+    })
+    .block(&f.body);
+    out
+}
+
+/// Each node of the initializer of the module variable `v` that `want` picks, with its id and
+/// position as [`var_node_id`] gives them, in one traversal of the initializer.
+pub fn var_node_ids<'a>(
+    m: &Module,
+    v: &'a VarDecl,
+    want: &mut dyn FnMut(Node<'a>) -> bool,
+) -> Vec<(Node<'a>, String, String)> {
+    let mut out = Vec::new();
+    if let Some(init) = &v.init {
+        Walk::new(&mut |n, path, pos| {
+            if want(n) {
+                out.push((n, var_id(m, v, path), pos.unwrap_or(&v.pos).to_string()));
+            }
+            false
+        })
+        .field_expr("init", init);
     }
-    let id = format!("{}.{}#{}", module_path(m), v.name, path.join("."));
-    Some((id, pos.unwrap_or(&v.pos).to_string()))
+    out
+}
+
+/// `<function id>#<path>`: the body's own index is the first step, written without a field name.
+fn func_node_id(m: &Module, f: &Func, path: &[Step]) -> String {
+    let mut id = format!("{}#", func_id(m, f));
+    push_path(&mut id, path);
+    id
+}
+
+/// `<module path>.<var>#init…`.
+fn var_id(m: &Module, v: &VarDecl, path: &[Step]) -> String {
+    let mut id = format!("{}.{}#", module_path(m), v.name);
+    push_path(&mut id, path);
+    id
+}
+
+fn push_path(id: &mut String, path: &[Step]) {
+    for (i, step) in path.iter().enumerate() {
+        if i > 0 {
+            id.push('.');
+        }
+        match step {
+            Step::Field(name) => id.push_str(name),
+            Step::Index(n) => id.push_str(&n.to_string()),
+        }
+    }
 }
 
 /// The position of a statement.
@@ -95,227 +168,215 @@ pub fn stmt_pos(s: &Stmt) -> &str {
     }
 }
 
-type Path = Vec<String>;
-
-fn found<'a>(s: &'a Stmt, pos: &mut Option<&'a str>) -> bool {
-    pos.get_or_insert(stmt_pos(s));
-    true
+/// One step of an index path: a `cir/1` field name or a position in a list.
+#[derive(Debug, Clone, Copy)]
+enum Step {
+    Field(&'static str),
+    Index(usize),
 }
 
-/// Whether `node` is in `body`, `path` then ending in the steps to it.
-fn block<'a>(body: &'a [Stmt], node: Node<'_>, path: &mut Path, pos: &mut Option<&'a str>) -> bool {
-    for (i, s) in body.iter().enumerate() {
-        path.push(i.to_string());
-        if stmt(s, node, path, pos) {
-            return true;
-        }
-        path.pop();
-    }
-    false
+/// What a traversal calls at each node, before the nodes inside it: the node, the path to it and
+/// the position of the innermost statement holding it (the node's own for a statement); `true`
+/// ends the traversal.
+type Visit<'a, 'v> = dyn FnMut(Node<'a>, &[Step], Option<&'a str>) -> bool + 'v;
+
+/// A traversal of a tree in the order of its `cir/1` fields, keeping the path from the root and
+/// the positions of the statements it is inside. Each method gives `true` when the visitor ended
+/// it.
+struct Walk<'a, 'v> {
+    path: Vec<Step>,
+    stmts: Vec<&'a str>,
+    visit: &'v mut Visit<'a, 'v>,
 }
 
-fn field_block<'a>(
-    name: &str,
-    body: &'a [Stmt],
-    node: Node<'_>,
-    path: &mut Path,
-    pos: &mut Option<&'a str>,
-) -> bool {
-    path.push(name.to_string());
-    if block(body, node, path, pos) {
-        return true;
+impl<'a, 'v> Walk<'a, 'v> {
+    fn new(visit: &'v mut Visit<'a, 'v>) -> Self {
+        Walk {
+            path: Vec::new(),
+            stmts: Vec::new(),
+            visit,
+        }
     }
-    path.pop();
-    false
-}
 
-fn field_stmt<'a>(
-    name: &str,
-    s: &'a Stmt,
-    node: Node<'_>,
-    path: &mut Path,
-    pos: &mut Option<&'a str>,
-) -> bool {
-    path.push(name.to_string());
-    if stmt(s, node, path, pos) {
-        return true;
-    }
-    path.pop();
-    false
-}
-
-fn field_exprs<'a>(
-    name: &str,
-    es: &'a [Expr],
-    node: Node<'_>,
-    path: &mut Path,
-    pos: &mut Option<&'a str>,
-) -> bool {
-    for (i, e) in es.iter().enumerate() {
-        path.push(name.to_string());
-        path.push(i.to_string());
-        if expr(e, node, path, pos) {
-            return true;
-        }
-        path.truncate(path.len() - 2);
-    }
-    false
-}
-
-fn field_expr<'a>(
-    name: &str,
-    e: &'a Expr,
-    node: Node<'_>,
-    path: &mut Path,
-    pos: &mut Option<&'a str>,
-) -> bool {
-    path.push(name.to_string());
-    if expr(e, node, path, pos) {
-        return true;
-    }
-    path.pop();
-    false
-}
-
-/// Whether `node` is `s` or inside it; the path to `s` is already on `path`.
-fn stmt<'a>(s: &'a Stmt, node: Node<'_>, path: &mut Path, pos: &mut Option<&'a str>) -> bool {
-    if node.is_stmt(s) {
-        return found(s, pos);
-    }
-    let inside = match s {
-        Stmt::Let { rhs, .. } => field_exprs("rhs", rhs, node, path, pos),
-        Stmt::Var { .. } | Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Foreign { .. } => {
-            false
-        }
-        Stmt::Assign { lhs, rhs, .. } => {
-            field_exprs("lhs", lhs, node, path, pos) || field_exprs("rhs", rhs, node, path, pos)
-        }
-        Stmt::Incr { x, .. }
-        | Stmt::Decr { x, .. }
-        | Stmt::Expr { x, .. }
-        | Stmt::Raise { x, .. } => field_expr("x", x, node, path, pos),
-        Stmt::If {
-            cond,
-            then,
-            otherwise,
-            ..
-        } => {
-            field_expr("cond", cond, node, path, pos)
-                || field_block("then", then, node, path, pos)
-                || field_block("else", otherwise, node, path, pos)
-        }
-        Stmt::ForRange { over, body, .. } => {
-            field_expr("over", over, node, path, pos) || field_block("body", body, node, path, pos)
-        }
-        Stmt::For {
-            init,
-            cond,
-            post,
-            body,
-            ..
-        } => {
-            init.as_deref()
-                .is_some_and(|i| field_stmt("init", i, node, path, pos))
-                || cond
-                    .as_ref()
-                    .is_some_and(|c| field_expr("cond", c, node, path, pos))
-                || post
-                    .as_deref()
-                    .is_some_and(|p| field_stmt("post", p, node, path, pos))
-                || field_block("body", body, node, path, pos)
-        }
-        Stmt::Switch { tag, cases, .. } => {
-            tag.as_ref()
-                .is_some_and(|t| field_expr("tag", t, node, path, pos))
-                || switch_cases(cases, node, path, pos)
-        }
-        Stmt::Return { results, .. } => field_exprs("results", results, node, path, pos),
-        Stmt::Send { chan, x, .. } => {
-            field_expr("chan", chan, node, path, pos) || field_expr("x", x, node, path, pos)
-        }
-        Stmt::LookupElse {
-            map, index, then, ..
-        } => {
-            field_expr("map", map, node, path, pos)
-                || field_expr("index", index, node, path, pos)
-                || field_block("then", then, node, path, pos)
-        }
-    };
-    inside && found(s, pos)
-}
-
-fn switch_cases<'a>(
-    cases: &'a [Case],
-    node: Node<'_>,
-    path: &mut Path,
-    pos: &mut Option<&'a str>,
-) -> bool {
-    for (i, c) in cases.iter().enumerate() {
-        path.push("cases".to_string());
-        path.push(i.to_string());
-        if field_exprs("values", &c.values, node, path, pos)
-            || field_block("body", &c.body, node, path, pos)
-        {
-            return true;
-        }
-        path.truncate(path.len() - 2);
-    }
-    false
-}
-
-/// Whether `node` is `e` or inside it; the path to `e` is already on `path`.
-fn expr<'a>(e: &'a Expr, node: Node<'_>, path: &mut Path, pos: &mut Option<&'a str>) -> bool {
-    if node.is_expr(e) {
-        return true;
-    }
-    match e {
-        Expr::Lit { .. }
-        | Expr::Float { .. }
-        | Expr::Nil { .. }
-        | Expr::Var { .. }
-        | Expr::Const { .. }
-        | Expr::Errvar { .. }
-        | Expr::Global { .. }
-        | Expr::Make { .. }
-        | Expr::Zero { .. } => false,
-        Expr::Field { x, .. }
-        | Expr::Unop { x, .. }
-        | Expr::Conv { x, .. }
-        | Expr::ToError { x, .. }
-        | Expr::Spread { x, .. }
-        | Expr::ToIface { x, .. } => field_expr("x", x, node, path, pos),
-        Expr::Index { x, index, .. } => {
-            field_expr("x", x, node, path, pos) || field_expr("index", index, node, path, pos)
-        }
-        Expr::Binop { x, y, .. } => {
-            field_expr("x", x, node, path, pos) || field_expr("y", y, node, path, pos)
-        }
-        Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
-            field_exprs("args", args, node, path, pos)
-        }
-        Expr::Method { x, args, .. } => {
-            field_expr("x", x, node, path, pos) || field_exprs("args", args, node, path, pos)
-        }
-        Expr::ExternMethod { recv, args, .. } | Expr::IfaceCall { recv, args, .. } => {
-            field_expr("recv", recv, node, path, pos) || field_exprs("args", args, node, path, pos)
-        }
-        Expr::Struct { fields, .. } => {
-            for (i, fi) in fields.iter().enumerate() {
-                path.push("fields".to_string());
-                path.push(i.to_string());
-                if expr(&fi.value, node, path, pos) {
-                    return true;
-                }
-                path.truncate(path.len() - 2);
+    fn block(&mut self, body: &'a [Stmt]) -> bool {
+        for (i, s) in body.iter().enumerate() {
+            self.path.push(Step::Index(i));
+            if self.stmt(s) {
+                return true;
             }
-            false
+            self.path.pop();
         }
-        Expr::FuncRef { recv, .. } => recv
-            .as_deref()
-            .is_some_and(|r| field_expr("recv", r, node, path, pos)),
-        Expr::Lambda { body, .. } => field_block("body", body, node, path, pos),
-        Expr::CallValue { f, args, .. } => {
-            field_expr("f", f, node, path, pos) || field_exprs("args", args, node, path, pos)
+        false
+    }
+
+    fn field_block(&mut self, name: &'static str, body: &'a [Stmt]) -> bool {
+        self.path.push(Step::Field(name));
+        if self.block(body) {
+            return true;
+        }
+        self.path.pop();
+        false
+    }
+
+    fn field_stmt(&mut self, name: &'static str, s: &'a Stmt) -> bool {
+        self.path.push(Step::Field(name));
+        if self.stmt(s) {
+            return true;
+        }
+        self.path.pop();
+        false
+    }
+
+    fn field_exprs(&mut self, name: &'static str, es: &'a [Expr]) -> bool {
+        for (i, e) in es.iter().enumerate() {
+            self.path.push(Step::Field(name));
+            self.path.push(Step::Index(i));
+            if self.expr(e) {
+                return true;
+            }
+            self.path.truncate(self.path.len() - 2);
+        }
+        false
+    }
+
+    fn field_expr(&mut self, name: &'static str, e: &'a Expr) -> bool {
+        self.path.push(Step::Field(name));
+        if self.expr(e) {
+            return true;
+        }
+        self.path.pop();
+        false
+    }
+
+    /// `s`, then the nodes inside it; the path to `s` is already on `path`.
+    fn stmt(&mut self, s: &'a Stmt) -> bool {
+        crate::count::id_step();
+        self.stmts.push(stmt_pos(s));
+        if (self.visit)(Node::Stmt(s), &self.path, self.stmts.last().copied()) {
+            return true;
+        }
+        let ended = match s {
+            Stmt::Let { rhs, .. } => self.field_exprs("rhs", rhs),
+            Stmt::Var { .. }
+            | Stmt::Break { .. }
+            | Stmt::Continue { .. }
+            | Stmt::Foreign { .. } => false,
+            Stmt::Assign { lhs, rhs, .. } => {
+                self.field_exprs("lhs", lhs) || self.field_exprs("rhs", rhs)
+            }
+            Stmt::Incr { x, .. }
+            | Stmt::Decr { x, .. }
+            | Stmt::Expr { x, .. }
+            | Stmt::Raise { x, .. } => self.field_expr("x", x),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                self.field_expr("cond", cond)
+                    || self.field_block("then", then)
+                    || self.field_block("else", otherwise)
+            }
+            Stmt::ForRange { over, body, .. } => {
+                self.field_expr("over", over) || self.field_block("body", body)
+            }
+            Stmt::For {
+                init,
+                cond,
+                post,
+                body,
+                ..
+            } => {
+                init.as_deref().is_some_and(|i| self.field_stmt("init", i))
+                    || cond.as_ref().is_some_and(|c| self.field_expr("cond", c))
+                    || post.as_deref().is_some_and(|p| self.field_stmt("post", p))
+                    || self.field_block("body", body)
+            }
+            Stmt::Switch { tag, cases, .. } => {
+                tag.as_ref().is_some_and(|t| self.field_expr("tag", t)) || self.switch_cases(cases)
+            }
+            Stmt::Return { results, .. } => self.field_exprs("results", results),
+            Stmt::Send { chan, x, .. } => self.field_expr("chan", chan) || self.field_expr("x", x),
+            Stmt::LookupElse {
+                map, index, then, ..
+            } => {
+                self.field_expr("map", map)
+                    || self.field_expr("index", index)
+                    || self.field_block("then", then)
+            }
+        };
+        if !ended {
+            self.stmts.pop();
+        }
+        ended
+    }
+
+    fn switch_cases(&mut self, cases: &'a [Case]) -> bool {
+        for (i, c) in cases.iter().enumerate() {
+            self.path.push(Step::Field("cases"));
+            self.path.push(Step::Index(i));
+            if self.field_exprs("values", &c.values) || self.field_block("body", &c.body) {
+                return true;
+            }
+            self.path.truncate(self.path.len() - 2);
+        }
+        false
+    }
+
+    /// `e`, then the nodes inside it; the path to `e` is already on `path`.
+    fn expr(&mut self, e: &'a Expr) -> bool {
+        crate::count::id_step();
+        if (self.visit)(Node::Expr(e), &self.path, self.stmts.last().copied()) {
+            return true;
+        }
+        match e {
+            Expr::Lit { .. }
+            | Expr::Float { .. }
+            | Expr::Nil { .. }
+            | Expr::Var { .. }
+            | Expr::Const { .. }
+            | Expr::Errvar { .. }
+            | Expr::Global { .. }
+            | Expr::Make { .. }
+            | Expr::Zero { .. } => false,
+            Expr::Field { x, .. }
+            | Expr::Unop { x, .. }
+            | Expr::Conv { x, .. }
+            | Expr::ToError { x, .. }
+            | Expr::Spread { x, .. }
+            | Expr::ToIface { x, .. } => self.field_expr("x", x),
+            Expr::Index { x, index, .. } => {
+                self.field_expr("x", x) || self.field_expr("index", index)
+            }
+            Expr::Binop { x, y, .. } => self.field_expr("x", x) || self.field_expr("y", y),
+            Expr::Call { args, .. } | Expr::Intrinsic { args, .. } | Expr::Extern { args, .. } => {
+                self.field_exprs("args", args)
+            }
+            Expr::Method { x, args, .. } => {
+                self.field_expr("x", x) || self.field_exprs("args", args)
+            }
+            Expr::ExternMethod { recv, args, .. } | Expr::IfaceCall { recv, args, .. } => {
+                self.field_expr("recv", recv) || self.field_exprs("args", args)
+            }
+            Expr::Struct { fields, .. } => {
+                for (i, fi) in fields.iter().enumerate() {
+                    self.path.push(Step::Field("fields"));
+                    self.path.push(Step::Index(i));
+                    if self.expr(&fi.value) {
+                        return true;
+                    }
+                    self.path.truncate(self.path.len() - 2);
+                }
+                false
+            }
+            Expr::FuncRef { recv, .. } => {
+                recv.as_deref().is_some_and(|r| self.field_expr("recv", r))
+            }
+            Expr::Lambda { body, .. } => self.field_block("body", body),
+            Expr::CallValue { f, args, .. } => {
+                self.field_expr("f", f) || self.field_exprs("args", args)
+            }
         }
     }
 }

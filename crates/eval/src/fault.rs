@@ -75,7 +75,7 @@ use std::rc::Rc;
 
 use codespec_model::{Expr, Func, Module, Stmt, Type, walk};
 
-use crate::id::{Node, func_id, node_id, var_node_id};
+use crate::id::{Node, func_id, node_ids, var_node_ids};
 use crate::interp::{Interp, R};
 use crate::trace::{J, line};
 use crate::value::{ErrorVal, HeapId, Place, Value};
@@ -461,15 +461,19 @@ fn effect_sites(m: &Module) -> Vec<EffectSite<'_>> {
             t: e.t(),
         });
     }
+    // The ids of each function's and initializer's sends from one traversal of it (review E7).
+    let is_send = &mut |n: Node<'_>| matches!(n, Node::Stmt(Stmt::Send { .. }));
     for f in &m.funcs {
+        let mut ids = crate::host::by_addr(node_ids(m, f, is_send));
         for s in sends(&f.body) {
-            if let Some((id, pos)) = node_id(m, f, Node::Stmt(s)) {
+            if let Some((id, pos)) = ids.remove(&(s as *const Stmt as usize)) {
                 out.push(send_site(s, id, pos));
             }
         }
     }
     for v in &m.vars {
         if let Some(init) = &v.init {
+            let mut ids = crate::host::by_addr(var_node_ids(m, v, is_send));
             let mut bodies = Vec::new();
             walk::walk_expr(init, &mut |e| {
                 if let Expr::Lambda { body, .. } = e {
@@ -484,7 +488,7 @@ fn effect_sites(m: &Module) -> Vec<EffectSite<'_>> {
                     }
                 });
                 for s in here {
-                    if let Some((id, pos)) = var_node_id(m, v, Node::Stmt(s)) {
+                    if let Some((id, pos)) = ids.remove(&(s as *const Stmt as usize)) {
                         out.push(send_site(s, id, pos));
                     }
                 }
@@ -911,7 +915,7 @@ impl<'m> Interp<'m> {
     /// Notes that the running statement sets the entry for `k` of the older map in `id`.
     pub(crate) fn record_entry(&mut self, id: HeapId, k: &Value<'m>) {
         let es = self.map_entries(id);
-        let (pos, before) = match es.iter().position(|(ek, _)| crate::interp::equal(ek, k)) {
+        let (pos, before) = match self.map_position(id, k) {
             Some(i) => (i, Some(es[i].1.clone())),
             None => (es.len(), None),
         };

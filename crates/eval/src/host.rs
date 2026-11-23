@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use codespec_model::{Expr, Module, Type, walk};
 
-use crate::id::{Node, node_id, var_node_id};
+use crate::id::{Node, node_ids, var_node_ids};
 use crate::interp::{Interp, wrap};
 use crate::value::{HeapId, Value};
 use crate::{Options, Stubbed};
@@ -87,13 +87,31 @@ fn extern_key(e: &Expr) -> Option<String> {
     }
 }
 
-/// Every extern call site of `m`: its node, key, id and position.
+/// The id and position of each node of `found`, by the node's address.
+pub(crate) fn by_addr(found: Vec<(Node<'_>, String, String)>) -> HashMap<usize, (String, String)> {
+    found
+        .into_iter()
+        .map(|(n, id, pos)| {
+            let addr = match n {
+                Node::Stmt(s) => s as *const _ as usize,
+                Node::Expr(e) => e as *const _ as usize,
+            };
+            (addr, (id, pos))
+        })
+        .collect()
+}
+
+/// Every extern call site of `m`: its node, key, id and position, in the order `walk` meets
+/// them. The ids come from one traversal of each function and initializer, not one per site
+/// (review E7).
 pub(crate) fn extern_sites(m: &Module) -> Vec<(&Expr, String, String, String)> {
     let mut out = Vec::new();
+    let is_extern = &mut |n: Node<'_>| matches!(n, Node::Expr(e) if extern_key(e).is_some());
     for f in &m.funcs {
+        let mut ids = by_addr(node_ids(m, f, is_extern));
         walk::body_exprs(&f.body, &mut |e| {
             if let Some(key) = extern_key(e)
-                && let Some((id, pos)) = node_id(m, f, Node::Expr(e))
+                && let Some((id, pos)) = ids.remove(&(e as *const Expr as usize))
             {
                 out.push((e, key, id, pos));
             }
@@ -101,9 +119,10 @@ pub(crate) fn extern_sites(m: &Module) -> Vec<(&Expr, String, String, String)> {
     }
     for v in &m.vars {
         if let Some(init) = &v.init {
+            let mut ids = by_addr(var_node_ids(m, v, is_extern));
             walk::walk_expr(init, &mut |e| {
                 if let Some(key) = extern_key(e)
-                    && let Some((id, pos)) = var_node_id(m, v, Node::Expr(e))
+                    && let Some((id, pos)) = ids.remove(&(e as *const Expr as usize))
                 {
                     out.push((e, key, id, pos));
                 }
@@ -123,7 +142,12 @@ impl<'m> Interp<'m> {
     pub(crate) fn install(&mut self, opts: &Options) -> Result<(), String> {
         self.host.env = opts.env.clone();
         let m = self.m;
-        let sites = extern_sites(m);
+        // No stub, no site to find: the ids of extern calls cost nothing then (review E7).
+        let sites = if opts.stubs.is_empty() {
+            Vec::new()
+        } else {
+            extern_sites(m)
+        };
         for (i, s) in opts.stubs.iter().enumerate() {
             if opts.stubs[..i].iter().any(|t| t.site == s.site) {
                 return Err(format!(
