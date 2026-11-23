@@ -123,7 +123,10 @@ findings rule, the ratchet against `ux/baseline.json` and `main`'s). It needs `t
 failure passes only while an open finding in `ux/findings/` waives its key (`waives:`); a value better
 than the baseline is taken in the same merge (`task ux-ratchet -- --update`), a worse one only with
 `--decision <id>`. A page added to the site needs `task ux-scenarios` and a baseline update. `task
-ux-round` writes a round's Measure output to `ux/rounds/R-nn/`.
+ux-round` writes a round's Measure output to `ux/rounds/R-nn/`; write a round's `notes.md` after the
+run, not before. CI runs the same steps as the job "UX gate" of `.github/workflows/pages.yml`, with
+4 workers and the baseline of `origin/main`; a site change that moves a ratchet value fails there
+until the baseline is updated in the same merge.
 
 ## Generated files
 
@@ -300,7 +303,8 @@ count, no date, no pattern text.
 The site: `.github/workflows/pages.yml` ("Documentation validation") builds it on every push and
 pull request, runs `cargo test -p codespec-docs`, binds the build to its commit with
 `codespec-docs provenance --site website/build --commit "$GITHUB_SHA"`, and on a push to `main`
-uploads `website/build` as `b10x-project-site`. `.github/workflows/b10x-docs-site.yml`
+uploads `website/build` as `b10x-project-site`; its job "UX gate" builds the site again and runs
+`task ux-check`'s steps on it. `.github/workflows/b10x-docs-site.yml`
 ("Documentation site") then deploys it through Website's reusable `project-site.yml`, for bot pushes
 to `main` only.
 

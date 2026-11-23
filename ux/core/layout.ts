@@ -192,8 +192,13 @@ export async function keyboardWalk(
   skipLink: RegExp,
   targets: { name: string; locate: Locate }[],
   maxTabs: number,
+  ready?: string,
 ): Promise<KeyboardResult> {
-  await page.goto(url);
+  const open = async () => {
+    await page.goto(url);
+    if (ready) await page.locator(ready).first().waitFor({ state: 'attached' });
+  };
+  await open();
   await page.keyboard.press('Tab');
   const first = await page.evaluate(() => {
     const a = document.activeElement as HTMLElement | null;
@@ -218,7 +223,7 @@ export async function keyboardWalk(
       skipMovesFocus = await past();
     }
   }
-  await page.goto(url);
+  await open();
   const locs = new Map<string, Locator | null>();
   for (const t of targets) locs.set(t.name, await locate(page, t.locate));
   const reached: Record<string, boolean> = Object.fromEntries(targets.map((t) => [t.name, false]));

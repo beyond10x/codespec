@@ -897,7 +897,7 @@
         "tolerance": 0
       },
       "keyboard.misses": {
-        "value": 8,
+        "value": 0,
         "tolerance": 0
       },
       "layout.overflow": {

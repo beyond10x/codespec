@@ -27,13 +27,17 @@ const opt = (n: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
+/** The baseline on `main`: the remote-tracking `origin/main` first (CI fetches only that), then a local `main`. */
 function mainBaseline(): Baseline | null {
-  try {
-    const rel = join('ux', adapter.dirs.baseline);
-    return JSON.parse(execFileSync('git', ['show', `main:${rel}`], { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
-  } catch {
-    return null;
+  const rel = join('ux', adapter.dirs.baseline);
+  for (const ref of ['origin/main', 'main']) {
+    try {
+      return JSON.parse(execFileSync('git', ['show', `${ref}:${rel}`], { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 function ratchet(): number {

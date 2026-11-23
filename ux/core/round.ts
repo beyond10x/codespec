@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Adapter } from './types.ts';
-import type { Baseline } from './ratchet.ts';
+import { compare, type Baseline } from './ratchet.ts';
 import { gateCounts, readResults, toMeasured, type PageResult, type TaskResult } from './results.ts';
 import { loadScenarios } from './scenarios.ts';
 import { loadFindings } from './findings.ts';
@@ -62,6 +62,48 @@ export function scrollContainerLines(pages: ScrollPage[]): string[] {
   ];
 }
 
+export interface Unit {
+  scenario: string;
+  viewport: string;
+  theme: string;
+}
+
+/** The units a round expected (every page scenario × viewport × theme) that left no result, as
+ * `scenario viewport theme` (UXF-036): a unit that times out writes no result file. */
+export function missingUnits(scenarios: string[], viewports: string[], themes: string[], have: Unit[]): string[] {
+  const got = new Set(have.map((u) => `${u.scenario} ${u.viewport} ${u.theme}`));
+  return scenarios.flatMap((s) => viewports.flatMap((v) => themes.map((t) => `${s} ${v} ${t}`))).filter((k) => !got.has(k));
+}
+
+export interface PlaywrightTotals {
+  passed: number;
+  failed: number;
+  flaky: number;
+  skipped: number;
+}
+
+/** The run's totals from a Playwright JSON report's `stats`; null without a report. */
+export function playwrightTotals(report: unknown): PlaywrightTotals | null {
+  const s = (report as { stats?: Record<string, number> } | null)?.stats;
+  if (!s) return null;
+  return { passed: s.expected ?? 0, failed: s.unexpected ?? 0, flaky: s.flaky ?? 0, skipped: s.skipped ?? 0 };
+}
+
+/** What the round did and did not measure, for the report: expected and missing units, the
+ * Playwright totals and the ratchet's verdict over the measured values. */
+export function completenessLines(expected: number, missing: string[], totals: PlaywrightTotals | null, ratchet: string[] | null): string[] {
+  const L = [
+    `- Units: ${expected - missing.length} of ${expected} page units measured${missing.length ? `; no result for ${missing.map((m) => `\`${m}\``).join(', ')}` : ''}.`,
+    totals
+      ? `- Playwright: ${totals.passed} passed, ${totals.failed} failed, ${totals.flaky} flaky, ${totals.skipped} skipped.`
+      : '- Playwright: no report (`playwright.json` missing).',
+  ];
+  if (ratchet === null) L.push('- Ratchet: no `baseline.json`.');
+  else if (ratchet.length === 0) L.push('- Ratchet: green against `baseline.json` (no value worse, none missing, no improvement untaken).');
+  else L.push(`- Ratchet: **red** against \`baseline.json\`, ${ratchet.length} problem${ratchet.length === 1 ? '' : 's'}:`, ...ratchet.map((p) => `  - ${p}`));
+  return L;
+}
+
 export interface RoundInput {
   adapter: Adapter;
   ux: string;
@@ -106,7 +148,13 @@ export function writeRound(i: RoundInput): void {
   const rotatingCard = rotating.length ? rotating[(roundNo - 1) % rotating.length] : null;
   const findings = loadFindings(join(i.ux, adapter.dirs.findings));
   const pwFile = join(i.out, 'playwright.json');
-  const assets = existsSync(pwFile) ? assetResults(JSON.parse(readFileSync(pwFile, 'utf8'))) : [];
+  const pwReport = existsSync(pwFile) ? JSON.parse(readFileSync(pwFile, 'utf8')) : null;
+  const assets = pwReport ? assetResults(pwReport) : [];
+  const allViewports = [...adapter.viewports.gating, ...adapter.viewports.measured].map((v) => v.name);
+  const pageScenarios = scenarios.filter((s) => s.page).map((s) => s.name);
+  const missing = missingUnits(pageScenarios, allViewports, adapter.themes, pages);
+  const totalsPw = playwrightTotals(pwReport);
+  const ratchetProblems = baseline ? compare(baseline, measured, null).problems : null;
 
   // Worst moments: gating results with the most failures, then the most serious/critical axe nodes.
   const worst = gating
@@ -162,6 +210,9 @@ export function writeRound(i: RoundInput): void {
     adapter: adapter.name,
     cards: { anchors, rotating: rotatingCard, all_tasks_run: taskCards.map((s) => s.name) },
     gates: { ...gates, gate3: 'n/a: a docs site has no completion control', gate6: 'n/a: no guidance cue, no L0' },
+    units: { expected: pageScenarios.length * allViewports.length * adapter.themes.length, missing },
+    playwright: totalsPw,
+    ratchet: ratchetProblems === null ? null : { problems: ratchetProblems },
     totals: { ...Object.fromEntries(pageKeys.map((k) => [k, totals(k)])), 'layout_shift.after_ready_max': maxReady, 'layout_shift.load_max': maxLoad },
     measured,
     measured_only: measuredOnly,
@@ -201,6 +252,8 @@ export function writeRound(i: RoundInput): void {
     L.push(`| ${gname[g]} | ${c.checked} | ${c.pass} | ${c.fail} | ${c.waived} |`);
   }
   L.push('| 3 unmissable completion | n/a | | | |', '| 6 cue truth | n/a (no guidance cue) | | | |', '');
+  L.push('## What this round measured', '');
+  L.push(...completenessLines(round.units.expected, missing, totalsPw, ratchetProblems), '');
   L.push('## Failures by kind', '', '| kind | units | pages/tasks | waived by |', '|---|---|---|---|');
   for (const f of round.failure_kinds) L.push(`| ${f.kind} | ${f.count} | ${f.pages} | ${f.waived_by.join(', ') || '**none**'} |`);
   L.push('');

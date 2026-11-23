@@ -43,6 +43,9 @@ export interface Adapter {
     skipLink: RegExp;
     mustReach: string[];
     maxTabs: number;
+    /** A selector that exists once the page has hydrated; the walk starts after it, as a reader's
+     * first key press comes after the page is up. */
+    ready?: string;
   };
   hubWords: string[];
   screenOnly: { maxActions: number; maxScrolls: number; viewport: string; theme: string };
