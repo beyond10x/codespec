@@ -2481,3 +2481,228 @@ fn a_compound_assignment_of_integers_whose_value_calls_holds_the_value_first() {
         "{body:?}"
     );
 }
+
+// ----- conditional compilation and parameter shadowing (review A4, A5) ----------------------
+
+/// `codespec-write-go` and `codespec-run-go`, built once with `go build`.
+fn go_tools() -> &'static Path {
+    static B: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    B.get_or_init(|| {
+        let bin = Path::new(env!("CARGO_TARGET_TMPDIR")).join("reader-go-tools");
+        std::fs::create_dir_all(&bin).expect("bin dir");
+        let o = std::process::Command::new("go")
+            .args(["build", "-o"])
+            .arg(format!("{}/", bin.display()))
+            .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
+            .current_dir(root().join("adapters/go"))
+            .output()
+            .expect("go starts");
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        bin
+    })
+}
+
+/// `src` read with no refusal, passed, written as Go (`case` names the work directory), built
+/// and run by `codespec-run-go` on `calls`, each a function and its arguments: what it prints.
+fn run_as_go(case: &str, src: &str, calls: &[(&str, &[&str])]) -> String {
+    let m = read(src);
+    assert!(m.refusals.is_empty(), "refusals: {:?}", m.refusals);
+    let passed = codespec_passes::run(&m);
+    let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("reader-go-{case}"));
+    if work.exists() {
+        std::fs::remove_dir_all(&work).unwrap();
+    }
+    std::fs::create_dir_all(&work).unwrap();
+    let (doc, go, calls_path) = (
+        work.join("passed.cir.json"),
+        work.join("go"),
+        work.join("calls.json"),
+    );
+    std::fs::write(&doc, passed.to_json()).unwrap();
+    let calls = codespec_conformance::Calls {
+        format: codespec_conformance::CALLS_FORMAT.into(),
+        calls: calls
+            .iter()
+            .map(|(func, args)| codespec_conformance::Call {
+                func: func.to_string(),
+                args: args.iter().map(|a| a.to_string()).collect(),
+            })
+            .collect(),
+    };
+    let calls = serde_json::to_string_pretty(&calls).unwrap() + "\n";
+    std::fs::write(&calls_path, calls).unwrap();
+    let w = std::process::Command::new(go_tools().join("codespec-write-go"))
+        .arg(&go)
+        .stdin(std::fs::File::open(&doc).unwrap())
+        .output()
+        .expect("the Go writer starts");
+    assert!(w.status.success(), "{}", String::from_utf8_lossy(&w.stderr));
+    let r = std::process::Command::new(go_tools().join("codespec-run-go"))
+        .arg("-build")
+        .arg(work.join("run"))
+        .arg(&go)
+        .arg(&calls_path)
+        .output()
+        .expect("the Go runner starts");
+    assert!(
+        r.status.success(),
+        "the written Go does not build or run:\n{}{}",
+        String::from_utf8_lossy(&r.stdout),
+        String::from_utf8_lossy(&r.stderr)
+    );
+    String::from_utf8(r.stdout).unwrap()
+}
+
+const SHADOW: &str = "/// Shadows its parameter, and a closure shadows its own.\n\
+pub fn shadow(n: i64) -> i64 {\n\
+\x20   let n = n + 5i64;\n\
+\x20   let twice = |n: i64| -> i64 {\n\
+\x20       let n = n * 2i64;\n\
+\x20       n\n\
+\x20   };\n\
+\x20   twice(n)\n\
+}\n";
+
+/// A5: a `let` of the function's outermost block that shadows a parameter binds a new Go name,
+/// as Go's parameters and body share one scope (`n := n + 5` does not compile); so does one of a
+/// closure's outermost block that shadows the closure's parameter.
+#[test]
+fn a_let_that_shadows_a_parameter_binds_a_new_name() {
+    let m = read(SHADOW);
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let f = &m.funcs[0];
+    assert_eq!(f.params[0].name, "n");
+    let Stmt::Let { names, .. } = &f.body[0] else {
+        panic!("{:?}", f.body)
+    };
+    assert_ne!(
+        names,
+        &["n"],
+        "the shadow keeps the parameter's name: {:?}",
+        f.body
+    );
+    let Stmt::Let { rhs, .. } = &f.body[1] else {
+        panic!("{:?}", f.body)
+    };
+    let Expr::Lambda { params, body, .. } = &rhs[0] else {
+        panic!("{rhs:?}")
+    };
+    let Stmt::Let { names: inner, .. } = &body[0] else {
+        panic!("{body:?}")
+    };
+    assert_ne!(inner[0], params[0].name, "the closure's shadow: {body:?}");
+}
+
+/// A5 end to end: the Go written from a function that shadows its parameter builds and returns
+/// what the Rust returns (`shadow(3)` is `(3 + 5) * 2`).
+#[test]
+fn a_shadowed_parameter_writes_go_that_builds_and_returns_the_rust_value() {
+    let out = run_as_go("shadow", SHADOW, &[("Shadow", &["3"])]);
+    assert_eq!(out, "ok 16\n");
+}
+
+const CFG_TEST: &str = "/// Test-only code that a normal build leaves out.\n\
+pub fn three() -> i64 {\n\
+\x20   let v = 2i64;\n\
+\x20   #[cfg(test)]\n\
+\x20   let v = v + 5i64;\n\
+\x20   let mut w = v;\n\
+\x20   #[cfg(test)]\n\
+\x20   w += 100i64;\n\
+\x20   #[cfg(not(test))]\n\
+\x20   w += 1i64;\n\
+\x20   #[cfg(all(test, feature = \"x\"))]\n\
+\x20   {\n\
+\x20       w = 0i64;\n\
+\x20   }\n\
+\x20   #[cfg(test)]\n\
+\x20   println!(\"{}\", w);\n\
+\x20   w\n\
+}\n\
+/// A test-only arm.\n\
+pub fn pick(k: i64) -> i64 {\n\
+\x20   match k {\n\
+\x20       #[cfg(test)]\n\
+\x20       1 => 10i64,\n\
+\x20       1 => 1i64,\n\
+\x20       _ => 0i64,\n\
+\x20   }\n\
+}\n\
+/// A bag.\n\
+pub struct Bag {\n\
+\x20   pub n: i64,\n\
+}\n\
+impl Bag {\n\
+\x20   /// The count.\n\
+\x20   pub fn count(&self) -> i64 {\n\
+\x20       self.n\n\
+\x20   }\n\
+\x20   #[cfg(test)]\n\
+\x20   pub fn probe(&self) -> i64 {\n\
+\x20       self.n + 1i64\n\
+\x20   }\n\
+}\n";
+
+/// A4: a statement, a match arm and an impl's function marked `#[cfg(test)]` (or `all(test, …)`)
+/// are not part of a normal build and are not read; one under `not(test)` is.
+#[test]
+fn code_built_only_for_tests_is_not_read() {
+    let m = read(CFG_TEST);
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let three = m.funcs.iter().find(|f| f.name == "Three").expect("Three");
+    assert_eq!(three.body.len(), 4, "{:?}", three.body);
+    assert!(
+        !m.funcs.iter().any(|f| f.name == "Probe"),
+        "a #[cfg(test)] method is read: {:?}",
+        m.funcs.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+}
+
+/// A4 end to end: the Go written from code with test-only statements returns what a normal Rust
+/// build returns (`three()` is 3, `pick(1)` 1), not what the test build would.
+#[test]
+fn test_only_statements_leave_the_written_go_returning_the_normal_builds_value() {
+    let out = run_as_go("cfg-test", CFG_TEST, &[("Three", &[]), ("Pick", &["1"])]);
+    assert_eq!(out, "ok 3\nok 1\n");
+}
+
+/// A4: a condition the reader cannot resolve (a feature, a platform, `debug_assertions`) is not
+/// guessed: a statement under it is `foreign` with a refusal at its line; an item under it, or
+/// holding a part under it, is refused, a function among them opaque with its calls.
+#[test]
+fn code_under_a_condition_the_reader_cannot_resolve_is_refused() {
+    let m = read(&lines(&[
+        "pub fn feat(x: i64) -> i64 {",
+        "    let mut y = x;",
+        "    #[cfg(feature = \"x\")]",
+        "    let y = y + 5i64;",
+        "    #[cfg(debug_assertions)]",
+        "    y += 1i64;",
+        "    y",
+        "}",
+        "#[cfg(feature = \"x\")]",
+        "pub fn gated() -> i64 {",
+        "    1i64",
+        "}",
+        "pub struct Bag {",
+        "    pub n: i64,",
+        "}",
+        "impl Bag {",
+        "    #[cfg(unix)]",
+        "    pub fn os(&self) -> i64 {",
+        "        self.n",
+        "    }",
+        "}",
+    ]));
+    assert_foreign(&m, "Feat", "lib.rs:3", "cfg(feature = \"x\")");
+    assert_foreign(&m, "Feat", "lib.rs:5", "cfg(debug_assertions)");
+    assert_refused(&m, "lib.rs:9", "cfg(feature = \"x\")");
+    assert_refused(&m, "lib.rs:16", "cfg(unix)");
+    let funcs: Vec<&str> = m.funcs.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(funcs, ["Feat"]);
+    let opaque: Vec<&str> = m.opaque.iter().map(|o| o.name.as_str()).collect();
+    assert!(
+        opaque.contains(&"Gated") && opaque.contains(&"Os"),
+        "{opaque:?}"
+    );
+}
