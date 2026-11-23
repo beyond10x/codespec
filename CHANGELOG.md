@@ -4,6 +4,100 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.11.0
+
+### Changed
+
+- `codespec query` keeps its fact cache in the reviewer's cache directory: `$CODESPEC_CACHE_DIR`,
+  else `$XDG_CACHE_HOME/codespec/facts`, else `~/.cache/codespec/facts`. It validates every
+  document before it reads the cache, reads a cache file only when the file names the digest of
+  the documents, and never uses a cache directory in or under the directory of a document, a
+  summary or a barrier. A `.cq/` cache beside the inputs, where 0.10.0 kept it, is no longer
+  read or written: a repository can no longer ship facts that change the answer. Breaking for
+  anyone who relied on the old location; the first query after the upgrade rebuilds the cache.
+- `scripts/read-repo.sh` exits 1 when any read fails, when `go list` fails or lists nothing, or
+  when `go list` gives an import no directory, with and without `--deps`; every package is still
+  tried first. A document name is a reversible encoding of the import path or directory (`%` as
+  `%25`, `_` as `%5F`, then `/` as `_`), so `a/b` and `a_b` give two documents, and two packages
+  that would map to one name fail the collection. The document names of paths holding `_` or
+  `%` change.
+- `codespec-read-rust` reads a normal build of the crate. A module, item, statement, match arm,
+  struct literal field, impl or trait item, field or variant under `cfg(test)` or
+  `all(test, …)` is left out; what `not(test)` marks is read. A condition the reader cannot
+  resolve (a feature, a platform, `debug_assertions`) is not guessed: a statement under one is
+  `foreign` with a refusal at its line, and a module or item under one, or holding a part under
+  one, is refused, a function or impl among them an `opaque` function with its calls. An item
+  under `any(test, feature = "x")`, read by 0.10.0, is now refused.
+- `codespec-write-rust` refuses a slice `range` loop whose body both rebinds the slice and
+  writes an element of it, or calls what can reach its storage, and a map `range` loop whose body
+  writes an entry and also rebinds the map, with a reason naming it: neither the variable nor a
+  copy holds what Go reads.
+- The cq compiler refuses a recursive rule that puts into its head a value made by arithmetic or
+  a builtin (`concat`, `replace`) from a value of the recursion, naming the relation. Such a rule
+  ran without end. Values made from facts outside the recursion, and copies of derived values,
+  are still accepted.
+- `codespec conform` refuses a `--check` or `--out` report inside `--work` before it clears
+  anything, and after a check that finds no difference fails when the report is gone or changed.
+  A symbolic link, FIFO, socket or device in a kit, a reader corpus or a writer's output ends the
+  run with an error; files are hashed in pieces, never held whole, and the digest format is
+  unchanged.
+
+### Fixed
+
+- `codespec-write-go` writes every `init` function of a package, in source order; it wrote only
+  the last.
+- `codespec-write-c` stores a multiple assignment into the targets Go stores into:
+  `i, values[i] = 1, 7` stores into the element `i` named before the first store, for several
+  values and for the results of one call. Its maps keep an open-addressing index beside the
+  insertion-ordered entries, so an insert or lookup compares a bounded number of keys instead of
+  every key; iteration order and value addresses are unchanged.
+- `codespec-write-rust` range loops compute what Go computes when the body changes the source. A
+  slice loop whose body rebinds the slice reads a copy made when the loop starts, where it
+  indexed the rebound variable and could panic; a map loop whose body writes entries walks a
+  snapshot of the keys and reads each value when its iteration reaches it, where it read a stale
+  copy.
+- `codespec-read-rust` gives a `let` that shadows a parameter in a function's or closure's
+  outermost block a new name, so the written Go builds (`n2 := n + 5`, not `n := n + 5`).
+- The evaluator (`codespec eval`, `codespec-run-cir`, `codespec-write-cir`) follows Go:
+  - `len` of an array, or of a pointer to one, nil included, is its type's length, and its
+    operand is evaluated exactly when it holds a call or a receive;
+  - `==`, `!=` and a `switch` case on two interface values of one dynamic type that is not
+    comparable panic with `comparing uncomparable type T`; different dynamic types stay unequal;
+  - a `range` over a nil channel stops as blocked;
+  - a function literal's `x :=` declares a new variable instead of overwriting the captured `x`;
+  - `println` evaluates every argument before it formats any;
+  - the strict `cir` writer refuses a `foreign` statement or a `raise` in a package-level
+    variable's initializer, a function literal there included.
+- A fault trace records an `append` that writes an older backing array in place as an update.
+  Evaluator startup does no node-id work for extern sites no stub names, and one traversal per
+  function with stubs; map reads and writes go through a hash index and compare only keys that
+  hash alike.
+- `codespec effects`, `trace` and `reach`: a method call a `foreign` statement lists, on a type
+  outside the set, takes the summary the typed `extern_method` call takes; a summary applies only
+  to calls from a module of its own language (a Rust summary no longer clears a Go effect); and
+  every Go `init` function is a root, not only the first.
+- `codespec check`: `error-eq` judges a comparison by the definitions that reach it (branches
+  joined, loops to a fixed point), not by the last assignment in the body; `conn-leak` drops the
+  link between a connection and its opening error when the error variable is reassigned, so a
+  later error branch no longer hides a leak; `dropped-error` (and `checks/dropped-error.cq`)
+  takes every call a `foreign` statement or an `opaque` function makes as filling its target's
+  parameters with anything, so a `defer p.write(f)` with an `*os.File` keeps the writer fallible.
+- `codespec query`: dataflow gives each lexical binding its own var, so a declaration in a nested
+  block or a function literal no longer flows to a use of the binding it shadows (a later binding
+  of a name in one body is `<body>$<name>@<node>`). A `reaches_path` scan or negation with a
+  bound end walks from the bound start, or back from the bound end, and builds witnesses only for
+  the pairs asked for. A path of no edge needs its node in the graph: a nonexistent function named
+  as both ends no longer gets a one-node path.
+- `codespec measure` counts an `opaque` function as refused (once, when a declaration refusal
+  already names it) and a `foreign` statement inside a function literal as making its function
+  refused, so partly read code no longer reports full coverage.
+- `codespec conform` keeps its per-program time limit: `--describe` runs within the run's limit,
+  and a descendant that holds the output open after the program exits no longer blocks the run.
+  A reader or writer ended by a signal is `run_failed` ("ended by a signal"), claimed or not,
+  where it counted as a refusal and could leave the run conforming.
+- CI runs every cargo test target and gate task the local gate runs, from one list
+  (`scripts/check-parts.txt`); `task check-parts` fails when a test target is in no part.
+
 ## 0.10.0
 
 ### Added
