@@ -47,6 +47,39 @@ type front struct {
 	globals, sentinels map[*types.Var]bool
 	// sig is the signature of the function or literal being read: the types its returns convert to.
 	sig *types.Signature
+	// why is the shape of the first sub-expression of the statement being read that has no cir/1
+	// form, in reading order (no); "" while every expression read so far has one.
+	why string
+}
+
+// no fails the read of an expression whose shape has no cir/1 form, and keeps shape as the reason
+// unless an earlier sub-expression of the same statement already failed.
+func (f *front) no(shape string) (Expr, bool) {
+	if f.why == "" {
+		f.why = shape
+	}
+	return Expr{}, false
+}
+
+// exprReason is the reason of a statement or initializer kept foreign for an expression: the shape
+// no recorded, once.
+func (f *front) exprReason() string {
+	why := f.why
+	f.why = ""
+	if why == "" {
+		return "expression outside cir/1"
+	}
+	return "expression outside cir/1: " + why
+}
+
+// goType spells t as the reader's messages do, a type of another package by its package name.
+func (f *front) goType(t types.Type) string {
+	return types.TypeString(t, func(p *types.Package) string {
+		if p == f.pkg {
+			return ""
+		}
+		return p.Name()
+	})
 }
 
 func load(dir string) (*Module, error) {
@@ -471,15 +504,20 @@ func (f *front) varDecl(vs *ast.ValueSpec) {
 		}
 		d := VarDecl{Name: n.Name, T: f.typ(v.Type()), Pos: f.pos(n.Pos())}
 		if i < len(vs.Values) {
+			f.why = ""
 			x, ok := f.expr(vs.Values[i])
 			if ok && x.K == "nil" {
 				x.T = ptrT(d.T)
 			}
 			if ok && exprForeignType(x) == "" {
+				f.why = ""
 				x = f.coerce(x, v.Type())
 				d.Init = &x
 			} else {
 				reason := "initializer outside cir/1"
+				if !ok {
+					reason = "initializer " + strings.TrimPrefix(f.exprReason(), "expression ")
+				}
 				d.Foreign = &Stmt{K: "foreign", Lang: "go", Src: f.src(vs.Values[i]), Reason: reason}
 				f.refuse(vs.Values[i], n.Name, reason)
 			}
@@ -769,6 +807,10 @@ func (f *front) labeled(s *ast.LabeledStmt, results []Type) Stmt {
 // stmt reads s; a statement holding an expression of a type cir/1 has no form for is kept foreign.
 func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 	refused := len(f.mod.Refusals)
+	// A statement read inside an expression (a function literal's body) keeps its own shape.
+	outer := f.why
+	f.why = ""
+	defer func() { f.why = outer }()
 	st := f.stmtRaw(s, results)
 	if n := stmtForeignType(st); n != "" {
 		st = f.foreign(s, "type outside cir/1: "+n)
@@ -799,11 +841,11 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.AssignStmt:
 		lhs, ok := f.exprs(s.Lhs)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		rhs, ok := f.exprs(s.Rhs)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		if s.Tok == token.DEFINE {
 			var names []string
@@ -829,7 +871,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.IncDecStmt:
 		x, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		k := "incr"
 		if s.Tok == token.DEC {
@@ -854,7 +896,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.RangeStmt:
 		over, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		key, val := rangeName(s.Key), rangeName(s.Value)
 		// for_range declares its key and value; `=` assigns variables declared before the loop
@@ -876,7 +918,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Cond != nil {
 			c, ok := f.expr(s.Cond)
 			if !ok {
-				return f.foreign(s, "expression outside cir/1")
+				return f.foreign(s, f.exprReason())
 			}
 			st.Cond = &c
 		}
@@ -919,7 +961,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Tag != nil {
 			tag, ok := f.expr(s.Tag)
 			if !ok {
-				return f.foreign(s, "expression outside cir/1")
+				return f.foreign(s, f.exprReason())
 			}
 			st.Tag = &tag
 		}
@@ -927,7 +969,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 			cc := cl.(*ast.CaseClause)
 			vs, ok := f.exprs(cc.List)
 			if !ok {
-				return f.foreign(s, "expression outside cir/1")
+				return f.foreign(s, f.exprReason())
 			}
 			st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
 		}
@@ -935,7 +977,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.ReturnStmt:
 		rs, ok := f.exprs(s.Results)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		for i := range rs {
 			if i < len(results) && rs[i].K == "nil" {
@@ -954,14 +996,14 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.ExprStmt:
 		x, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		return Stmt{K: "expr", X: &x, Pos: pos}
 	case *ast.SendStmt:
 		ch, ok1 := f.expr(s.Chan)
 		x, ok2 := f.expr(s.Value)
 		if !ok1 || !ok2 {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		return Stmt{K: "send", Chan: &ch, X: &x, Pos: pos}
 	case *ast.LabeledStmt:
@@ -978,7 +1020,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 func (f *front) ifStmt(s *ast.IfStmt, results []Type) Stmt {
 	c, ok := f.expr(s.Cond)
 	if !ok {
-		return f.foreign(s, "expression outside cir/1")
+		return f.foreign(s, f.exprReason())
 	}
 	st := Stmt{K: "if", Cond: &c, Then: f.stmts(s.Body.List, results), Pos: f.pos(s.Pos())}
 	switch e := s.Else.(type) {
@@ -1048,31 +1090,48 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 					// refused for its type: the statement holding it is foreign for that type
 					return Expr{K: "global", Name: e.Name, T: t}, true
 				}
-				return Expr{}, false
+				return f.no("use of a refused package variable")
 			}
 			return Expr{K: "var", Name: e.Name, T: t}, true
 		case *types.Func:
 			// A function of the package used as a value; an instance of a generic one has no
 			// cir/1 form (func_ref carries no type arguments).
-			if _, generic := f.info.Instances[e]; o.Pkg() != f.pkg || t == nil || t.K != "func" || generic {
-				return Expr{}, false
+			if _, generic := f.info.Instances[e]; generic {
+				return f.no("generic function used as a value")
+			}
+			if o.Pkg() != f.pkg || t == nil || t.K != "func" {
+				return f.no("function value of " + f.funcTypeShape(o.Type()))
 			}
 			return Expr{K: "func_ref", Name: e.Name, T: t}, true
+		case *types.TypeName:
+			return f.no("type as an operand")
+		case *types.Builtin:
+			return f.no("builtin " + e.Name + " used as a value")
 		}
 		if f.info.Defs[e] != nil {
 			return Expr{K: "var", Name: e.Name, T: t}, true
 		}
-		return Expr{}, false
+		if e.Name == "_" {
+			return f.no("`_` as an operand")
+		}
+		return f.no("name " + e.Name)
 	case *ast.SelectorExpr:
 		if sel := f.info.Selections[e]; sel != nil && sel.Kind() == types.FieldVal && sel.Obj().Pkg() != f.pkg {
-			return Expr{}, false // a field of a struct of another package: the extern type is opaque
+			return f.no("field of a struct of another package") // the extern type is opaque
 		}
 		if sel := f.info.Selections[e]; sel != nil && sel.Kind() != types.FieldVal {
 			// A method value x.M of a method the package declares, through the embedded fields it
 			// is promoted from; a method expression T.M is outside cir/1.
 			// A method value of an interface dispatches when called: no function to name.
-			if sel.Kind() != types.MethodVal || sel.Obj().Pkg() != f.pkg || t == nil || t.K != "func" || types.IsInterface(holder(sel)) {
-				return Expr{}, false
+			switch {
+			case sel.Kind() != types.MethodVal:
+				return f.no("method expression")
+			case types.IsInterface(holder(sel)):
+				return f.no("method value of an interface")
+			case sel.Obj().Pkg() != f.pkg:
+				return f.no("method value of another package's type")
+			case t == nil || t.K != "func":
+				return f.no("method value of " + f.funcTypeShape(f.info.TypeOf(e)))
 			}
 			x, ok := f.receiver(e, sel)
 			if !ok {
@@ -1086,6 +1145,20 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 				return Expr{}, false
 			}
 			return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+		}
+		if id, ok := e.X.(*ast.Ident); ok {
+			if _, ok := f.info.Uses[id].(*types.PkgName); ok {
+				// a qualified name of another package, not called
+				switch f.info.Uses[e.Sel].(type) {
+				case *types.Const:
+					return f.no("constant of another package")
+				case *types.Var:
+					return f.no("variable of another package")
+				case *types.Func:
+					return f.no("function of another package used as a value")
+				}
+				return f.no("name of another package")
+			}
 		}
 		x, ok := f.expr(e.X)
 		if !ok {
@@ -1133,16 +1206,16 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			return Expr{K: "make", T: t}, true
 		}
 		if t == nil || t.K != "named" {
-			return Expr{}, false
+			return f.no(f.literalShape(e))
 		}
 		if _, ok := f.info.TypeOf(e).Underlying().(*types.Struct); !ok {
-			return Expr{}, false // a literal of a named map or slice type
+			return f.no("literal of a named map, slice or array type")
 		}
 		out := Expr{K: "struct", Name: t.Name, T: t}
 		for _, el := range e.Elts {
 			kv, ok := el.(*ast.KeyValueExpr)
 			if !ok {
-				return Expr{}, false
+				return f.no("positional struct literal")
 			}
 			v, ok := f.expr(kv.Value)
 			if !ok {
@@ -1159,8 +1232,49 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		return out, true
 	case *ast.CallExpr:
 		return f.call(e, t)
+	case *ast.SliceExpr:
+		return f.no("slice expression")
+	case *ast.TypeAssertExpr:
+		return f.no("type assertion")
+	case *ast.IndexListExpr:
+		return f.no("generic function used as a value")
+	case *ast.ArrayType, *ast.MapType, *ast.ChanType, *ast.FuncType, *ast.InterfaceType, *ast.StructType:
+		return f.no("type as an operand")
 	}
-	return Expr{}, false
+	return f.no(fmt.Sprintf("%T", e))
+}
+
+// literalShape names what a composite literal that is not a struct literal of the package is.
+func (f *front) literalShape(e *ast.CompositeLit) string {
+	t := f.info.TypeOf(e)
+	if t == nil {
+		return "composite literal"
+	}
+	switch t.Underlying().(type) {
+	case *types.Slice:
+		return "slice literal with elements"
+	case *types.Map:
+		return "map literal with elements"
+	case *types.Array:
+		return "array literal"
+	case *types.Struct:
+		if n, ok := types.Unalias(t).(*types.Named); ok && n.Obj().Pkg() != f.pkg {
+			return "literal of another package's struct"
+		}
+		if _, ok := types.Unalias(t).(*types.Named); !ok {
+			return "literal of an anonymous struct type"
+		}
+		return "literal of a struct type outside cir/1"
+	}
+	return "composite literal of type " + f.goType(t)
+}
+
+// funcTypeShape names what makes the function type t have no cir/1 type.
+func (f *front) funcTypeShape(t types.Type) string {
+	if sig, ok := t.Underlying().(*types.Signature); ok && sig.Variadic() {
+		return "a variadic type"
+	}
+	return "a type outside cir/1"
 }
 
 // externCall reads pkg.Name(args), a call of a function of another package, as an extern call,
@@ -1169,33 +1283,39 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 // parameter or result type, or a constraint, cir/1 has no type for is outside cir/1.
 func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Type) (Expr, bool) {
 	fn, ok := f.info.Uses[sel].(*types.Func)
-	if !ok || t == nil {
-		return Expr{}, false
+	if !ok {
+		return f.no("call of a function value of another package")
+	}
+	if t == nil {
+		return f.no("call of another package's function with a type outside cir/1")
 	}
 	fn = fn.Origin()
 	sig := fn.Type().(*types.Signature)
 	tps, why := f.tparams(sig.TypeParams())
+	if why != "" {
+		return f.no("call of a generic function whose constraint cir/1 lacks")
+	}
 	targs, _, ok := f.instance(sel)
-	if why != "" || !ok {
-		return Expr{}, false
+	if !ok {
+		return f.no("call of a generic function with a type argument outside cir/1")
 	}
 	x := Extern{Path: pn.Imported().Path(), Name: fn.Name(), Variadic: sig.Variadic(), Tparams: tps}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := f.typ(sig.Params().At(i).Type())
 		if hasForeign(p) {
-			return Expr{}, false
+			return f.no("call of another package's function with a type outside cir/1")
 		}
 		x.Params = append(x.Params, p)
 	}
 	for i := 0; i < sig.Results().Len(); i++ {
 		r := f.typ(sig.Results().At(i).Type())
 		if hasForeign(r) {
-			return Expr{}, false
+			return f.no("call of another package's function with a type outside cir/1")
 		}
 		x.Results = append(x.Results, r)
 	}
 	if hasForeign(*t) {
-		return Expr{}, false
+		return f.no("call of another package's function with a type outside cir/1")
 	}
 	f.extern(x)
 	return Expr{K: "extern", Path: x.Path, Name: x.Name, Targs: targs, Args: args, T: t}, true
@@ -1240,7 +1360,12 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	// that spreads a tuple over parameters, so the call is outside it.
 	if len(e.Args) == 1 {
 		if _, multi := f.info.TypeOf(e.Args[0]).(*types.Tuple); multi {
-			return Expr{}, false
+			return f.no("call passed a multi-valued call")
+		}
+	}
+	if id, ok := ast.Unparen(e.Fun).(*ast.Ident); ok {
+		if _, ok := f.info.Uses[id].(*types.Builtin); ok && id.Name != "append" && id.Name != "len" {
+			return f.no("builtin " + id.Name)
 		}
 	}
 	if sk, ok := f.sortedKeys(e, t); ok {
@@ -1255,7 +1380,7 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	if spread {
 		last := e.Args[len(e.Args)-1]
 		if _, ok := f.info.TypeOf(last).Underlying().(*types.Slice); !ok {
-			return Expr{}, false // append(b, s...) of a string: no slice to pass
+			return f.no("spread of a string") // append(b, s...) of a string: no slice to pass
 		}
 		x := args[len(args)-1]
 		args[len(args)-1] = Expr{K: "spread", X: &x, T: x.T}
@@ -1265,7 +1390,7 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return toIface(args[0], wt), true
 		}
 		if len(args) != 1 || t == nil || t.K != "named" {
-			return Expr{}, false
+			return f.no("conversion to " + f.goType(tv.Type))
 		}
 		return Expr{K: "conv", Name: t.Name, X: &args[0], T: t}, true
 	}
@@ -1301,11 +1426,11 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			if fun.Name == "append" || (fun.Name == "len" && !spread) {
 				return Expr{K: "intrinsic", Name: fun.Name, Args: args, T: t}, true
 			}
-			return Expr{}, false
+			return f.no("builtin " + fun.Name + " with a spread")
 		case *types.Func:
 			targs, _, ok := f.instance(fun)
 			if !ok {
-				return Expr{}, false
+				return f.no("call of a generic function with a type argument outside cir/1")
 			}
 			return Expr{K: "call", Name: fun.Name, Targs: targs, Args: args, T: t}, true
 		}
@@ -1343,7 +1468,10 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return Expr{K: "call_value", X: &fn, Args: args, T: t}, true
 		}
 	}
-	return Expr{}, false
+	if spread {
+		return f.no("spread call of a function value")
+	}
+	return f.no(fmt.Sprintf("call of %T", e.Fun))
 }
 
 // sortedKeys reads `slices.Sorted(maps.Keys(m))`, the keys of m in ascending order, as cir/1's
@@ -1530,7 +1658,7 @@ func (f *front) ifInitShape(s *ast.IfStmt, params map[string]bool) *ifInit {
 // marks the read adds (a function literal's body is read with it) are taken back, so the read of
 // the body that follows adds each once, and only for what it keeps.
 func (f *front) probe(es []ast.Expr) bool {
-	refusals, externs, ifaces := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces)
+	refusals, externs, ifaces, why := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces), f.why
 	unlabeled := make(map[*ast.BranchStmt]bool, len(f.unlabeled))
 	for b, v := range f.unlabeled {
 		unlabeled[b] = v
@@ -1540,6 +1668,7 @@ func (f *front) probe(es []ast.Expr) bool {
 		f.mod.Externs = f.mod.Externs[:externs]
 		f.mod.Interfaces = f.mod.Interfaces[:ifaces]
 		f.unlabeled = unlabeled
+		f.why = why
 	}()
 	for _, e := range es {
 		x, ok := f.expr(e)
@@ -1723,8 +1852,11 @@ func assignOrDeclare(body *ast.BlockStmt, live map[*ast.IfStmt]*ifInit) (hoists,
 // body, in which no enclosing loop or label is visible. A literal with named results is outside
 // cir/1.
 func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
-	if t == nil || t.K != "func" || hasForeign(*t) || hasNamedResults(e.Type) {
-		return Expr{}, false
+	if hasNamedResults(e.Type) {
+		return f.no("function literal with named results")
+	}
+	if t == nil || t.K != "func" || hasForeign(*t) {
+		return f.no("function literal of " + f.funcTypeShape(f.info.TypeOf(e)))
 	}
 	sig := f.info.TypeOf(e).(*types.Signature)
 	x := Expr{K: "lambda", T: t, Params: []Param{}, Results: t.Results, Captures: f.captures(e)}
