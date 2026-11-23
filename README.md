@@ -38,11 +38,8 @@ lists the syscalls each function may reach, `codespec reach` the dead code from 
 
 ## Status
 
-**0.2.0**: the `cir/1` model and schema, the `codespec` CLI, a Go reader, the passes and facts, a Go
-writer, a Rust writer, a Rust reader (Rust → `cir/1` → Go, on `examples/inventory`) and the comparison
-harness, shown on four examples, among them the algorithmic `examples/series`. Every
-capability and the test that checks it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
-[CHANGELOG.md](CHANGELOG.md).
+The support matrix lists the verified features of each reader and writer. [Support matrix](https://beyond10x.github.io/codespec/docs/reference/support).
+For the changes in each release, see the [changelog](https://github.com/beyond10x/codespec/blob/main/CHANGELOG.md).
 
 ## Install
 
