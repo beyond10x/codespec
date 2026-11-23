@@ -79,6 +79,11 @@ reader these constructs are:
 - an `if` with an init statement, unless hoisting the init in front of the `if` keeps the meaning.
   The reader reads `if err := f(); err != nil { … }` as `err := f()` and the `if`.
 
+Two Go declarations declare nothing a body can name and do nothing at run time, so the Go reader
+omits them without a refusal: a package-level blank variable whose initializer has no run-time
+effect (`var _ io.Writer = (*T)(nil)`, the compiler's check that `*T` implements the interface),
+and a type alias (`type A = B`), every use of which reads as `B`.
+
 A writer for the same language can splice the source back. A writer for another language refuses
 the function that holds it. See [Readers, passes and writers](/docs/concepts/pipeline#refusals).
 

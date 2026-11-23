@@ -39,6 +39,23 @@ The reader does not read the kit case of these six to its feature. For the first
 | `stmt.raise` | Go has no statement that leaves a function, and every caller up to the framework that started it, with a value of another package's type; the case's Go source panics there, which the reader does not read as `raise` |
 | `stmt.lookup_else` | the reader writes a comma-ok `let` and an `if`; only the lookup-guard pass of `codespec pass` makes them a `lookup_else`, and a reader's claim covers only what the reader prints (`docs/conformance.md` § 5) |
 
+## Omitted
+
+Two declarations are omitted without a refusal: they declare nothing a body can name and do
+nothing when the package is initialized.
+
+- A package-level blank variable with no initializer, or with one that has no run-time effect: a
+  constant, `nil`, a function literal, a conversion of such a value, a composite literal of such
+  values or its address (`var _ io.Writer = (*T)(nil)`, `var _ io.Writer = T{}`, the compiler's
+  check that a type implements an interface). `var _ = f()` runs `f` and stays refused.
+- A type alias, `type A = B`: every use of `A` reads as `B`.
+
+## Read by lowering
+
+- `_ = e` reads as `let _ = e`; an assignment with blank and named targets, `a, _ = f()`, as
+  `let a_1, _ = f()` followed by `a = a_1`, when every named target is an identifier. A fresh name
+  `<name>_<n>` is spelled nowhere else in the declaration being read.
+
 ## Refused
 
 - A range with `=` that assigns a variable declared before the loop (`for i = range xs`,

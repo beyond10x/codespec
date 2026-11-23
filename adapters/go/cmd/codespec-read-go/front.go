@@ -50,6 +50,156 @@ type front struct {
 	// why is the shape of the first sub-expression of the statement being read that has no cir/1
 	// form, in reading order (no); "" while every expression read so far has one.
 	why string
+	// spelled maps every identifier spelling of the package-level declaration being read to the
+	// objects it names there (nil for none); fresh holds the names freshName gave in it; rename
+	// holds the local variables read under a fresh name (name).
+	spelled map[string]map[types.Object]bool
+	fresh   map[string]bool
+	rename  map[types.Object]string
+}
+
+// beginDecl starts reading the package-level declaration n: no fresh name given, none renamed.
+func (f *front) beginDecl(n ast.Node) {
+	f.spelled, f.fresh, f.rename = map[string]map[types.Object]bool{}, map[string]bool{}, map[types.Object]string{}
+	ast.Inspect(n, func(c ast.Node) bool {
+		if id, ok := c.(*ast.Ident); ok {
+			o := f.info.Defs[id]
+			if o == nil {
+				o = f.info.Uses[id]
+			}
+			if f.spelled[id.Name] == nil {
+				f.spelled[id.Name] = map[types.Object]bool{}
+			}
+			f.spelled[id.Name][o] = true
+		}
+		return true
+	})
+}
+
+// freshName is `<base>_<n>` for the smallest n ≥ 1 that is spelled nowhere in the declaration
+// being read and not given before in it: a name of a local the reader introduces, which can
+// neither shadow nor be shadowed by a name the source uses.
+func (f *front) freshName(base string) string {
+	for n := 1; ; n++ {
+		c := base + "_" + strconv.Itoa(n)
+		if len(f.spelled[c]) == 0 && !f.fresh[c] {
+			f.fresh[c] = true
+			return c
+		}
+	}
+}
+
+// collides reports whether the name of the local obj is spelled anywhere in the declaration being
+// read for something other than obj.
+func (f *front) collides(name string, obj types.Object) bool {
+	for o := range f.spelled[name] {
+		if o != obj {
+			return true
+		}
+	}
+	return false
+}
+
+// name is the cir/1 name of the identifier id: the fresh name its variable is read under, or its
+// own.
+func (f *front) name(id *ast.Ident) string {
+	o := f.info.Defs[id]
+	if o == nil {
+		o = f.info.Uses[id]
+	}
+	if r, ok := f.rename[o]; ok && o != nil {
+		return r
+	}
+	return id.Name
+}
+
+// whole reads the statements the Go statement s lowers to; when any of them is outside cir/1,
+// s is kept foreign whole for that one's reason, and what reading the others declared or refused
+// is taken back.
+func (f *front) whole(s ast.Stmt, read func() []Stmt) []Stmt {
+	refused, externs, ifaces := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces)
+	outer := f.why
+	f.why = ""
+	defer func() { f.why = outer }()
+	parts := read()
+	for _, p := range parts {
+		reason := ""
+		if p.K == "foreign" {
+			reason = p.Reason
+		} else if n := stmtForeignType(p); n != "" {
+			reason = "type outside cir/1: " + n
+		}
+		if reason != "" {
+			f.mod.Refusals = f.mod.Refusals[:refused]
+			f.mod.Externs = f.mod.Externs[:externs]
+			f.mod.Interfaces = f.mod.Interfaces[:ifaces]
+			return []Stmt{f.foreign(s, reason)}
+		}
+	}
+	return parts
+}
+
+func isBlank(e ast.Expr) bool {
+	id, ok := ast.Unparen(e).(*ast.Ident)
+	return ok && id.Name == "_"
+}
+
+// blankAssign reads an assignment with a blank target: `_ = e` as `let _ = e`, and `a, _ = f()`
+// as `let a_1, _ = f()` followed by `a = a_1`, each named target from its fresh name. Every named
+// target must be an identifier: the operands of an index or field target would be evaluated after
+// the right side. It reports false for any other statement.
+func (f *front) blankAssign(s ast.Stmt, results []Type) ([]Stmt, bool) {
+	as, ok := s.(*ast.AssignStmt)
+	if !ok || as.Tok != token.ASSIGN {
+		return nil, false
+	}
+	blanks := 0
+	for _, l := range as.Lhs {
+		if isBlank(l) {
+			blanks++
+		} else if _, ok := ast.Unparen(l).(*ast.Ident); !ok {
+			return nil, false
+		}
+	}
+	if blanks == 0 {
+		return nil, false
+	}
+	pos := f.pos(as.Pos())
+	return f.whole(as, func() []Stmt {
+		rhs, ok := f.exprs(as.Rhs)
+		if !ok {
+			return []Stmt{f.foreign(as, f.exprReason())}
+		}
+		names := make([]string, len(as.Lhs))
+		var assigns []Stmt
+		for i, l := range as.Lhs {
+			if isBlank(l) {
+				names[i] = "_"
+				continue
+			}
+			id := ast.Unparen(l).(*ast.Ident)
+			target, ok := f.expr(id)
+			if !ok {
+				return []Stmt{f.foreign(as, f.exprReason())}
+			}
+			names[i] = f.freshName(id.Name)
+			var vt types.Type
+			if len(as.Rhs) == len(as.Lhs) {
+				vt = f.info.TypeOf(as.Rhs[i])
+				if rhs[i].K == "nil" && rhs[i].T != nil && rhs[i].T.K == "nil" {
+					rhs[i].T, vt = target.T, f.info.TypeOf(l)
+				}
+			} else if tup, ok := f.info.TypeOf(as.Rhs[0]).(*types.Tuple); ok && i < tup.Len() {
+				vt = tup.At(i).Type()
+			}
+			if vt == nil {
+				return []Stmt{f.foreign(as, "assignment with a blank target outside cir/1")}
+			}
+			v := Expr{K: "var", Name: names[i], T: ptrT(f.typ(vt))}
+			assigns = append(assigns, Stmt{K: "assign", Lhs: []Expr{target}, Rhs: []Expr{f.coerce(v, f.info.TypeOf(l))}, Pos: pos})
+		}
+		return append([]Stmt{{K: "let", Names: names, Rhs: rhs, Pos: pos}}, assigns...)
+	}), true
 }
 
 // no fails the read of an expression whose shape has no cir/1 form, and keeps shape as the reason
@@ -354,6 +504,11 @@ func (f *front) decl(d ast.Decl) {
 }
 
 func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
+	if ts.Assign.IsValid() {
+		// A type alias declares no type: every use of it reads as the type it names (typ). It is
+		// omitted without a refusal (README.md § Omitted).
+		return
+	}
 	if why, out := f.outside[ts.Name.Name]; out {
 		f.refuse(ts, ts.Name.Name, why)
 		return
@@ -494,9 +649,70 @@ func (f *front) scanVars(files []*ast.File) {
 	}
 }
 
+// compileTimeOnly reports whether the i-th variable of the package-level vs is the blank variable
+// with no initializer or one that has no run-time effect: `var _ I = (*T)(nil)`, `var _ I = T{}`,
+// an assertion the compiler checks. It declares nothing a body can name and does nothing when
+// the package is initialized, so it is omitted without a refusal (README.md § Omitted).
+func (f *front) compileTimeOnly(vs *ast.ValueSpec, i int) bool {
+	if vs.Names[i].Name != "_" {
+		return false
+	}
+	if len(vs.Values) == 0 {
+		return true
+	}
+	return len(vs.Values) == len(vs.Names) && f.effectFree(vs.Values[i])
+}
+
+// effectFree reports whether evaluating e can have no effect and cannot fail: a constant, nil, a
+// function literal, a conversion of such a value, and a composite literal of such values or its
+// address. Any call, receive, index or field read is not.
+func (f *front) effectFree(e ast.Expr) bool {
+	if tv, ok := f.info.Types[e]; ok && tv.Value != nil {
+		return true
+	}
+	switch e := ast.Unparen(e).(type) {
+	case *ast.Ident:
+		_, isNil := f.info.Uses[e].(*types.Nil)
+		return isNil
+	case *ast.BasicLit, *ast.FuncLit:
+		return true
+	case *ast.UnaryExpr:
+		return e.Op == token.AND && f.effectFree(e.X)
+	case *ast.CompositeLit:
+		for _, el := range e.Elts {
+			if kv, ok := el.(*ast.KeyValueExpr); ok {
+				if id, ok := kv.Key.(*ast.Ident); !ok || !isField(f.info.Uses[id]) {
+					if !f.effectFree(kv.Key) {
+						return false
+					}
+				}
+				el = kv.Value
+			}
+			if !f.effectFree(el) {
+				return false
+			}
+		}
+		return true
+	case *ast.CallExpr:
+		if tv, ok := f.info.Types[e.Fun]; ok && tv.IsType() && len(e.Args) == 1 {
+			return f.effectFree(e.Args[0])
+		}
+	}
+	return false
+}
+
+func isField(o types.Object) bool {
+	v, ok := o.(*types.Var)
+	return ok && v.IsField()
+}
+
 func (f *front) varDecl(vs *ast.ValueSpec) {
+	f.beginDecl(vs)
 	for i, n := range vs.Names {
 		v := f.info.Defs[n].(*types.Var)
+		if f.compileTimeOnly(vs, i) {
+			continue
+		}
 		if f.sentinels[v] {
 			msg, _ := f.sentinelMessage(vs.Values[i])
 			f.mod.Errors = append(f.mod.Errors, ErrorVar{Name: n.Name, Message: msg, Pos: f.pos(n.Pos())})
@@ -546,6 +762,7 @@ func (f *front) isPkgFunc(e ast.Expr, pkg, name string) bool {
 }
 
 func (f *front) funcDecl(d *ast.FuncDecl) {
+	f.beginDecl(d)
 	fn := Func{Name: d.Name.Name, Exported: d.Name.IsExported(), Pos: f.pos(d.Pos()), Doc: docText(d.Doc)}
 	sig := f.info.Defs[d.Name].Type().(*types.Signature)
 	if d.Body == nil {
@@ -673,6 +890,10 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 				out = append(out, f.hoisted(is.Init.(*ast.AssignStmt), assign, results), f.ifStmt(is, results))
 				continue
 			}
+		}
+		if parts, ok := f.blankAssign(s, results); ok {
+			out = append(out, parts...)
+			continue
 		}
 		out = append(out, f.stmt(s, results))
 	}

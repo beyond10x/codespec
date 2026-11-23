@@ -50,7 +50,7 @@ func (f *front) typeOutside(ts *ast.TypeSpec) string {
 		return "type declaration outside cir/1"
 	}
 	if ts.Assign.IsValid() {
-		return "type alias: outside cir/1"
+		return "" // declares no type: typeDecl omits it, and every use reads as its target
 	}
 	if ts.TypeParams != nil {
 		if it, ok := obj.Type().Underlying().(*types.Interface); ok {
