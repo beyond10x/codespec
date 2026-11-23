@@ -2,10 +2,12 @@
 format: aep.planning-md/3
 id: story:go-reader-make-map
 kind: story
-status: draft
+status: archived
 title: The Go reader reads make of a map
 summary: make(map[K]V) and make(map[K]V, n) are read as an empty map, where they are refused today.
-revision: 2
+revision: 4
+transitions:
+- {from: "draft", to: "archived", at: "2026-11-23T23:00:16Z", actor: "human:timo", revision: 3}
 ---
 # Story: the Go reader reads `make` of a map
 
@@ -27,3 +29,9 @@ today, so `cir/1` has the value; the reader lacks only this form of it.
 - The document is the one the same file gives with `map[K]V{}` in place of each `make`, apart from
   positions.
 - `make` of a slice and of a channel keep their present behaviour; `task check` exits 0.
+
+## Folded
+
+Folded on 2026-11-24 into `story:go-reader-small-forms` (wave 1 of `epic:go-reader-refusals`),
+which reads `make(map[K]V)` and `make(map[K]V, n)` (n a constant or `len` of a variable) as
+`make {t}`; archived rather than delivered twice.
