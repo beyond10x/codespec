@@ -74,7 +74,8 @@ reader these constructs are:
 
 - a goroutine;
 - `defer`;
-- named results;
+- named results in a function or literal that holds a `defer`. Without one, named results read as
+  locals declared at the top with their zero values, and a bare `return` returns them;
 - an expression it has no node for;
 - an `if` or `switch` with an init statement in a function that holds a `goto`, or whose init or
   condition is outside `cir/1`. Otherwise the reader reads the init in front of the statement:

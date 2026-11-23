@@ -60,6 +60,9 @@ type front struct {
 	// gotoBody is the body gotoHas says holds a goto or not (canHoist).
 	gotoBody *ast.BlockStmt
 	gotoHas  bool
+	// named holds the named results of the function or literal being read, as the locals a bare
+	// return returns (resultVars); nil when it has none.
+	named []Expr
 }
 
 // beginDecl starts reading the package-level declaration n: no fresh name given, none renamed.
@@ -881,7 +884,7 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	for i := 0; i < sig.Results().Len(); i++ {
 		fn.Results = append(fn.Results, f.typ(sig.Results().At(i).Type()))
 	}
-	if hasNamedResults(d.Type) {
+	if hasNamedResults(d.Type) && hasDefer(d.Body) {
 		fn.Body = []Stmt{f.namedResultsBody(d)}
 	} else {
 		f.fnBody, f.sig = d.Body, sig
@@ -892,8 +895,14 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 		for _, p := range fn.Params {
 			params[p.Name] = true
 		}
+		var decls []Stmt
+		f.named = nil
+		if hasNamedResults(d.Type) {
+			decls, f.named = f.resultVars(sig.Results(), params)
+		}
 		f.hoist = f.planHoists(d.Body, params)
-		fn.Body = f.stmts(d.Body.List, fn.Results)
+		fn.Body = append(decls, f.stmts(d.Body.List, fn.Results)...)
+		f.named = nil
 	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
 	key := "func:" + fn.Name
@@ -946,6 +955,43 @@ func hasNamedResults(ft *ast.FuncType) bool {
 		}
 	}
 	return false
+}
+
+// hasDefer reports whether body holds a defer outside any function literal in it: only then does
+// code run between a return and the caller, and read the named results there.
+func hasDefer(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.DeferStmt:
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// resultVars declares the named results res as locals with their zero values, `var n T` each, a
+// blank result under a fresh name `r_<n>`, and returns the declarations and the values a bare
+// return returns. Each name is added to params.
+func (f *front) resultVars(res *types.Tuple, params map[string]bool) ([]Stmt, []Expr) {
+	var decls []Stmt
+	var vals []Expr
+	for i := 0; i < res.Len(); i++ {
+		r := res.At(i)
+		name := r.Name()
+		if name == "" || name == "_" {
+			name = f.freshName("r")
+		} else {
+			params[name] = true
+		}
+		t := f.typ(r.Type())
+		decls = append(decls, Stmt{K: "var", Names: []string{name}, T: &t, Pos: f.pos(r.Pos())})
+		vals = append(vals, Expr{K: "var", Name: name, T: ptrT(t)})
+	}
+	return decls, vals
 }
 
 // namedResultsBody keeps a function with named results as one foreign statement: its body,
@@ -1284,6 +1330,9 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		rs, ok := f.exprs(s.Results)
 		if !ok {
 			return f.foreign(s, f.exprReason())
+		}
+		if len(s.Results) == 0 && f.named != nil {
+			rs = append([]Expr{}, f.named...) // a bare return returns the named results
 		}
 		for i := range rs {
 			if i < len(results) && rs[i].K == "nil" {
@@ -2236,11 +2285,11 @@ func assignOrDeclare(body *ast.BlockStmt, live map[*ast.IfStmt]*ifInit) (hoists,
 }
 
 // lambda reads a function literal: its parameters and results, the outer locals it uses, and its
-// body, in which no enclosing loop or label is visible. A literal with named results is outside
-// cir/1.
+// body, in which no enclosing loop or label is visible. A literal with named results and a defer
+// is outside cir/1.
 func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
-	if hasNamedResults(e.Type) {
-		return f.no("function literal with named results")
+	if hasNamedResults(e.Type) && hasDefer(e.Body) {
+		return f.no("function literal with named results and a defer")
 	}
 	if t == nil || t.K != "func" || hasForeign(*t) {
 		return f.no("function literal of " + f.funcTypeShape(f.info.TypeOf(e)))
@@ -2254,17 +2303,21 @@ func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
 		}
 		x.Params = append(x.Params, Param{Name: name, T: t.Params[i]})
 	}
-	breaks, loops, label, fnBody, outer, hoist := f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist
-	f.breaks, f.loops, f.label, f.fnBody, f.sig = nil, nil, "", e.Body, sig
+	breaks, loops, label, fnBody, outer, hoist, named := f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist, f.named
+	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.named = nil, nil, "", e.Body, sig, nil
 	// The literal's body is a function body of its own: its `if` inits are planned over it, with
 	// its parameters, and the names they declare are scoped to it.
 	params := map[string]bool{}
 	for _, p := range x.Params {
 		params[p.Name] = true
 	}
+	var decls []Stmt
+	if hasNamedResults(e.Type) {
+		decls, f.named = f.resultVars(sig.Results(), params)
+	}
 	f.hoist = f.planHoists(e.Body, params)
-	x.Body = f.stmts(e.Body.List, t.Results)
-	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist = breaks, loops, label, fnBody, outer, hoist
+	x.Body = append(decls, f.stmts(e.Body.List, t.Results)...)
+	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist, f.named = breaks, loops, label, fnBody, outer, hoist, named
 	return x, true
 }
 

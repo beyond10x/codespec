@@ -60,6 +60,9 @@ nothing when the package is initialized.
   elsewhere in the function, and `else if init; c` as an `else` holding the init and the `if`. A
   function or literal holding a `goto` keeps every such statement foreign, and so does an init or
   condition outside `cir/1`.
+- Named results in a function or literal without a `defer` read as locals declared at the top,
+  `var n T`, a blank result as `var r_<n> T`; a bare `return` returns them. With a `defer`, which
+  can read or set them after the return, the body is kept in a foreign closure as before.
 
 ## Refused
 

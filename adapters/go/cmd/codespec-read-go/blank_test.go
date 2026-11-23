@@ -14,6 +14,8 @@ type Sink struct{}
 func (Sink) Write(b []byte) (int, error) { return len(b), nil }
 
 func pair() (int, error) { return 1, nil }
+
+func sink() io.Writer { return Sink{} }
 `
 
 // `_ = x` evaluates x and drops it: cir/1 `let _ = x`, which the Go writer writes back as `_ = x`.
