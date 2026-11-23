@@ -108,7 +108,7 @@ differs:
 ```shell-session
 $ export CODESPEC_ADAPTERS=target/adapters
 $ target/debug/codespec conform --lang go --role writer --out work/go-writer.json
-writer go 0.11.0: conforms; 126 claimed, 126 pass, 0 fail, 2 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
+writer go 0.12.0: conforms; 126 claimed, 126 pass, 0 fail, 2 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
 work/go-writer.json: written
 $ jq -c .summary work/go-writer.json
 {"claimed":126,"pass":126,"fail":0,"refused_unclaimed":2,"pass_unclaimed":0,"untested":0,"boundary_fail":0}
@@ -121,9 +121,9 @@ directory as `--kit`.
 
 Unpack a release's binary archive ([what it holds](/docs/getting-started#install)) into one
 directory, put your own adapter and runner beside its programs, and pass the directory as
-`--adapters`. That directory is everything `codespec conform` needs for a writer whose runner
-it holds and for a reader. The runners build what they run, so `go`, `cargo` and, for C, `cc` must
-be on `PATH`.
+`--adapters`. Keep `beam/` beside the Elixir and Gleam programs. The Go, Rust, C and Odin runners
+need `go`, `cargo`, `cc` and `odin` respectively on `PATH`. The Elixir and Gleam adapters use
+Elixir and Erlang/OTP, and the Gleam runner also uses the `gleam` compiler.
 
 | flag | effect |
 |---|---|

@@ -16,9 +16,10 @@ for the install directory and `<checkout>` for the clone.
 Each [GitHub Release](https://github.com/beyond10x/codespec/releases) carries one archive per
 target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-gnu`,
 `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, and `SHA256SUMS` over them. An archive
-holds `codespec`, the Go and Rust readers and writers, and their runners, side by side. Download
+holds `codespec`, readers, writers and runners for Go, Rust, Elixir, Gleam and Odin, and writers
+and runners for C and the evaluator. Keep `beam/` beside the Elixir and Gleam programs. Download
 the archive for your machine and `SHA256SUMS`, check it and extract it. `<tag>` is the release, for
-example `0.11.0`. On macOS, `shasum -a 256 -c --ignore-missing SHA256SUMS` does the check:
+example `0.12.0`. On macOS you can verify it with `shasum -a 256 -c --ignore-missing SHA256SUMS`.
 
 ```shell-session
 $ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz
@@ -30,12 +31,12 @@ $ tar -xzf codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/share/code
 $ export PATH="$HOME/.local/share/codespec:$PATH"
 $ export CODESPEC_ADAPTERS="$HOME/.local/share/codespec"
 $ codespec --version
-codespec 0.11.0
+codespec 0.12.0
 ```
 
 `codespec` runs an adapter from the directory `CODESPEC_ADAPTERS` names, or from `--adapters` on
-each command. The extract directory is that directory. The Java and Groovy readers are not in the
-archive: [Build from source](#build-from-source) builds them.
+each command. Use the directory where you extracted the archive. Build the C, Java and Groovy
+readers from source. [Build instructions](#build-from-source).
 
 The commands below read the repository's examples. Clone it at the tag you installed:
 
@@ -44,6 +45,8 @@ $ git clone --branch <tag> https://github.com/beyond10x/codespec && cd codespec
 ```
 
 The Go reader needs Go 1.23 or newer on `PATH`, and building the Rust output needs Cargo.
+The bundled Elixir and Gleam adapters run with Elixir and Erlang/OTP. To execute Gleam or Odin
+output with its native runner, put the corresponding compiler on `PATH`.
 
 ## Read: Go → cir/1
 
@@ -236,7 +239,7 @@ codespec-write-go
 codespec-write-odin
 codespec-write-rust
 $ target/debug/codespec --version
-codespec 0.11.0
+codespec 0.12.0
 ```
 
 A source build runs as `target/debug/codespec` with `CODESPEC_ADAPTERS=target/adapters`.

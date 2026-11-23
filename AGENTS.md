@@ -324,6 +324,7 @@ to `main` only.
    `crates/docs/src/status.rs` follows the workspace version, a test checks it, and the test `every_shipped_capability_rests_on_a_test_that_exists` names the version literally: bump both by hand; the `codespec --version` output pasted in `website/docs/getting-started.md` is checked against it too). Move the
    `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
+   Also bump the `CODESPEC_VERSION` fallback in `adapters/odin/read/main.odin` for standalone builds. The packaged Odin and BEAM programs take the version from the build.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.
 3. `.github/workflows/release-build.yml` runs on the tag (contents: read): it builds `codespec`,
    `codespec-write-rust`, `codespec-read-rust` and the runner `codespec-run-rust` (Rust), `codespec-write-c` and the runner `codespec-run-c` (C, built in Rust), the evaluator's `codespec-write-cir` and `codespec-run-cir` (which a reader's conformance run calls for a case the Go writer refuses) and `codespec-read-go`, `codespec-write-go` and the runner `codespec-run-go` (Go) for
