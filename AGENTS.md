@@ -135,7 +135,6 @@ ux-round` writes a round's Measure output to `ux/rounds/R-nn/`.
 ## Generated files
 
 Never edit these by hand; change the generator and regenerate.
-The `check` workflow’s manual `generate_adapter_reports` input runs `task docs-generate` on the selected branch. The `generated-adapter-reports` artifact contains a patch against that commit.
 
 | file | generator | regenerate |
 |---|---|---|
