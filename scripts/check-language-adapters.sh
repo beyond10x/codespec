@@ -19,7 +19,14 @@ for from in elixir gleam odin; do
   for to in elixir gleam odin; do
     out="$work/$from-to-$to"
     "$codespec" write --lang "$to" "$work/$from.json" --adapters "$adapters" --out "$out"
-    "$adapters/codespec-run-$to" --build "$out-build" "$out" "$fixture/calls.json" > "$out.txt"
+    # Different readers can produce the very same native package. Its execution
+    # for these calls already ran in this invocation's first iteration.
+    first="$work/elixir-to-$to"
+    if [ "$from" != elixir ] && diff -qr "$first" "$out" > /dev/null; then
+      cp "$first.txt" "$out.txt"
+    else
+      "$adapters/codespec-run-$to" --build "$out-build" "$out" "$fixture/calls.json" > "$out.txt"
+    fi
     cmp "$work/$from.original.txt" "$out.txt"
     if [ "$from" = "$to" ]; then
       "$codespec" read --lang "$to" "$out" --adapters "$adapters" --out "$out.read.json"

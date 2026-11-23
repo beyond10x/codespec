@@ -7,7 +7,7 @@ defmodule Codespec.ElixirReaderTest do
     dir =
       Path.join(
         "target/elixir-reader-test",
-        Integer.to_string(System.unique_integer([:positive]))
+        "#{System.pid()}-#{System.unique_integer([:positive])}"
       )
 
     File.mkdir_p!(dir)

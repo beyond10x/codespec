@@ -1918,17 +1918,33 @@ pub const CORPUS_LANGS: &[&str] = &[
     "go", "rust", "java", "groovy", "c", "elixir", "gleam", "odin",
 ];
 
+/// Files in one reader corpus, ordered by their paths relative to that corpus.
+pub type CorpusFiles = Vec<(String, Vec<u8>)>;
+
+/// Build every language's corpus from the same validated set of cases.
+pub fn reader_corpora(kit: &Path) -> Result<Vec<(&'static str, CorpusFiles)>, Error> {
+    let cases = load_cases(&kit.join("cases"))?;
+    CORPUS_LANGS
+        .iter()
+        .map(|&lang| Ok((lang, corpus_files(kit, lang, &cases)?)))
+        .collect()
+}
+
 /// The reader corpus of `lang`, one of [`CORPUS_LANGS`], built from the case sources of the kit
 /// at `kit` as the module doc's table says: every file by its path relative to the corpus
 /// directory (`<case>/…`, `/`-separated), in path order.
-pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, Error> {
+pub fn reader_corpus(kit: &Path, lang: &str) -> Result<CorpusFiles, Error> {
     if !CORPUS_LANGS.contains(&lang) {
         return Err(format!(
             "no corpus is built for language {lang:?}, one of {CORPUS_LANGS:?}"
         ));
     }
+    corpus_files(kit, lang, &load_cases(&kit.join("cases"))?)
+}
+
+fn corpus_files(kit: &Path, lang: &str, cases: &[Case]) -> Result<CorpusFiles, Error> {
     let mut out = Vec::new();
-    for case in load_cases(&kit.join("cases"))? {
+    for case in cases {
         let dir = &case.dir;
         let source = match lang {
             "elixir" => dir.join("elixir/case.ex"),

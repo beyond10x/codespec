@@ -54,8 +54,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use codespec_conformance::conform::{
-    CORPUS_LANGS, Process, Report, Target, conform_adapter, differences, read_report,
-    reader_corpus, report_json, summary_line,
+    Process, Report, Target, conform_adapter, differences, read_report, reader_corpora,
+    report_json, summary_line,
 };
 
 /// The first line of every generated page's front matter.
@@ -294,18 +294,12 @@ const REPORTS: &[(&str, &str, &str)] = &[
 /// relative to the directory.
 type Tree = (String, Vec<(String, Vec<u8>)>);
 
-/// The reader corpora `conformance/reader/<lang>`, built from the kit's case sources by
-/// [`reader_corpus`].
+/// Build the corpus directories from one pass over the kit.
 fn corpora(root: &Path) -> Result<Vec<Tree>> {
-    CORPUS_LANGS
-        .iter()
-        .map(|lang| {
-            Ok((
-                format!("conformance/reader/{lang}"),
-                reader_corpus(&root.join("conformance"), lang)?,
-            ))
-        })
-        .collect()
+    Ok(reader_corpora(&root.join("conformance"))?
+        .into_iter()
+        .map(|(lang, files)| (format!("conformance/reader/{lang}"), files))
+        .collect())
 }
 
 /// Every file of `dir`, by `/`-separated path relative to it, sorted.

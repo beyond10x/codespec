@@ -84,7 +84,7 @@ jobs:
     needs: [plan, tools]
     if: needs.plan.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.part == 'task docs-check' && 30 || 15 }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

@@ -2,7 +2,18 @@ defmodule Codespec.GleamReaderTest do
   use ExUnit.Case, async: true
   alias Codespec.GleamReader
 
-  @tag :tmp_dir
+  setup do
+    dir =
+      Path.join(
+        "target",
+        "gleam-reader-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    %{tmp_dir: dir}
+  end
+
   test "source order, forward calls and an escaped string survive the native parser", %{
     tmp_dir: dir
   } do
@@ -21,7 +32,6 @@ defmodule Codespec.GleamReaderTest do
     assert [%{"results" => [%{"x" => %{"value" => "\"hello\\n\""}}]}] = second["body"]
   end
 
-  @tag :tmp_dir
   test "the writer's grouped conditional subject stays a comparison", %{tmp_dir: dir} do
     file = Path.join(dir, "sample.gleam")
 
@@ -35,7 +45,6 @@ defmodule Codespec.GleamReaderTest do
     assert [%{"body" => [%{"k" => "if", "cond" => %{"op" => ">"}}]}] = m["funcs"]
   end
 
-  @tag :tmp_dir
   test "an unbounded result stays foreign at its original line", %{tmp_dir: dir} do
     file = Path.join(dir, "sample.gleam")
     File.write!(file, "pub fn sum(a: Int, b: Int) -> Int {\n  a + b\n}\n")
