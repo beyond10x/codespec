@@ -551,3 +551,47 @@ fn a_key_given_twice_is_refused_in_a_plan_and_in_a_session() {
     .unwrap_err();
     assert!(e.contains("\"func\""), "{e}");
 }
+
+/// Review E4: an `append` that fits its capacity writes the backing array in place, and when
+/// that array is older than the call and another slice shows the element, the call changed what
+/// a later call sees. A fault after it names that write as an `update`, as for an assignment.
+#[test]
+fn an_append_overwriting_an_older_array_in_place_is_an_update() {
+    const ALIAS: &str = "example.com/eval/appendalias";
+    let m = read("appendalias");
+    let s = session(
+        r#"{"format": "codespec-session/1", "calls": [
+            {"bind": "s", "func": "New", "args": ["chan"]},
+            {"func": "S.Sixth", "recv": "s", "args": []},
+            {"func": "S.Set", "recv": "s", "args": []},
+            {"func": "S.Sixth", "recv": "s", "args": []}
+        ]}"#,
+    );
+    let site = format!("{ALIAS}.S.Set#1");
+    let run = trace(&m, &s, &[&format!("{site}:1=closed")]);
+    assert_eq!(run.stop, None, "{}", run.stdout);
+    let got = lines(&run.stdout);
+    assert!(
+        got.contains(&r#"{"event":"return","n":2,"results":["0"]}"#),
+        "{}",
+        run.stdout
+    );
+    assert_eq!(
+        got[got.len() - 5..],
+        [
+            format!(
+                r#"{{"event":"panic","n":3,"node":"{site}","pos":"alias.go:29","reason":"send on closed channel"}}"#
+            ),
+            format!(
+                r#"{{"event":"update","node":"{ALIAS}.S.Set#0","pos":"alias.go:28","value":"7"}}"#
+            ),
+            format!(
+                r#"{{"event":"summary","fault":"{site}","nth":1,"do":"closed","outcome":"panic, not handled in module","updates":1}}"#
+            ),
+            r#"{"event":"call","n":4,"func":"S.Sixth","recv":"s","args":[]}"#.to_string(),
+            r#"{"event":"return","n":4,"results":["7"]}"#.to_string(),
+        ][..],
+        "{}",
+        run.stdout
+    );
+}

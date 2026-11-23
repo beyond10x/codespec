@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:21:14Z",
+  "actor": "human:timo",
+  "artifact": "story:review-eval-traces-and-speed",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-eval --locked: all test binaries ok (faults 14, stops 11, ids 2, kit 2 ...); task eval-diff exit 0"
+  }
+}

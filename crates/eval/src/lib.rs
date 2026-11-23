@@ -121,6 +121,7 @@
 
 mod builtins;
 mod check;
+pub mod count;
 pub mod diff;
 pub mod fault;
 mod gofmt;
@@ -310,17 +311,23 @@ pub fn run_calls(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, Strin
     on_eval_stack(|| run_on_this_thread(m, calls, opts))
 }
 
-/// `run` on a thread of its own with the evaluator's stack, [`EVAL_STACK`].
+/// `run` on a thread of its own with the evaluator's stack, [`EVAL_STACK`]; its work counts
+/// (`count`) are added to the calling thread's.
 pub(crate) fn on_eval_stack<T: Send>(run: impl FnOnce() -> T + Send) -> T {
-    std::thread::scope(|s| {
+    let (out, counts) = std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("cir1-eval".into())
             .stack_size(EVAL_STACK)
-            .spawn_scoped(s, run)
+            .spawn_scoped(s, || {
+                let out = run();
+                (out, count::counts())
+            })
             .expect("a thread to evaluate on")
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-    })
+    });
+    count::add(counts);
+    out
 }
 
 fn run_on_this_thread(m: &Module, calls: &Calls, opts: &Options) -> Result<Run, String> {

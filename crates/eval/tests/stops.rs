@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use codespec_conformance::{CALLS_FORMAT, Call, Calls};
-use codespec_eval::{Options, StopKind, Stub, Stubbed, run_calls};
+use codespec_eval::{Options, StopKind, Stub, Stubbed, count, run_calls};
 use codespec_model::Module;
 
 fn fixtures() -> PathBuf {
@@ -275,4 +275,103 @@ fn a_run_that_reaches_a_raise_stops_there_by_name_before_making_its_value() {
         stop.reason
     );
     assert!(stop.to_string().contains(": raise: "), "{stop}");
+}
+
+/// A module of two functions: `One` returns 1, `Many` calls `strconv.Itoa` at `n` sites, one
+/// statement each.
+fn many_sites(n: usize) -> Module {
+    let int = serde_json::json!({"k": "int", "width": "platform", "signed": true});
+    let body: Vec<serde_json::Value> = (0..n)
+        .map(|i| {
+            serde_json::json!({"k": "expr", "x": {"k": "extern", "path": "strconv", "name": "Itoa",
+                "args": [{"k": "lit", "value": i.to_string(), "t": int}], "t": {"k": "string"}},
+                "pos": format!("many.go:{}", i + 9)})
+        })
+        .collect();
+    let m = serde_json::json!({
+        "format": "cir/1", "name": "many",
+        "reader": {"language": "go", "name": "codespec-read-go", "version": "0.10.0"},
+        "types": [],
+        "funcs": [
+            {"name": "One", "exported": true, "params": [], "results": [int],
+             "body": [{"k": "return", "results": [{"k": "lit", "value": "1", "t": int}], "pos": "many.go:4"}],
+             "pos": "many.go:3"},
+            {"name": "Many", "exported": true, "params": [], "results": [], "body": body,
+             "pos": "many.go:8"}
+        ],
+        "externs": [{"path": "strconv", "name": "Itoa", "params": [int], "results": [{"k": "string"}]}],
+        "layout": ["func:One", "func:Many"],
+        "facts": {"shared": []}
+    });
+    Module::from_json(m.to_string().as_bytes()).unwrap()
+}
+
+/// Review E7: the extern call sites of a function a run does not call cost it no node-id work
+/// when no stub names them, and with a stub that names all of them, ids for every site come from
+/// one traversal: a bounded number of steps per node, not a walk from the function's start per
+/// site. Counted with `codespec_eval::count`, not timed.
+#[test]
+fn extern_sites_cost_no_id_work_without_a_stub_and_one_traversal_with_one() {
+    for n in [256, 1024] {
+        let m = many_sites(n);
+        count::reset();
+        let run = run_calls(&m, &calls(&[("One", &[])]), &Options::default()).unwrap();
+        assert_eq!((run.stdout.as_str(), run.stop), ("ok 1\n", None));
+        let none = count::counts().id_steps;
+        assert_eq!(none, 0, "{n} sites, no stub: {none} id steps");
+
+        let opts = Options {
+            stubs: vec![Stub::parse(r#"strconv.Itoa="s""#).unwrap()],
+            ..Options::default()
+        };
+        count::reset();
+        let run = run_calls(&m, &calls(&[("One", &[])]), &opts).unwrap();
+        assert_eq!((run.stdout.as_str(), run.stop), ("ok 1\n", None));
+        let nodes = (3 * n + 2) as u64;
+        let one = count::counts().id_steps;
+        assert!(
+            one <= 2 * nodes,
+            "{n} sites, one stub: {one} id steps over {nodes} nodes"
+        );
+    }
+}
+
+/// Review E8: a map write or read compares the keys that hash alike, not every key before it.
+/// `Fill` writes `n` distinct int keys and reads each back; `Names` writes `n` string keys twice.
+/// Counted with `codespec_eval::count`, not timed.
+#[test]
+fn map_reads_and_writes_compare_a_bounded_number_of_keys() {
+    let m = read("mapfill");
+    let n: u64 = 1024;
+    count::reset();
+    let run = run_calls(
+        &m,
+        &calls(&[("Fill", &[&n.to_string()])]),
+        &Options::default(),
+    )
+    .unwrap();
+    assert_eq!(run.stop, None, "{}", run.stdout);
+    assert_eq!(run.stdout, format!("ok {}\n", n * (n - 1) / 2));
+    let fill = count::counts().key_comparisons;
+    assert!(
+        fill <= 2 * 2 * n,
+        "Fill: {fill} key comparisons for {} map operations",
+        2 * n
+    );
+
+    count::reset();
+    let run = run_calls(
+        &m,
+        &calls(&[("Names", &[&n.to_string()])]),
+        &Options::default(),
+    )
+    .unwrap();
+    assert_eq!(run.stop, None, "{}", run.stdout);
+    assert_eq!(run.stdout, format!("ok {n}\n"));
+    let names = count::counts().key_comparisons;
+    assert!(
+        names <= 2 * 2 * n,
+        "Names: {names} key comparisons for {} map writes",
+        2 * n
+    );
 }

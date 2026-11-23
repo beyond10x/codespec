@@ -110,7 +110,8 @@ enum Value {
 
 One arena per run, `Vec<Cell>` indexed by `HeapId`, dropped when the run ends, no collector. A `Place` is a cell plus a path of field and index steps, so `&o.Status` and `&xs[3]`
 are pointers. A local whose address is taken is put in the arena on function entry. Maps keep
-entries in insertion order with a `BTreeMap` index. Iteration order is a policy: `sorted`,
+entries in insertion order with an index from a hash of each key to its entries, so a read or a
+write compares only the keys that hash alike (`value::MapStore`). Iteration order is a policy: `sorted`,
 `insertion` or `seeded`. Several seeds give several orders, as Miri's `-Zmiri-many-seeds` does.
 
 ### 5.3 Control
