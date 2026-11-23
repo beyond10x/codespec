@@ -106,6 +106,9 @@
 //! | `rust` | `rust/case.rs` | `src/lib.rs` and a `Cargo.toml` naming the package `<case>` with `-` read as `_`, with its own `[workspace]` |
 //! | `java` | `java/Case.java` | `Case.java` |
 //! | `groovy` | `groovy/Case.groovy`, else `java/Case.java` | `Case.groovy`: Groovy 2.4 compiles every Java source of the kit unchanged, and `codespec-run-groovy` runs it to the case's `expected.txt` at step 1; a case whose Java source means something else in Groovy (`/` on integers, a BigDecimal division there) carries its own `groovy/Case.groovy` |
+//! | `elixir` | `elixir/case.ex` | `case.ex` |
+//! | `gleam` | `gleam/subject.gleam` | `subject.gleam` |
+//! | `odin` | `odin/subject.odin` | `subject.odin` |
 //! | `c` | `c/case.c` | `case.c`, and beside it the kit's runtime header `c/codespec_rt.h` as `codespec_rt.h`, which a source in runtime form includes |
 //!
 //! each beside a copy of the case's `calls.json`. A case without the source has no corpus entry.
@@ -1911,7 +1914,9 @@ pub fn conform_adapter_within(t: &Target, limit: Duration) -> Result<Report, Err
 }
 
 /// The languages whose reader corpus [`reader_corpus`] builds from the kit.
-pub const CORPUS_LANGS: &[&str] = &["go", "rust", "java", "groovy", "c"];
+pub const CORPUS_LANGS: &[&str] = &[
+    "go", "rust", "java", "groovy", "c", "elixir", "gleam", "odin",
+];
 
 /// The reader corpus of `lang`, one of [`CORPUS_LANGS`], built from the case sources of the kit
 /// at `kit` as the module doc's table says: every file by its path relative to the corpus
@@ -1926,6 +1931,9 @@ pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, E
     for case in load_cases(&kit.join("cases"))? {
         let dir = &case.dir;
         let source = match lang {
+            "elixir" => dir.join("elixir/case.ex"),
+            "gleam" => dir.join("gleam/subject.gleam"),
+            "odin" => dir.join("odin/subject.odin"),
             "go" => dir.join("case.go"),
             "rust" => dir.join("rust/case.rs"),
             "c" => dir.join("c/case.c"),
@@ -1950,6 +1958,9 @@ pub fn reader_corpus(kit: &Path, lang: &str) -> Result<Vec<(String, Vec<u8>)>, E
                 ));
                 out.push((format!("{name}/src/lib.rs"), text));
             }
+            "elixir" => out.push((format!("{name}/case.ex"), text)),
+            "gleam" => out.push((format!("{name}/subject.gleam"), text)),
+            "odin" => out.push((format!("{name}/subject.odin"), text)),
             "java" => out.push((format!("{name}/Case.java"), text)),
             "c" => {
                 out.push((format!("{name}/case.c"), text));
