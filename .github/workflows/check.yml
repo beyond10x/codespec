@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      generate_adapter_reports:
+        description: Regenerate the adapter reports and download the resulting patch
+        type: boolean
+        default: false
 
 concurrency:
   group: check-${{ github.event_name }}-${{ github.ref }}
@@ -34,9 +39,15 @@ jobs:
 
       - name: The parts of task check, from scripts/check-parts.txt
         id: parts
+        env:
+          GENERATE: ${{ inputs.generate_adapter_reports }}
         run: |
           set -euo pipefail
-          parts=$(sh scripts/check-part.sh matrix)
+          if [ "$GENERATE" = true ]; then
+            parts='["task docs-generate"]'
+          else
+            parts=$(sh scripts/check-part.sh matrix)
+          fi
           echo "$parts" | jq .
           echo "parts=$parts" >> "$GITHUB_OUTPUT"
 
@@ -84,7 +95,7 @@ jobs:
     needs: [plan, tools]
     if: needs.plan.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.part == 'task docs-generate' && 40 || 15 }}
     strategy:
       fail-fast: false
       matrix:
@@ -150,9 +161,23 @@ jobs:
           RUST_TEST_THREADS: "1"
         run: sh scripts/check-part.sh run "$PART"
 
+      - name: Collect the generated files
+        if: inputs.generate_adapter_reports && matrix.part == 'task docs-generate'
+        run: |
+          git add --intent-to-add -- conformance/reader website/data website/docs website/static
+          git diff --binary -- conformance/reader website/data website/docs website/static > "$RUNNER_TEMP/codespec-generated.patch"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: inputs.generate_adapter_reports && matrix.part == 'task docs-generate'
+        with:
+          name: generated-adapter-reports
+          path: ${{ runner.temp }}/codespec-generated.patch
+          if-no-files-found: error
+          retention-days: 7
+
   check:
     name: codespec / task check
-    if: always()
+    if: always() && !inputs.generate_adapter_reports
     needs: [plan, tools, part]
     runs-on: ubuntu-latest
     timeout-minutes: 5
