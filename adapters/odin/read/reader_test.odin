@@ -28,6 +28,27 @@ typed_calls_and_signatures :: proc(t: ^testing.T) {
 }
 
 @(test)
+parenthesized_result_types_keep_their_order :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	assert(vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	r: Reader
+	collect_source(&r, "pair.odin", "package sample\nTwo :: proc(n: int) -> (int, string) { return n, \"two\" }\n")
+	doc := module_document(&r)
+	testing.expect_value(t, len(r.refusals), 0)
+	f := doc["funcs"].(Array)[0].(Object)
+	sig := signature_table(&r)["functions"].(Array)[0].(Object)["results"].(Array)
+	results := f["results"].(Array)
+	testing.expect_value(t, len(results), 2)
+	testing.expect_value(t, len(sig), 2)
+	testing.expect_value(t, sig[0].(string), "int")
+	testing.expect_value(t, sig[1].(string), "string")
+	testing.expect_value(t, results[0].(Object)["k"].(string), "int")
+	testing.expect_value(t, results[1].(Object)["k"].(string), "string")
+}
+
+@(test)
 refused_body_keeps_original_source_and_position :: proc(t: ^testing.T) {
 	arena: vmem.Arena
 	assert(vmem.arena_init_growing(&arena) == nil)

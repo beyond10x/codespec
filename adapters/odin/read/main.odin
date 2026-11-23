@@ -227,7 +227,11 @@ collect_source :: proc(r: ^Reader, label, src: string) {
 		if pl.type.results != nil {
 			for field in pl.type.results.list {
 				t := field_type(r, field)
-				if len(field.names) != 0 { reject_decl(r, field.pos, "named result outside the subset") }
+				// The parser gives each parenthesized unnamed result one empty Ident.
+				for name in field.names {
+					id, ok := name.derived_expr.(^ast.Ident)
+					if !ok || id.name != "" { reject_decl(r, field.pos, "named result outside the subset") }
+				}
 				append(&f.results, t)
 			}
 		}
