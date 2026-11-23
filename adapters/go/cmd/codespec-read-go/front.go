@@ -288,6 +288,11 @@ func (f *front) typ(t types.Type) Type {
 		if types.Identical(t, types.Universe.Lookup("error").Type().Underlying()) {
 			return T("error")
 		}
+	case *types.Struct:
+		// struct{} holds no value but itself: cir/1 unit.
+		if t.NumFields() == 0 {
+			return T("unit")
+		}
 	case *types.Tuple:
 		tt := Type{K: "tuple"}
 		for i := 0; i < t.Len(); i++ {
@@ -1202,6 +1207,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		}
 		return Expr{K: "binop", Op: e.Op.String(), X: &x, Y: &y, T: t}, true
 	case *ast.CompositeLit:
+		if t != nil && t.K == "unit" && len(e.Elts) == 0 {
+			return Expr{K: "zero", T: t}, true // struct{}{}
+		}
 		if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {
 			return Expr{K: "make", T: t}, true
 		}

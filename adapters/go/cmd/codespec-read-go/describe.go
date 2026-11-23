@@ -10,14 +10,15 @@ import "strings"
 // (README.md § Features left unclaimed):
 //
 //   - decl.union: Go has no tagged union.
-//   - expr.zero: this reader never writes `zero`; it reads a zero value as the Go source writes
-//     it: a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T`.
+//   - expr.zero: this reader reads a zero value as the Go source writes it: a literal (`0`, `""`,
+//     `false`), a struct literal that sets no field, `var x T`; it writes `zero` only for
+//     `struct{}{}`.
 //   - intrinsic.sorted_keys: this reader reads `slices.Sorted(maps.Keys(m))` as sorted_keys over
 //     integer keys only (Go orders strings by byte, sorted_keys by UTF-16 code unit); the kit
 //     case's Go source collects the keys in a loop and sorts them with `sort.Strings` and
 //     `sort.Ints`, which it does not read as sorted_keys.
-//   - type.unit: Go gives a call of a function without results no type; this reader types it as
-//     an empty tuple.
+//   - type.unit: the kit case is a call of a function without results, which Go gives no type;
+//     this reader types it as an empty tuple. `struct{}` reads as unit.
 //   - stmt.lookup_else: this reader writes a comma-ok `let` and an `if`; only the lookup-guard
 //     pass makes them a `lookup_else`, and a reader's claim covers only what the reader prints
 //     (docs/conformance.md § 5).
