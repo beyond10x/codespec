@@ -299,54 +299,54 @@ func (w *writer) refuse(format string, a ...any) {
 }
 
 // decls builds every declaration in layout order, then any the layout does not name in model order.
+// A key may stand for more than one declaration (a package's init functions all have the key
+// func:init): each occurrence of the key in the layout takes the next of them in model order, so
+// every one is written, in source order.
 func (w *writer) decls() ([]piece, error) {
 	m := w.m
-	done := map[string]bool{}
-	byKey := map[string]func() []piece{}
+	byKey := map[string][]func() []piece{}
 	var order []string
+	add := func(k string, build func() []piece) {
+		byKey[k], order = append(byKey[k], build), append(order, k)
+	}
 	for i := range m.Types {
 		td := &m.Types[i]
-		k := "type:" + td.Name
-		byKey[k], order = func() []piece { return w.typeDecl(td) }, append(order, k)
+		add("type:"+td.Name, func() []piece { return w.typeDecl(td) })
 	}
 	for i := range m.Interfaces {
 		in := &m.Interfaces[i]
 		if in.Path != "" {
 			continue // another package's: declared there
 		}
-		k := "type:" + in.Name
-		byKey[k], order = func() []piece { return w.ifaceDecl(in) }, append(order, k)
+		add("type:"+in.Name, func() []piece { return w.ifaceDecl(in) })
 	}
 	for i := range m.Consts {
 		c := &m.Consts[i]
-		k := "const:" + c.Name
-		byKey[k], order = func() []piece { return []piece{{node: w.constDecl(c)}} }, append(order, k)
+		add("const:"+c.Name, func() []piece { return []piece{{node: w.constDecl(c)}} })
 	}
 	for i := range m.Errors {
 		e := &m.Errors[i]
-		k := "error:" + e.Name
-		byKey[k], order = func() []piece { return []piece{{node: w.errorDecl(e)}} }, append(order, k)
+		add("error:"+e.Name, func() []piece { return []piece{{node: w.errorDecl(e)}} })
 	}
 	for i := range m.Vars {
 		v := &m.Vars[i]
-		k := "var:" + v.Name
-		byKey[k], order = func() []piece { return []piece{{node: w.varDecl(v)}} }, append(order, k)
+		add("var:"+v.Name, func() []piece { return []piece{{node: w.varDecl(v)}} })
 	}
 	for i := range m.Funcs {
 		f := &m.Funcs[i]
-		k := "func:" + f.key()
-		byKey[k], order = func() []piece { return []piece{{doc: f.Doc, node: w.funcDecl(f)}} }, append(order, k)
+		add("func:"+f.key(), func() []piece { return []piece{{doc: f.Doc, node: w.funcDecl(f)}} })
 	}
 	var out []piece
 	for _, k := range append(append([]string{}, m.Layout...), order...) {
-		if done[k] {
-			continue
-		}
-		build, ok := byKey[k]
+		builds, ok := byKey[k]
 		if !ok {
 			return nil, fmt.Errorf("layout names %q, which the module does not declare", k)
 		}
-		done[k] = true
+		if len(builds) == 0 {
+			continue // every declaration of this key is written
+		}
+		build := builds[0]
+		byKey[k] = builds[1:]
 		out = append(out, build()...)
 		if w.err != nil {
 			return nil, w.err

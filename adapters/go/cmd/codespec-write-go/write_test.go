@@ -427,3 +427,38 @@ func TestForeignGoIsVerbatim(t *testing.T) {
 		t.Fatalf("foreign Go statement not written verbatim:\n%s", src)
 	}
 }
+
+// A1: a package may declare init more than once and Go runs every one in source order. Read from
+// Go and written back, the package still runs all three in order, and reading the written package
+// is a fixed point.
+func TestEveryInitFunctionIsWrittenInSourceOrder(t *testing.T) {
+	src := filepath.Join(scratch(t), "source")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pkg := "package inits\n\nvar total int\n\nfunc init() { total = total + 1 }\n\nfunc init() { total = total * 10 }\n\n" +
+		"func init() { total = total + 2 }\n\nfunc Total() int { return total }\n"
+	if err := os.WriteFile(filepath.Join(src, "inits.go"), []byte(pkg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := goTool(t, "run", "../codespec-read-go", src)
+	out, written := writeInto(t, string(doc), "inits") // clears the scratch directory; doc is read
+	if n := strings.Count(written, "func init()"); n != 3 {
+		t.Fatalf("want 3 init functions, got %d:\n%s", n, written)
+	}
+	back := goTool(t, "run", "../codespec-read-go", out) // before runWith adds a go.mod, which sets path
+	got := runWith(t, out, "inits", "package main\n\nimport (\n\t\"fmt\"\n\n\t\"probe/inits\"\n)\n\nfunc main() { fmt.Println(inits.Total()) }\n")
+	if want := "12\n"; got != want {
+		t.Fatalf("got %q, want %q ((0+1)*10+2, the inits in source order)\n%s", got, want, written)
+	}
+	var a, b any
+	if err := json.Unmarshal(doc, &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(back, &b); err != nil {
+		t.Fatal(err)
+	}
+	if d := firstDiff("$", strip(a, true), strip(b, true)); d != "" {
+		t.Fatalf("reading the written package is not a fixed point: first difference at %s", d)
+	}
+}
