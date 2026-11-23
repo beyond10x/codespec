@@ -2,7 +2,16 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
-## Unreleased
+## 0.12.0
+
+### Added
+
+- `codespec read` and `codespec write` support typed scalar functions in Elixir, Gleam and Odin. Elixir reads scalar `@spec` declarations, Gleam targets Erlang and Odin reads package procedures.
+- The platform archives include all three readers, writers and native runners. Keep `beam/` beside the Elixir and Gleam programs. [Translation guide](https://beyond10x.github.io/codespec/docs/guides/elixir-gleam-odin).
+
+### Changed
+
+- Building all adapters from source with `task build` now requires Erlang/OTP, Elixir, Gleam and Odin.
 
 ## 0.11.0
 

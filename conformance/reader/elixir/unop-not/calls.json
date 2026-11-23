@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Neither",
+      "args": [
+        "false",
+        "false"
+      ]
+    },
+    {
+      "func": "Neither",
+      "args": [
+        "true",
+        "false"
+      ]
+    }
+  ]
+}

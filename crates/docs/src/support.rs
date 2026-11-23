@@ -49,6 +49,9 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("Java", "java"),
     ("Groovy", "groovy"),
     ("C", "c"),
+    ("Elixir", "elixir"),
+    ("Gleam", "gleam"),
+    ("Odin", "odin"),
     ("Evaluator", "cir"),
 ];
 

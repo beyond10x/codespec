@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Echo",
+      "args": [
+        "7"
+      ]
+    },
+    {
+      "func": "Echo",
+      "args": [
+        "-3"
+      ]
+    }
+  ]
+}

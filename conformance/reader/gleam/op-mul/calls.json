@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Mul",
+      "args": [
+        "6",
+        "7"
+      ]
+    },
+    {
+      "func": "Mul",
+      "args": [
+        "-6",
+        "7"
+      ]
+    }
+  ]
+}

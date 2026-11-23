@@ -38,10 +38,28 @@ jobs:
         with:
           go-version-file: adapters/go/go.mod
 
+      - name: Install BEAM toolchains for the language adapters
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: "29.0.6"
+          elixir-version: "1.20.4"
+          gleam-version: "1.19.0"
+
+      - name: Install the Odin compiler
+        uses: laytan/setup-odin@447aa179880a3f4e94011007c65cb9efdb6dd6a0 # v2.11.0
+        env:
+          LLVM_CONFIG: ${{ runner.os == 'macOS' && '/opt/homebrew/opt/llvm@20/bin/llvm-config' || '' }}
+        with:
+          release: ${{ runner.os == 'macOS' && 'false' || 'dev-2026-09' }}
+          branch: dev-2026-09
+          llvm-version: '20'
+          build-type: release
+          token: ${{ github.token }}
+
       - name: Build the Rust binaries
         run: |
           export RUSTFLAGS="--remap-path-prefix=$HOME=/build-home --remap-path-prefix=$GITHUB_WORKSPACE=/codespec"
-          cargo build --release --locked -p b10x-codespec-cli -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p b10x-codespec-eval
+          cargo build --release --locked -p b10x-codespec-cli -p codespec-write-rust -p codespec-read-rust -p codespec-run-rust -p codespec-write-c -p codespec-run-c -p b10x-codespec-eval -p codespec-odin
 
       - name: Build the Go adapters
         run: |
@@ -56,6 +74,9 @@ jobs:
           work="$RUNNER_TEMP/smoke"
           mkdir -p "$bin" "$work"
           cp target/release/codespec target/release/codespec-write-rust target/release/codespec-read-rust target/release/codespec-run-rust target/release/codespec-write-c target/release/codespec-run-c target/release/codespec-write-cir target/release/codespec-run-cir target/release-go/codespec-read-go target/release-go/codespec-write-go target/release-go/codespec-run-go "$bin/"
+          cp target/release/codespec-write-odin target/release/codespec-run-odin "$bin/"
+          sh adapters/elixir/build.sh "$bin" "$GITHUB_REF_NAME"
+          odin build adapters/odin/read "-out:$bin/codespec-read-odin" "-define:CODESPEC_VERSION=$GITHUB_REF_NAME"
           test "$("$bin/codespec" --version)" = "codespec $GITHUB_REF_NAME"
           "$bin/codespec" read --lang go examples/orders/source --out "$work/orders.read.cir.json" --adapters "$bin"
           cmp "$work/orders.read.cir.json" examples/orders/orders.read.cir.json
@@ -66,7 +87,11 @@ jobs:
           cmp "$work/rust/src/lib.rs" examples/orders/out/rust/src/lib.rs
           "$bin/codespec" read --lang rust examples/inventory/source --out "$work/inventory.read.cir.json" --adapters "$bin"
           cmp "$work/inventory.read.cir.json" examples/inventory/inventory.read.cir.json
-          for lang in go rust c cir; do
+          for lang in elixir gleam odin; do
+            "$bin/codespec" read --lang "$lang" "conformance/cases/op-add/$lang" --out "$work/$lang.read.json" --adapters "$bin"
+            jq -e '(.refusals // [] | length) == 0' "$work/$lang.read.json"
+          done
+          for lang in go rust c cir elixir gleam odin; do
             "$bin/codespec" write --lang "$lang" conformance/cases/op-add/case.cir.json --out "$work/op-add-$lang" --adapters "$bin"
             "$bin/codespec-run-$lang" --build "$work/op-add-$lang-build" "$work/op-add-$lang" conformance/cases/op-add/calls.json > "$work/op-add-$lang.txt"
             cmp "$work/op-add-$lang.txt" conformance/cases/op-add/expected.txt
@@ -78,8 +103,13 @@ jobs:
         run: |
           package="codespec-$GITHUB_REF_NAME-$TARGET"
           mkdir -p "dist/$package"
-          cp target/release/codespec target/release/codespec-write-rust target/release/codespec-read-rust target/release/codespec-run-rust target/release/codespec-write-c target/release/codespec-run-c target/release/codespec-write-cir target/release/codespec-run-cir target/release-go/codespec-read-go target/release-go/codespec-write-go target/release-go/codespec-run-go README.md LICENSE "dist/$package/"
-          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-write-rust codespec-read-rust codespec-run-rust codespec-write-c codespec-run-c codespec-write-cir codespec-run-cir codespec-read-go codespec-write-go codespec-run-go README.md LICENSE
+          cp -R "$RUNNER_TEMP/bin/." "dist/$package/"
+          cp README.md LICENSE "dist/$package/"
+          tar -czf "dist/$package.tar.gz" -C "dist/$package" codespec codespec-read-go codespec-write-go codespec-run-go \
+            codespec-read-rust codespec-write-rust codespec-run-rust codespec-write-c codespec-run-c \
+            codespec-write-cir codespec-run-cir codespec-read-elixir codespec-write-elixir codespec-run-elixir \
+            codespec-read-gleam codespec-write-gleam codespec-run-gleam codespec-read-odin codespec-write-odin codespec-run-odin \
+            beam README.md LICENSE
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -104,18 +134,13 @@ jobs:
         with:
           go-version-file: adapters/go/go.mod
 
-      - name: Install go-task
+      - name: Install go-task, an authenticated download (scripts/ci-tools.sh)
         env:
-          TASK_VERSION: "3.52.0"
-          TASK_SHA256: 02c679ffae53dca791804847d78b31731615894e292948397c971c87ac9e95bd
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 15 --retry-all-errors --output "$RUNNER_TEMP/task.tar.gz" \
-            "https://github.com/go-task/task/releases/download/v$TASK_VERSION/task_linux_amd64.tar.gz"
-          echo "$TASK_SHA256  $RUNNER_TEMP/task.tar.gz" | sha256sum --check --strict
-          mkdir -p "$RUNNER_TEMP/task-bin"
-          tar -xzf "$RUNNER_TEMP/task.tar.gz" -C "$RUNNER_TEMP/task-bin" task
-          echo "$RUNNER_TEMP/task-bin" >> "$GITHUB_PATH"
+          sh scripts/ci-tools.sh fetch "$RUNNER_TEMP/ci-tools" task
+          sh scripts/ci-tools.sh install "$RUNNER_TEMP/ci-tools" task
 
       - name: Pack the kit and run codespec conform on the unpacked copy
         run: |

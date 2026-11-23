@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Quote",
+      "args": [
+        "\"plain\""
+      ]
+    },
+    {
+      "func": "Quote",
+      "args": [
+        "\"with 'quotes' and spaces\""
+      ]
+    }
+  ]
+}

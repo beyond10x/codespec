@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Both",
+      "args": [
+        "true",
+        "true"
+      ]
+    },
+    {
+      "func": "Both",
+      "args": [
+        "true",
+        "false"
+      ]
+    }
+  ]
+}

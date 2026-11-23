@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Ge",
+      "args": [
+        "1",
+        "1"
+      ]
+    },
+    {
+      "func": "Ge",
+      "args": [
+        "1",
+        "2"
+      ]
+    }
+  ]
+}

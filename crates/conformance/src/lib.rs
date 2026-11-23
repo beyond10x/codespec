@@ -202,9 +202,9 @@ pub const CASE_FILES: &[&str] = &[
     "features.json",
 ];
 
-/// The directories a case may hold besides [`CASE_FILES`]: the case in another language, read by
-/// that language's reader tests and never by this crate.
-pub const CASE_SOURCE_DIRS: &[&str] = &["c", "groovy", "java", "rust"];
+/// Directories for handwritten native sources. The corpus generator copies each
+/// registered language's input alongside the case's calls.
+pub const CASE_SOURCE_DIRS: &[&str] = &["c", "elixir", "gleam", "groovy", "java", "odin", "rust"];
 
 /// Why the kit or a case is not what this crate defines; the text names the file and the fault.
 pub type Error = String;

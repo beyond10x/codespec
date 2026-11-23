@@ -18,7 +18,7 @@ use crate::Result;
 pub const DATA: &str = "website/data/status.json";
 
 /// The release the list describes.
-pub const VERSION: &str = "0.11.0";
+pub const VERSION: &str = "0.12.0";
 
 /// The date the list below was last checked against the tree.
 const AS_OF: &str = "2026-11-08";
@@ -226,6 +226,54 @@ pub const CAPABILITIES: &[Capability] = &[
             "crates/cli/tests/harness.rs::the_three_implementations_agree_on_a_few_seeds",
         ),
         href: "/docs/reference/cli",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Elixir reader conforms to the kit",
+        detail: "The Elixir reader check runs the native source and compares its translation on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-elixir.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Elixir writer conforms to the kit",
+        detail: "The Elixir writer check compiles the generated source and compares its output on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-elixir.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Gleam reader conforms to the kit",
+        detail: "The Gleam reader check runs the native source and compares its translation on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-gleam.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Gleam writer conforms to the kit",
+        detail: "The Gleam writer check compiles the generated source and compares its output on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-gleam.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Odin reader conforms to the kit",
+        detail: "The Odin reader check runs the native source and compares its translation on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/reader-odin.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
+    },
+    Capability {
+        area: "Conformance",
+        label: "Odin writer conforms to the kit",
+        detail: "The Odin writer check compiles the generated source and compares its output on the kit's calls.",
+        status: "shipped",
+        evidence: Some("website/data/conformance/writer-odin.json::conforms"),
+        href: "/docs/guides/elixir-gleam-odin",
     },
     Capability {
         area: "Conformance",
@@ -546,7 +594,7 @@ mod tests {
     fn every_shipped_capability_rests_on_a_test_that_exists() {
         let document = document(root()).unwrap();
         assert!(document.contains("\"format\": \"b10x-status/1\""));
-        assert!(document.contains("\"version\": \"0.11.0\""));
+        assert!(document.contains("\"version\": \"0.12.0\""));
     }
 
     #[test]

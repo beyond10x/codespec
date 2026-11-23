@@ -10,8 +10,8 @@ source: crates/check/src/lib.rs, crates/effects/src/lib.rs, crates/cli/src/lib.r
 
 codesec is a private companion to codespec. It is a library of defect patterns, written as queries
 over `cir/1` and run over code a codespec reader has read, and the review work done with it. The
-engine is public and documented on this site: the readers, `cir/1`, `codespec check`,
-`codespec reach` and `codespec effects`. The pattern library and its results are not.
+public engine, documented on this site, is the readers, `cir/1`, `codespec check`,
+`codespec reach` and `codespec effects`.
 
 ## What it looks for
 
@@ -26,8 +26,8 @@ Classes of defect, each resting on something the public engine already shows:
 
 ## How it works
 
-1. Read the code with a codespec reader. What the reader cannot express is listed as a refusal;
-   nothing is guessed.
+1. Read the code with a codespec reader. What the reader cannot express is listed as a refusal.
+   Nothing is guessed.
 2. Run the patterns as queries over the `cir/1` documents. Each match is a candidate.
 3. Review each candidate by hand in the source. A candidate counts as a finding only when a
    reproducer test confirms it.
@@ -41,7 +41,7 @@ Classes of defect, each resting on something the public engine already shows:
 A finding goes to the maintainers of the code first. The name of the reviewed code or the exact
 pattern would point others to a defect before its fix is out.
 
-## What you can do with the public tool
+## The public tool
 
 - [Map a repository to syscalls](/docs/guides/map-a-repository-to-syscalls): read a repository with
   every package it imports and list the effects and syscalls each function may reach.

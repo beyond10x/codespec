@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec elixir --erl '+S 1:1 +SDcpu 1 +SDio 1 +A 1' -pa "$base/beam" \
+  -e 'Codespec.BeamCLI.main(System.argv())' -- "${0##*/}" "$@"

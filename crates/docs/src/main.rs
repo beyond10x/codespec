@@ -19,8 +19,7 @@
 //!   reports and trees of `examples/netcheck`;
 //! - the reader corpora `conformance/reader/<lang>`, built from the kit's case sources
 //!   (`codespec_conformance::conform::reader_corpus`), and checked file by file;
-//! - the conformance reports of every adapter, the Go, Rust, Java and Groovy readers, the Go,
-//!   Rust and C writers and the evaluator's `cir` writer
+//! - the conformance reports of the in-tree readers, writers and the evaluator
 //!   (`website/data/conformance/<role>-<lang>.json`), by running `codespec
 //!   conform`'s engine (`codespec_conformance::conform`) with the programs built into `--adapters`
 //!   (`target/adapters`, `task build`);
@@ -55,8 +54,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use codespec_conformance::conform::{
-    CORPUS_LANGS, Process, Report, Target, conform_adapter, differences, read_report,
-    reader_corpus, report_json, summary_line,
+    Process, Report, Target, conform_adapter, differences, read_report, reader_corpora,
+    report_json, summary_line,
 };
 
 /// The first line of every generated page's front matter.
@@ -251,6 +250,21 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "groovy",
     ),
     ("website/data/conformance/reader-c.json", "reader", "c"),
+    (
+        "website/data/conformance/reader-elixir.json",
+        "reader",
+        "elixir",
+    ),
+    (
+        "website/data/conformance/reader-gleam.json",
+        "reader",
+        "gleam",
+    ),
+    (
+        "website/data/conformance/reader-odin.json",
+        "reader",
+        "odin",
+    ),
     ("website/data/conformance/writer-go.json", "writer", "go"),
     (
         "website/data/conformance/writer-rust.json",
@@ -258,6 +272,21 @@ const REPORTS: &[(&str, &str, &str)] = &[
         "rust",
     ),
     ("website/data/conformance/writer-c.json", "writer", "c"),
+    (
+        "website/data/conformance/writer-elixir.json",
+        "writer",
+        "elixir",
+    ),
+    (
+        "website/data/conformance/writer-gleam.json",
+        "writer",
+        "gleam",
+    ),
+    (
+        "website/data/conformance/writer-odin.json",
+        "writer",
+        "odin",
+    ),
     ("website/data/conformance/writer-cir.json", "writer", "cir"),
 ];
 
@@ -265,18 +294,12 @@ const REPORTS: &[(&str, &str, &str)] = &[
 /// relative to the directory.
 type Tree = (String, Vec<(String, Vec<u8>)>);
 
-/// The reader corpora `conformance/reader/<lang>`, built from the kit's case sources by
-/// [`reader_corpus`].
+/// Build the corpus directories from one pass over the kit.
 fn corpora(root: &Path) -> Result<Vec<Tree>> {
-    CORPUS_LANGS
-        .iter()
-        .map(|lang| {
-            Ok((
-                format!("conformance/reader/{lang}"),
-                reader_corpus(&root.join("conformance"), lang)?,
-            ))
-        })
-        .collect()
+    Ok(reader_corpora(&root.join("conformance"))?
+        .into_iter()
+        .map(|(lang, files)| (format!("conformance/reader/{lang}"), files))
+        .collect())
 }
 
 /// Every file of `dir`, by `/`-separated path relative to it, sorted.

@@ -35,6 +35,12 @@ handles its target best:
 | `codespec-read-rust` | Rust | `syn`, with its own name and type resolution | shipped |
 | `codespec-read-c` | Rust | the JSON AST `clang -Xclang -ast-dump=json` prints, typed by clang | shipped |
 | `codespec-write-c` | Rust | C11 with the header-only runtime `codespec_rt.h` | shipped |
+| `codespec-read-elixir` | Elixir | quoted syntax and local `@spec` declarations | shipped |
+| `codespec-write-elixir` | Elixir | a module of scalar functions | shipped |
+| `codespec-read-gleam` | Gleam and Elixir | Glance syntax trees and typed signatures | shipped |
+| `codespec-write-gleam` | Elixir | a Gleam package for the Erlang target | shipped |
+| `codespec-read-odin` | Odin | procedures read with `core:odin/parser` | shipped |
+| `codespec-write-odin` | Rust | a native Odin package | shipped |
 | `codespec-write-cir` | Rust | a copy of the module, which `codespec-run-cir` runs with the `cir/1` evaluator | shipped |
 | `codespec-read-java` | Java | javac's attributed trees | shipped |
 | `codespec-read-groovy` | Java | the Groovy 2.4 compiler and its static type checker | shipped |
@@ -80,8 +86,9 @@ the foreign source returns or writes is unknown. The exact rules are in the crat
 `codespec-write-go` builds a `go/ast` tree from the module and prints it with `go/printer`, then
 `go/format`. A `foreign` Go statement or variable initializer is spliced back verbatim. A `cir/1`
 document that holds foreign Go is code: writing and building a document from an untrusted source
-runs it. `foreign` source in any other language is refused. A construct Go cannot hold is refused
-whole: exit 1, a message with its position, nothing written. Its output is gofmt-clean and
+runs it. `foreign` source in any other language is refused.
+
+A construct Go cannot hold is refused whole: exit 1, a message with its position, nothing written. Its output is gofmt-clean and
 vetted, and the Go reader reads it back to the same `cir/1` (`write_test.go::TestOrdersFixedPoint`).
 
 ### Rust

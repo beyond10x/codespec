@@ -82,6 +82,8 @@ which compile a package with javac or groovyc and call its static methods by ref
 runners serve step 1 of the Java and Groovy readers' runs. `codespec-run-c` serves the C reader's the same way: a directory without a module header is C written by hand, its functions called by the `func` names of `calls.json` with their first letter lower case. A runner cannot pass a case on its own: the module it runs comes from the writer
 under test, and the output is compared with the reference's.
 
+The Elixir and Gleam runners execute their modules on the BEAM. The Odin runner compiles a driver against the native package. Their handwritten inputs live under each case's `elixir/`, `gleam/` and `odin/` directories. The translation guide includes a runnable example. [Elixir, Gleam and Odin](../website/docs/guides/elixir-gleam-odin.md)
+
 ## 5. The claim: a manifest the adapter prints
 
 ```shell-session

@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: epic:maintainer-review-2026-11-23
 kind: epic
-status: active
+status: implemented
 title: Maintainer review of 2026-11-23
 summary: Fix or refuse each of the 35 findings of the 0.10.0 maintainer review
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T03:21:48Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-23T03:21:52Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-23T10:14:17Z", actor: "human:timo", revision: 5}
 ---
 # Epic: Maintainer review of 2026-11-23
 

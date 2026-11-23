@@ -19,7 +19,13 @@ tasks:
   check:
     desc: The gate. Every part of scripts/check-parts.txt in order (format, lint, the test inventory, tests, schema drift, adapters, examples, harness, evaluator, generated docs), the same list CI runs one job per part of.
     cmds:
+      - sh scripts/planning-only.sh test
       - sh scripts/check-part.sh all
+
+  planning-only-test:
+    desc: The cases of scripts/planning-only.sh, the path list by which check.yml lets a pull request that changes only planning or prose files pass without building or testing; a list of planning files skips, a list with one code file runs.
+    cmds:
+      - sh scripts/planning-only.sh test
 
   check-parts:
     desc: Fail unless every cargo test target of the workspace (each package's lib, bins, integration tests and doc tests) is run by a test part of scripts/check-parts.txt, and every package and --test=<name> a part names exists.
@@ -33,7 +39,7 @@ tasks:
       - cargo run --locked -q -p codespec-docs -- generate
 
   docs-check:
-    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the Go, Rust, Java and Groovy readers and the Go, Rust and C writers and the evaluator's cir writer, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
+    desc: Fail when a generated documentation file is missing, stale or hand-edited, a reader corpus differs from the kit's case sources, a conformance report differs from codespec conform run again on the registered readers, writers and the evaluator, the support matrix differs from its manifests and reports, or a page has a raw admonition title.
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
@@ -130,6 +136,30 @@ tasks:
       - chmod +x {{.ADAPTERS}}/codespec-read-groovy
       - printf '#!/bin/sh\nexec %s -XX:-UsePerfData -cp %s:%s codespec.run.groovy.Main "$@"\n' '{{.JDK}}/bin/java' '{{.ROOT_DIR}}/target/groovy/classes' '{{.GROOVY_JAR}}' > {{.ADAPTERS}}/codespec-run-groovy
       - chmod +x {{.ADAPTERS}}/codespec-run-groovy
+      - task: language-adapters
+
+  language-adapters:
+    desc: Build the Elixir, Gleam and Odin readers, writers and native runners.
+    cmds:
+      - mkdir -p {{.ADAPTERS}}
+      - sh adapters/elixir/build.sh "{{.ADAPTERS}}" "{{.VERSION}}"
+      - odin build adapters/odin/read -out:{{.ADAPTERS}}/codespec-read-odin -define:CODESPEC_VERSION={{.VERSION}}
+      - cargo build --locked -p codespec-odin
+      - cp target/debug/codespec-write-odin target/debug/codespec-run-odin {{.ADAPTERS}}/
+    vars:
+      VERSION:
+        sh: sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1
+
+  language-adapters-check:
+    desc: Run adapter unit tests and compare a native function through every reader and writer.
+    deps: [language-adapters]
+    cmds:
+      - cargo build --locked -p b10x-codespec-cli
+      - mix format --check-formatted adapters/elixir/lib/*.ex adapters/elixir/test/*.exs adapters/gleam/lib/*.ex adapters/gleam/test/*.exs conformance/cases/*/elixir/*.ex
+      - gleam format --check adapters/gleam/parser/src conformance/cases/*/gleam/*.gleam
+      - elixir -pa "{{.ADAPTERS}}/beam" -e 'ExUnit.start()' -r 'adapters/elixir/test/*_test.exs' -r 'adapters/gleam/test/*_test.exs' -e ':ok'
+      - odin test adapters/odin/read -out:target/odin-reader-tests
+      - sh scripts/check-language-adapters.sh "{{.CODESPEC}}" "{{.ADAPTERS}}"
 
   adapters-check:
     desc: Format, vet and test every adapter in its own language (the Groovy reader's Grails-jar cases run when GRAILS_HOME names a Grails 2.5.6 distribution); read the Java ledger, the Groovy typed package and the Grails lending application twice each through codespec read, byte-equal and canonical, the lending read equal to adapters/groovy/testdata/lending.read.cir.json and codespec measure over it, run twice, equal to adapters/groovy/testdata/lending.measure.txt; read the Quarkus fixture adapters/java/testdata/quarkus as a project against its Maven class path (task java-quarkus-check); run the Java and Groovy readers on a source a million parentheses deep, each ending in exit 0 or a one-line refusal (BoundsTest); run every kit case's java/Case.java through the Java reader, the passes, the Go writer and codespec-run-go against its expected.txt, its module using its subject; read every adapter's --describe manifest strictly, the Java reader's claim covered by its ledger and kit outputs and the Groovy reader's by its typed output and its reads of the Groovy corpus conformance/reader/groovy; read each package of adapters/java/testdata/adversary1 to its expected refusals or, read without one, run it as Java and as the Go written from it, equal (AdversaryTest); read an http entry that throws only a checked exception of the project, and a call of it, with no refusal (AdversaryRaiseTest); refuse a sealed interface whose record declares a member of any kind at the record's line, a trailing comment ending in a brace or not (UnionMemberTest); read the Java nullable fixture with no refusal, pass it, write it as Go and as Rust with no refusal, and run both and the Java original on its calls.json, byte-equal.
