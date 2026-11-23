@@ -276,8 +276,8 @@ The Elixir and Gleam adapters share a BEAM command host. Elixir parses source th
 ## Builds and worktrees
 
 Work in a managed worktree (`worktree` CLI); never in the primary checkout. Rust builds use
-`CARGO_PROFILE_DEV_DEBUG=line-tables-only CARGO_INCREMENTAL=0` (the Taskfile sets both) and the
-worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
+`CARGO_INCREMENTAL=0` (the Taskfile sets it), the host's debug setting (never a
+`CARGO_PROFILE_DEV_DEBUG` of this repository's own) and the worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
 under `target/`. End a merged tree with `worktree finish --discard-cache --archive <tree>`.
 
 No disk checks around builds (operator's rule, 2026-11-10): no `df`, `du` or `find` over a tree or

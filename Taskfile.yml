@@ -1,7 +1,6 @@
 version: '3'
 
 env:
-  CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_INCREMENTAL: '0'
 
 vars:
