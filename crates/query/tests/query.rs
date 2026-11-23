@@ -733,6 +733,44 @@ fn raises_holds_what_a_function_lists_and_a_raise_is_an_exit() {
     assert!(exits.contains("return"), "{exits}");
 }
 
+/// Review finding Q10: a recursion that makes a new value each round (arithmetic or a string
+/// builtin over what the recursion derived) would derive without end; it is refused when it is
+/// compiled. Each query runs on a thread with a deadline, so a regression fails instead of hanging.
+#[test]
+fn a_recursion_that_makes_new_values_is_refused() {
+    let run_in_time = |q: &'static str| -> Result<String, String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let p = parse(q).unwrap();
+            let m = module(&fixture("shop/shop.cir.json"));
+            let out = run(&p, &FactBase::build(&[m]), &Names::default()).map(|a| a.to_text());
+            let _ = tx.send(out);
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("{q}: ran for 10 s without an end"))
+    };
+    for q in [
+        "n(0) :- func{id: _}.\nn(X) :- n(Y), X = Y + 1.\n?- n(X).",
+        "n(X) :- func{id: X}.\nn(X) :- n(Y), concat(Y, \"x\", X).\n?- n(X).",
+        "n(0) :- func{id: _}.\nm(X) :- n(Y), X = Y * 2 + 1.\nn(X) :- m(Y), Z = Y, X = Z + 1.\n?- n(X).",
+        "n(X, 0) :- func{id: X}.\nn(X, K) :- n(Y, J), replace(Y, \"a\", \"aa\", X), K = J.\n?- n(X, K).",
+    ] {
+        let err = run_in_time(q).expect_err(q);
+        assert!(
+            err.contains("recursion") && err.contains("new value"),
+            "{q}: {err}"
+        );
+    }
+    // A value made from facts outside the recursion is finite, as is a copy of a derived one.
+    for q in [
+        "r(F, L) :- func{id: F, name: N}, concat(N, \"!\", L).\n\
+         r(G, L) :- r(F, _), reaches(F, G), func{id: G, name: N}, concat(N, \"!\", L).\n?- r(F, L).",
+        "t(F, G) :- reaches(F, G).\nt(F, H) :- t(F, G), t(G, H), X = G, X != \"\".\n?- t(F, H).",
+    ] {
+        run_in_time(q).unwrap_or_else(|e| panic!("{q}: {e}"));
+    }
+}
+
 /// Q8: a branch that declares its own `x := 9` shadows the parameter `x`; the `return x` after
 /// the branch reads the parameter, so no flow runs from the inner declaration to it. A function
 /// literal that captures `x` and then declares its own `x` gives that declaration its own var.

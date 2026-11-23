@@ -453,3 +453,52 @@ fn a_property_over_a_body_reports_a_lock_held_at_a_raise() {
     let q = std::fs::read_to_string(fixture("properties/lock.cq")).unwrap();
     assert_eq!(answer(&q, &[m]), expected("properties-lock.txt"));
 }
+
+/// Review finding Q11: a path of no edge needs its node in the graph. A function nothing
+/// declares has no path to itself, over the calls or the control flow; a declared function no
+/// call reaches or leaves keeps its path of one node.
+#[test]
+fn a_path_of_no_edge_needs_its_node_in_the_graph() {
+    let mut v: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture("paths/calls.cir.json")).unwrap()).unwrap();
+    v["funcs"].as_array_mut().unwrap().push(serde_json::json!({
+        "name": "alone", "exported": false, "params": [], "results": [], "body": [],
+        "pos": "calls.go:40",
+    }));
+    v["layout"]
+        .as_array_mut()
+        .unwrap()
+        .push("func:alone".into());
+    let m = [Module::from_json(&serde_json::to_vec(&v).unwrap()).unwrap()];
+    let nope = "\"example.com/calls.nope\"";
+    assert_eq!(
+        answer(
+            &format!("?- path({nope} -> {nope}, over: calls, witness: W)."),
+            &m
+        ),
+        ""
+    );
+    assert_eq!(
+        answer(
+            &format!("?- path({nope} -> {nope}, over: cfg, witness: W)."),
+            &m
+        ),
+        ""
+    );
+    assert_eq!(
+        answer(&format!("?- !path({nope} -> {nope}, over: calls)."), &m),
+        "true\n"
+    );
+    let alone = "\"example.com/calls.alone\"";
+    assert_eq!(
+        answer(
+            &format!("?- path({alone} -> {alone}, over: calls, witness: W)."),
+            &m
+        ),
+        "[example.com/calls.alone]\n"
+    );
+    assert_eq!(
+        answer(&format!("?- !path({alone} -> {alone}, over: calls)."), &m),
+        ""
+    );
+}
