@@ -19,7 +19,13 @@ tasks:
   check:
     desc: The gate. Every part of scripts/check-parts.txt in order (format, lint, the test inventory, tests, schema drift, adapters, examples, harness, evaluator, generated docs), the same list CI runs one job per part of.
     cmds:
+      - sh scripts/planning-only.sh test
       - sh scripts/check-part.sh all
+
+  planning-only-test:
+    desc: The cases of scripts/planning-only.sh, the path list by which check.yml lets a pull request that changes only planning or prose files pass without building or testing; a list of planning files skips, a list with one code file runs.
+    cmds:
+      - sh scripts/planning-only.sh test
 
   check-parts:
     desc: Fail unless every cargo test target of the workspace (each package's lib, bins, integration tests and doc tests) is run by a test part of scripts/check-parts.txt, and every package and --test=<name> a part names exists.

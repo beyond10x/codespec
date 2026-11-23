@@ -82,7 +82,14 @@ Needs Rust (the toolchain `rust-toolchain.toml` pins, 1.97), Go, go-task and jq.
 list `scripts/check-parts.txt`, one part per line: `task check` runs every part in order and CI runs
 each part as one job of its matrix, both through `scripts/check-part.sh` (`run "<part>"` runs one
 alone). A new crate or test target goes into a `test` part of that list; the `lint` part fails
-until it does. Steps, each task also runnable alone as `task <name>` (`Taskfile.yml`):
+until it does. A pull request whose changed files are all planning or prose (the one path list,
+`scripts/planning-only.sh`: `.engineering/**` and `*.md` outside `website/`, `docs/` and
+`testdata/`) runs no part: `codespec / task check` passes on that finding alone. A push to `main`
+runs every part. `task planning-only-test` (also the first step of `task check` and of CI's plan
+job) runs the list's cases. CI's tool downloads (go-task, Groovy, pinned by version and SHA-256 in
+`scripts/ci-tools.sh`) happen once per run in the `check / tools` job, cached across runs; go-task
+through an authenticated `gh release download`. Steps, each task also runnable alone as
+`task <name>` (`Taskfile.yml`):
 
 | task | what |
 |---|---|

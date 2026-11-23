@@ -25,10 +25,12 @@ jobs:
     timeout-minutes: 5
     outputs:
       parts: ${{ steps.parts.outputs.parts }}
+      code: ${{ steps.scope.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 2
 
       - name: The parts of task check, from scripts/check-parts.txt
         id: parts
@@ -38,9 +40,49 @@ jobs:
           echo "$parts" | jq .
           echo "parts=$parts" >> "$GITHUB_OUTPUT"
 
+      - name: The planning-only path list's own cases
+        run: sh scripts/planning-only.sh test
+
+      - name: Whether this pull request changes code, from scripts/planning-only.sh
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          code=true
+          if [ "$EVENT" = pull_request ] && git rev-parse --quiet --verify 'HEAD^2' > /dev/null; then
+            git diff --name-only 'HEAD^1' HEAD > "$RUNNER_TEMP/changed.txt"
+            cat "$RUNNER_TEMP/changed.txt"
+            if sh scripts/planning-only.sh < "$RUNNER_TEMP/changed.txt"; then code=false; fi
+          fi
+          echo "code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  tools:
+    name: check / tools
+    needs: plan
+    if: needs.plan.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ci-tools
+          key: ci-tools-${{ hashFiles('scripts/ci-tools.sh') }}
+
+      - name: Fetch go-task and Groovy once for the run, unless cached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/ci-tools.sh fetch "$RUNNER_TEMP/ci-tools" task groovy
+
   part:
     name: check / ${{ matrix.part }}
-    needs: plan
+    needs: [plan, tools]
+    if: needs.plan.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -71,31 +113,18 @@ jobs:
           cache: maven
           cache-dependency-path: adapters/java/testdata/*/pom.xml
 
-      - name: Install go-task
-        env:
-          TASK_VERSION: "3.52.0"
-          TASK_SHA256: 02c679ffae53dca791804847d78b31731615894e292948397c971c87ac9e95bd
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 15 --retry-all-errors --output "$RUNNER_TEMP/task.tar.gz" \
-            "https://github.com/go-task/task/releases/download/v$TASK_VERSION/task_linux_amd64.tar.gz"
-          echo "$TASK_SHA256  $RUNNER_TEMP/task.tar.gz" | sha256sum --check --strict
-          mkdir -p "$RUNNER_TEMP/task-bin"
-          tar -xzf "$RUNNER_TEMP/task.tar.gz" -C "$RUNNER_TEMP/task-bin" task
-          echo "$RUNNER_TEMP/task-bin" >> "$GITHUB_PATH"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ci-tools
+          key: ci-tools-${{ hashFiles('scripts/ci-tools.sh') }}
 
-      - name: Install Groovy 2.4.10
+      - name: Install go-task and Groovy 2.4.10 from the run's cache, fetching only on a miss
         env:
-          GROOVY_VERSION: "2.4.10"
-          GROOVY_SHA256: 1c4dff3b6edf9a8ced3bca658ee1857cee90cfed1ee3474a2790045033c317a9
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 15 --retry-all-errors --output "$RUNNER_TEMP/groovy.zip" \
-            "https://repo1.maven.org/maven2/org/codehaus/groovy/groovy-binary/$GROOVY_VERSION/groovy-binary-$GROOVY_VERSION.zip"
-          echo "$GROOVY_SHA256  $RUNNER_TEMP/groovy.zip" | sha256sum --check --strict
-          unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
-          echo "GROOVY_HOME=$RUNNER_TEMP/groovy-$GROOVY_VERSION" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/groovy-$GROOVY_VERSION/bin" >> "$GITHUB_PATH"
+          sh scripts/ci-tools.sh fetch "$RUNNER_TEMP/ci-tools" task groovy
+          sh scripts/ci-tools.sh install "$RUNNER_TEMP/ci-tools" task groovy
 
       - name: ${{ matrix.part }}
         env:
@@ -109,12 +138,26 @@ jobs:
   check:
     name: codespec / task check
     if: always()
-    needs: [plan, part]
+    needs: [plan, tools, part]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Every part of task check passed
+      - name: Every part of task check passed, or the pull request is planning-only
         env:
           PLAN: ${{ needs.plan.result }}
+          CODE: ${{ needs.plan.outputs.code }}
+          TOOLS: ${{ needs.tools.result }}
           RESULT: ${{ needs.part.result }}
-        run: test "$PLAN" = success && test "$RESULT" = success
+        run: |
+          set -euo pipefail
+          echo "plan=$PLAN code=$CODE tools=$TOOLS part=$RESULT"
+          test "$PLAN" = success
+          if [ "$CODE" = false ]; then
+            echo "planning-only pull request: no build or test ran"
+            test "$TOOLS" = skipped
+            test "$RESULT" = skipped
+            exit 0
+          fi
+          test "$CODE" = true
+          test "$TOOLS" = success
+          test "$RESULT" = success
