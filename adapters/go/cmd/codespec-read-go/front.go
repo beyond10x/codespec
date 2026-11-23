@@ -1584,6 +1584,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 				// a qualified name of another package, not called
 				switch f.info.Uses[e.Sel].(type) {
 				case *types.Const:
+					if t != nil && (t.K == "int" || t.K == "float" || t.K == "string" || t.K == "bool") {
+						return f.constLit(e, t) // math.MaxInt32
+					}
 					return f.no("constant of another package")
 				case *types.Var:
 					return f.no("variable of another package")
@@ -1635,37 +1638,7 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		}
 		return Expr{K: "binop", Op: e.Op.String(), X: &x, Y: &y, T: t}, true
 	case *ast.CompositeLit:
-		if t != nil && t.K == "unit" && len(e.Elts) == 0 {
-			return Expr{K: "zero", T: t}, true // struct{}{}
-		}
-		if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {
-			return Expr{K: "make", T: t}, true
-		}
-		if t == nil || t.K != "named" {
-			return f.no(f.literalShape(e))
-		}
-		if _, ok := f.info.TypeOf(e).Underlying().(*types.Struct); !ok {
-			return f.no("literal of a named map, slice or array type")
-		}
-		out := Expr{K: "struct", Name: t.Name, T: t}
-		for _, el := range e.Elts {
-			kv, ok := el.(*ast.KeyValueExpr)
-			if !ok {
-				return f.no("positional struct literal")
-			}
-			v, ok := f.expr(kv.Value)
-			if !ok {
-				return Expr{}, false
-			}
-			if fv, ok := f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var); ok {
-				if wt, ok := f.ifaceTarget(fv.Type()); ok {
-					v = toIface(v, wt)
-				}
-			}
-			out.FieldNames = append(out.FieldNames, kv.Key.(*ast.Ident).Name)
-			out.Args = append(out.Args, v)
-		}
-		return out, true
+		return f.compositeLit(e, t)
 	case *ast.CallExpr:
 		return f.call(e, t)
 	case *ast.SliceExpr:
@@ -1678,6 +1651,189 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		return f.no("type as an operand")
 	}
 	return f.no(fmt.Sprintf("%T", e))
+}
+
+// compositeLit reads a composite literal. An element `{…}` of a literal whose elements are
+// pointers, `[]*T{{…}}`, is `&T{…}`.
+func (f *front) compositeLit(e *ast.CompositeLit, t *Type) (Expr, bool) {
+	gt := f.info.TypeOf(e)
+	if p, ok := gt.(*types.Pointer); ok && e.Type == nil && t != nil && t.K == "ptr" {
+		x, ok := f.literalOf(e, t.Elem, p.Elem())
+		if !ok {
+			return Expr{}, false
+		}
+		return Expr{K: "unop", Op: "&", X: &x, T: t}, true
+	}
+	return f.literalOf(e, t, gt)
+}
+
+// literalOf reads the composite literal e of the type gt, t in cir/1. An empty one of a map or
+// slice is `make`, of another package's struct its zero value. A slice literal with elements is
+// `append` of them to the empty slice. A struct literal names its fields, a positional one in
+// declaration order. An untyped nil takes the type of its field or element.
+func (f *front) literalOf(e *ast.CompositeLit, t *Type, gt types.Type) (Expr, bool) {
+	if t != nil && t.K == "unit" && len(e.Elts) == 0 {
+		return Expr{K: "zero", T: t}, true // struct{}{}
+	}
+	if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {
+		return Expr{K: "make", T: t}, true
+	}
+	if _, ok := gt.Underlying().(*types.Struct); ok && t != nil && t.K == "extern" && len(e.Elts) == 0 {
+		return Expr{K: "zero", T: t}, true // sync.WaitGroup{}
+	}
+	if st, ok := gt.Underlying().(*types.Slice); ok && t != nil && t.K == "slice" {
+		args := []Expr{{K: "make", T: t}}
+		for _, el := range e.Elts {
+			if _, ok := el.(*ast.KeyValueExpr); ok {
+				return f.no("slice literal with keyed elements")
+			}
+			v, ok := f.expr(el)
+			if !ok {
+				return Expr{}, false
+			}
+			args = append(args, f.given(v, st.Elem()))
+		}
+		return Expr{K: "intrinsic", Name: "append", Args: args, T: t}, true
+	}
+	if t == nil || t.K != "named" {
+		return f.no(f.literalShape(e))
+	}
+	st, ok := gt.Underlying().(*types.Struct)
+	if !ok {
+		return f.no("literal of a named map, slice or array type")
+	}
+	out := Expr{K: "struct", Name: t.Name, T: t}
+	for i, el := range e.Elts {
+		val, fv := el, (*types.Var)(nil)
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			val = kv.Value
+			fv, _ = f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var)
+		} else if i < st.NumFields() {
+			fv = st.Field(i)
+		}
+		if fv == nil {
+			return f.no("struct literal of an unknown field")
+		}
+		v, ok := f.expr(val)
+		if !ok {
+			return Expr{}, false
+		}
+		out.FieldNames = append(out.FieldNames, fv.Name())
+		out.Args = append(out.Args, f.given(v, fv.Type()))
+	}
+	return out, true
+}
+
+// given is the value v given where a value of the type want is expected: an untyped nil takes
+// that type, and a value given to a named interface is converted to it.
+func (f *front) given(v Expr, want types.Type) Expr {
+	f.typeNil(&v, want)
+	if wt, ok := f.ifaceTarget(want); ok {
+		v = toIface(v, wt)
+	}
+	return v
+}
+
+// typeNil gives the untyped nil x the type want.
+func (f *front) typeNil(x *Expr, want types.Type) {
+	if x.K == "nil" && x.T != nil && x.T.K == "nil" {
+		t := f.typ(want)
+		x.T = &t
+	}
+}
+
+// typeNilArgs gives each untyped nil among the arguments of a call of sig the type of its
+// parameter, of the variadic parameter's element past its last fixed one.
+func (f *front) typeNilArgs(args []Expr, sig *types.Signature, spread bool) {
+	ps := sig.Params()
+	for i := range args {
+		switch {
+		case sig.Variadic() && !spread && i >= ps.Len()-1:
+			if s, ok := ps.At(ps.Len() - 1).Type().Underlying().(*types.Slice); ok {
+				f.typeNil(&args[i], s.Elem())
+			}
+		case i < ps.Len():
+			f.typeNil(&args[i], ps.At(i).Type())
+		}
+	}
+}
+
+// makeLit reads `make(map[K]V)`, `make(map[K]V, n)`, `make([]T, 0)` and `make([]T, 0, n)` as
+// `make`, the empty map or slice, when n is a size hint that can be dropped: a constant, or `len`
+// of a variable or of a field of one that is not reached through a pointer. Any other make is not
+// this form.
+func (f *front) makeLit(e *ast.CallExpr, t *Type) (Expr, bool) {
+	if t == nil || (t.K != "map" && t.K != "slice") || len(e.Args) == 0 {
+		return Expr{}, false
+	}
+	hints := e.Args[1:]
+	if t.K == "slice" {
+		if len(hints) == 0 {
+			return Expr{}, false
+		}
+		if v := f.info.Types[hints[0]].Value; v == nil || v.ExactString() != "0" {
+			return Expr{}, false
+		}
+		hints = hints[1:]
+	}
+	for _, n := range hints {
+		if !f.sizeHint(n) {
+			return Expr{}, false
+		}
+	}
+	return Expr{K: "make", T: t}, true
+}
+
+// sizeHint reports whether n is a constant or `len` of a variable or of a field of one not reached
+// through a pointer: a value whose evaluation neither panics nor has an effect.
+func (f *front) sizeHint(n ast.Expr) bool {
+	if f.info.Types[n].Value != nil {
+		return true
+	}
+	c, ok := ast.Unparen(n).(*ast.CallExpr)
+	if !ok || len(c.Args) != 1 || c.Ellipsis.IsValid() {
+		return false
+	}
+	if id, ok := ast.Unparen(c.Fun).(*ast.Ident); !ok || f.info.Uses[id] != types.Universe.Lookup("len") {
+		return false
+	}
+	switch a := ast.Unparen(c.Args[0]).(type) {
+	case *ast.Ident:
+		_, ok := f.info.Uses[a].(*types.Var)
+		return ok
+	case *ast.SelectorExpr:
+		sel := f.info.Selections[a]
+		x, ok := ast.Unparen(a.X).(*ast.Ident)
+		if !ok || sel == nil || sel.Kind() != types.FieldVal || sel.Indirect() {
+			return false
+		}
+		_, isVar := f.info.Uses[x].(*types.Var)
+		_, isPtr := f.info.TypeOf(x).Underlying().(*types.Pointer)
+		return isVar && !isPtr
+	}
+	return false
+}
+
+// newLit reads `new(T)` of a struct T as `&T{}`, of another package's struct as the address of its
+// zero value. Of any other type it is not this form: cir/1 has no address of a zero int.
+func (f *front) newLit(e *ast.CallExpr, t *Type) (Expr, bool) {
+	p, ok := f.info.TypeOf(e).(*types.Pointer)
+	if !ok || t == nil || t.K != "ptr" || t.Elem == nil {
+		return Expr{}, false
+	}
+	if _, ok := p.Elem().Underlying().(*types.Struct); !ok {
+		return Expr{}, false
+	}
+	var x Expr
+	switch t.Elem.K {
+	case "named":
+		x = Expr{K: "struct", Name: t.Elem.Name, T: t.Elem}
+	case "extern":
+		x = Expr{K: "zero", T: t.Elem}
+	default:
+		return Expr{}, false
+	}
+	return Expr{K: "unop", Op: "&", X: &x, T: t}, true
 }
 
 // literalShape names what a composite literal that is not a struct literal of the package is.
@@ -1801,6 +1957,16 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	}
 	if id, ok := ast.Unparen(e.Fun).(*ast.Ident); ok {
 		if _, ok := f.info.Uses[id].(*types.Builtin); ok && id.Name != "append" && id.Name != "len" {
+			if id.Name == "make" {
+				if x, ok := f.makeLit(e, t); ok {
+					return x, true
+				}
+			}
+			if id.Name == "new" {
+				if x, ok := f.newLit(e, t); ok {
+					return x, true
+				}
+			}
 			return f.no("builtin " + id.Name)
 		}
 	}
@@ -1829,6 +1995,11 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return f.no("conversion to " + f.goType(tv.Type))
 		}
 		return Expr{K: "conv", Name: t.Name, X: &args[0], T: t}, true
+	}
+	if ft := f.info.TypeOf(e.Fun); ft != nil {
+		if sig, ok := ft.Underlying().(*types.Signature); ok {
+			f.typeNilArgs(args, sig, spread)
+		}
 	}
 	// The fmt intrinsics take their arguments one by one; called with a spread, each is the
 	// extern call it is in Go.

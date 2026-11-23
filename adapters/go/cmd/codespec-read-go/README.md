@@ -33,7 +33,7 @@ The reader does not read the kit case of these six to its feature. For the first
 | feature | why |
 |---|---|
 | `decl.union` | Go has no tagged union |
-| `expr.zero` | the reader reads a zero value as the Go source writes it, a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T`, so the kit case does not read to `zero`; it writes `zero` only for `struct{}{}` |
+| `expr.zero` | the reader reads a zero value as the Go source writes it, a literal (`0`, `""`, `false`), a struct literal that sets no field, `var x T`, so the kit case does not read to `zero`; it writes `zero` only for `struct{}{}` and an empty literal of another package's struct (`sync.WaitGroup{}`) |
 | `intrinsic.sorted_keys` | the reader reads `slices.Sorted(maps.Keys(m))` as `sorted_keys` over integer keys only: Go orders strings by byte, `sorted_keys` by UTF-16 code unit. The kit case's Go source collects the keys in a loop and sorts them with `sort.Strings` and `sort.Ints`, which the reader does not read as `sorted_keys` |
 | `type.unit` | the kit case is a call of a function without results, which Go gives no type; the reader types it as an empty tuple. `struct{}` reads as `unit` |
 | `stmt.raise` | Go has no statement that leaves a function, and every caller up to the framework that started it, with a value of another package's type; the case's Go source panics there, which the reader does not read as `raise` |
@@ -63,6 +63,17 @@ nothing when the package is initialized.
 - Named results in a function or literal without a `defer` read as locals declared at the top,
   `var n T`, a blank result as `var r_<n> T`; a bare `return` returns them. With a `defer`, which
   can read or set them after the return, the body is kept in a foreign closure as before.
+- A positional struct literal reads as the literal naming each field in declaration order; a
+  slice literal with elements, `[]T{a, b}`, as `append` of them to the empty slice, an element
+  `{…}` of a `[]*T` literal as `&T{…}`; a keyed slice literal is refused.
+- `make(map[K]V)`, `make(map[K]V, n)`, `make([]T, 0)` and `make([]T, 0, n)` read as `make`, the
+  empty map or slice, when `n` is a constant or `len` of a variable; any other `make` is refused.
+- `new(T)` of a struct reads as `&T{}`, of another package's struct as the address of its zero
+  value; of any other type it is refused.
+- An untyped `nil` given as an argument, a struct field or a slice element takes the type of the
+  parameter, field or element.
+- A constant of another package with an integer, float, string or bool type reads as the literal
+  of its value (`math.MaxInt32` as `2147483647`); one of a named type (`time.Second`) is refused.
 
 ## Refused
 

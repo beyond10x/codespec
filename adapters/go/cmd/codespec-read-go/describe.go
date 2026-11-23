@@ -12,7 +12,7 @@ import "strings"
 //   - decl.union: Go has no tagged union.
 //   - expr.zero: this reader reads a zero value as the Go source writes it: a literal (`0`, `""`,
 //     `false`), a struct literal that sets no field, `var x T`; it writes `zero` only for
-//     `struct{}{}`.
+//     `struct{}{}` and an empty literal of another package's struct.
 //   - intrinsic.sorted_keys: this reader reads `slices.Sorted(maps.Keys(m))` as sorted_keys over
 //     integer keys only (Go orders strings by byte, sorted_keys by UTF-16 code unit); the kit
 //     case's Go source collects the keys in a loop and sorts them with `sort.Strings` and
