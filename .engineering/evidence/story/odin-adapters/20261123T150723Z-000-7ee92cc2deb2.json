@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-23T15:07:23Z",
+  "actor": "agent:codespec",
+  "artifact": "story:odin-adapters",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:elixir-gleam-odin-adapters",
+    "review": "review-result:elixir-gleam-odin-adapters",
+    "outcome": "fixed"
+  }
+}
