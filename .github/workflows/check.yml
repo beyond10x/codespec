@@ -162,13 +162,13 @@ jobs:
         run: sh scripts/check-part.sh run "$PART"
 
       - name: Collect the generated files
-        if: inputs.generate_adapter_reports && matrix.part == 'task docs-generate'
+        if: ${{ !cancelled() && inputs.generate_adapter_reports && matrix.part == 'task docs-generate' }}
         run: |
           git add --intent-to-add -- conformance/reader website/data website/docs website/static
           git diff --binary -- conformance/reader website/data website/docs website/static > "$RUNNER_TEMP/codespec-generated.patch"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: inputs.generate_adapter_reports && matrix.part == 'task docs-generate'
+        if: ${{ !cancelled() && inputs.generate_adapter_reports && matrix.part == 'task docs-generate' }}
         with:
           name: generated-adapter-reports
           path: ${{ runner.temp }}/codespec-generated.patch
