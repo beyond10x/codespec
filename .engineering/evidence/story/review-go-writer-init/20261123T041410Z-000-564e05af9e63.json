@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T04:14:10Z",
+  "actor": "human:timo",
+  "artifact": "story:review-go-writer-init",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test TestEveryInitFunctionIsWrittenInSourceOrder; slot task adapters-check, examples-go, examples-greeter, examples-series: green",
+    "reference": "adapters/go/cmd/codespec-write-go/write_test.go"
+  }
+}
