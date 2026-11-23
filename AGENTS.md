@@ -78,12 +78,16 @@ conformance is used as a translation oracle.
 task check
 ```
 
-Needs Rust (the toolchain `rust-toolchain.toml` pins, 1.97), Go and go-task. Steps, each runnable
-alone as `task <name>` (`Taskfile.yml`):
+Needs Rust (the toolchain `rust-toolchain.toml` pins, 1.97), Go, go-task and jq. The gate is the
+list `scripts/check-parts.txt`, one part per line: `task check` runs every part in order and CI runs
+each part as one job of its matrix, both through `scripts/check-part.sh` (`run "<part>"` runs one
+alone). A new crate or test target goes into a `test` part of that list; the `lint` part fails
+until it does. Steps, each task also runnable alone as `task <name>` (`Taskfile.yml`):
 
 | task | what |
 |---|---|
-| — | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked` |
+| — | `lint`: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, then `task check-parts`: every cargo test target (lib, bins, integration tests, doc tests) is in a `test` part, and every package and `--test=<name>` a part names exists |
+| — | `test <packages and selectors>`: `cargo test --locked` over them; a part with `--test=<name>` runs each test alone, killed after 180 s |
 | `adapters-check` | `gofmt -l` empty and `go vet` on `adapters/go` |
 | `examples-check` | every example read twice: byte-equal, equal to its checked-in `*.read.cir.json`, canonical |
 | `examples-pass` | `codespec pass` over `orders` equals `orders.cir.json` and is its own fixed point |

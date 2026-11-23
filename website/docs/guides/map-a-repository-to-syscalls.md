@@ -80,8 +80,8 @@ unsafe | ok | read 0 of 0 functions, n/a | refusals 9
 
 | column | meaning |
 |---|---|
-| 1 | the import path; the document is `<out>/<import path with / as _>.cir.json` |
-| 2 | `ok`, or `FAIL` and the reader's first error line; any `FAIL` makes the script exit 1 |
+| 1 | the import path; the document is `<out>/<name>.cir.json`, the name the import path with `%` as `%25`, `_` as `%5F`, then `/` as `_`, so `a/b` and `a_b` never share one |
+| 2 | `ok`, or `FAIL` and the reader's first error line; every package is still read, and any `FAIL`, or a `go list` that fails, makes the script exit 1 |
 | 3 | `codespec measure`: functions read with no `foreign` statement, of all functions |
 | 4 | refusals: constructs kept as `foreign` with a reason |
 
