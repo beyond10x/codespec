@@ -22,7 +22,7 @@ that value:
 $ mvn -o -q dependency:build-classpath -Dmdep.outputFile=classpath.txt
 ```
 
-Without the jars the read stops at the first type it cannot find and names the variable.
+Without the jars the read stops at the first type it cannot find and prints the variable's name.
 
 ## 2. Read one package
 
@@ -68,15 +68,22 @@ A project read also maps what a package read refuses:
 | the `id` a class extending `PanacheEntity` inherits | the struct's first field, nil until `persist()` sets it |
 | a static Panache method called on an entity, such as `Fruit.deleteAll()` | an extern call with the entity as its type argument |
 
-It refuses, each at its line: a constructor calling `this(…)`, an inner class, a `static final`
-field set by anything else, a read or write of a field of a class of another package (the object is
-an opaque extern there), a call of another package's method or constructor which that package does
-not read, or which returns an error or an Optional there, a Panache static method javac calls on
-the base itself, a read or write of a public field of an `@Entity`, `@MappedSuperclass`,
-`@Embeddable` or Panache class, anywhere but in its constructors and in that getter or setter
-itself, when the class declares the field's getter or setter by Quarkus's name and descriptor
-(Quarkus calls it instead), and a class implementing `ExceptionMapper`. A call of another
-package's function is an extern with the signature that package's module declares.
+It refuses, each at its line:
+
+- a constructor calling `this(…)`
+- an inner class
+- a `static final` field set by anything else
+- a read or write of a field of a class of another package, where the object is an opaque extern
+- a call of another package's method or constructor which that package does not read, or which
+  returns an error or an Optional there
+- a Panache static method javac calls on the base itself
+- a read or write of a public field of an `@Entity`, `@MappedSuperclass`, `@Embeddable` or Panache
+  class, anywhere but in its constructors and in that getter or setter itself, when the class
+  declares the field's getter or setter by Quarkus's name and descriptor, since Quarkus calls it instead
+- a class implementing `ExceptionMapper`
+
+A call of another package's function is an extern with the signature that package's module
+declares.
 
 `@Transactional` is recorded in `transactional`, the keys of the functions that run in a
 transaction. `@Produces` and `@Consumes` are recorded as `produces` and `consumes` on the

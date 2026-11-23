@@ -1,8 +1,10 @@
 # codespec
 
 Code as typed data. codespec reads a source language into `cir/1`, a typed and canonical JSON
-model of what code does inside a module; passes rewrite it and compute facts about it; writers emit
-Go or Rust from it. A harness runs the original and every output on the same seeded inputs and
+model of what code does inside a module. Passes rewrite it and compute facts about it, and writers emit
+Go or Rust from it.
+
+A harness runs the original and every output on the same seeded inputs and
 compares what they print, byte for byte. Nothing in the pipeline is a language model: what a
 reader cannot express is kept verbatim as a `foreign` statement and listed as a refusal.
 
@@ -20,12 +22,14 @@ source ──reader──▶ cir/1 ──passes──▶ cir/1 ──writer─�
 ## Why
 
 Translating code between languages, or rewriting it within one, needs a representation of what a
-function computes, with one definition and a check that does not depend on anyone's judgement. In
-`cir/1` every expression carries its type, reading is strict, and a translation counts when the
+function computes, with one definition and a check that does not depend on anyone's judgement.
+
+In `cir/1` every expression carries its type, reading is strict, and a translation counts when the
 original and the output produce the same bytes on the same generated inputs.
 `codespec effects` reads the same model as a static analysis: per function, which effects it may
-have (environment, file system, network, clock, …) from summaries of the library functions it
-calls, and every call it cannot account for ([docs/static-analysis.md](docs/static-analysis.md)).
+have, such as environment, file system, network and clock, from summaries of the library functions
+it calls, and every call it cannot account for ([docs/static-analysis.md](docs/static-analysis.md)).
+
 Read with every package it imports, a Go repository maps down to syscalls: `codespec effects`
 lists the syscalls each function may reach, `codespec reach` the dead code from given entries,
 `codespec trace` the call tree from one function down to its syscalls
@@ -37,7 +41,7 @@ lists the syscalls each function may reach, `codespec reach` the dead code from 
 **0.2.0**: the `cir/1` model and schema, the `codespec` CLI, a Go reader, the passes and facts, a Go
 writer, a Rust writer, a Rust reader (Rust → `cir/1` → Go, on `examples/inventory`) and the comparison
 harness, shown on four examples, among them the algorithmic `examples/series`. Every
-capability and the test that holds it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
+capability and the test that checks it: [Status](https://beyond10x.github.io/codespec/docs/status). Changes:
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
@@ -46,7 +50,7 @@ Download the archive for your platform from the
 [GitHub Releases](https://github.com/beyond10x/codespec/releases), `codespec-<tag>-<target>.tar.gz`
 for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` or `aarch64-apple-darwin`, and check it
 against `SHA256SUMS`. It holds `codespec` and the adapters `codespec-read-go`, `codespec-read-rust`, `codespec-write-go`
-and `codespec-write-rust`; the directory you extract it into is the `--adapters` directory.
+and `codespec-write-rust`. The directory you extract it into is the `--adapters` directory.
 
 Or build from source, with Rust 1.97 (`rust-toolchain.toml`), Go 1.23 or newer and
 [go-task](https://taskfile.dev):
