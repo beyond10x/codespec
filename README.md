@@ -49,8 +49,8 @@ capability and the test that checks it: [Status](https://beyond10x.github.io/cod
 Download the archive for your platform from the
 [GitHub Releases](https://github.com/beyond10x/codespec/releases), `codespec-<tag>-<target>.tar.gz`
 for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` or `aarch64-apple-darwin`, and check it
-against `SHA256SUMS`. It holds `codespec` and the adapters `codespec-read-go`, `codespec-read-rust`, `codespec-write-go`
-and `codespec-write-rust`. The directory you extract it into is the `--adapters` directory.
+against `SHA256SUMS`. The directory you extract it into is the `--adapters` directory. Keep the
+`beam/` directory beside the Elixir and Gleam programs when copying them from a build or archive.
 
 Or build from source, with Rust 1.97 (`rust-toolchain.toml`), Go 1.23 or newer and
 [go-task](https://taskfile.dev). Building every adapter also needs the JDK, Groovy, Erlang/OTP, Elixir, Gleam and Odin. The native versions used in CI are in [.github/workflows/check.yml](.github/workflows/check.yml).
