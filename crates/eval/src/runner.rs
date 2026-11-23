@@ -139,33 +139,40 @@ fn foreign_in(v: &Value, out: &mut Vec<(String, String, String)>) {
 
 const STOPS: &str = "the evaluator stops there";
 
+/// Each `foreign` statement and each `raise` inside `tree`, a function's body or a variable's
+/// initializer (a function literal's body included), as refusals of `name`.
+fn statements_in(name: &str, tree: &Value, out: &mut Vec<Refusal>) {
+    let mut found = Vec::new();
+    foreign_in(tree, &mut found);
+    for (pos, lang, reason) in found {
+        let reason = if lang.is_empty() {
+            format!(
+                "raise: it leaves every caller up to the framework, which the evaluator \
+                 does not run; {STOPS}"
+            )
+        } else {
+            format!("foreign {lang} statement: {reason}; {STOPS}")
+        };
+        out.push(Refusal {
+            name: name.to_string(),
+            pos,
+            reason,
+        });
+    }
+}
+
 /// What the writer refuses in `m`: each `foreign` statement and each `raise`, by the function
-/// holding it, and each
+/// holding it or the variable whose initializer holds it (in a function literal), and each
 /// variable whose initializer is foreign source, in module order.
 pub fn refusals(m: &Module) -> Vec<Refusal> {
     let doc: Value = serde_json::from_str(&m.to_json()).expect("a module is JSON");
     let mut out = Vec::new();
     let funcs = doc["funcs"].as_array().cloned().unwrap_or_default();
     for (f, v) in m.funcs.iter().zip(&funcs) {
-        let mut found = Vec::new();
-        foreign_in(&v["body"], &mut found);
-        for (pos, lang, reason) in found {
-            let reason = if lang.is_empty() {
-                format!(
-                    "raise: it leaves every caller up to the framework, which the evaluator \
-                     does not run; {STOPS}"
-                )
-            } else {
-                format!("foreign {lang} statement: {reason}; {STOPS}")
-            };
-            out.push(Refusal {
-                name: f.key(),
-                pos,
-                reason,
-            });
-        }
+        statements_in(&f.key(), &v["body"], &mut out);
     }
     for v in doc["vars"].as_array().into_iter().flatten() {
+        statements_in(v["name"].as_str().unwrap_or(""), &v["init"], &mut out);
         if let Some(init) = v.get("foreign") {
             let s = |k: &str| {
                 init.get(k)

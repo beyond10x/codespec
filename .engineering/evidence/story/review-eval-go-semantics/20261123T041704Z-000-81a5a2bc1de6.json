@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:17:04Z",
+  "actor": "human:timo",
+  "artifact": "story:review-eval-go-semantics",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-eval --locked --no-fail-fast: all binaries ok (adversary2: 20 passed incl. the 6 review_e* tests); task eval-kit, eval-diff, examples-effects exit 0"
+  }
+}
