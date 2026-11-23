@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:43:57Z",
+  "actor": "human:timo",
+  "artifact": "story:review-c-writer-assign-and-map",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-write-c --locked: 14 passed in tests/writer.rs (incl. a_multiple_assignment_stores_into_the_element_its_index_named_before_the_first_store, map_insertion_and_lookup_compare_keys_a_bounded_number_of_times_per_operation); codespec-run-c 8 passed; codespec-read-c reader+cases 19 passed"
+  }
+}

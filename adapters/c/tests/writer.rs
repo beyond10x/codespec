@@ -332,3 +332,190 @@ fn describe_prints_a_strict_canonical_writer_manifest_claiming_sem_int_wrap() {
         serde_json::from_value(kit["features"].clone()).unwrap();
     assert!(m.claimed_in(&features).unwrap().contains("sem.int.wrap"));
 }
+
+/// Builds `out`'s `.c` files with `driver` (a C `main`) and runs the program: its stdout.
+fn build_and_run(out: &Path, driver: &str) -> String {
+    std::fs::write(out.join("driver_main.c"), driver).unwrap();
+    let exe = out.join("program");
+    let mut cmd = Command::new(std::env::var("CC").unwrap_or_else(|_| "cc".into()));
+    cmd.args(["-std=c11", "-O1", "-Wall", "-Werror", "-o"])
+        .arg(&exe);
+    for e in std::fs::read_dir(out).unwrap() {
+        let p = e.unwrap().path();
+        if p.extension().is_some_and(|x| x == "c") {
+            cmd.arg(p);
+        }
+    }
+    let b = cmd.output().unwrap();
+    assert!(
+        b.status.success(),
+        "cc failed:\n{}",
+        String::from_utf8_lossy(&b.stderr)
+    );
+    let r = Command::new(&exe).output().unwrap();
+    assert!(
+        r.status.success(),
+        "the program failed: {}",
+        String::from_utf8_lossy(&r.stderr)
+    );
+    String::from_utf8(r.stdout).unwrap()
+}
+
+/// A2: Go evaluates the index operands of every target before the first store, so
+/// `i, values[i] = 1, 7` (and the same from a call giving two results) stores into `values[0]`.
+#[test]
+fn a_multiple_assignment_stores_into_the_element_its_index_named_before_the_first_store() {
+    let int = serde_json::json!({"k": "int", "width": "platform", "signed": true});
+    let ints = serde_json::json!({"k": "slice", "elem": int});
+    let var = |n: &str, t: &Value| serde_json::json!({"k": "var", "name": n, "t": t});
+    let lit = |v: &str| serde_json::json!({"k": "lit", "value": v, "t": int});
+    let at = |i: Value| serde_json::json!({"k": "index", "x": var("values", &ints), "index": i, "t": int});
+    let setup = |pos: &str| {
+        let push = serde_json::json!({"k": "assign", "lhs": [var("values", &ints)], "rhs": [
+            {"k": "intrinsic", "name": "append", "args": [var("values", &ints), lit("0")], "t": ints}
+        ], "pos": pos});
+        vec![
+            serde_json::json!({"k": "let", "names": ["i"], "rhs": [lit("0")], "pos": pos}),
+            serde_json::json!({"k": "let", "names": ["values"], "rhs": [{"k": "make", "t": ints}], "pos": pos}),
+            push.clone(),
+            push,
+        ]
+    };
+    let ret = serde_json::json!({"k": "return", "results": [{"k": "binop", "op": "+",
+        "x": at(lit("0")),
+        "y": {"k": "binop", "op": "*", "x": lit("10"), "y": at(lit("1")), "t": int},
+        "t": int}], "pos": "a2.go:9"});
+    let mut values = setup("a2.go:4");
+    values.push(serde_json::json!({"k": "assign",
+        "lhs": [var("i", &int), at(var("i", &int))],
+        "rhs": [lit("1"), lit("7")], "pos": "a2.go:8"}));
+    values.push(ret.clone());
+    let mut tuple = setup("a2.go:14");
+    tuple.push(serde_json::json!({"k": "assign",
+        "lhs": [var("i", &int), at(var("i", &int))],
+        "rhs": [{"k": "call", "name": "pair", "args": [],
+                 "t": {"k": "tuple", "elems": [int, int]}}], "pos": "a2.go:18"}));
+    tuple.push(ret);
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "a2",
+        "reader": {"language": "go", "name": "codespec-read-go", "version": "0.10.0"},
+        "types": [],
+        "funcs": [
+            {"name": "pair", "exported": false, "params": [], "results": [int, int],
+             "body": [{"k": "return", "results": [lit("1"), lit("7")], "pos": "a2.go:2"}],
+             "pos": "a2.go:1"},
+            {"name": "Values", "exported": true, "params": [], "results": [int],
+             "body": values, "pos": "a2.go:3"},
+            {"name": "Tuple", "exported": true, "params": [], "results": [int],
+             "body": tuple, "pos": "a2.go:13"}
+        ],
+        "layout": ["func:pair", "func:Values", "func:Tuple"],
+        "facts": {"shared": []}
+    });
+    let out = scratch("a2-multi-assign");
+    let module = out.with_extension("cir.json");
+    std::fs::create_dir_all(module.parent().unwrap()).unwrap();
+    std::fs::write(&module, doc.to_string()).unwrap();
+    let o = write(&module, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let got = build_and_run(
+        &out,
+        "#include <stdio.h>\n#include \"a2.h\"\nint main(void) {\n    printf(\"%lld %lld\\n\", (long long)a2_Values(), (long long)a2_Tuple());\n    return 0;\n}\n",
+    );
+    assert_eq!(
+        got, "7 7\n",
+        "values[0] + 10*values[1] after `i, values[i] = 1, 7`"
+    );
+}
+
+/// A7: inserting and finding n distinct keys costs O(n) key comparisons, not O(n²); entries stay
+/// in insertion order and a value keeps its address while the map grows.
+#[test]
+fn map_insertion_and_lookup_compare_keys_a_bounded_number_of_times_per_operation() {
+    let out = scratch("a7-map-index");
+    std::fs::create_dir_all(&out).unwrap();
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/codespec_rt.h"),
+        out.join("codespec_rt.h"),
+    )
+    .unwrap();
+    let driver = r#"
+#include <stdio.h>
+static long long cs_probes;
+#define CS_MAP_PROBE() (cs_probes++)
+#include "codespec_rt.h"
+
+static int run(int64_t n) {
+    cs_map *m = cs_map_new(sizeof(int64_t), sizeof(int64_t), CS_KEY_I64);
+    void *first = NULL;
+    for (int64_t i = 0; i < n; i++) {
+        int64_t k = i * 7919 - n;
+        int64_t *v = cs_map_put(m, &k);
+        *v = i;
+        if (i == 0) {
+            first = v;
+        }
+    }
+    for (int64_t i = 0; i < n; i++) {
+        int64_t k = i * 7919 - n;
+        int64_t *v = cs_map_find(m, &k);
+        if (v == NULL || *v != i || *(int64_t *)cs_map_key(m, i) != k || cs_map_val(m, i) != v) {
+            printf("entry %lld lost\n", (long long)i);
+            return 1;
+        }
+        if (cs_map_put(m, &k) != v) {
+            printf("put of %lld moved its value\n", (long long)i);
+            return 1;
+        }
+    }
+    int64_t absent = -n - 1;
+    if (cs_map_find(m, &absent) != NULL || cs_map_len(m) != n) {
+        printf("absent key found or length wrong\n");
+        return 1;
+    }
+    int64_t k0 = -n;
+    if (cs_map_find(m, &k0) != first) {
+        printf("the first value moved\n");
+        return 1;
+    }
+    cs_map *s = cs_map_new(sizeof(cs_string), sizeof(int64_t), CS_KEY_STRING);
+    char buf[32];
+    for (int64_t i = 0; i < n; i++) {
+        int len = snprintf(buf, sizeof buf, "key-%lld", (long long)i);
+        cs_string k = {cs_dup(buf, (size_t)len), len};
+        *(int64_t *)cs_map_put(s, &k) = i;
+    }
+    for (int64_t i = 0; i < n; i++) {
+        int len = snprintf(buf, sizeof buf, "key-%lld", (long long)i);
+        cs_string k = {buf, len};
+        int64_t *v = cs_map_find(s, &k);
+        if (v == NULL || *v != i || !cs_string_eq(*(cs_string *)cs_map_key(s, i), k)) {
+            printf("string entry %lld lost\n", (long long)i);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int main(void) {
+    if (run(4096)) {
+        return 0;
+    }
+    printf("%lld\n", cs_probes);
+    return 0;
+}
+"#;
+    let got = build_and_run(&out, driver);
+    let probes: u64 = got
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("the driver printed {got:?}"));
+    // 4096 keys as int64 (put, find, put again) and as strings (put, find): 5 * 4096
+    // operations. A scan of every key does about 4096²/2 = 8.4 million comparisons for the
+    // int64 inserts alone.
+    let ops = 5 * 4096;
+    assert!(
+        probes <= 4 * ops,
+        "{probes} key comparisons for {ops} map operations: more than 4 per operation"
+    );
+}

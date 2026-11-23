@@ -2340,6 +2340,32 @@ impl<'w, 'm> Fx<'w, 'm> {
         Ok(())
     }
 
+    /// The C lvalues of the targets of an assignment of several values, `None` for a blank one.
+    /// Go evaluates the index operands and pointer indirections of every target before the first
+    /// store (`i, values[i] = 1, 7` stores into `values[0]`), so each target after the first that
+    /// is not a plain variable is fixed here as a pointer to its slot.
+    fn pin_targets(&mut self, lhs: &[Expr]) -> R<Vec<Option<String>>> {
+        let mut out = Vec::with_capacity(lhs.len());
+        let mut first = true;
+        for l in lhs {
+            if Self::is_blank(l) {
+                out.push(None);
+                continue;
+            }
+            let (lv, _) = self.lvalue(l)?;
+            if first || matches!(l, Expr::Var { .. } | Expr::Global { .. }) {
+                first = false;
+                out.push(Some(lv));
+                continue;
+            }
+            let ct = self.w.cty(l.t())?;
+            let p = self.fresh("p");
+            self.line(&format!("{} = &{lv};", decl(&ptr(&ct), &p)));
+            out.push(Some(format!("(*{p})")));
+        }
+        Ok(out)
+    }
+
     /// `lhs op= v` where `v`, of type `vt`, is C already.
     fn compound(&mut self, op: &str, lhs: &Expr, v: String, vt: &Type) -> R<()> {
         let t = lhs.t().clone();
@@ -2493,9 +2519,10 @@ impl<'w, 'm> Fx<'w, 'm> {
                         self.line(&format!("{} = {v};", decl(&ct, &tmp)));
                         temps.push(tmp);
                     }
-                    for (l, tmp) in lhs.iter().zip(temps) {
-                        if !Self::is_blank(l) {
-                            self.assign1(l, tmp)?;
+                    let targets = self.pin_targets(lhs)?;
+                    for (lv, tmp) in targets.into_iter().zip(temps) {
+                        if let Some(lv) = lv {
+                            self.line(&format!("{lv} = {tmp};"));
                         }
                     }
                     return Ok(());
@@ -2512,10 +2539,11 @@ impl<'w, 'm> Fx<'w, 'm> {
                 let tmp = self.fresh("t");
                 let v = self.expr(r)?;
                 self.line(&format!("{rt} {tmp} = {v};"));
-                for (i, (l, t)) in lhs.iter().zip(&ts).enumerate() {
-                    if !Self::is_blank(l) {
+                let targets = self.pin_targets(lhs)?;
+                for (i, ((l, t), lv)) in lhs.iter().zip(&ts).zip(targets).enumerate() {
+                    if let Some(lv) = lv {
                         let v = self.coerce_text(format!("{tmp}.r{i}"), t, l.t())?;
-                        self.assign1(l, v)?;
+                        self.line(&format!("{lv} = {v};"));
                     }
                 }
                 Ok(())

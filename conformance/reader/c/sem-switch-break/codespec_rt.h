@@ -281,7 +281,8 @@ static inline cs_slice cs_append(cs_slice s, const void *v, size_t esz) {
 }
 
 /* ---- maps: nil is NULL. Entries in insertion order, each key and value in its own allocation,
- * so a pointer to one stays valid while the map grows. ------------------------------------------ */
+ * so a pointer to one stays valid while the map grows; an open-addressing index beside them
+ * finds a key in a bounded number of comparisons. ------------------------------------------------ */
 
 enum {
     CS_KEY_I8,
@@ -302,6 +303,10 @@ typedef struct cs_map {
     size_t ksz, vsz;
     int64_t len, cap;
     void **keys, **vals;
+    /* The index: `nslots` (0, or a power of two at least twice `len`) slots, each an entry's
+     * position plus one, or 0 when empty; linear probing. */
+    int64_t *slots;
+    int64_t nslots;
 } cs_map;
 
 static inline cs_map *cs_map_new(size_t ksz, size_t vsz, int kind) {
@@ -316,24 +321,72 @@ static inline int64_t cs_map_len(const cs_map *m) {
     return m ? m->len : 0;
 }
 
+/* Called once per key comparison; a test defines it before including this header to count them. */
+#ifndef CS_MAP_PROBE
+#define CS_MAP_PROBE() ((void)0)
+#endif
+
 static inline bool cs_map_key_eq(const cs_map *m, const void *a, const void *b) {
+    CS_MAP_PROBE();
     if (m->kind == CS_KEY_STRING) {
         return cs_string_eq(*(const cs_string *)a, *(const cs_string *)b);
     }
     return memcmp(a, b, m->ksz) == 0;
 }
 
+/* FNV-1a over the key's bytes (a string's contents), then mixed: equal keys hash equal, as
+ * cs_map_key_eq compares the same bytes. */
+static inline uint64_t cs_map_hash(const cs_map *m, const void *k) {
+    const unsigned char *p = k;
+    size_t n = m->ksz;
+    if (m->kind == CS_KEY_STRING) {
+        p = (const unsigned char *)((const cs_string *)k)->p;
+        n = (size_t)((const cs_string *)k)->n;
+    }
+    uint64_t h = 14695981039346656037ULL;
+    for (size_t i = 0; i < n; i++) {
+        h = (h ^ p[i]) * 1099511628211ULL;
+    }
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    return h;
+}
+
+/* The slot of `k` in the index: the one naming its entry, or the empty one where it would go.
+ * The index has a slot and is at most half full. */
+static inline int64_t cs_map_slot(const cs_map *m, const void *k) {
+    uint64_t mask = (uint64_t)m->nslots - 1;
+    uint64_t i = cs_map_hash(m, k) & mask;
+    while (m->slots[i] != 0 && !cs_map_key_eq(m, m->keys[m->slots[i] - 1], k)) {
+        i = (i + 1) & mask;
+    }
+    return (int64_t)i;
+}
+
+/* Rebuilds the index with `n` slots, a power of two greater than twice the entries. */
+static inline void cs_map_reindex(cs_map *m, int64_t n) {
+    int64_t *slots = cs_new((size_t)n * sizeof(int64_t));
+    uint64_t mask = (uint64_t)n - 1;
+    for (int64_t e = 0; e < m->len; e++) {
+        uint64_t i = cs_map_hash(m, m->keys[e]) & mask;
+        while (slots[i] != 0) {
+            i = (i + 1) & mask;
+        }
+        slots[i] = e + 1;
+    }
+    free(m->slots);
+    m->slots = slots;
+    m->nslots = n;
+}
+
 /* The value of `k`, or NULL when the map does not hold it. */
 static inline void *cs_map_find(const cs_map *m, const void *k) {
-    if (m == NULL) {
+    if (m == NULL || m->nslots == 0) {
         return NULL;
     }
-    for (int64_t i = 0; i < m->len; i++) {
-        if (cs_map_key_eq(m, m->keys[i], k)) {
-            return m->vals[i];
-        }
-    }
-    return NULL;
+    int64_t e = m->slots[cs_map_slot(m, k)];
+    return e ? m->vals[e - 1] : NULL;
 }
 
 /* The value of `k`, or a fresh zero value of `vsz` bytes. */
@@ -347,9 +400,12 @@ static inline void *cs_map_put(cs_map *m, const void *k) {
     if (m == NULL) {
         cs_panic("assignment to entry in nil map");
     }
-    void *v = cs_map_find(m, k);
-    if (v) {
-        return v;
+    if ((m->len + 1) * 2 > m->nslots) {
+        cs_map_reindex(m, m->nslots ? m->nslots * 2 : 16);
+    }
+    int64_t slot = cs_map_slot(m, k);
+    if (m->slots[slot] != 0) {
+        return m->vals[m->slots[slot] - 1];
     }
     if (m->len == m->cap) {
         int64_t cap = m->cap ? m->cap * 2 : 8;
@@ -365,6 +421,7 @@ static inline void *cs_map_put(cs_map *m, const void *k) {
     }
     m->keys[m->len] = cs_dup(k, m->ksz);
     m->vals[m->len] = cs_new(m->vsz);
+    m->slots[slot] = m->len + 1;
     return m->vals[m->len++];
 }
 
