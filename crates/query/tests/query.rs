@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use codespec_model::Module;
-use codespec_query::{FactBase, Names, Source, Value, load, parse, run, schema_text};
+use codespec_query::{FactBase, Names, Source, Value, load_in, parse, run, schema_text};
 
 fn here() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests")
@@ -31,6 +31,16 @@ fn scratch(name: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+/// The shop document in `<scratch>/in`, and a reviewer's cache directory `<scratch>/facts`
+/// beside it, outside the input's directory.
+fn shop_and_cache(name: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    std::fs::create_dir_all(dir.join("in")).unwrap();
+    let doc = dir.join("in").join("shop.cir.json");
+    std::fs::copy(fixture("shop/shop.cir.json"), &doc).unwrap();
+    (doc, dir.join("facts"))
 }
 
 fn answer(query: &str, modules: &[Module]) -> String {
@@ -123,19 +133,16 @@ fn every_node_has_its_index_path_id_and_two_runs_print_byte_equal_output() {
 
 #[test]
 fn the_fact_base_is_cached_by_digest_and_a_changed_document_gets_another() {
-    let dir = scratch("cache");
-    let doc = dir.join("shop.cir.json");
-    std::fs::copy(fixture("shop/shop.cir.json"), &doc).unwrap();
+    let (doc, facts) = shop_and_cache("cache");
+    let load = |doc: &[PathBuf]| load_in(doc, &[], None, Some(&facts));
     let q = parse(&std::fs::read_to_string(fixture("shop/quiet.cq")).unwrap()).unwrap();
 
     let built = load(std::slice::from_ref(&doc)).unwrap();
     assert_eq!(built.source, Source::Built);
     assert_eq!(built.digest.len(), 64, "{}", built.digest);
-    assert_eq!(
-        built.cache,
-        dir.join(".cq").join(format!("{}.facts", built.digest))
-    );
-    assert!(built.cache.is_file());
+    let file = facts.join(format!("{}.facts", built.digest));
+    assert_eq!(built.cache.as_ref(), Some(&file));
+    assert!(file.is_file());
     let a = run(&q, &built.facts, &Names::default()).unwrap().to_text();
 
     let cached = load(std::slice::from_ref(&doc)).unwrap();
@@ -157,17 +164,17 @@ fn the_fact_base_is_cached_by_digest_and_a_changed_document_gets_another() {
 /// What the second run prints comes from the cache file: a fact added to it shows.
 #[test]
 fn a_second_run_reads_the_cache_file() {
-    let dir = scratch("cache-read");
-    let doc = dir.join("shop.cir.json");
-    std::fs::copy(fixture("shop/shop.cir.json"), &doc).unwrap();
+    let (doc, facts) = shop_and_cache("cache-read");
+    let load = |doc: &[PathBuf]| load_in(doc, &[], None, Some(&facts));
     let built = load(std::slice::from_ref(&doc)).unwrap();
+    let file = built.cache.clone().unwrap();
     let mut cache: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&built.cache).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     cache["relations"]["reader_has"]
         .as_array_mut()
         .expect("the cache has a reader_has list")
         .push(serde_json::json!(["planted", "calls"]));
-    std::fs::write(&built.cache, cache.to_string()).unwrap();
+    std::fs::write(&file, cache.to_string()).unwrap();
     let cached = load(std::slice::from_ref(&doc)).unwrap();
     assert_eq!(cached.source, Source::Cache);
     let q = parse("?- reader_has{lang: \"planted\", part: P}.").unwrap();
@@ -724,4 +731,160 @@ fn raises_holds_what_a_function_lists_and_a_raise_is_an_exit() {
     );
     assert!(exits.contains("raise"), "{exits}");
     assert!(exits.contains("return"), "{exits}");
+}
+
+/// Q8: a branch that declares its own `x := 9` shadows the parameter `x`; the `return x` after
+/// the branch reads the parameter, so no flow runs from the inner declaration to it. A function
+/// literal that captures `x` and then declares its own `x` gives that declaration its own var.
+#[test]
+fn dataflow_does_not_cross_a_lexical_shadow() {
+    let int = serde_json::json!({"k": "int", "width": "platform", "signed": true});
+    let var = |n: &str, t: &serde_json::Value| serde_json::json!({"k": "var", "name": n, "t": t});
+    let lit = |v: &str| serde_json::json!({"k": "lit", "value": v, "t": int.clone()});
+    let bool_t = serde_json::json!({"k": "bool"});
+    let lambda_t = serde_json::json!({"k": "func", "params": [], "results": [int.clone()]});
+    let doc = serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "go", "name": "hand-written", "version": "0"},
+        "layout": [], "types": [],
+        "funcs": [
+            {"name": "F", "exported": true, "pos": "m.go:1", "results": [int.clone()],
+             "params": [{"name": "x", "t": int.clone()}, {"name": "c", "t": bool_t.clone()}],
+             "body": [
+                {"k": "if", "cond": var("c", &bool_t), "pos": "m.go:2", "then": [
+                    {"k": "let", "names": ["x"], "rhs": [lit("9")], "pos": "m.go:3"},
+                    {"k": "let", "names": ["y"], "rhs": [var("x", &int)], "pos": "m.go:4"}]},
+                {"k": "return", "results": [var("x", &int)], "pos": "m.go:6"}]},
+            {"name": "G", "exported": true, "pos": "m.go:8", "results": [int.clone()],
+             "params": [{"name": "x", "t": int.clone()}],
+             "body": [
+                {"k": "let", "names": ["g"], "pos": "m.go:9", "rhs": [
+                    {"k": "lambda", "params": [], "results": [int.clone()], "captures": ["x"],
+                     "t": lambda_t, "body": [
+                        {"k": "let", "names": ["y"], "rhs": [var("x", &int)], "pos": "m.go:10"},
+                        {"k": "let", "names": ["x"], "rhs": [lit("2")], "pos": "m.go:11"},
+                        {"k": "return", "results": [var("x", &int)], "pos": "m.go:12"}]}]},
+                {"k": "return", "results": [var("x", &int)], "pos": "m.go:14"}]}]
+    });
+    let m = Module::from_json(serde_json::to_string(&doc).unwrap().as_bytes())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let flows = answer("?- flows(D, U).", std::slice::from_ref(&m));
+    let f = "example.com/m.F";
+    assert!(
+        !flows.contains(&format!("{f}#0.then.0\t{f}#1.results.0\n")),
+        "the inner x := 9 flows to the return of the parameter:\n{flows}"
+    );
+    assert!(
+        flows.contains(&format!("{f}\t{f}#1.results.0\n")),
+        "the parameter does not reach the return:\n{flows}"
+    );
+    assert!(
+        flows.contains(&format!("{f}#0.then.0\t{f}#0.then.1.rhs.0\n")),
+        "the inner x := 9 does not reach its own use:\n{flows}"
+    );
+    // The literal's `x := 2` is its own var: no use of the captured parameter shares it.
+    let g = "example.com/m.G";
+    let shared = answer(
+        &format!("s(U) :- def(V, \"{g}#0.rhs.0.body.1\"), use(V, U).\n?- s(U)."),
+        &[m],
+    );
+    assert_eq!(
+        shared,
+        format!("{g}#0.rhs.0.body.2.results.0\n"),
+        "the literal's own x shares a var with the captured parameter"
+    );
+}
+
+/// False facts in the encoding a cache file has: no functions, a planted `reader_has` row.
+fn false_facts(doc: &Path, digest: &str) -> String {
+    let truth = FactBase::build(&[module(doc)]);
+    let mut planted: serde_json::Value =
+        serde_json::from_slice(&truth.to_cache_bytes(digest)).unwrap();
+    planted["relations"]["func"] = serde_json::json!([]);
+    planted["relations"]["reader_has"] = serde_json::json!([["planted", "calls"]]);
+    planted.to_string()
+}
+
+fn answers_truthfully(facts: &FactBase) {
+    let q = parse("?- reader_has{lang: \"planted\", part: P}.").unwrap();
+    assert_eq!(
+        run(&q, facts, &Names::default()).unwrap().to_text(),
+        "",
+        "the planted cache answered"
+    );
+    let q = parse(&std::fs::read_to_string(fixture("shop/quiet.cq")).unwrap()).unwrap();
+    assert_eq!(
+        run(&q, facts, &Names::default()).unwrap().to_text(),
+        expected("shop.txt")
+    );
+}
+
+/// Q1: a fact cache planted beside the input document, named by the documents' digest and
+/// holding false facts, does not change the answer: not with the reviewer's cache directory, and
+/// not when the cache directory named is the one beside the input.
+#[test]
+fn a_cache_planted_beside_the_input_does_not_change_the_answer() {
+    let (doc, facts) = shop_and_cache("planted");
+    let digest = codespec_query::digest(&[std::fs::read(&doc).unwrap()]);
+    let local = doc.parent().unwrap().join(".cq");
+    std::fs::create_dir_all(&local).unwrap();
+    let planted = local.join(format!("{digest}.facts"));
+    std::fs::write(&planted, false_facts(&doc, &digest)).unwrap();
+
+    let loaded = load_in(std::slice::from_ref(&doc), &[], None, Some(&facts)).unwrap();
+    assert_eq!(loaded.source, Source::Built);
+    answers_truthfully(&loaded.facts);
+
+    let loaded = load_in(std::slice::from_ref(&doc), &[], None, Some(&local)).unwrap();
+    assert_eq!(loaded.source, Source::Built);
+    assert_eq!(loaded.cache, None, "a cache inside the input's directory");
+    answers_truthfully(&loaded.facts);
+    assert_eq!(
+        std::fs::read_dir(&local).unwrap().count(),
+        1,
+        "a cache was written beside the input"
+    );
+}
+
+/// Q1: a file in the reviewer's cache under the documents' digest that was built from other
+/// documents (it names another digest, or none) is not read; the facts are built again.
+#[test]
+fn a_cache_file_built_from_other_documents_is_not_read() {
+    let (doc, facts) = shop_and_cache("other-digest");
+    let digest = codespec_query::digest(&[std::fs::read(&doc).unwrap()]);
+    std::fs::create_dir_all(&facts).unwrap();
+    let file = facts.join(format!("{digest}.facts"));
+    for wrong in [Some("0".repeat(64)), None] {
+        let mut planted: serde_json::Value =
+            serde_json::from_str(&false_facts(&doc, &digest)).unwrap();
+        match &wrong {
+            Some(d) => planted["digest"] = serde_json::json!(d),
+            None => {
+                planted.as_object_mut().unwrap().remove("digest");
+            }
+        }
+        std::fs::write(&file, planted.to_string()).unwrap();
+        let loaded = load_in(std::slice::from_ref(&doc), &[], None, Some(&facts)).unwrap();
+        assert_eq!(loaded.source, Source::Built, "{wrong:?}");
+        answers_truthfully(&loaded.facts);
+    }
+}
+
+/// An invalid document is refused even when the cache holds facts under its digest.
+#[test]
+fn the_documents_are_validated_before_the_cache_is_read() {
+    let (doc, facts) = shop_and_cache("validated");
+    let bad = doc.with_file_name("bad.cir.json");
+    std::fs::write(&bad, "{\"format\": \"cir/1\"}").unwrap();
+    let digest = codespec_query::digest(&[std::fs::read(&bad).unwrap()]);
+    std::fs::create_dir_all(&facts).unwrap();
+    std::fs::write(
+        facts.join(format!("{digest}.facts")),
+        false_facts(&doc, &digest),
+    )
+    .unwrap();
+    let err = load_in(std::slice::from_ref(&bad), &[], None, Some(&facts))
+        .err()
+        .expect("an invalid document read from the cache");
+    assert!(err.contains("bad.cir.json"), "{err}");
 }

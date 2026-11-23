@@ -14,6 +14,10 @@ fn expected(name: &str) -> String {
 
 fn codespec(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .env(
+            "CODESPEC_CACHE_DIR",
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-facts"),
+        )
         .arg("query")
         .args(args)
         .output()
@@ -24,8 +28,8 @@ fn stdout(o: &Output) -> String {
     String::from_utf8(o.stdout.clone()).unwrap()
 }
 
-/// The shop document in a fresh directory under the target directory, so the cache it gets
-/// stays out of the source tree.
+/// The shop document in a fresh directory under the target directory, so nothing the run writes
+/// lands in the source tree.
 fn shop(name: &str) -> String {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join("cli-query")

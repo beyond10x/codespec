@@ -77,8 +77,12 @@ reports.
 
 ## 4. The fact base
 
-`codespec query` builds the fact base once per input set and caches it next to the documents
-(`<dir>/.cq/<digest>.facts`, keyed by the documents' SHA-256 and the codespec version). Every
+`codespec query` builds the fact base once per input set and caches it in the reviewer's cache
+directory (`<cache>/<digest>.facts`, `<cache>` being `$CODESPEC_CACHE_DIR`, else
+`$XDG_CACHE_HOME/codespec/facts`, else `~/.cache/codespec/facts`; keyed by the documents' SHA-256
+and the codespec version, and the file names that digest). The documents are validated before the
+cache is read, and a cache directory in or under a document's directory is not used, so a file the
+inputs ship beside them cannot change an answer. Every
 relation has a fixed schema. `codespec query --schema` prints them, and the documentation site
 gets a generated schema page, as it does for `cir/1` (`reference/cir-1.md`).
 

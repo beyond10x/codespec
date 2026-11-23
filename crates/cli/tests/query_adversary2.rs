@@ -18,7 +18,7 @@ fn dir(name: &str) -> PathBuf {
     d
 }
 
-/// The definite plugin fixture, copied into its own directory (the cache lands next to it).
+/// The definite plugin fixture, copied into its own directory.
 fn plugin(name: &str) -> String {
     let doc = dir(name).join("plugin.cir.json");
     std::fs::copy(
@@ -32,6 +32,10 @@ fn plugin(name: &str) -> String {
 /// `codespec <args>` with core dumps off and the address space capped at `kb`.
 fn codespec_capped(kb: u64, args: &[&str]) -> Output {
     Command::new("sh")
+        .env(
+            "CODESPEC_CACHE_DIR",
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-facts"),
+        )
         .args([
             "-c",
             &format!("ulimit -c 0 && ulimit -v {kb} && exec \"$0\" \"$@\""),

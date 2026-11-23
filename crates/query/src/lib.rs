@@ -14,12 +14,15 @@
 //! a call of a call list its place in the list (`#4.calls.0`, an opaque function's
 //! `<function>#calls.0`). Positions are `<module path>/<file>:<line>`.
 //!
-//! [`load`] caches the fact base next to the first document as `.cq/<digest>.facts`, the digest
-//! the SHA-256 of the codespec version and the SHA-256 of each document, sorted: the same
-//! documents in any order give the same file, a changed one another. A second run reads the file
-//! instead of the documents. [`load_with`] adds `codespec effects`' summaries and barrier, for
-//! `effect` and `syscall`, to the input and to the digest; the summaries in the order given,
-//! since the first summary naming an extern gives its effects.
+//! [`load`] caches the fact base in the reviewer's cache directory ([`cache_dir`]:
+//! `$CODESPEC_CACHE_DIR`, else `$XDG_CACHE_HOME/codespec/facts`, else
+//! `~/.cache/codespec/facts`) as `<digest>.facts`, the digest the SHA-256 of the codespec version
+//! and the SHA-256 of each document, sorted: the same documents in any order give the same file,
+//! a changed one another. A second run validates the documents and reads the file, when it names
+//! the same digest, instead of building the facts. Nothing beside the inputs is read: a cache
+//! directory inside an input's directory is not used. [`load_with`] adds `codespec effects`'
+//! summaries and barrier, for `effect` and `syscall`, to the input and to the digest; the
+//! summaries in the order given, since the first summary naming an extern gives its effects.
 //!
 //! `reaches_path(F, G, P)` is `reaches` with its witness `P`, the functions of a path from `F` to
 //! `G` as a path pattern over calls gives it. [`WAITING`] lists what the schema names as not
@@ -241,7 +244,9 @@ pub struct Loaded {
     pub facts: FactBase,
     pub source: Source,
     pub digest: String,
-    pub cache: PathBuf,
+    /// The cache file, `<cache dir>/<digest>.facts`; none when there is no cache directory or it
+    /// lies inside the directory of an input.
+    pub cache: Option<PathBuf>,
 }
 
 /// The cache key of a set of documents: the SHA-256 of the codespec version and each document's
@@ -272,9 +277,29 @@ pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option
     sha256::hex(key.as_bytes())
 }
 
-/// The fact base of the documents at `paths`: read from `<dir of the first>/.cq/<digest>.facts`
-/// when it is there and current, else built from the documents (each read strictly) and written
-/// there. A cache that cannot be written is left out.
+/// The reviewer's cache directory for fact bases: `$CODESPEC_CACHE_DIR`, else
+/// `$XDG_CACHE_HOME/codespec/facts`, else `$HOME/.cache/codespec/facts`; none when none is set.
+/// Never a directory the inputs choose.
+pub fn cache_dir() -> Option<PathBuf> {
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    env("CODESPEC_CACHE_DIR").or_else(|| {
+        env("XDG_CACHE_HOME")
+            .filter(|d| d.is_absolute())
+            .map(|d| d.join("codespec"))
+            .or_else(|| {
+                env("HOME")
+                    .filter(|d| d.is_absolute())
+                    .map(|d| d.join(".cache").join("codespec"))
+            })
+            .map(|d| d.join("facts"))
+    })
+}
+
+/// The fact base of the documents at `paths`, cached in [`cache_dir`]: see [`load_in`].
 pub fn load(paths: &[PathBuf]) -> Result<Loaded, String> {
     load_with(paths, &[], None)
 }
@@ -286,7 +311,23 @@ pub fn load_with(
     summaries: &[PathBuf],
     barrier: Option<&Path>,
 ) -> Result<Loaded, String> {
-    let first = paths.first().ok_or("no documents")?;
+    load_in(paths, summaries, barrier, cache_dir().as_deref())
+}
+
+/// [`load_with`] with the cache in the directory `cache`, or none. Every document is read and
+/// validated first; then the facts are read from `<cache>/<digest>.facts` when that file names
+/// the same digest, else built from the documents and written there. A cache directory inside the
+/// directory of a document, a summary or the barrier is not used, so nothing the inputs ship
+/// beside them is read; a cache that cannot be written is left out.
+pub fn load_in(
+    paths: &[PathBuf],
+    summaries: &[PathBuf],
+    barrier: Option<&Path>,
+    cache: Option<&Path>,
+) -> Result<Loaded, String> {
+    if paths.is_empty() {
+        return Err("no documents".into());
+    }
     let read = |p: &Path| std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()));
     let mut docs = Vec::with_capacity(paths.len());
     for p in paths {
@@ -311,15 +352,24 @@ pub fn load_with(
         }
         None => (None, None),
     };
+    let mut modules = Vec::with_capacity(docs.len());
+    for (p, d) in paths.iter().zip(&docs) {
+        modules.push(
+            codespec_model::Module::from_json(d).map_err(|e| format!("{}: {e}", p.display()))?,
+        );
+    }
     let digest = digest_with(&docs, &sum_bytes, bar_bytes.as_deref());
-    let dir = first
-        .parent()
-        .filter(|d| !d.as_os_str().is_empty())
-        .map_or_else(|| PathBuf::from("."), |d| d.to_path_buf())
-        .join(".cq");
-    let cache = dir.join(format!("{digest}.facts"));
-    if let Ok(bytes) = std::fs::read(&cache)
-        && let Ok(facts) = FactBase::from_bytes(&bytes)
+    let inputs: Vec<&Path> = paths
+        .iter()
+        .chain(summaries)
+        .map(PathBuf::as_path)
+        .chain(barrier)
+        .collect();
+    let dir = cache.filter(|d| !inside_inputs(d, &inputs));
+    let cache = dir.map(|d| d.join(format!("{digest}.facts")));
+    if let Some(file) = &cache
+        && let Ok(bytes) = std::fs::read(file)
+        && let Ok(facts) = FactBase::from_cache_bytes(&bytes, &digest)
     {
         return Ok(Loaded {
             facts,
@@ -328,16 +378,13 @@ pub fn load_with(
             cache,
         });
     }
-    let mut modules = Vec::with_capacity(docs.len());
-    for (p, d) in paths.iter().zip(&docs) {
-        modules.push(
-            codespec_model::Module::from_json(d).map_err(|e| format!("{}: {e}", p.display()))?,
-        );
-    }
     let facts = FactBase::build_with(&modules, &sums, bar.as_ref());
-    if std::fs::create_dir_all(&dir).is_ok() {
+    if let (Some(dir), Some(file)) = (dir, &cache)
+        && std::fs::create_dir_all(dir).is_ok()
+    {
         let tmp = dir.join(format!("{digest}.facts.{}", std::process::id()));
-        if std::fs::write(&tmp, facts.to_bytes()).is_ok() && std::fs::rename(&tmp, &cache).is_err()
+        if std::fs::write(&tmp, facts.to_cache_bytes(&digest)).is_ok()
+            && std::fs::rename(&tmp, file).is_err()
         {
             let _ = std::fs::remove_file(&tmp);
         }
@@ -348,6 +395,34 @@ pub fn load_with(
         digest,
         cache,
     })
+}
+
+/// Whether `dir` is, or lies inside, the directory of one of `inputs`, with symbolic links
+/// resolved; true when that cannot be told.
+fn inside_inputs(dir: &Path, inputs: &[&Path]) -> bool {
+    let Some(dir) = real(dir) else {
+        return true;
+    };
+    inputs.iter().any(|p| {
+        let parent = p
+            .parent()
+            .filter(|d| !d.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        real(parent).is_none_or(|d| dir.starts_with(d))
+    })
+}
+
+/// `path` made absolute, its longest existing prefix with symbolic links resolved; none when the
+/// rest that does not exist yet holds a `..` or a `.`.
+fn real(path: &Path) -> Option<PathBuf> {
+    let abs = std::path::absolute(path).ok()?;
+    let (base, real) = abs
+        .ancestors()
+        .find_map(|a| a.canonicalize().ok().map(|r| (a, r)))?;
+    let rest = abs.strip_prefix(base).ok()?;
+    rest.components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)))
+        .then(|| real.join(rest))
 }
 
 /// How the entries of a names list match a string, as `codespec check` reads that list.

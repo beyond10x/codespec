@@ -27,6 +27,10 @@ fn shop(name: &str) -> String {
 /// `codespec query`, with core dumps off so a crash leaves no core file in the tree.
 fn codespec(args: &[&str]) -> Output {
     Command::new("sh")
+        .env(
+            "CODESPEC_CACHE_DIR",
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-facts"),
+        )
         .args(["-c", "ulimit -c 0 && exec \"$0\" query \"$@\""])
         .arg(env!("CARGO_BIN_EXE_codespec"))
         .args(args)
