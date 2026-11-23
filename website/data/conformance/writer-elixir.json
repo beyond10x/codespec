@@ -1,0 +1,1313 @@
+{
+  "format": "codespec-conformance-report/1",
+  "adapter": {
+    "role": "writer",
+    "lang": "elixir",
+    "version": "0.11.0",
+    "manifest_sha256": "89293a8903a82bb781f42901e9b2ef13c947c21555d086af3b90d09113e314e4"
+  },
+  "kit": {
+    "version": "0.11.0",
+    "sha256": "6fb37f2394e1be203195fde84ddbbb5c1194a919c05605bf3b09f1072fd2a10d"
+  },
+  "codespec": "0.11.0",
+  "features": [
+    {
+      "id": "assign.add",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-add"
+      ]
+    },
+    {
+      "id": "assign.and",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-and"
+      ]
+    },
+    {
+      "id": "assign.and_not",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-and-not"
+      ]
+    },
+    {
+      "id": "assign.div",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-div"
+      ]
+    },
+    {
+      "id": "assign.mul",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-mul"
+      ]
+    },
+    {
+      "id": "assign.or",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-or"
+      ]
+    },
+    {
+      "id": "assign.rem",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-rem"
+      ]
+    },
+    {
+      "id": "assign.shl",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shl"
+      ]
+    },
+    {
+      "id": "assign.shr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-shr"
+      ]
+    },
+    {
+      "id": "assign.sub",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-sub"
+      ]
+    },
+    {
+      "id": "assign.xor",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "assign-xor"
+      ]
+    },
+    {
+      "id": "decl.embedded",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-embedded"
+      ],
+      "case": "decl-embedded",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.enum",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-enum",
+        "decl-enum-string"
+      ],
+      "case": "decl-enum",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.interface",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-interface"
+      ],
+      "case": "decl-interface",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.newtype",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-newtype"
+      ],
+      "case": "decl-newtype",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.struct",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-struct"
+      ],
+      "case": "decl-struct",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.type_params",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-generic"
+      ],
+      "case": "decl-generic",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.union",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-union"
+      ],
+      "case": "decl-union",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "decl.var",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-var",
+        "decl-var-int"
+      ],
+      "case": "decl-var",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module vars"
+    },
+    {
+      "id": "decl.variadic",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "decl-variadic",
+        "decl-variadic-local"
+      ],
+      "case": "decl-variadic",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "expr.binop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-binop"
+      ]
+    },
+    {
+      "id": "expr.call",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-call"
+      ]
+    },
+    {
+      "id": "expr.call_value",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-call-value"
+      ],
+      "case": "expr-call-value",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.const",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-const"
+      ],
+      "case": "expr-const",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module consts"
+    },
+    {
+      "id": "expr.conv",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-conv"
+      ],
+      "case": "expr-conv",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.errvar",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-errvar"
+      ],
+      "case": "expr-errvar",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "expr.extern",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-extern"
+      ],
+      "case": "expr-extern",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "expr.extern_method",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-extern-method"
+      ],
+      "case": "expr-extern-method",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "expr.field",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-field"
+      ],
+      "case": "expr-field",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.float",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-float"
+      ],
+      "case": "expr-float",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}"
+    },
+    {
+      "id": "expr.func_ref",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-func-value"
+      ],
+      "case": "expr-func-value",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.global",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-global"
+      ],
+      "case": "expr-global",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module vars"
+    },
+    {
+      "id": "expr.iface_call",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-iface-call"
+      ],
+      "case": "expr-iface-call",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "expr.index",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-index"
+      ],
+      "case": "expr-index",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "expr.instantiate",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-instantiate"
+      ],
+      "case": "expr-instantiate",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.intrinsic",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-intrinsic",
+        "expr-intrinsic-slice"
+      ],
+      "case": "expr-intrinsic",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported expression \"intrinsic\""
+    },
+    {
+      "id": "expr.lambda",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-lambda"
+      ],
+      "case": "expr-lambda",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}"
+    },
+    {
+      "id": "expr.lit",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-lit"
+      ]
+    },
+    {
+      "id": "expr.make",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-make"
+      ],
+      "case": "expr-make",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}"
+    },
+    {
+      "id": "expr.method",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-method"
+      ],
+      "case": "expr-method",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.nil",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-nil",
+        "expr-nil-error",
+        "expr-nil-ptr"
+      ],
+      "case": "expr-nil",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "expr.spread",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-spread",
+        "expr-spread-local"
+      ],
+      "case": "expr-spread",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "expr.struct",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-struct"
+      ],
+      "case": "expr-struct",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.to_error",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-to-error"
+      ],
+      "case": "expr-to-error",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.to_iface",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-to-iface"
+      ],
+      "case": "expr-to-iface",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "expr.unop",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-unop"
+      ]
+    },
+    {
+      "id": "expr.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "expr-var"
+      ]
+    },
+    {
+      "id": "expr.zero",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "expr-zero",
+        "expr-zero-error",
+        "expr-zero-struct"
+      ],
+      "case": "expr-zero",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"error\"}"
+    },
+    {
+      "id": "fact.comma_ok",
+      "claimed": false,
+      "verdict": "pass",
+      "cases": [
+        "fact-comma-ok"
+      ]
+    },
+    {
+      "id": "fact.displays",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-displays"
+      ],
+      "case": "fact-displays",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "fact.fallible",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-fallible"
+      ],
+      "case": "fact-fallible",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "fact.messages",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-messages"
+      ],
+      "case": "fact-messages",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "fact.read_only",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-read-only"
+      ],
+      "case": "fact-read-only",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "fact.shared",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-shared"
+      ],
+      "case": "fact-shared",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "fact.unordered_iteration",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "fact-unordered-iteration"
+      ],
+      "case": "fact-unordered-iteration",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"bool\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}"
+    },
+    {
+      "id": "intrinsic.append",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-append"
+      ],
+      "case": "intrinsic-append",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "intrinsic.errorf",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-errorf"
+      ],
+      "case": "intrinsic-errorf",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"error\"}"
+    },
+    {
+      "id": "intrinsic.len",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-len"
+      ],
+      "case": "intrinsic-len",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "intrinsic.println",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-println",
+        "intrinsic-println-int"
+      ],
+      "case": "intrinsic-println",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"error\"}"
+    },
+    {
+      "id": "intrinsic.sorted_keys",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-sorted-keys"
+      ],
+      "case": "intrinsic-sorted-keys",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "intrinsic.sprintf",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "intrinsic-sprintf"
+      ],
+      "case": "intrinsic-sprintf",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported expression \"intrinsic\""
+    },
+    {
+      "id": "op.add",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-add"
+      ]
+    },
+    {
+      "id": "op.and",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-and"
+      ]
+    },
+    {
+      "id": "op.and_not",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-and-not"
+      ]
+    },
+    {
+      "id": "op.div",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-div"
+      ]
+    },
+    {
+      "id": "op.eq",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-eq"
+      ]
+    },
+    {
+      "id": "op.ge",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-ge"
+      ]
+    },
+    {
+      "id": "op.gt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-gt"
+      ]
+    },
+    {
+      "id": "op.land",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-land"
+      ]
+    },
+    {
+      "id": "op.le",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-le"
+      ]
+    },
+    {
+      "id": "op.lor",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-lor"
+      ]
+    },
+    {
+      "id": "op.lt",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-lt"
+      ]
+    },
+    {
+      "id": "op.mul",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-mul"
+      ]
+    },
+    {
+      "id": "op.ne",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-ne"
+      ]
+    },
+    {
+      "id": "op.or",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-or"
+      ]
+    },
+    {
+      "id": "op.rem",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-rem"
+      ]
+    },
+    {
+      "id": "op.shl",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shl"
+      ]
+    },
+    {
+      "id": "op.shr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-shr"
+      ]
+    },
+    {
+      "id": "op.sub",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-sub"
+      ]
+    },
+    {
+      "id": "op.xor",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "op-xor"
+      ]
+    },
+    {
+      "id": "sem.continue.post",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "sem-continue-post"
+      ],
+      "case": "sem-continue-post",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\""
+    },
+    {
+      "id": "sem.error.propagate",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "sem-error-propagate"
+      ],
+      "case": "sem-error-propagate",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "sem.int.wrap",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-int-wrap",
+        "sem-int-wrap-no-div"
+      ]
+    },
+    {
+      "id": "sem.map.order",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "sem-map-order"
+      ],
+      "case": "sem-map-order",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}"
+    },
+    {
+      "id": "sem.multi_assign.order",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "sem-multi-assign-order"
+      ],
+      "case": "sem-multi-assign-order",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"for\" at \"case.go:13\""
+    },
+    {
+      "id": "sem.rem.sign",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "sem-rem-sign"
+      ]
+    },
+    {
+      "id": "sem.switch.break",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "sem-switch-break"
+      ],
+      "case": "sem-switch-break",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"for\" at \"case.go:7\""
+    },
+    {
+      "id": "stmt.assign",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-assign"
+      ]
+    },
+    {
+      "id": "stmt.break",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-break"
+      ],
+      "case": "stmt-break",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\""
+    },
+    {
+      "id": "stmt.continue",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-continue"
+      ],
+      "case": "stmt-continue",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "stmt.decr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-decr"
+      ]
+    },
+    {
+      "id": "stmt.expr",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-expr",
+        "stmt-expr-method"
+      ],
+      "case": "stmt-expr",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"error\"}"
+    },
+    {
+      "id": "stmt.for",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-for"
+      ],
+      "case": "stmt-for",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\""
+    },
+    {
+      "id": "stmt.for_range",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-for-range"
+      ],
+      "case": "stmt-for-range",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "stmt.foreign",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-foreign"
+      ],
+      "case": "stmt-foreign",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module refusals"
+    },
+    {
+      "id": "stmt.if",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-if"
+      ]
+    },
+    {
+      "id": "stmt.incr",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-incr"
+      ]
+    },
+    {
+      "id": "stmt.let",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-let"
+      ]
+    },
+    {
+      "id": "stmt.lookup_else",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-lookup-else"
+      ],
+      "case": "stmt-lookup-else",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "stmt.raise",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-raise"
+      ],
+      "case": "stmt-raise",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module externs"
+    },
+    {
+      "id": "stmt.return",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-return",
+        "stmt-return-one"
+      ]
+    },
+    {
+      "id": "stmt.send",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-send"
+      ],
+      "case": "stmt-send",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}"
+    },
+    {
+      "id": "stmt.switch",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "stmt-switch"
+      ],
+      "case": "stmt-switch",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported statement \"switch\" at \"case.go:5\""
+    },
+    {
+      "id": "stmt.var",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-var"
+      ]
+    },
+    {
+      "id": "type.any",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-any"
+      ],
+      "case": "type-any",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"any\"}"
+    },
+    {
+      "id": "type.array",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-array-float",
+        "type-array-int"
+      ],
+      "case": "type-array-float",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"bits\" => \"64\", \"k\" => \"float\"}, \"k\" => \"array\", \"len\" => 3}"
+    },
+    {
+      "id": "type.bool",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-bool"
+      ]
+    },
+    {
+      "id": "type.chan",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-chan"
+      ],
+      "case": "type-chan",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"string\"}, \"k\" => \"chan\"}"
+    },
+    {
+      "id": "type.error",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-error"
+      ],
+      "case": "type-error",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "type.extern",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-extern"
+      ],
+      "case": "type-extern",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "type.float",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-float",
+        "type-float-compare"
+      ],
+      "case": "type-float",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}"
+    },
+    {
+      "id": "type.func",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-func"
+      ],
+      "case": "type-func",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}"
+    },
+    {
+      "id": "type.int",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-int"
+      ]
+    },
+    {
+      "id": "type.map",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-map"
+      ],
+      "case": "type-map",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}"
+    },
+    {
+      "id": "type.named",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-named"
+      ],
+      "case": "type-named",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    },
+    {
+      "id": "type.param",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-param"
+      ],
+      "case": "type-param",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported receiver, type parameters or raises in \"second\""
+    },
+    {
+      "id": "type.ptr",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-ptr"
+      ],
+      "case": "type-ptr",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}"
+    },
+    {
+      "id": "type.slice",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-slice"
+      ],
+      "case": "type-slice",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}"
+    },
+    {
+      "id": "type.string",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "type-string"
+      ]
+    },
+    {
+      "id": "type.tuple",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-tuple",
+        "type-tuple-error"
+      ],
+      "case": "type-tuple-error",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module errors"
+    },
+    {
+      "id": "type.unit",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "type-unit",
+        "type-unit-method"
+      ],
+      "case": "type-unit",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported expression \"intrinsic\""
+    },
+    {
+      "id": "unop.complement",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-complement"
+      ]
+    },
+    {
+      "id": "unop.deref",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "unop-deref"
+      ],
+      "case": "unop-deref",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}"
+    },
+    {
+      "id": "unop.neg",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-neg"
+      ]
+    },
+    {
+      "id": "unop.not",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-not"
+      ]
+    },
+    {
+      "id": "unop.plus",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "unop-plus"
+      ]
+    },
+    {
+      "id": "unop.recv",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "unop-recv"
+      ],
+      "case": "unop-recv",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}"
+    },
+    {
+      "id": "unop.ref",
+      "claimed": false,
+      "verdict": "refused",
+      "cases": [
+        "unop-ref"
+      ],
+      "case": "unop-ref",
+      "reason": "refused",
+      "detail": "codespec-write-elixir: unsupported module types"
+    }
+  ],
+  "boundary": [
+    {
+      "id": "runner_control",
+      "verdict": "pass"
+    },
+    {
+      "id": "unknown_kind",
+      "verdict": "pass"
+    },
+    {
+      "id": "no_facts",
+      "verdict": "pass"
+    },
+    {
+      "id": "deterministic",
+      "verdict": "pass"
+    }
+  ],
+  "summary": {
+    "claimed": 51,
+    "pass": 51,
+    "fail": 0,
+    "refused_unclaimed": 76,
+    "pass_unclaimed": 1,
+    "untested": 0,
+    "boundary_fail": 0
+  },
+  "conforms": true
+}
