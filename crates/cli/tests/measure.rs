@@ -424,3 +424,90 @@ fn the_java_ledger_reads_every_function_and_refuses_none() {
     assert!(counts[0] > 0, "{total}");
     assert!(counts[1..].iter().all(|&n| n == 0), "{total}");
 }
+
+fn text_of(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+/// A directory holding `codespec-read-go`, built once per test binary.
+fn go_adapters() -> &'static Path {
+    static ADAPTERS: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    ADAPTERS.get_or_init(|| {
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("measure-adapters");
+        std::fs::create_dir_all(&dir).unwrap();
+        let built = Command::new("go")
+            .args(["build", "-o"])
+            .arg(format!("{}/", dir.display()))
+            .arg("./cmd/codespec-read-go")
+            .current_dir(root().join("adapters/go"))
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{}", text_of(&built));
+        dir
+    })
+}
+
+/// `crates/cli/tests/fixtures/measure-go`: `Add` is read; `Mag`, whose `complex128` signature the
+/// Go reader records as an opaque function, and `Run`, whose local closure defers a call (a
+/// `foreign` statement inside a lambda's body), are refused.
+#[test]
+fn an_opaque_function_and_a_foreign_statement_in_a_closure_are_refused() {
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("measure-go.cir.json");
+    let read = Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .args(["read", "--lang", "go"])
+        .arg(root().join("crates/cli/tests/fixtures/measure-go"))
+        .arg("--out")
+        .arg(&out)
+        .arg("--adapters")
+        .arg(go_adapters())
+        .output()
+        .unwrap();
+    assert!(read.status.success(), "{}", text_of(&read));
+    let report: serde_json::Value = serde_json::from_str(&stdout(&codespec(&[
+        "measure",
+        "--format",
+        "json",
+        out.to_str().unwrap(),
+    ])))
+    .unwrap();
+    let file = &report["files"][0];
+    assert_eq!(file["read"], serde_json::json!(["Add"]), "{report}");
+    assert_eq!(
+        file["refused"],
+        serde_json::json!(["Mag", "Run"]),
+        "{report}"
+    );
+    assert_eq!(report["total"]["functions"], 3, "{report}");
+    assert_eq!(report["total"]["share_read"], "33.3%", "{report}");
+}
+
+/// A Groovy method declaration the reader refuses (`Cart.methodMissing(…)`) and also lists as an
+/// opaque function `Cart.methodMissing` is one refused function, not two.
+#[test]
+fn a_refused_declaration_also_listed_as_opaque_counts_once() {
+    let doc = r#"{
+  "format": "cir/1",
+  "name": "shop",
+  "reader": {"language": "groovy", "name": "hand", "version": "0"},
+  "types": [{"k": "struct", "name": "Cart", "exported": true, "fields": [], "pos": "Cart.groovy:1"}],
+  "funcs": [],
+  "opaque": [
+    {"name": "methodMissing", "recv": "Cart", "pos": "Cart.groovy:3", "reason": "dynamic: methodMissing declared", "calls": []},
+    {"name": "size", "recv": "Cart", "pos": "Cart.groovy:5", "reason": "dynamic: a body outside cir/1", "calls": []}
+  ],
+  "layout": [],
+  "refusals": [
+    {"pos": "Cart.groovy:3", "what": "Cart.methodMissing(…)", "reason": "dynamic: methodMissing declared"}
+  ]
+}"#;
+    let report = measure(&Module::from_json(doc.as_bytes()).unwrap());
+    assert_eq!(
+        report.files[0].refused,
+        ["Cart.methodMissing(…)", "Cart.size"]
+    );
+    assert_eq!(report.total.functions, 2);
+}

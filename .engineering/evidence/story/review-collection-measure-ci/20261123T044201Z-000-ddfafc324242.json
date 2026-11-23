@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-23T04:42:01Z",
+  "actor": "human:timo",
+  "artifact": "story:review-collection-measure-ci",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test --locked -p b10x-codespec-cli: 17 test binaries ok (barrier 4 passed, measure 9 passed); scripts/check-part.sh inventory ok over 138 targets"
+  }
+}

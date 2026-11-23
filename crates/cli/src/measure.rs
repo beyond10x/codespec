@@ -3,8 +3,10 @@
 //! An artefact is a source file: the part of a `pos` before its last `:`. Every file a type, a
 //! constant, an error, a function or a refusal sits in gets one row, in byte order.
 //!
-//! - A function is *read* when its body holds no `foreign` statement at any depth, and *refused*
-//!   when it holds one.
+//! - A function is *read* when its body holds no `foreign` statement at any depth, the bodies of
+//!   the lambdas in its expressions included, and *refused* when it holds one.
+//! - A function of `opaque`, whose body `cir/1` does not hold, is refused, counted once: not again
+//!   when a refusal of its declaration (`T.m(…)`) already counts it.
 //! - A JVM reader's constructor `New<T>` without a receiver at the very `pos` of the type `T` is
 //!   one the reader made for the class, not a declared function, and is not counted.
 //! - A refusal outside every function counts under its file and category. It is also a refused
@@ -23,7 +25,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use codespec_model::{Module, Stmt, TypeDecl};
+use codespec_model::walk::{children, stmt_exprs, walk_stmts};
+use codespec_model::{Expr, Module, Stmt, TypeDecl};
 use serde::Serialize;
 
 /// The format `codespec measure --format json` prints.
@@ -98,35 +101,30 @@ fn category_of(reason: &str) -> &'static str {
         .unwrap_or("uncategorised")
 }
 
+/// Whether `body` holds a `foreign` statement at any depth: in a nested block, or in the body of a
+/// lambda inside any of its expressions.
 fn holds_foreign(body: &[Stmt]) -> bool {
-    body.iter().any(|s| match s {
-        Stmt::Foreign { .. } => true,
-        Stmt::If {
-            then, otherwise, ..
-        } => holds_foreign(then) || holds_foreign(otherwise),
-        Stmt::ForRange { body, .. } => holds_foreign(body),
-        Stmt::For {
-            init, post, body, ..
-        } => {
-            init.iter()
-                .chain(post)
-                .any(|s| holds_foreign(std::slice::from_ref(s)))
-                || holds_foreign(body)
+    let mut found = false;
+    walk_stmts(body, &mut |s| {
+        if found {
+            return;
         }
-        Stmt::Switch { cases, .. } => cases.iter().any(|c| holds_foreign(&c.body)),
-        Stmt::LookupElse { then, .. } => holds_foreign(then),
-        Stmt::Let { .. }
-        | Stmt::Var { .. }
-        | Stmt::Assign { .. }
-        | Stmt::Incr { .. }
-        | Stmt::Decr { .. }
-        | Stmt::Break { .. }
-        | Stmt::Continue { .. }
-        | Stmt::Return { .. }
-        | Stmt::Raise { .. }
-        | Stmt::Expr { .. }
-        | Stmt::Send { .. } => false,
-    })
+        if matches!(s, Stmt::Foreign { .. }) {
+            found = true;
+            return;
+        }
+        stmt_exprs(s, &mut |e| found = found || expr_holds_foreign(e));
+    });
+    found
+}
+
+fn expr_holds_foreign(e: &Expr) -> bool {
+    if let Expr::Lambda { body, .. } = e {
+        return holds_foreign(body);
+    }
+    let mut found = false;
+    children(e, &mut |c| found = found || expr_holds_foreign(c));
+    found
 }
 
 /// Whether a refusal outside every function refuses a method's declaration.
@@ -200,6 +198,14 @@ pub fn measure(m: &Module) -> Report {
         *r.refusals.entry(category_of(&refusal.reason)).or_default() += 1;
         if refuses_a_declared_function(&refusal.what) {
             r.refused.push(refusal.what.clone());
+        }
+    }
+    for o in &m.opaque {
+        let r = row(&mut rows, &o.pos);
+        let key = o.key();
+        let shape = format!("{key}(…)");
+        if !r.refused.iter().any(|k| *k == key || *k == shape) {
+            r.refused.push(key);
         }
     }
     let mut total_refusals: BTreeMap<&'static str, usize> = BTreeMap::new();

@@ -17,29 +17,14 @@ tasks:
     cmds: [{task: check}]
 
   check:
-    desc: The gate. Format, lint, test, schema drift, adapters, examples, harness, generated docs.
+    desc: The gate. Every part of scripts/check-parts.txt in order (format, lint, the test inventory, tests, schema drift, adapters, examples, harness, evaluator, generated docs), the same list CI runs one job per part of.
     cmds:
-      - cargo fmt --all --check
-      - cargo clippy --workspace --all-targets --locked -- -D warnings
-      - cargo test --workspace --locked
-      - task: adapters-check
-      - task: examples-check
-      - task: examples-pass
-      - task: examples-go
-      - task: examples-rust
-      - task: examples-greeter
-      - task: examples-inventory
-      - task: examples-effects
-      - task: examples-series
-      - task: examples-ledger
-      - task: examples-fees
-      - task: harness
-      - task: conformance-cases
-      - task: eval-kit
-      - task: eval-diff
-      - task: conformance-kit
-      - task: groovy-fixture-check
-      - task: docs-check
+      - sh scripts/check-part.sh all
+
+  check-parts:
+    desc: Fail unless every cargo test target of the workspace (each package's lib, bins, integration tests and doc tests) is run by a test part of scripts/check-parts.txt, and every package and --test=<name> a part names exists.
+    cmds:
+      - sh scripts/check-part.sh inventory
 
   docs-generate:
     desc: Regenerate the generated documentation pages, the showcase, the cir/1 diagram, the reader corpora (conformance/reader) from the kit's case sources, the conformance reports of every adapter (website/data/conformance), the support matrix and website/data/status.json.
