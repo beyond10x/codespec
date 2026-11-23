@@ -2377,6 +2377,1530 @@
       }
     },
     {
+      "name": "Elixir",
+      "read": {
+        "assign.add": "refused",
+        "assign.and": "refused",
+        "assign.and_not": "refused",
+        "assign.div": "refused",
+        "assign.mul": "refused",
+        "assign.or": "refused",
+        "assign.rem": "refused",
+        "assign.shl": "refused",
+        "assign.shr": "refused",
+        "assign.sub": "refused",
+        "assign.xor": "refused",
+        "decl.embedded": "refused",
+        "decl.enum": "refused",
+        "decl.interface": "refused",
+        "decl.newtype": "refused",
+        "decl.struct": "refused",
+        "decl.type_params": "refused",
+        "decl.union": "refused",
+        "decl.var": "refused",
+        "decl.variadic": "refused",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": "refused",
+        "expr.const": "refused",
+        "expr.conv": "refused",
+        "expr.errvar": "refused",
+        "expr.extern": "refused",
+        "expr.extern_method": "refused",
+        "expr.field": "refused",
+        "expr.float": "refused",
+        "expr.func_ref": "refused",
+        "expr.global": "refused",
+        "expr.iface_call": "refused",
+        "expr.index": "refused",
+        "expr.instantiate": "refused",
+        "expr.intrinsic": "refused",
+        "expr.lambda": "refused",
+        "expr.lit": "verified",
+        "expr.make": "refused",
+        "expr.method": "refused",
+        "expr.nil": "refused",
+        "expr.spread": "refused",
+        "expr.struct": "refused",
+        "expr.to_error": "refused",
+        "expr.to_iface": "refused",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "refused",
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "refused",
+        "intrinsic.errorf": "refused",
+        "intrinsic.len": "refused",
+        "intrinsic.println": "refused",
+        "intrinsic.sorted_keys": "refused",
+        "intrinsic.sprintf": "refused",
+        "op.add": "verified",
+        "op.and": "refused",
+        "op.and_not": "refused",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "refused",
+        "op.rem": "verified",
+        "op.shl": "refused",
+        "op.shr": "refused",
+        "op.sub": "verified",
+        "op.xor": "refused",
+        "sem.continue.post": "refused",
+        "sem.error.propagate": "refused",
+        "sem.int.wrap": "verified",
+        "sem.map.order": "refused",
+        "sem.multi_assign.order": "refused",
+        "sem.rem.sign": "verified",
+        "sem.switch.break": "refused",
+        "stmt.assign": "verified",
+        "stmt.break": "refused",
+        "stmt.continue": "refused",
+        "stmt.decr": "refused",
+        "stmt.expr": "refused",
+        "stmt.for": "refused",
+        "stmt.for_range": "refused",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "refused",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
+        "stmt.return": "verified",
+        "stmt.send": "refused",
+        "stmt.switch": "refused",
+        "stmt.var": "refused",
+        "type.any": "refused",
+        "type.array": "refused",
+        "type.bool": "verified",
+        "type.chan": "refused",
+        "type.error": "refused",
+        "type.extern": "refused",
+        "type.float": "refused",
+        "type.func": "refused",
+        "type.int": "verified",
+        "type.map": "refused",
+        "type.named": "refused",
+        "type.param": "refused",
+        "type.ptr": "refused",
+        "type.slice": "refused",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": "refused",
+        "unop.complement": "refused",
+        "unop.deref": "refused",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "refused",
+        "unop.ref": "refused"
+      },
+      "write": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.embedded": {
+          "note": "Case decl-embedded: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.enum": {
+          "note": "Case decl-enum: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.interface": {
+          "note": "Case decl-interface: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.newtype": {
+          "note": "Case decl-newtype: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.struct": {
+          "note": "Case decl-struct: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.type_params": {
+          "note": "Case decl-generic: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.union": {
+          "note": "Case decl-union: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.var": {
+          "note": "Case decl-var: the writer refuses it: codespec-write-elixir: unsupported module vars.",
+          "state": "refused"
+        },
+        "decl.variadic": {
+          "note": "Case decl-variadic: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": {
+          "note": "Case expr-call-value: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.const": {
+          "note": "Case expr-const: the writer refuses it: codespec-write-elixir: unsupported module consts.",
+          "state": "refused"
+        },
+        "expr.conv": {
+          "note": "Case expr-conv: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.errvar": {
+          "note": "Case expr-errvar: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "expr.extern": {
+          "note": "Case expr-extern: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.extern_method": {
+          "note": "Case expr-extern-method: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.field": {
+          "note": "Case expr-field: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.float": {
+          "note": "Case expr-float: the writer refuses it: codespec-write-elixir: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}.",
+          "state": "refused"
+        },
+        "expr.func_ref": {
+          "note": "Case expr-func-value: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.global": {
+          "note": "Case expr-global: the writer refuses it: codespec-write-elixir: unsupported module vars.",
+          "state": "refused"
+        },
+        "expr.iface_call": {
+          "note": "Case expr-iface-call: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.index": {
+          "note": "Case expr-index: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "expr.instantiate": {
+          "note": "Case expr-instantiate: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.intrinsic": {
+          "note": "Case expr-intrinsic: the writer refuses it: codespec-write-elixir: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "expr.lambda": {
+          "note": "Case expr-lambda: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}.",
+          "state": "refused"
+        },
+        "expr.lit": "verified",
+        "expr.make": {
+          "note": "Case expr-make: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}.",
+          "state": "refused"
+        },
+        "expr.method": {
+          "note": "Case expr-method: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.nil": {
+          "note": "Case expr-nil: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "expr.spread": {
+          "note": "Case expr-spread: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.struct": {
+          "note": "Case expr-struct: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.to_error": {
+          "note": "Case expr-to-error: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.to_iface": {
+          "note": "Case expr-to-iface: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": {
+          "note": "Case expr-zero: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "fact.comma_ok": {
+          "note": "Not claimed, though its case fact-comma-ok passes.",
+          "state": "refused"
+        },
+        "fact.displays": {
+          "note": "Case fact-displays: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.fallible": {
+          "note": "Case fact-fallible: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "fact.messages": {
+          "note": "Case fact-messages: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.read_only": {
+          "note": "Case fact-read-only: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.shared": {
+          "note": "Case fact-shared: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.unordered_iteration": {
+          "note": "Case fact-unordered-iteration: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"bool\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}.",
+          "state": "refused"
+        },
+        "intrinsic.append": {
+          "note": "Case intrinsic-append: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.errorf": {
+          "note": "Case intrinsic-errorf: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "intrinsic.len": {
+          "note": "Case intrinsic-len: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.println": {
+          "note": "Case intrinsic-println: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "intrinsic.sorted_keys": {
+          "note": "Case intrinsic-sorted-keys: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.sprintf": {
+          "note": "Case intrinsic-sprintf: the writer refuses it: codespec-write-elixir: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": {
+          "note": "Case sem-continue-post: the writer refuses it: codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "sem.error.propagate": {
+          "note": "Case sem-error-propagate: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "sem.int.wrap": "verified",
+        "sem.map.order": {
+          "note": "Case sem-map-order: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}.",
+          "state": "refused"
+        },
+        "sem.multi_assign.order": {
+          "note": "Case sem-multi-assign-order: the writer refuses it: codespec-write-elixir: unsupported statement \"for\" at \"case.go:13\".",
+          "state": "refused"
+        },
+        "sem.rem.sign": "verified",
+        "sem.switch.break": {
+          "note": "Case sem-switch-break: the writer refuses it: codespec-write-elixir: unsupported statement \"for\" at \"case.go:7\".",
+          "state": "refused"
+        },
+        "stmt.assign": "verified",
+        "stmt.break": {
+          "note": "Case stmt-break: the writer refuses it: codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.continue": {
+          "note": "Case stmt-continue: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "stmt.decr": "verified",
+        "stmt.expr": {
+          "note": "Case stmt-expr: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "stmt.for": {
+          "note": "Case stmt-for: the writer refuses it: codespec-write-elixir: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.for_range": {
+          "note": "Case stmt-for-range: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "stmt.foreign": {
+          "note": "Case stmt-foreign: the writer refuses it: codespec-write-elixir: unsupported module refusals.",
+          "state": "refused"
+        },
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: codespec-write-elixir: unsupported module externs.",
+          "state": "refused"
+        },
+        "stmt.return": "verified",
+        "stmt.send": {
+          "note": "Case stmt-send: the writer refuses it: codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "stmt.switch": {
+          "note": "Case stmt-switch: the writer refuses it: codespec-write-elixir: unsupported statement \"switch\" at \"case.go:5\".",
+          "state": "refused"
+        },
+        "stmt.var": "verified",
+        "type.any": {
+          "note": "Case type-any: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"any\"}.",
+          "state": "refused"
+        },
+        "type.array": {
+          "note": "Case type-array-float: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"bits\" => \"64\", \"k\" => \"float\"}, \"k\" => \"array\", \"len\" => 3}.",
+          "state": "refused"
+        },
+        "type.bool": "verified",
+        "type.chan": {
+          "note": "Case type-chan: the writer refuses it: codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"string\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "type.error": {
+          "note": "Case type-error: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "type.extern": {
+          "note": "Case type-extern: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "type.float": {
+          "note": "Case type-float: the writer refuses it: codespec-write-elixir: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}.",
+          "state": "refused"
+        },
+        "type.func": {
+          "note": "Case type-func: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}.",
+          "state": "refused"
+        },
+        "type.int": "verified",
+        "type.map": {
+          "note": "Case type-map: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}.",
+          "state": "refused"
+        },
+        "type.named": {
+          "note": "Case type-named: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        },
+        "type.param": {
+          "note": "Case type-param: the writer refuses it: codespec-write-elixir: unsupported receiver, type parameters or raises in \"second\".",
+          "state": "refused"
+        },
+        "type.ptr": {
+          "note": "Case type-ptr: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}.",
+          "state": "refused"
+        },
+        "type.slice": {
+          "note": "Case type-slice: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "type.string": "verified",
+        "type.tuple": {
+          "note": "Case type-tuple-error: the writer refuses it: codespec-write-elixir: unsupported module errors.",
+          "state": "refused"
+        },
+        "type.unit": {
+          "note": "Case type-unit: the writer refuses it: codespec-write-elixir: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "unop.complement": "verified",
+        "unop.deref": {
+          "note": "Case unop-deref: the writer refuses it: codespec-write-elixir: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}.",
+          "state": "refused"
+        },
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": {
+          "note": "Case unop-recv: the writer refuses it: codespec-write-elixir: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "unop.ref": {
+          "note": "Case unop-ref: the writer refuses it: codespec-write-elixir: unsupported module types.",
+          "state": "refused"
+        }
+      }
+    },
+    {
+      "name": "Gleam",
+      "read": {
+        "assign.add": "refused",
+        "assign.and": "refused",
+        "assign.and_not": "refused",
+        "assign.div": "refused",
+        "assign.mul": "refused",
+        "assign.or": "refused",
+        "assign.rem": "refused",
+        "assign.shl": "refused",
+        "assign.shr": "refused",
+        "assign.sub": "refused",
+        "assign.xor": "refused",
+        "decl.embedded": "refused",
+        "decl.enum": "refused",
+        "decl.interface": "refused",
+        "decl.newtype": "refused",
+        "decl.struct": "refused",
+        "decl.type_params": "refused",
+        "decl.union": "refused",
+        "decl.var": "refused",
+        "decl.variadic": "refused",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": "refused",
+        "expr.const": "refused",
+        "expr.conv": "refused",
+        "expr.errvar": "refused",
+        "expr.extern": "refused",
+        "expr.extern_method": "refused",
+        "expr.field": "refused",
+        "expr.float": "refused",
+        "expr.func_ref": "refused",
+        "expr.global": "refused",
+        "expr.iface_call": "refused",
+        "expr.index": "refused",
+        "expr.instantiate": "refused",
+        "expr.intrinsic": "refused",
+        "expr.lambda": "refused",
+        "expr.lit": "verified",
+        "expr.make": "refused",
+        "expr.method": "refused",
+        "expr.nil": "refused",
+        "expr.spread": "refused",
+        "expr.struct": "refused",
+        "expr.to_error": "refused",
+        "expr.to_iface": "refused",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "refused",
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "refused",
+        "intrinsic.errorf": "refused",
+        "intrinsic.len": "refused",
+        "intrinsic.println": "refused",
+        "intrinsic.sorted_keys": "refused",
+        "intrinsic.sprintf": "refused",
+        "op.add": "verified",
+        "op.and": "refused",
+        "op.and_not": "refused",
+        "op.div": "refused",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "refused",
+        "op.rem": "refused",
+        "op.shl": "refused",
+        "op.shr": "refused",
+        "op.sub": "verified",
+        "op.xor": "refused",
+        "sem.continue.post": "refused",
+        "sem.error.propagate": "refused",
+        "sem.int.wrap": "refused",
+        "sem.map.order": "refused",
+        "sem.multi_assign.order": "refused",
+        "sem.rem.sign": "refused",
+        "sem.switch.break": "refused",
+        "stmt.assign": "verified",
+        "stmt.break": "refused",
+        "stmt.continue": "refused",
+        "stmt.decr": "refused",
+        "stmt.expr": "refused",
+        "stmt.for": "refused",
+        "stmt.for_range": "refused",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "refused",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
+        "stmt.return": "verified",
+        "stmt.send": "refused",
+        "stmt.switch": "refused",
+        "stmt.var": "refused",
+        "type.any": "refused",
+        "type.array": "refused",
+        "type.bool": "verified",
+        "type.chan": "refused",
+        "type.error": "refused",
+        "type.extern": "refused",
+        "type.float": "refused",
+        "type.func": "refused",
+        "type.int": "verified",
+        "type.map": "refused",
+        "type.named": "refused",
+        "type.param": "refused",
+        "type.ptr": "refused",
+        "type.slice": "refused",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": "refused",
+        "unop.complement": "refused",
+        "unop.deref": "refused",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "refused",
+        "unop.recv": "refused",
+        "unop.ref": "refused"
+      },
+      "write": {
+        "assign.add": "verified",
+        "assign.and": "verified",
+        "assign.and_not": "verified",
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": "verified",
+        "assign.rem": "verified",
+        "assign.shl": "verified",
+        "assign.shr": "verified",
+        "assign.sub": "verified",
+        "assign.xor": "verified",
+        "decl.embedded": {
+          "note": "Case decl-embedded: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.enum": {
+          "note": "Case decl-enum: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.interface": {
+          "note": "Case decl-interface: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.newtype": {
+          "note": "Case decl-newtype: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.struct": {
+          "note": "Case decl-struct: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.type_params": {
+          "note": "Case decl-generic: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.union": {
+          "note": "Case decl-union: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "decl.var": {
+          "note": "Case decl-var: the writer refuses it: codespec-write-gleam: unsupported module vars.",
+          "state": "refused"
+        },
+        "decl.variadic": {
+          "note": "Case decl-variadic: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": {
+          "note": "Case expr-call-value: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.const": {
+          "note": "Case expr-const: the writer refuses it: codespec-write-gleam: unsupported module consts.",
+          "state": "refused"
+        },
+        "expr.conv": {
+          "note": "Case expr-conv: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.errvar": {
+          "note": "Case expr-errvar: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "expr.extern": {
+          "note": "Case expr-extern: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.extern_method": {
+          "note": "Case expr-extern-method: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.field": {
+          "note": "Case expr-field: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.float": {
+          "note": "Case expr-float: the writer refuses it: codespec-write-gleam: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}.",
+          "state": "refused"
+        },
+        "expr.func_ref": {
+          "note": "Case expr-func-value: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.global": {
+          "note": "Case expr-global: the writer refuses it: codespec-write-gleam: unsupported module vars.",
+          "state": "refused"
+        },
+        "expr.iface_call": {
+          "note": "Case expr-iface-call: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.index": {
+          "note": "Case expr-index: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "expr.instantiate": {
+          "note": "Case expr-instantiate: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.intrinsic": {
+          "note": "Case expr-intrinsic: the writer refuses it: codespec-write-gleam: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "expr.lambda": {
+          "note": "Case expr-lambda: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}.",
+          "state": "refused"
+        },
+        "expr.lit": "verified",
+        "expr.make": {
+          "note": "Case expr-make: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}.",
+          "state": "refused"
+        },
+        "expr.method": {
+          "note": "Case expr-method: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.nil": {
+          "note": "Case expr-nil: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "expr.spread": {
+          "note": "Case expr-spread: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "expr.struct": {
+          "note": "Case expr-struct: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.to_error": {
+          "note": "Case expr-to-error: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.to_iface": {
+          "note": "Case expr-to-iface: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": {
+          "note": "Case expr-zero: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "fact.comma_ok": {
+          "note": "Not claimed, though its case fact-comma-ok passes.",
+          "state": "refused"
+        },
+        "fact.displays": {
+          "note": "Case fact-displays: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.fallible": {
+          "note": "Case fact-fallible: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "fact.messages": {
+          "note": "Case fact-messages: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.read_only": {
+          "note": "Case fact-read-only: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.shared": {
+          "note": "Case fact-shared: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "fact.unordered_iteration": {
+          "note": "Case fact-unordered-iteration: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"bool\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}.",
+          "state": "refused"
+        },
+        "intrinsic.append": {
+          "note": "Case intrinsic-append: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.errorf": {
+          "note": "Case intrinsic-errorf: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "intrinsic.len": {
+          "note": "Case intrinsic-len: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.println": {
+          "note": "Case intrinsic-println: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "intrinsic.sorted_keys": {
+          "note": "Case intrinsic-sorted-keys: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "intrinsic.sprintf": {
+          "note": "Case intrinsic-sprintf: the writer refuses it: codespec-write-gleam: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "op.add": "verified",
+        "op.and": "verified",
+        "op.and_not": "verified",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "verified",
+        "op.rem": "verified",
+        "op.shl": "verified",
+        "op.shr": "verified",
+        "op.sub": "verified",
+        "op.xor": "verified",
+        "sem.continue.post": {
+          "note": "Case sem-continue-post: the writer refuses it: codespec-write-gleam: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "sem.error.propagate": {
+          "note": "Case sem-error-propagate: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "sem.int.wrap": "verified",
+        "sem.map.order": {
+          "note": "Case sem-map-order: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}}.",
+          "state": "refused"
+        },
+        "sem.multi_assign.order": {
+          "note": "Case sem-multi-assign-order: the writer refuses it: codespec-write-gleam: unsupported statement \"for\" at \"case.go:13\".",
+          "state": "refused"
+        },
+        "sem.rem.sign": "verified",
+        "sem.switch.break": {
+          "note": "Case sem-switch-break: the writer refuses it: codespec-write-gleam: unsupported statement \"for\" at \"case.go:7\".",
+          "state": "refused"
+        },
+        "stmt.assign": "verified",
+        "stmt.break": {
+          "note": "Case stmt-break: the writer refuses it: codespec-write-gleam: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.continue": {
+          "note": "Case stmt-continue: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "stmt.decr": "verified",
+        "stmt.expr": {
+          "note": "Case stmt-expr: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"error\"}.",
+          "state": "refused"
+        },
+        "stmt.for": {
+          "note": "Case stmt-for: the writer refuses it: codespec-write-gleam: unsupported statement \"for\" at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.for_range": {
+          "note": "Case stmt-for-range: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "stmt.foreign": {
+          "note": "Case stmt-foreign: the writer refuses it: codespec-write-gleam: unsupported module refusals.",
+          "state": "refused"
+        },
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: codespec-write-gleam: unsupported module externs.",
+          "state": "refused"
+        },
+        "stmt.return": {
+          "note": "Case stmt-return-one: the writer refuses it: codespec-write-gleam: reserved function name \"Echo\".",
+          "state": "refused"
+        },
+        "stmt.send": {
+          "note": "Case stmt-send: the writer refuses it: codespec-write-gleam: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "stmt.switch": {
+          "note": "Case stmt-switch: the writer refuses it: codespec-write-gleam: unsupported statement \"switch\" at \"case.go:5\".",
+          "state": "refused"
+        },
+        "stmt.var": "verified",
+        "type.any": {
+          "note": "Case type-any: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"any\"}.",
+          "state": "refused"
+        },
+        "type.array": {
+          "note": "Case type-array-float: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"bits\" => \"64\", \"k\" => \"float\"}, \"k\" => \"array\", \"len\" => 3}.",
+          "state": "refused"
+        },
+        "type.bool": "verified",
+        "type.chan": {
+          "note": "Case type-chan: the writer refuses it: codespec-write-gleam: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"string\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "type.error": {
+          "note": "Case type-error: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "type.extern": {
+          "note": "Case type-extern: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "type.float": {
+          "note": "Case type-float: the writer refuses it: codespec-write-gleam: unsupported type %{\"bits\" => \"64\", \"k\" => \"float\"}.",
+          "state": "refused"
+        },
+        "type.func": {
+          "note": "Case type-func: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"func\", \"params\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}], \"results\" => [%{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}]}.",
+          "state": "refused"
+        },
+        "type.int": "verified",
+        "type.map": {
+          "note": "Case type-map: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"map\", \"key\" => %{\"k\" => \"string\"}}.",
+          "state": "refused"
+        },
+        "type.named": {
+          "note": "Case type-named: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        },
+        "type.param": {
+          "note": "Case type-param: the writer refuses it: codespec-write-gleam: unsupported receiver, type parameters or raises in \"second\".",
+          "state": "refused"
+        },
+        "type.ptr": {
+          "note": "Case type-ptr: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}.",
+          "state": "refused"
+        },
+        "type.slice": {
+          "note": "Case type-slice: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"string\"}, \"k\" => \"slice\"}.",
+          "state": "refused"
+        },
+        "type.string": "verified",
+        "type.tuple": {
+          "note": "Case type-tuple-error: the writer refuses it: codespec-write-gleam: unsupported module errors.",
+          "state": "refused"
+        },
+        "type.unit": {
+          "note": "Case type-unit: the writer refuses it: codespec-write-gleam: unsupported expression \"intrinsic\".",
+          "state": "refused"
+        },
+        "unop.complement": "verified",
+        "unop.deref": {
+          "note": "Case unop-deref: the writer refuses it: codespec-write-gleam: unsupported type %{\"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"ptr\"}.",
+          "state": "refused"
+        },
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": {
+          "note": "Case unop-recv: the writer refuses it: codespec-write-gleam: unsupported type %{\"dir\" => \"both\", \"elem\" => %{\"k\" => \"int\", \"signed\" => true, \"width\" => \"platform\"}, \"k\" => \"chan\"}.",
+          "state": "refused"
+        },
+        "unop.ref": {
+          "note": "Case unop-ref: the writer refuses it: codespec-write-gleam: unsupported module types.",
+          "state": "refused"
+        }
+      }
+    },
+    {
+      "name": "Odin",
+      "read": {
+        "assign.add": "refused",
+        "assign.and": "refused",
+        "assign.and_not": "refused",
+        "assign.div": "refused",
+        "assign.mul": "refused",
+        "assign.or": "refused",
+        "assign.rem": "refused",
+        "assign.shl": "refused",
+        "assign.shr": "refused",
+        "assign.sub": "refused",
+        "assign.xor": "refused",
+        "decl.embedded": "refused",
+        "decl.enum": "refused",
+        "decl.interface": "refused",
+        "decl.newtype": "refused",
+        "decl.struct": "refused",
+        "decl.type_params": "refused",
+        "decl.union": "refused",
+        "decl.var": "refused",
+        "decl.variadic": "refused",
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": "refused",
+        "expr.const": "refused",
+        "expr.conv": "refused",
+        "expr.errvar": "refused",
+        "expr.extern": "refused",
+        "expr.extern_method": "refused",
+        "expr.field": "refused",
+        "expr.float": "refused",
+        "expr.func_ref": "refused",
+        "expr.global": "refused",
+        "expr.iface_call": "refused",
+        "expr.index": "refused",
+        "expr.instantiate": "refused",
+        "expr.intrinsic": "refused",
+        "expr.lambda": "refused",
+        "expr.lit": "verified",
+        "expr.make": "refused",
+        "expr.method": "refused",
+        "expr.nil": "refused",
+        "expr.spread": "refused",
+        "expr.struct": "refused",
+        "expr.to_error": "refused",
+        "expr.to_iface": "refused",
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": "refused",
+        "fact.comma_ok": "n/a",
+        "fact.displays": "n/a",
+        "fact.fallible": "n/a",
+        "fact.messages": "n/a",
+        "fact.read_only": "n/a",
+        "fact.shared": "n/a",
+        "fact.unordered_iteration": "n/a",
+        "intrinsic.append": "refused",
+        "intrinsic.errorf": "refused",
+        "intrinsic.len": "refused",
+        "intrinsic.println": "refused",
+        "intrinsic.sorted_keys": "refused",
+        "intrinsic.sprintf": "refused",
+        "op.add": "verified",
+        "op.and": "refused",
+        "op.and_not": "refused",
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": "refused",
+        "op.rem": "verified",
+        "op.shl": "refused",
+        "op.shr": "refused",
+        "op.sub": "verified",
+        "op.xor": "refused",
+        "sem.continue.post": "refused",
+        "sem.error.propagate": "refused",
+        "sem.int.wrap": "refused",
+        "sem.map.order": "refused",
+        "sem.multi_assign.order": "refused",
+        "sem.rem.sign": "refused",
+        "sem.switch.break": "refused",
+        "stmt.assign": "verified",
+        "stmt.break": "refused",
+        "stmt.continue": "refused",
+        "stmt.decr": "refused",
+        "stmt.expr": "refused",
+        "stmt.for": "refused",
+        "stmt.for_range": "refused",
+        "stmt.foreign": "refused",
+        "stmt.if": "verified",
+        "stmt.incr": "refused",
+        "stmt.let": "verified",
+        "stmt.lookup_else": "refused",
+        "stmt.raise": "refused",
+        "stmt.return": "verified",
+        "stmt.send": "refused",
+        "stmt.switch": "refused",
+        "stmt.var": "refused",
+        "type.any": "refused",
+        "type.array": "refused",
+        "type.bool": "verified",
+        "type.chan": "refused",
+        "type.error": "refused",
+        "type.extern": "refused",
+        "type.float": "refused",
+        "type.func": "refused",
+        "type.int": "verified",
+        "type.map": "refused",
+        "type.named": "refused",
+        "type.param": "refused",
+        "type.ptr": "refused",
+        "type.slice": "refused",
+        "type.string": "verified",
+        "type.tuple": "refused",
+        "type.unit": "refused",
+        "unop.complement": "refused",
+        "unop.deref": "refused",
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": "refused",
+        "unop.ref": "refused"
+      },
+      "write": {
+        "assign.add": "verified",
+        "assign.and": {
+          "note": "Case assign-and: the writer refuses it: codespec-write-odin: AndWith: unsupported assignment &=.",
+          "state": "refused"
+        },
+        "assign.and_not": {
+          "note": "Case assign-and-not: the writer refuses it: codespec-write-odin: ClearWith: unsupported assignment &^=.",
+          "state": "refused"
+        },
+        "assign.div": "verified",
+        "assign.mul": "verified",
+        "assign.or": {
+          "note": "Case assign-or: the writer refuses it: codespec-write-odin: OrWith: unsupported assignment |=.",
+          "state": "refused"
+        },
+        "assign.rem": "verified",
+        "assign.shl": {
+          "note": "Case assign-shl: the writer refuses it: codespec-write-odin: ShlBy: unsupported assignment <<=.",
+          "state": "refused"
+        },
+        "assign.shr": {
+          "note": "Case assign-shr: the writer refuses it: codespec-write-odin: ShrBy: unsupported assignment >>=.",
+          "state": "refused"
+        },
+        "assign.sub": "verified",
+        "assign.xor": {
+          "note": "Case assign-xor: the writer refuses it: codespec-write-odin: XorWith: unsupported assignment ^=.",
+          "state": "refused"
+        },
+        "decl.embedded": {
+          "note": "Case decl-embedded: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.enum": {
+          "note": "Case decl-enum: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.interface": {
+          "note": "Case decl-interface: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.newtype": {
+          "note": "Case decl-newtype: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.struct": {
+          "note": "Case decl-struct: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.type_params": {
+          "note": "Case decl-generic: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.union": {
+          "note": "Case decl-union: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.var": {
+          "note": "Case decl-var: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "decl.variadic": {
+          "note": "Case decl-variadic: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.binop": "verified",
+        "expr.call": "verified",
+        "expr.call_value": {
+          "note": "Case expr-call-value: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.const": {
+          "note": "Case expr-const: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.conv": {
+          "note": "Case expr-conv: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.errvar": {
+          "note": "Case expr-errvar: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.extern": {
+          "note": "Case expr-extern: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.extern_method": {
+          "note": "Case expr-extern-method: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.field": {
+          "note": "Case expr-field: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.float": {
+          "note": "Case expr-float: the writer refuses it: codespec-write-odin: Over: unsupported Odin scalar type Float { bits: W64 }.",
+          "state": "refused"
+        },
+        "expr.func_ref": {
+          "note": "Case expr-func-value: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.global": {
+          "note": "Case expr-global: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.iface_call": {
+          "note": "Case expr-iface-call: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.index": {
+          "note": "Case expr-index: the writer refuses it: codespec-write-odin: At: unsupported Odin scalar type Slice { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "expr.instantiate": {
+          "note": "Case expr-instantiate: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.intrinsic": {
+          "note": "Case expr-intrinsic: the writer refuses it: codespec-write-odin: Size: unsupported scalar expression or unresolved local.",
+          "state": "refused"
+        },
+        "expr.lambda": {
+          "note": "Case expr-lambda: the writer refuses it: codespec-write-odin: Scale: unsupported Odin scalar type Func { params: [Int { width: Platform, signed: true }], results: [Int { width: Platform, signed: true }] }.",
+          "state": "refused"
+        },
+        "expr.lit": "verified",
+        "expr.make": {
+          "note": "Case expr-make: the writer refuses it: codespec-write-odin: Fresh: unsupported Odin scalar type Map { key: String, elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "expr.method": {
+          "note": "Case expr-method: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.nil": {
+          "note": "Case expr-nil: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Slice { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "expr.spread": {
+          "note": "Case expr-spread: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.struct": {
+          "note": "Case expr-struct: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.to_error": {
+          "note": "Case expr-to-error: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.to_iface": {
+          "note": "Case expr-to-iface: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "expr.unop": "verified",
+        "expr.var": "verified",
+        "expr.zero": {
+          "note": "Case expr-zero: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Error.",
+          "state": "refused"
+        },
+        "fact.comma_ok": {
+          "note": "Not claimed, though its case fact-comma-ok passes.",
+          "state": "refused"
+        },
+        "fact.displays": {
+          "note": "Case fact-displays: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "fact.fallible": {
+          "note": "Case fact-fallible: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "fact.messages": {
+          "note": "Case fact-messages: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "fact.read_only": {
+          "note": "Case fact-read-only: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "fact.shared": {
+          "note": "Case fact-shared: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "fact.unordered_iteration": {
+          "note": "Case fact-unordered-iteration: the writer refuses it: codespec-write-odin: Keys: unsupported Odin scalar type Map { key: Int { width: Platform, signed: true }, elem: Bool }.",
+          "state": "refused"
+        },
+        "intrinsic.append": {
+          "note": "Case intrinsic-append: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Slice { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "intrinsic.errorf": {
+          "note": "Case intrinsic-errorf: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Error.",
+          "state": "refused"
+        },
+        "intrinsic.len": {
+          "note": "Case intrinsic-len: the writer refuses it: codespec-write-odin: Count: unsupported Odin scalar type Slice { elem: String }.",
+          "state": "refused"
+        },
+        "intrinsic.println": {
+          "note": "Case intrinsic-println: the writer refuses it: codespec-write-odin: Show: unsupported \"expr\" statement at \"case.go:7\".",
+          "state": "refused"
+        },
+        "intrinsic.sorted_keys": {
+          "note": "Case intrinsic-sorted-keys: the writer refuses it: codespec-write-odin: Join: unsupported Odin scalar type Map { key: String, elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "intrinsic.sprintf": {
+          "note": "Case intrinsic-sprintf: the writer refuses it: codespec-write-odin: Label: unsupported scalar expression or unresolved local.",
+          "state": "refused"
+        },
+        "op.add": "verified",
+        "op.and": {
+          "note": "Case op-and: the writer refuses it: codespec-write-odin: And: unsupported binary operator & for these types.",
+          "state": "refused"
+        },
+        "op.and_not": {
+          "note": "Case op-and-not: the writer refuses it: codespec-write-odin: Clear: unsupported binary operator &^ for these types.",
+          "state": "refused"
+        },
+        "op.div": "verified",
+        "op.eq": "verified",
+        "op.ge": "verified",
+        "op.gt": "verified",
+        "op.land": "verified",
+        "op.le": "verified",
+        "op.lor": "verified",
+        "op.lt": "verified",
+        "op.mul": "verified",
+        "op.ne": "verified",
+        "op.or": {
+          "note": "Case op-or: the writer refuses it: codespec-write-odin: Or: unsupported binary operator | for these types.",
+          "state": "refused"
+        },
+        "op.rem": "verified",
+        "op.shl": {
+          "note": "Case op-shl: the writer refuses it: codespec-write-odin: Shl: unsupported binary operator << for these types.",
+          "state": "refused"
+        },
+        "op.shr": {
+          "note": "Case op-shr: the writer refuses it: codespec-write-odin: Shr: unsupported binary operator >> for these types.",
+          "state": "refused"
+        },
+        "op.sub": "verified",
+        "op.xor": {
+          "note": "Case op-xor: the writer refuses it: codespec-write-odin: Xor: unsupported binary operator ^ for these types.",
+          "state": "refused"
+        },
+        "sem.continue.post": {
+          "note": "Case sem-continue-post: the writer refuses it: codespec-write-odin: SkipOne: unsupported \"for\" statement at \"case.go:6\".",
+          "state": "refused"
+        },
+        "sem.error.propagate": {
+          "note": "Case sem-error-propagate: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "sem.int.wrap": "verified",
+        "sem.map.order": {
+          "note": "Case sem-map-order: the writer refuses it: codespec-write-odin: Squares: unsupported Odin scalar type Map { key: Int { width: Platform, signed: true }, elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "sem.multi_assign.order": {
+          "note": "Case sem-multi-assign-order: the writer refuses it: codespec-write-odin: Swap: unsupported \"assign\" statement at \"case.go:5\".",
+          "state": "refused"
+        },
+        "sem.rem.sign": "verified",
+        "sem.switch.break": {
+          "note": "Case sem-switch-break: the writer refuses it: codespec-write-odin: Until: unsupported \"for\" statement at \"case.go:7\".",
+          "state": "refused"
+        },
+        "stmt.assign": "verified",
+        "stmt.break": {
+          "note": "Case stmt-break: the writer refuses it: codespec-write-odin: Root: unsupported \"for\" statement at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.continue": {
+          "note": "Case stmt-continue: the writer refuses it: codespec-write-odin: SkipSum: unsupported Odin scalar type Slice { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "stmt.decr": "verified",
+        "stmt.expr": {
+          "note": "Case stmt-expr: the writer refuses it: codespec-write-odin: Say: unsupported \"expr\" statement at \"case.go:7\".",
+          "state": "refused"
+        },
+        "stmt.for": {
+          "note": "Case stmt-for: the writer refuses it: codespec-write-odin: Below: unsupported \"for\" statement at \"case.go:6\".",
+          "state": "refused"
+        },
+        "stmt.for_range": {
+          "note": "Case stmt-for-range: the writer refuses it: codespec-write-odin: Total: unsupported Odin scalar type Slice { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "stmt.foreign": {
+          "note": "Case stmt-foreign: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "stmt.if": "verified",
+        "stmt.incr": "verified",
+        "stmt.let": "verified",
+        "stmt.lookup_else": {
+          "note": "Case stmt-lookup-else: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "stmt.raise": {
+          "note": "Case stmt-raise: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "stmt.return": "verified",
+        "stmt.send": {
+          "note": "Case stmt-send: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Chan { elem: Int { width: Platform, signed: true }, dir: Both }.",
+          "state": "refused"
+        },
+        "stmt.switch": {
+          "note": "Case stmt-switch: the writer refuses it: codespec-write-odin: Name: unsupported \"switch\" statement at \"case.go:5\".",
+          "state": "refused"
+        },
+        "stmt.var": "verified",
+        "type.any": {
+          "note": "Case type-any: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Any.",
+          "state": "refused"
+        },
+        "type.array": {
+          "note": "Case type-array-float: the writer refuses it: codespec-write-odin: Weight: unsupported Odin scalar type Array { len: 3, elem: Float { bits: W64 } }.",
+          "state": "refused"
+        },
+        "type.bool": "verified",
+        "type.chan": {
+          "note": "Case type-chan: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Chan { elem: String, dir: Both }.",
+          "state": "refused"
+        },
+        "type.error": {
+          "note": "Case type-error: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "type.extern": {
+          "note": "Case type-extern: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "type.float": {
+          "note": "Case type-float: the writer refuses it: codespec-write-odin: Third: unsupported Odin scalar type Float { bits: W64 }.",
+          "state": "refused"
+        },
+        "type.func": {
+          "note": "Case type-func: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Func { params: [Int { width: Platform, signed: true }], results: [Int { width: Platform, signed: true }] }.",
+          "state": "refused"
+        },
+        "type.int": "verified",
+        "type.map": {
+          "note": "Case type-map: the writer refuses it: codespec-write-odin: Stored: unsupported Odin scalar type Map { key: String, elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "type.named": {
+          "note": "Case type-named: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        },
+        "type.param": {
+          "note": "Case type-param: the writer refuses it: codespec-write-odin: second: expected a free function with a scalar body.",
+          "state": "refused"
+        },
+        "type.ptr": {
+          "note": "Case type-ptr: the writer refuses it: codespec-write-odin: Bump: unsupported Odin scalar type Ptr { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "type.slice": {
+          "note": "Case type-slice: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Slice { elem: String }.",
+          "state": "refused"
+        },
+        "type.string": "verified",
+        "type.tuple": {
+          "note": "Case type-tuple: the writer refuses it: codespec-write-odin: Flip: unsupported \"let\" statement at \"case.go:9\".",
+          "state": "refused"
+        },
+        "type.unit": {
+          "note": "Case type-unit: the writer refuses it: codespec-write-odin: say: unsupported \"expr\" statement at \"case.go:10\".",
+          "state": "refused"
+        },
+        "unop.complement": {
+          "note": "Not claimed, though its case unop-complement passes.",
+          "state": "refused"
+        },
+        "unop.deref": {
+          "note": "Case unop-deref: the writer refuses it: codespec-write-odin: Through: unsupported Odin scalar type Ptr { elem: Int { width: Platform, signed: true } }.",
+          "state": "refused"
+        },
+        "unop.neg": "verified",
+        "unop.not": "verified",
+        "unop.plus": "verified",
+        "unop.recv": {
+          "note": "Case unop-recv: the writer refuses it: codespec-write-odin: unsupported Odin scalar type Chan { elem: Int { width: Platform, signed: true }, dir: Both }.",
+          "state": "refused"
+        },
+        "unop.ref": {
+          "note": "Case unop-ref: the writer refuses it: codespec-write-odin: the Odin writer supports modules containing only scalar functions.",
+          "state": "refused"
+        }
+      }
+    },
+    {
       "name": "Evaluator",
       "read": {
         "assign.add": "none",

@@ -1,0 +1,19 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Lt",
+      "args": [
+        "1",
+        "1"
+      ]
+    },
+    {
+      "func": "Lt",
+      "args": [
+        "1",
+        "2"
+      ]
+    }
+  ]
+}

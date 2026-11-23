@@ -195,6 +195,7 @@ Exit status 1. There is no Python reader.
 - [Showcase](/docs/examples/greeter): a smaller program with no refusal, every block shown.
 - [Translate a Go package to Rust](/docs/guides/translate-go-to-rust): the same steps on a package
   of your own.
+- [Translate Elixir, Gleam and Odin](/docs/guides/elixir-gleam-odin).
 - [codespec CLI reference](/docs/reference/cli).
 
 ## Build from source
@@ -202,24 +203,37 @@ Exit status 1. There is no Python reader.
 Building needs Rust 1.97, the toolchain `rust-toolchain.toml` sets, Go 1.23 or newer, and
 [go-task](https://taskfile.dev). The Java and Groovy readers also need a JDK 17 or newer (`JDK` in
 `Taskfile.yml`) and Groovy 2.4.10 (`GROOVY_HOME`). The C reader runs `clang` from `PATH`.
-`task build` builds `codespec` into `target/debug/` and every adapter into `target/adapters/`:
+The Elixir, Gleam and Odin adapters need Elixir, Erlang/OTP, Gleam and Odin on `PATH`. The CI workflow pins their versions.
+`task build` builds `codespec` into `target/debug/` and every adapter into `target/adapters/`.
 
 ```shell-session
 $ git clone https://github.com/beyond10x/codespec && cd codespec
 $ task build
-$ ls target/adapters
+$ ls -1 target/adapters
+beam
 codespec-read-c
+codespec-read-elixir
+codespec-read-gleam
 codespec-read-go
 codespec-read-groovy
 codespec-read-java
+codespec-read-odin
 codespec-read-rust
 codespec-run-c
+codespec-run-cir
+codespec-run-elixir
+codespec-run-gleam
 codespec-run-go
 codespec-run-groovy
 codespec-run-java
+codespec-run-odin
 codespec-run-rust
 codespec-write-c
+codespec-write-cir
+codespec-write-elixir
+codespec-write-gleam
 codespec-write-go
+codespec-write-odin
 codespec-write-rust
 $ target/debug/codespec --version
 codespec 0.11.0

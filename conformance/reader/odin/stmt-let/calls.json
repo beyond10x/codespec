@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Copy",
+      "args": [
+        "7"
+      ]
+    },
+    {
+      "func": "Copy",
+      "args": [
+        "-3"
+      ]
+    }
+  ]
+}

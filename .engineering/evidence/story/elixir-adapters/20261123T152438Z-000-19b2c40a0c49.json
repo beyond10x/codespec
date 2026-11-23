@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T15:24:38Z",
+  "actor": "agent:codespec",
+  "artifact": "story:elixir-adapters",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "codespec conform: reader 30 of 30, writer 51 of 51, zero failing boundaries",
+    "reference": "website/data/conformance/writer-elixir.json"
+  }
+}

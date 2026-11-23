@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T15:27:05Z",
+  "actor": "agent:codespec",
+  "artifact": "story:gleam-adapters",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "codespec conform: reader 25 of 25, writer 50 of 50, zero failing boundaries",
+    "reference": "website/data/conformance/writer-gleam.json"
+  }
+}

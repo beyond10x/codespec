@@ -1,0 +1,3 @@
+pub fn either(a: Bool, b: Bool) -> Bool {
+  a || b
+}

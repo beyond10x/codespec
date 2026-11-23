@@ -1,0 +1,3 @@
+pub fn same(n: Int) -> Int {
+  n
+}

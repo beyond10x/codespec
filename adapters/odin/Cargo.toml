@@ -1,0 +1,23 @@
+[package]
+name = "codespec-odin"
+description = "Writes scalar cir/1 functions as Odin and runs native Odin conformance cases"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "codespec-write-odin"
+path = "src/write.rs"
+
+[[bin]]
+name = "codespec-run-odin"
+path = "src/run.rs"
+
+[dependencies]
+b10x-codespec-model = { path = "../../crates/model" }
+b10x-codespec-conformance = { path = "../../crates/conformance" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true

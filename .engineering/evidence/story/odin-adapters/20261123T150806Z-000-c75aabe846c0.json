@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-23T15:08:06Z",
+  "actor": "agent:codespec",
+  "artifact": "story:odin-adapters",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "scripts/check-language-adapters.sh: all nine native translation traces and three same-language evaluator traces matched the original",
+    "reference": "scripts/check-language-adapters.sh"
+  }
+}
