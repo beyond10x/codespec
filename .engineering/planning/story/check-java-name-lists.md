@@ -3,11 +3,23 @@ format: aep.planning-md/3
 id: story:check-java-name-lists
 kind: story
 status: draft
-title: Built-in checks carry Java name lists and say when a set has no name for its language
+title: Built-in checks carry Java name lists
 summary: 'Defect: 17 of 18 checks give 0 rows on Java documents silently; the logic works with Java names via --names.'
 relations:
 - decomposes: epic:codebase-transformations
-revision: 2
+- depends_on: story:check-not-applicable
+scope:
+- confidence: inferred
+  path: crates/check/src/checks.rs
+- confidence: inferred
+  path: crates/check/src/lib.rs
+- confidence: inferred
+  path: crates/check/tests/checks.rs
+- confidence: inferred
+  path: crates/check/tests/fixtures
+- confidence: inferred
+  path: crates/cli/tests/check.rs
+revision: 7
 ---
 # Story: built-in checks carry Java name lists and say when a set has no name for its language
 
@@ -17,10 +29,10 @@ revision: 2
 locks (`ReentrantLock`, `ReentrantReadWriteLock` read and write locks, `StampedLock`) for
 `lock-without-unlock`; `java.util.Random` and `ThreadLocalRandom` against `SecureRandom` for
 `insecure-random`; JDBC (`Connection`, `Statement`, `ResultSet`) and `EntityManager` as resources
-for `conn-leak`; and a check that `MessageDigest.isEqual` and not `equals` compares a value whose
-name marks it a secret (`token`, `secret`, `password`, `mac`, `digest`). A check run over documents
-of a language its lists name nothing of prints `<check>: not applicable to <language>` on standard error and reports the check as not applicable, never as 0 rows; the line names the check and the
-language.
+for `conn-leak`; and a new check `secret-compare`: `MessageDigest.isEqual` and not `equals`
+compares a value whose name marks it a secret (`token`, `secret`, `password`, `mac`, `digest`).
+A check that still names nothing of Java reports "not applicable" through
+`story:check-not-applicable`, which this story depends on.
 
 ## Why
 
@@ -62,15 +74,22 @@ that form.
 
 ## Done When
 
-- Failing tests in `crates/check/tests/checks.rs` first: per Java list entry, a true positive and a
-  near miss read with `codespec-read-java` (fixtures checked in as `cir/1` documents with their
-  Java source), as the Go fixtures are.
-- A test runs a check whose lists name nothing of the set's language and finds the standard-error
-  line, exit 0.
-- `codespec check --list` prints the Java entries; the crate doc of `b10x-codespec-check` names them.
+- Failing tests in `crates/check/tests/checks.rs` first: per Java list entry (the locks, the
+  random sources, JDBC and `EntityManager`, `secret-compare`), a true positive and a near miss read
+  with `codespec-read-java` (fixtures checked in as `cir/1` documents with their Java source), as
+  the Go fixtures are.
+- `secret-compare`: `token.equals(given)` is a row; `MessageDigest.isEqual(token, given)` and
+  `name.equals(given)` are none (tests).
+- `lock-without-unlock`, `insecure-random` and `conn-leak` over the Java reproducer are applicable
+  and give their rows with no `--names` (a `crates/cli/tests/check.rs` case).
+- `codespec check --list` prints `secret-compare` and the Java entries (a test); the crate doc of
+  `b10x-codespec-check` names them.
 - `task check` green.
 
 ## Scope
 
-- Own: `crates/check/src/lib.rs` (lists), `crates/check/src/checks.rs`, `crates/check/tests/checks.rs`,
-  `crates/check/tests/fixtures/`, `CHANGELOG.md`. Inferred.
+- Own: `crates/check/src/lib.rs` (lists, `secret-compare`), `crates/check/src/checks.rs`,
+  `crates/check/tests/checks.rs`, `crates/check/tests/fixtures/`, `crates/cli/tests/check.rs`.
+  Inferred.
+- After `story:check-not-applicable` (same files).
+- `CHANGELOG.md` gets one line; conflicts there are resolved at merge.

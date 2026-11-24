@@ -7,7 +7,19 @@ title: A call through an interface of another package of the project
 summary: 'Refused 8 times: calls through an interface another package of the project declares.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-enum-constant-arguments
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+- confidence: inferred
+  path: crates/cli/tests/reach.rs
+revision: 2
 ---
 # Story: a call through an interface of another package of the project
 

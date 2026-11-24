@@ -7,7 +7,17 @@ title: A project read reads a static final field set by a constructor of a jar c
 summary: 'Refused 10 times: static fields initialized by a jar constructor or List.of/Map.of of constants.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-generic-instance-methods
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 3
 ---
 # Story: a project read reads a static final field set by a constructor of a jar collection
 
@@ -42,9 +52,12 @@ Box.java:8 a static field initialized other than by a literal or by a call of a 
 
 ## Done When
 
-- A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: `CACHE` is a
-  module-level variable initialized by the map constructor, with no refusal; an initializer that
-  calls a method of the project stays refused.
+- A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`, one `static final`
+  field per listed initializer, each a module-level variable with that initializer and no refusal:
+  `new HashMap<>()` (`CACHE`), `new ConcurrentHashMap<>()`, `new ObjectMapper()` (the jar on the
+  fixture's class path), `List.of(1, 2)`, `Map.of("a", 1)` and `Set.of("x")`; a method reading
+  each gives what Java prints under the evaluator.
+- An initializer that calls a method of the project stays refused (a case).
 - README table row updated; `task adapters-check` green.
 
 ## Scope

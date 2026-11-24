@@ -7,7 +7,17 @@ title: A project read reads a record, top-level or nested, as a value struct
 summary: 'Refused 106 times in a Java service: records outside a sealed interface and nested records.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-jaxrs-inherited-entries
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 3
 ---
 # Story: a project read reads a record, top-level or nested, as a value struct
 
@@ -59,6 +69,10 @@ compared by identity through its pointer".
   `adapters/java/testdata/project-forms`: both are structs, `sum` and `size` read with no refusal,
   and the module run by the evaluator gives what Java prints for a `calls.json` of three calls.
 - `p == q` on two records is a refusal at its line (a second case).
+- A record used as a map key (`Map<Point, Integer>` `put` and `get`) and as a lock
+  (`synchronized (p)`) are refusals at their lines (a case each).
+- A generic record (`record Box<T>(T v)`) and a record implementing an interface stay refused at
+  the record's line (a case each).
 - `adapters/java/README.md` table of project forms has the row; `task adapters-check` green.
 
 ## Scope

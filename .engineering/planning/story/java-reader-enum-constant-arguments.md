@@ -7,7 +7,17 @@ title: An enum whose constants take constructor arguments
 summary: 'Refused 9 times: enum constants with constant constructor arguments read as per-field tables.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-static-field-initializers
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 4
 ---
 # Story: an enum whose constants take constructor arguments
 
@@ -15,8 +25,13 @@ revision: 1
 
 The Java reader reads an enum whose constants pass constant arguments to its constructor, with
 `final` fields the constructor assigns, as a `cir/1` enum and one table per field that maps each
-constant to its value; a read of the field is a lookup in the table. A constant with a class body
-and a constructor doing more than assigning fields stay refused.
+constant to its value; a read of the field is a lookup in the table. A constructor doing more than
+assigning fields stays refused.
+
+Stated narrowing: a constant with a class body (`HIGH(2) { int weight() { return 3; } }`) stays
+refused. Its body overrides methods per constant, which is dispatch on the constant value with a
+method table per constant, not a field lookup; the consumer's 9 refusals do not say how many of
+them have a body, and the field form is the one its status and error codes use.
 
 ## Why
 
@@ -52,3 +67,8 @@ Level.java:3 enum constant with arguments or a body
 
 - Own: `adapters/java/src/codespec/read/Reader.java`, `adapters/java/test/codespec/read/ReaderTest.java`,
   `adapters/java/testdata/project-forms`, `adapters/java/README.md`, `CHANGELOG.md`. Inferred.
+
+## Later
+
+- Enum constants with a class body, read as a switch over the constant per overridden method; a
+  story of its own when a refusal count names them.

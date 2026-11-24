@@ -7,7 +7,18 @@ title: A project read reads the uses of an Optional
 summary: 'Refused 20 times: orElse, orElseThrow, isPresent/get, map and Optional.ofNullable as comma-ok forms.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-project-lambdas
+- depends_on: story:java-reader-unchecked-exceptions
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 3
 ---
 # Story: a project read reads the uses of an Optional
 
@@ -52,7 +63,16 @@ Flow.java:61 an Optional other than Optional.of(x) or Optional.empty()
 - A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: `nameOr` and `wrap`
   read with no refusal, and the evaluator gives what Java prints for `nameOr(1)`, `nameOr(0)`,
   `wrap(null)` and `wrap("a")`.
-- `get()` without a guard is a refusal at its line (a second case).
+- One method per further form reads with no refusal, and the evaluator gives what Java prints for
+  `id = 1` (a name) and `id = 0` (empty):
+  - `name(id).orElseGet(() -> "none")`;
+  - `name(id).orElseThrow()` and `name(id).orElseThrow(() -> new NotFound("n"))`: the empty case
+    raises (a `raise` of `story:java-reader-unchecked-exceptions`);
+  - `if (o.isPresent()) { return o.get(); } return "none";`;
+  - `name(id).ifPresent(v -> remember(v))`, `remember` a static method of the project that sets a
+    static field the test reads back;
+  - `name(id).map(v -> v.length()).orElse(-1)`.
+- `get()` without a guard is a refusal at its line (a case).
 - README row; `task adapters-check` green.
 
 ## Scope

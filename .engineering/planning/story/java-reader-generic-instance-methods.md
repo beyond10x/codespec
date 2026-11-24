@@ -7,7 +7,17 @@ title: A project read reads a generic instance method
 summary: 'Refused 10 times: generic methods that are not static.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-switch-arrows
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 3
 ---
 # Story: a project read reads a generic instance method
 
@@ -42,7 +52,11 @@ Box.java:12 generic method other than a static one of a package read: generics d
 ## Done When
 
 - A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: `first` reads with
-  no refusal, a call of it at two element types reads, and the evaluator gives what Java prints.
+  no refusal, and a method calling it at two element types reads:
+  `static String both(Box b) { return b.first(List.of("a", "b")) + b.first(List.of(7, 8)); }`.
+  The evaluator, given `both` on a new `Box`, gives `"a7"`, what Java prints.
+- `public <T extends Shape> int area(T s)`, `Shape` an interface of the project with two
+  implementations, stays a refusal at its line (a second case).
 - README row; `task adapters-check` green.
 
 ## Scope

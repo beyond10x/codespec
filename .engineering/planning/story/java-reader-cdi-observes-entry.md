@@ -7,7 +7,26 @@ title: A CDI observer method is an entry of kind observes
 summary: 'Refused 15 times: @Observes as an annotation; an observes entry kind for reach.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 2
+- depends_on: story:java-reader-try-catch
+- depends_on: story:reach-entry-file
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+- confidence: inferred
+  path: crates/cli/tests/reach.rs
+- confidence: inferred
+  path: crates/model/src/lib.rs
+- confidence: inferred
+  path: crates/model/tests/model.rs
+- confidence: inferred
+  path: schemas/cir-1.schema.json
+revision: 5
 ---
 # Story: a CDI observer method is an entry of kind observes
 
@@ -54,11 +73,22 @@ The second line is a separate refusal of `String.length()` on a parameter in a p
   with an `@Observes` or `@ObservesAsync` parameter is an entry; `onEvent` is an
   `observes` entry `on` `java.lang.String.String`, a `StartupEvent` observer one `on` its type, and
   neither annotation is refused.
+- A qualifier on the observed parameter (`@Observes @Named("x") String e`) is recorded as written
+  in the entry (a case).
+- A method with a second `@Observes` parameter is a refusal at its line (a case).
 - `crates/model` test: a document with an `observes` entry validates; an unknown kind is still refused.
+- A `crates/cli/tests/reach.rs` case: `codespec reach` over the documents of the fixture with no
+  entry flag reaches `onEvent` and what it calls (the default of `story:reach-entry-file`).
 - README and schema updated; `task adapters-check` and the model tests green.
 
 ## Scope
 
-- Own: `crates/model/src/lib.rs` (`ENTRY_KINDS`), `schemas/cir-1.schema.json`, `adapters/java/src/codespec/read/Reader.java`,
+- Own: `crates/model/src/lib.rs` (`ENTRY_KINDS`), `crates/model/tests/model.rs`,
+  `schemas/cir-1.schema.json`, `adapters/java/src/codespec/read/Reader.java`,
   `adapters/java/test/codespec/read/ReaderTest.java`, `adapters/java/testdata/project-forms`,
-  `adapters/java/README.md`, `CHANGELOG.md`. Inferred.
+  `adapters/java/README.md`, `crates/cli/tests/reach.rs`. Inferred.
+- In the Reader.java chain after `story:java-reader-try-catch`; after `story:reach-entry-file`
+  (its reach case needs the default entries).
+- `crates/model/src/lib.rs`, `crates/model/tests/model.rs` and the schema are changed by the Rust
+  wave `wave/rust-misreads-1` too: this story starts after that wave merges, rebased on it.
+- `CHANGELOG.md` gets one line; conflicts there are resolved at merge.

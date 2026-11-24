@@ -7,7 +7,14 @@ title: cq accepts a recursion whose counter is bounded by a comparison with a fi
 summary: 'Defect since 0.11.0: a depth-limited recursion (D < M, D2 = D + 1) is refused at compile time on any documents.'
 relations:
 - decomposes: epic:codebase-transformations
-revision: 2
+scope:
+- confidence: inferred
+  path: crates/query/src/engine.rs
+- confidence: inferred
+  path: crates/query/tests/query.rs
+- confidence: inferred
+  path: docs/query-language.md
+revision: 3
 ---
 # Story: cq accepts a recursion whose counter is bounded by a comparison with a finite value
 

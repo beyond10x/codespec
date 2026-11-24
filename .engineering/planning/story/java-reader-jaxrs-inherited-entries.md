@@ -7,7 +7,16 @@ title: A resource method gets its http entry from JAX-RS annotations on the inte
 summary: 'Misread: an implementing class of an annotated interface (generated sources or class path) gets no http entry and no refusal.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-inherited-entries
+revision: 3
 ---
 # Story: a resource method gets its http entry from JAX-RS annotations on the interface it implements
 
@@ -77,6 +86,9 @@ The same with `ItemsApi.java` copied into `src/main/java`: no entry, no refusal.
   `ItemsResource.get` and `POST /items` naming `ItemsResource.create`, and the path parameter
   `id` reads without the null refusal.
 - A class method with its own differing verb or path is a refusal at its line (a second case).
+- A class implementing two annotated interfaces that give one method two verbs (`@GET` on one,
+  `@POST` on the other) is a refusal at the class's line, and the method has no `http` entry (a
+  third case).
 - `adapters/java/README.md` "Projects and Quarkus" names the inherited form.
 - `task adapters-check` green.
 

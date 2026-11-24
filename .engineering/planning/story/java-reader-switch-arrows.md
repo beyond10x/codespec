@@ -7,7 +7,17 @@ title: A project read reads switch expressions and arrow cases
 summary: 'Refused 17 times: switch expressions and -> cases, which never fall through.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-stream-terminals
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 2
 ---
 # Story: a project read reads switch expressions and arrow cases
 

@@ -8,7 +8,17 @@ summary: 'Refused 18 times: Stream.toList and other terminal calls as loops over
 relations:
 - decomposes: epic:java-quarkus-reader
 - depends_on: story:java-reader-project-lambdas
-revision: 1
+- depends_on: story:java-reader-optional-uses
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 3
 ---
 # Story: a project read reads a stream pipeline over a list ending in a terminal call
 
@@ -47,7 +57,12 @@ Flow.java:41 stream: Stream.toList is outside cir/1
 
 - A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: `doubled`, a
   `filter`/`count` and a `map`/`collect(Collectors.toList())` read with no refusal, and the
-  evaluator gives what Java prints for each on three lists.
+  evaluator gives what Java prints for each on three lists (empty, one element, several with a
+  repeat).
+- One method per further terminal or stage reads with no refusal, and the evaluator gives what Java
+  prints on the same three lists: `xs.stream().sorted().toList()`,
+  `xs.stream().mapToInt(x -> x * 2).sum()`, `xs.stream().anyMatch(x -> x > 2)` and
+  `xs.stream().findFirst().orElse(-1)`.
 - `parallelStream()` and a lambda writing a captured array element are refusals at their lines.
 - README row; `task adapters-check` green.
 

@@ -7,7 +7,17 @@ title: A project read reads lambdas and method references as a package read does
 summary: 'Refused 9 times: a project read refuses every lambda the package read maps.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-framework-marks
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 2
 ---
 # Story: a project read reads lambdas and method references as a package read does
 

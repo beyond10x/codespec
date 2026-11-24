@@ -7,7 +7,17 @@ title: Framework annotations that change no behaviour of the module are recorded
 summary: 'Refused 21 times: RegisterForReflection and jakarta.persistence.Table recorded as marks.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-unchecked-exceptions
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 2
 ---
 # Story: framework annotations that change no behaviour of the module are recorded, not refused
 

@@ -7,7 +7,18 @@ title: try/catch of an exception a call in the block raises
 summary: 'Refused 5 times: try/catch where every throwing call in the block is known to the module.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+- depends_on: story:java-reader-cross-package-interface-calls
+- depends_on: story:java-reader-unchecked-exceptions
+scope:
+- confidence: inferred
+  path: adapters/java/README.md
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: inferred
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: inferred
+  path: adapters/java/testdata/project-forms
+revision: 2
 ---
 # Story: try/catch of an exception a call in the block raises
 
