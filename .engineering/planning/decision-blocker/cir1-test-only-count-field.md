@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: decision-blocker:cir1-test-only-count-field
 kind: decision-blocker
-status: open
+status: cleared
 title: Does cir/1 take an additive field for items a reader left out as test-only?
 summary: story:rust-reader-count-test-only-items needs the count in the cir/1 module; no existing field holds it without changing its meaning.
 relations:
 - blocks: story:rust-reader-count-test-only-items
-revision: 1
+revision: 3
+transitions:
+- {from: "open", to: "cleared", at: "2026-11-24T15:37:19Z", actor: "human:timo", revision: 3}
 ---
 # Decision: does cir/1 take an additive field for items a reader left out as test-only?
 
@@ -28,4 +30,6 @@ meaning (`doc`, `facts`, `refusals`, `opaque`; the story's `## Model change` say
 
 ## Cleared when
 
-The owner picks an option; this artifact moves to `cleared` with the pick written here.
+A, picked by the operator session for the owner on 2026-11-24 at 16:37 CET: an additive `Module`
+field `left_out: [{pos, what, reason}]`, omitted when empty, so every existing document stays
+valid and byte-equal.
