@@ -298,7 +298,13 @@ pub enum Cmd {
     /// $CODESPEC_CACHE_DIR, else $XDG_CACHE_HOME/codespec/facts, else ~/.cache/codespec/facts,
     /// the digest a SHA-256 of the documents and the codespec version; never in or under a
     /// document's directory, and read only after the documents are validated. Rules
-    /// may recurse, negate (stratified) and aggregate (count, min, max, sum, collect). A row that
+    /// may recurse, negate (stratified) and aggregate (count, min, max, sum, collect). A recursive
+    /// rule that makes a value by arithmetic or a builtin from a value the recursion derived is
+    /// refused, unless the value is found in a relation outside the recursion or is a bounded
+    /// step: D + c (c a positive integer) with D, or the value made, bounded from above by a fact
+    /// outside the recursion or a literal (D < M, D <= M, M > D, M >= D), or D - c bounded from
+    /// below (D > M, D >= M, M < D, M <= D); a depth limit is reach(F, H, D2) :- reach(F, G, D),
+    /// depth_limit(M), D < M, ..., D2 = D + 1. A row that
     /// rests on a negation crossing code the fact base cannot see (an opaque function, a foreign
     /// statement without a call list, an unresolved call) is marked possible, with the unknown
     /// sites. Path patterns and properties are refused.
