@@ -28,7 +28,7 @@ Design: `docs/code-edit-language.md`.
 
 ## Why Now
 
-Timo, 2026-11-24: "a unified mutation language … the query would basically select the target to
+The owner, 2026-11-24: "a unified mutation language … the query would basically select the target to
 what it should be applied, and then we run the operations against this limited filtered scope …
 language agnostic, kind of." cq selects typed nodes already (`crates/query`), the readers resolve
 names (`go/types`, `syn`), and the re-read that proves an edit is a `codespec read`. What is

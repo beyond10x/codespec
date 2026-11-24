@@ -1,6 +1,6 @@
 # Code edits in cq: a query selects, an operation changes the source — design (2026-11-24)
 
-Timo, 2026-11-24: "a unified mutation language … the query would basically select the target to
+The owner, 2026-11-24: "a unified mutation language … the query would basically select the target to
 what it should be applied, and then we run the operations against this limited filtered scope …
 language agnostic, kind of." Plan: `epic:code-edit-language`. Revised the same day after the
 plan critics' round (§ 14).
@@ -450,7 +450,7 @@ selected the old names are gone).
 The selector (cq), the typed model (`cir/1`), name resolution (the readers, on `go/types` and
 `syn`) and the re-read that verifies an edit are all here; an edit needs every one of them. codegate
 resolves references per backend in Go and has one backend for Go; a second language there means a
-second resolver. codegate can call `codespec edit` as a backend later. Timo confirmed codespec on
+second resolver. codegate can call `codespec edit` as a backend later. The owner confirmed codespec on
 2026-11-24.
 
 ## 12. Relation to the existing plan
