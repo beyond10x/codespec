@@ -11,7 +11,7 @@ relations:
 scope:
 - confidence: inferred
   path: crates/edit
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
 ---
@@ -27,22 +27,26 @@ transitions:
   results, receiver type) differs, or a local or parameter of the calling body has `G`'s source
   spelling.
 - `delete(F)`: the `decl` span of `F` is removed as whole lines, with one blank line when both its
-  neighbours are blank; `S'` drops `F` from `funcs` or `opaque`, `layout` and `methods`, drops an
-  `externs` entry no remaining call names, and moves later positions of that file up. Refused when
-  anything in the set references `F` (a read call or function value, a listed call, an `extern` of
-  another module, an entry, a linkname, `transactional`), `F` is `main` or `init`, it implements an
-  interface method, it is exported without `closed_world`, or its file is `generated`.
+  neighbours are blank; `S'` drops `F` from `funcs` or `opaque`, `layout` and its type's method set,
+  drops an `externs` entry no remaining call names, and moves later positions of that file up.
+  Refused when anything in the set references `F` (a read call or function value, a listed call, an
+  `extern` of another module, a Rust `use` path, an entry, a linkname, `transactional`), `F` is
+  `main` or `init`, it implements an interface method, it is exported without `closed_world`, or its
+  file is `generated`.
 
 ## Done When
 
-- `crates/edit/tests/main.rs`: retarget of two call sites (one in another module through `extern`)
-  gives the expected `S'` and edits; one test per retarget refusal.
-- Delete of a function between two others, of the last function of a file, and of a method with a
-  doc comment: expected `S'` with shifted positions and the expected file bytes; delete of a
-  function whose only call is the last use of an extern drops that `externs` entry; one test per
-  delete refusal.
+`crates/edit/tests/main.rs`:
+
+- retarget of two call sites (one in another module through `extern`) gives the expected `S'` and
+  edits; one test per retarget refusal;
+- delete of a function between two others, of the last function of a file, and of a method with a
+  doc comment (its `MethodEntry` gone): expected `S'` with shifted positions and the expected file
+  bytes; delete of a function whose only call is the last use of an extern drops that `externs`
+  entry; one test per delete refusal;
 - `delete` and `rename` of the same function in one change set overlap and refuse.
-- No test over 5 s.
+
+No test over 5 s.
 
 ## Scope
 

@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:sound-reach
 - depends_on: story:reader-indirect-call-sites
 - depends_on: story:reader-go-kit
-- depends_on: story:reader-function-spans
+- depends_on: story:edit-spans-go-reader
 scope:
 - confidence: inferred
   path: CHANGELOG.md
@@ -18,7 +18,7 @@ scope:
   path: adapters/go/cmd/codespec-read-go/
 - confidence: inferred
   path: examples/reach-go/
-revision: 4
+revision: 5
 ---
 # Story: the Go reader states the calls it cannot resolve as indirect sites
 
@@ -52,4 +52,4 @@ the set resolves them, and get no `indirect` entry. A `foreign` statement that t
 - Own: `adapters/go/cmd/codespec-read-go`, `examples/reach-go`, `Taskfile.yml`, `CHANGELOG.md`.
   Inferred; recorded as typed scope.
 - Depends on `story:reader-indirect-call-sites` and on `story:reader-go-kit` and
-  `story:reader-function-spans` (the same adapter).
+  `story:edit-spans-go-reader` (the same adapter).

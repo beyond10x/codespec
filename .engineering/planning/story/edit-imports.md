@@ -8,17 +8,18 @@ summary: Import ranges in spans; ensure_import, remove_import; cross-module reta
 relations:
 - decomposes: epic:code-edit-language
 - depends_on: story:edit-cli-verified-apply
-revision: 1
+revision: 2
 ---
 # Story: Imports in edits, and retarget to another module
 
 ## Outcome
 
 Span documents carry each file's import range (Go import block, Rust `use` items; an insertion
-offset when a file has none). `crates/edit` gains `ensure_import` and `remove_import`, and an
-operation whose replacement names another module (a cross-module `retarget`, a template, `move`)
-adds the import it needs and removes one it left unused. Takes over the import-range part of
-`story:reader-function-spans`.
+offset when a file has none). `crates/edit` gains `ensure_import` and `remove_import`, and a
+`retarget` to a function of another module adds the import it needs and removes one it left unused.
+Limited to these: the imports a template needs are `story:edit-replace-template`'s, the imports of a
+moved function `story:edit-move-and-visibility`'s, both on this story's import ranges. Takes over
+the import-range part of `story:reader-function-spans`.
 
 ## Done When
 
@@ -27,5 +28,5 @@ adds the import it needs and removes one it left unused. Takes over the import-r
 
 ## Scope
 
-- `adapters/go/cmd/codespec-read-go`, `adapters/rust-read`, `crates/model/src/spans.rs`,
-  `crates/edit`, `examples/edit`. Inferred.
+- `adapters/go/cmd/codespec-read-go`, `adapters/rust-read`, `crates/edit`, `examples/edit`.
+  Inferred.

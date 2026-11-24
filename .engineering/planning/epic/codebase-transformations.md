@@ -6,7 +6,7 @@ status: active
 title: Programmatic transformations and pattern queries over a whole codebase
 relations:
 - depends_on: epic:whole-repo-to-syscalls
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 3}
@@ -17,9 +17,10 @@ transitions:
 
 A linked set of `cir/1` documents (`epic:whole-repo-to-syscalls`) is not only analysed but
 changed and searched by program: a structural pattern finds code by shape, a rewrite changes every
-match, and the writers put the result back as source. On that one mechanism: instrumentation
-(logging, timing, counters at function entries and effect sites), measurements from an
-instrumented run, mutation testing, and defect patterns.
+match, and the change lands in the original files as span edits through `codespec edit`
+(`epic:code-edit-language`, 2026-11-24; before, the writers put the result back as source). On that
+one mechanism: instrumentation (logging, timing, counters at function entries and effect sites),
+measurements from an instrumented run, mutation testing, and defect patterns.
 
 ## Why Now
 
