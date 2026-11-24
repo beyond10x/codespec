@@ -8,7 +8,7 @@ summary: How cir/1 states a Rust integer operator (+ - * neg / % << >>) whose ov
 relations:
 - designs: story:rust-reader-integer-overflow
 - decomposes: epic:async-network-service-translation
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "in_review", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 2}
 ---
@@ -57,7 +57,9 @@ width and tuple-variant fields merged), which branches from main `f09c740f`. Dec
 `story:rust-reader-integer-overflow`, with its conditions.
 
 Revision 2 answers the adversary's round 1, `review-result:cir1-checked-integer-operators-r1`
-(needs-revision, nine findings F1 to F9). Each change is tagged with the finding it answers.
+(needs-revision, nine findings F1 to F9). Revision 3 answers round 2,
+`review-result:cir1-checked-integer-operators-r2` (needs-revision, six findings R2-B1, R2-B2,
+R2-W1, R2-W2, R2-N1, R2-N2). Each change is tagged with the finding it answers; § 12 maps them.
 
 ### 1. In one line
 
@@ -200,13 +202,32 @@ ignores it in every other manifest, a path dependency's included. The reader rea
 pointed at. `--root <dir>` names the directory whose `Cargo.toml` is the building root (a runner's
 or a harness driver's workspace). Without `--root`, the root is the crate's own workspace by
 Cargo's lookup: the crate's `Cargo.toml` when it has `[workspace]`; else the manifest that
-`package.workspace` names; else the nearest ancestor `Cargo.toml` with `[workspace]`, whose
-`members` must hold the crate unless its `exclude` names it (an error otherwise, as in Cargo).
-Root and ancestor manifests are read as regular files of at most `MAX_SOURCE_BYTES`, and only
-`[workspace]`, `[profile]`, `workspace.package.version` and `package.workspace` are used: the one
-widening of what the reader reads, today only the crate directory. Under a root whose `members`
-do not hold the crate, the crate is a non-member (a path dependency), which decides the tiers of
-5.3.
+`package.workspace` names; else the nearest ancestor `Cargo.toml` with `[workspace]` that holds
+the crate as a member; else, with no ancestor workspace at all, the crate's own `Cargo.toml`.
+An explicit `--root` is taken as the building root whether or not its manifest has
+`[workspace]`.
+
+A failed lookup never fails the read (R2-B1): an ancestor workspace that does not hold the crate
+(Cargo would refuse to build it there), a `package.workspace` that names no readable manifest, or
+membership the reader cannot decide makes the setting unknown. Only the profile-dependent
+operators are then refused, and their refusal names both inputs: "no building root found for
+this crate (the workspace at `../Cargo.toml` does not list it); pass `--root` and `--profile`".
+The reader's own test crates without `[workspace]` under the repository's workspace
+(`reader.rs` `spans-*`, `whole_crate.rs`, `bounds.rs`, `adversary_bounds.rs`, and edit's
+`read_spanned` over them) read as before but for those operators (§ 5.7).
+
+Membership follows Cargo (R2-B2): the root's package, if any; every directory `workspace.members`
+names, globs expanded, minus `workspace.exclude`; and, transitively, every path dependency of a
+member (`[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, their `target.*` forms,
+and a `workspace = true` dependency through `[workspace.dependencies]`) whose directory lies under
+the root. When the reader cannot decide (a glob form it does not expand, a member manifest it
+cannot read, a dependency path it cannot follow), membership and so the setting are unknown.
+
+Root, ancestor and member manifests are read as regular files of at most `MAX_SOURCE_BYTES`; only
+`[workspace]`, `[profile]`, `package.name`, `package.version`, `package.workspace` and the
+dependency tables' `path` keys are used: the one widening of what the reader reads, today only the
+crate directory. Under a root that does not hold the crate as a member (a path dependency under
+a runner's or driver's `--root`), the crate is a non-member, which decides the tiers of 5.3.
 
 **5.2 The chain.** `dev` and `release` are built in; `test` inherits `dev`, `bench` inherits
 `release`; a custom profile names its parent with `inherits`, which must end at a built-in. A
@@ -233,17 +254,25 @@ from `debug-assertions`, so the two resolve independently, except through rustfl
 
 **5.4 Package specs (F3).** A key of `[profile.<p>.package]` is a package ID spec. The reader
 resolves `name`, and `name@version` and `name:version` with a full or partial version (`1`, `1.2`,
-`1.2.3`) compared component by component with the crate's `[package] version` (or the root's
-`workspace.package.version` for `version.workspace = true`). A key naming another package is
-skipped. A key it cannot resolve makes the value unknown when it may name the crate: a URL form
-(`registry+…#name@…`, `path+file://…#…`, any key with `#` or `://`), a version with pre-release or
-build metadata, or a crate version the reader cannot read.
+`1.2.3`) compared component by component with the crate's `[package] version`. A
+`version.workspace = true` resolves from the crate's own workspace (the lookup of 5.1 without
+`--root`), whatever `--root` names, as Cargo resolves it where the package is declared (R2-N2). A
+key naming another package is skipped. A key it cannot resolve makes the value unknown when it may
+name the crate: a URL form (`registry+…#name@…`, `path+file://…#…`, any key with `#` or `://`), a
+version with pre-release or build metadata, or a crate version the reader cannot read. Two keys
+of one profile that both match the crate (`probe` and `probe@0.1`) make it unknown too: Cargo
+refuses such a manifest (R2-N1).
 
 **5.5 Unknown (F5).** Cargo reads configuration from the directory it runs in, that directory's
-ancestors and `$CARGO_HOME`; the reader cannot tell where the build runs. So any `.cargo/config.toml`
-or `.cargo/config` in the crate's directory, the root's directory, or a directory between them
-that sets a `profile` key or any rustflags (`build.rustflags`, `target.<triple>.rustflags`,
-`target.<cfg>.rustflags`) makes `overflow-checks` and `debug-assertions` unknown. So do
+ancestors and `$CARGO_HOME`; the reader cannot tell where the build runs, and a build may run in
+any directory under the root. So the reader reads every `.cargo/config.toml` and `.cargo/config`
+under the root's directory (R2-W1), and those in the crate's directory and its ancestors up to
+the root's directory, or, when the root is not an ancestor, up to their nearest common ancestor.
+The walk does not follow symbolic links and skips the root's `target` and `.git` directories; a
+walk past a fixed bound of directories makes the setting unknown. Any such file that sets a
+`profile` key or any rustflags (`build.rustflags`, `target.<triple>.rustflags`,
+`target.<cfg>.rustflags`) makes `overflow-checks` and `debug-assertions` unknown, with or without
+`--profile`: no rule independent of the working directory places it. So do
 `rustflags` in a `[profile.*]` table of the root manifest (the unstable `profile-rustflags`), and
 `-C overflow-checks` or `-C debug-assertions` in any rustflags source the reader reads (rustc's
 `overflow-checks` follows `debug-assertions` where it is not set itself). Unknown means the
@@ -260,6 +289,12 @@ Any unknown, or two that differ: unknown, and the refusal says which profiles ga
 `release` and `bench` off), so such a crate needs `--profile`; a root that sets
 `[profile.release] overflow-checks = true`, as services often do, reads without one.
 
+When any operator was refused because the setting is unknown, `codespec-read-rust` prints one
+line on standard error beside the module (exit 0, the module unchanged): "3 operators refused:
+the overflow-checks setting is unknown (profiles disagree: dev on, release off); pass --profile",
+or, with no root found, "…unknown (no building root found); pass --root and --profile".
+`codespec read` passes the line through. (Usability, adopted with round 2.)
+
 **5.7 Who passes what (F6, F7).** No runner reads `build`; each caller pins the profile its build
 uses:
 
@@ -268,17 +303,36 @@ uses:
   `[profile]`: checks on. The conformance engine reads the Rust corpus with `--profile dev`; the
   corpus crate's own root has no `[profile]` either, so the pin names what step 1 ran.
 - The inventory harness builds `examples/inventory/source` as a path dependency of
-  `drivers/rust-original` (its own `[workspace]`, no `[profile]`, `cargo build`): the
-  `examples-inventory` task (`Taskfile.yml`, the read at line 336) and the release workflow
-  (`.github/workflows/release-build.yml:88-89`, which reads it and compares bytes with the
-  checked-in document) both pass `--profile dev`, so the bytes compare.
+  `drivers/rust-original` (its own `[workspace]`, no `[profile]`, `cargo build`). The source
+  uses `+`, `-`, `*` and `+=`. Every read of it passes `--profile dev`, so the bytes compare:
+  the `examples` task (`Taskfile.yml:336`, which regenerates the checked-in document), the
+  `examples-inventory` task (`Taskfile.yml:687-688`, two reads compared with each other and with
+  the checked-in document; R2-W2) and the release workflow
+  (`.github/workflows/release-build.yml:88-89`, the same comparison).
 - `codespec edit` runs the reader with `--spans` alone (`crates/edit/src/run.rs:1162`); it gains
   `--profile`, passed on for every read. Without it, a crate whose profiles agree reads as
   before; where they disagree, each profile-dependent operator is refused in every read, and edit
   refuses a change set that meets one, as it refuses any refusal. The Rust edit fixtures
   (`examples/edit/rust/source`, `crates/cli/tests/fixtures/edit/rust/*`) have no `[profile]` and
   use `+` and `*`, so their programs and tests pass `--profile dev`, the profile their `--build`
-  commands build with.
+  commands build with, and `--root` the fixture crate where it has no `[workspace]` of its own.
+- The reader's own tests (R2-W2). The library gains `read_crate_with(dir, &Inputs)` (`profile`,
+  `root`) beside `read_crate`, and `read_source_with(name, file, src, Checks)` beside
+  `read_source`: a source read without a manifest has no root, so the test states the setting
+  (`overflow_checks`, `debug_assertions`, each on, off or unknown), recorded in `build` without
+  `profile`. `read_crate` and `read_source` keep their signatures and read with no inputs
+  (unknown for `read_source`). Each file of `adapters/rust-read/tests/`:
+
+  | file | reads | passes |
+  |---|---|---|
+  | `reader.rs` `read()` | `read_source` of inline sources, documents compared node by node with Go reads | `Checks` off: today's nodes, so every existing assertion holds; the new overflow tests state theirs |
+  | `reader.rs` `read_crate` calls and `spanned` (`spans-*`) | crates under `target/` without `[workspace]` | `--root <crate dir>` and `--profile dev`; without them only the dependent operators are refused (R2-B1) |
+  | `evaluation.rs`, `adversary1.rs`, `adversary2.rs` | `read_source`, then `codespec pass` and `codespec eval`, held to what `codespec-run-rust` printed (a `dev` build) | `Checks` on, the setting the measured build had |
+  | `whole_crate.rs` | `read_crate` of crates under `CARGO_TARGET_TMPDIR` without `[workspace]` | `--root <crate dir>`, `--profile dev` |
+  | `bounds.rs`, `adversary_bounds.rs` | the binary on crates under `target/rust-read-tests` without `[workspace]`, testing limits | nothing; a test asserting no refusal over arithmetic passes `--root <crate dir> --profile dev` |
+  | `cases.rs` | the binary on each kit case, a crate with its own `[workspace]` | `--profile dev` |
+  | `listed_calls.rs`, `two_documents.rs` | `read_source`, call-graph queries over `n - 1`, `n + 1` | `Checks` off, so the calls inside stay read |
+  | `union_case.rs` | `read_source` of a source without arithmetic | nothing |
 
 The crate doc of `adapters/rust-read/src/lib.rs` states these rules and replaces the operator
 row's "a trace that overflows is not equal by construction".
@@ -367,9 +421,12 @@ today's `+`.
   its subject when read with `--profile dev`. `conformance/cases/sem-rem-sign/rust/case.rs`
   (`a % b` on `i64`) reads as `%!` and keeps its subject `sem.rem.sign` (F2); its corpus copy
   `conformance/reader/rust/sem-rem-sign` is regenerated unchanged.
-- `Taskfile.yml` (`examples-inventory`, the read at line 336, passes `--profile dev`),
-  `.github/workflows/release-build.yml:88-89` (the same flag), `examples/inventory/*`
-  regenerated (F7).
+- `Taskfile.yml:336` (`examples`) and `Taskfile.yml:687-688` (`examples-inventory`, R2-W2), each
+  read passing `--profile dev`; `.github/workflows/release-build.yml:88-89` (the same flag);
+  `examples/inventory/*` regenerated (F7).
+- `adapters/rust-read/src/main.rs` (`--profile`, `--root`, the one-line summary on standard error)
+  and `adapters/rust-read/src/lib.rs` (`read_crate_with`, `read_source_with`); every test file of
+  `adapters/rust-read/tests/` as the table of § 5.7 says (R2-W2).
 - `crates/edit/src/run.rs` (`read`, line 1162: `--profile` passed on), `crates/cli/src/lib.rs`
   (`edit --profile`), the programs of `examples/edit/rust` and `scripts/examples-edit.sh`, the
   tests over `crates/cli/tests/fixtures/edit/rust` (F7).
@@ -399,8 +456,15 @@ a tree under `~/.cache`. Red first on main `f09c740f`:
    (F4); package keys `<crate>`, `<crate>@0.1`, `<crate>:0.1.0` applied, `<crate>@0.2` skipped,
    `registry+https://…#<crate>@0.1.0` unknown (F3); `package."*"` applied only under a `--root`
    that does not hold the crate (F6); a `.cargo/config.toml` in the crate's or the root's
-   directory with a `profile` key or `build.rustflags`, and `rustflags` in the root's
-   `[profile.release]`, each unknown (F5); a pinned profile not defined (error).
+   directory, or in a sibling member's directory under the root, with a `profile` key or
+   `build.rustflags`, and `rustflags` in the root's `[profile.release]`, each unknown (F5,
+   R2-W1); a pinned profile not defined (error). Root and membership (R2-B1, R2-B2): a crate
+   without `[workspace]` under a workspace that does not list it reads, with only the dependent
+   operators refused, the refusal and the standard-error line naming `--root` and `--profile`; a
+   crate reached only as a path dependency of a member under the root is a member (`"*"` does not
+   apply to it); a `members` glob the reader does not expand is unknown. Specs (R2-N1, R2-N2):
+   `probe` and `probe@0.1` both in `[profile.release.package]` is unknown; `version.workspace =
+   true` resolves from the crate's own workspace under a `--root` elsewhere.
 5. Types (F1): `pub fn last(v: Vec<i64>) -> usize { v.len() - 1 }` with `--profile dev` holds
    `-!` on unsigned `platform` and `last(vec![])` panics.
 6. Model: strict reading accepts each checked operator on integers and refuses it on a float, a
@@ -438,7 +502,7 @@ a tree under `~/.cache`. Red first on main `f09c740f`:
   the panics are held by the tests of § 10. `docs/evaluator.md` § 9's `sem.panic.*` would let
   the kit hold them.
 
-### 12. Revision 2: what each finding changed
+### 12. What each finding changed
 
 - F1, `len()` typed signed: § 2 "Types" (checked only on the Rust type; `len()` is `usize`), test 5.
 - F2, `%!` dropped `sem.rem.sign`: § 3 (`%!` keeps it), § 9 (the `sem-rem-sign` case).
@@ -448,3 +512,16 @@ a tree under `~/.cache`. Red first on main `f09c740f`:
 - F6, the building root decides: § 5.1 (`--root`), § 5.7 (runners; `build` unread), test 4.
 - F7, missing callers: § 5.7, § 9 (release workflow, `examples-inventory`, edit), test 10.
 - F8, F9, the default without `--profile`: § 5.6, § 2, § 4, test 2.
+
+Revision 3, round 2 (`review-result:cir1-checked-integer-operators-r2`):
+
+- R2-B1, a failed root lookup failed the read: § 5.1 (unknown, refusal names `--root` and
+  `--profile`), § 5.7 (the reader's test crates), test 4.
+- R2-B2, membership: § 5.1 (members, globs, `exclude`, path dependencies under the root;
+  undecidable is unknown), test 4.
+- R2-W1, configuration anywhere under the root: § 5.5 (every file under the root; any profile
+  key or rustflags is unknown), test 4.
+- R2-W2, missing callers: § 5.7 (`Taskfile.yml:687-688`, the table of reader test files), § 9.
+- R2-N1, two keys for one crate: § 5.4, test 4.
+- R2-N2, `version.workspace`: § 5.4, test 4.
+- Usability, the summary line on standard error: § 5.6, § 9.
