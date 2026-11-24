@@ -6,8 +6,8 @@ status: draft
 title: 'MCP rewrite preview: a rule in, a diff out, nothing written'
 relations:
 - decomposes: epic:agent-mcp-server
-- depends_on: story:cir-rewrite
 - depends_on: story:mcp-semantic-tools
+- depends_on: story:edit-replace-template
 scope:
 - confidence: inferred
   path: CHANGELOG.md

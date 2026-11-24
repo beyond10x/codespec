@@ -6,7 +6,7 @@ status: draft
 title: Mutation testing from cir/1
 relations:
 - decomposes: epic:codebase-transformations
-- depends_on: story:cir-rewrite
+- depends_on: story:edit-replace-template
 revision: 1
 ---
 # Story: Mutation testing from cir/1

@@ -6,7 +6,7 @@ status: draft
 title: 'Instrument a codebase: logging, timing and counters at entries and effect sites'
 relations:
 - decomposes: epic:codebase-transformations
-- depends_on: story:cir-rewrite
+- depends_on: story:edit-replace-template
 revision: 1
 ---
 # Story: Instrument a codebase: logging, timing and counters at entries and effect sites

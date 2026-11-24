@@ -6,7 +6,7 @@ status: active
 title: Programmatic transformations and pattern queries over a whole codebase
 relations:
 - depends_on: epic:whole-repo-to-syscalls
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:36Z", actor: "human:timo", revision: 3}
@@ -35,6 +35,8 @@ round trip exists; what is missing is a pattern language, a rewrite over a set, 
 - Writers other than Go for the first version; a transformed function the writer cannot express
   is refused, as today.
 - Formatting- or comment-preserving edits of the original files: output is the writer's source.
+  Those edits are `epic:code-edit-language` (2026-11-24): span edits of the original files,
+  selected by cq, verified by a re-read (`docs/code-edit-language.md`).
 
 ## Done When
 

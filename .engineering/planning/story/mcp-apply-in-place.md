@@ -7,7 +7,7 @@ title: 'MCP apply: write a previewed change into the original files, then read i
 relations:
 - decomposes: epic:agent-mcp-server
 - depends_on: story:mcp-rewrite-preview
-- depends_on: story:reader-function-spans
+- depends_on: story:edit-cli-verified-apply
 scope:
 - confidence: inferred
   path: CHANGELOG.md
