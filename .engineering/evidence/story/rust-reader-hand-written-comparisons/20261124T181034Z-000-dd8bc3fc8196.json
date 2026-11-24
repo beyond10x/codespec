@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T18:10:34Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-hand-written-comparisons",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust -p codespec-write-rust --locked at ebbb072f: exit 0, reader binary 133 passed; adversary round 1 (4 findings, red tests 1b288234) fixed in 31f6c134",
+    "reference": "ebbb072f"
+  }
+}
