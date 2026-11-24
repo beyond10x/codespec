@@ -7,7 +7,7 @@ title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 11
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
@@ -48,7 +48,8 @@ application. `epic:groovy-grails-reader` is the precedent for a framework-aware 
   `story:java-reader-cdi-observes-entry`, `story:java-reader-scheduled-startup-entries`,
   `story:release-jvm-readers`, `story:java-read-dependencies`, `story:java-reader-public-corpus`,
   and of other epics `story:query-recursion-bounded-by-comparison`, `story:reach-entry-file`,
-  `story:cq-entry-relation`, `story:check-not-applicable` and `story:check-java-name-lists`.
+  `story:cq-entry-relation`, `story:cq-query-string`, `story:check-not-applicable` and
+  `story:check-java-name-lists`.
 - The consumer's re-read: the consumer's reviewing session reads the same private Java service
   with a release binary and reports counts only, no name of the service: function bodies read
   against the 0.12.0 baseline of 133 of 418, the refusals by reason, the entries found (every
@@ -105,8 +106,9 @@ Lane A, one implementer, serial. Each story depends on the one before it: they s
     wave merges, rebased.
 16. `story:java-reader-annotation-facts`: security, validation, transaction, scope and inject
     marks as facts with one cq relation `mark`. Also depends on 4. After the Rust wave, as 15.
-17. `story:java-reader-persistence-facts`: JPA relation marks, `@NamedQuery` and query strings
-    as cq facts; adds to 16's `mark` relation. After the Rust wave, as 15.
+17. `story:java-reader-persistence-facts`: JPA relation marks and `@NamedQuery` as `persistence`
+    marks; rows of 16's `mark` relation. After the Rust wave, as 15. The query strings are
+    `story:cq-query-string` (Lane B).
 18. `story:java-reader-cdi-observes-entry`: 15. Near the end because it changes `crates/model`
     and the schema, which the Rust wave changes too: it starts after that wave merges, rebased.
     Also depends on `story:reach-entry-file` (its reach case runs with no entry flag).
@@ -125,8 +127,10 @@ same file, and the edge names that file:
   they edit `crates/check/src/checks.rs` and `crates/cli/tests/check.rs` (the first two also
   `crates/cli/src/main.rs`).
 - `story:query-recursion-bounded-by-comparison`, then `story:cq-entry-relation`: both edit
-  `crates/query/tests/query.rs` and `docs/query-language.md`. `story:java-reader-synchronized`
-  (Lane A) depends on `story:cq-entry-relation` for `crates/query/src/facts.rs`.
+  `crates/query/tests/query.rs` and `docs/query-language.md`. `story:cq-query-string` follows
+  `story:cq-entry-relation` (a `depends_on` edge): it shares `crates/query/src/facts.rs`,
+  `crates/query/tests/query.rs`, the expected schema and `docs/query-language.md`.
+  `story:java-reader-synchronized` (Lane A) depends on `story:cq-entry-relation` for `crates/query/src/facts.rs`.
 
 The order in which the one implementer takes them is a priority, not an edge, and `waves` does not
 enforce it:
@@ -141,6 +145,9 @@ enforce it:
    and `check unreached` the recorded entries as their default.
 5. `story:cq-entry-relation` (`epic:codebase-transformations`): the entries as a cq relation,
    asked by codesec's rules; before Lane A reaches `story:java-reader-synchronized`.
+   `story:cq-query-string` (`epic:codebase-transformations`) next: the query strings of codesec's
+   persistence gap; it and Lane A's 15 to 17 edit the same `crates/query` files, and the typed
+   scope keeps them out of one wave.
 6. `story:check-not-applicable` (`epic:codebase-transformations`): defect, checks give 0 rows on
    a language they have no names for, silently.
 7. `story:check-java-name-lists` (`epic:codebase-transformations`): the Java lists and

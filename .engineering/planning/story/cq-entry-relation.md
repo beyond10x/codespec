@@ -21,7 +21,7 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 3
+revision: 5
 ---
 # Story: cq reads a module's entries as a relation
 
@@ -32,7 +32,11 @@ record of a document's `Module.entries`, `func` the function's node id, `kind` o
 `ENTRY_KINDS`, `on` and `method` as the document holds them (`method` empty outside `http`). The
 name `entry` is taken (the first statement of a body), so the relation is `entry_point`. A rule
 can then start at what a framework calls: `entry_point{kind: "http", func: F}, reaches(F, G)`.
-Documents with no `entries` give no row; no reader changes.
+Documents with no `entries` give no row; no reader changes. The relation passes `kind` through as
+the document holds it and lists no kind of its own: `crates/query/tests/expected/schema.txt` and
+`docs/query-language.md` § 4.2 describe `kind` as "any kind in `ENTRY_KINDS`" and name none, so a
+story that adds a kind (`story:java-reader-cdi-observes-entry`, `story:java-reader-scheduled-startup-entries`)
+edits neither.
 
 ## Why
 
@@ -68,7 +72,11 @@ lists no relation over `Module.entries`; `crates/query/src/facts.rs` reads no `e
   entry gives none (near miss); a document without `entries` gives none.
 - A query joins `entry_point` with `reaches` and gives the functions an `http` entry reaches (a
   test with an expected file).
-- `crates/query/tests/expected/schema.txt` and `docs/query-language.md` § 4.2 name the relation;
+- `crates/query/tests/expected/schema.txt` and `docs/query-language.md` § 4.2 name the relation
+  and describe `kind` as "any kind in `ENTRY_KINDS`", naming no kind (a check: neither file names
+  `http`, `scheduled`, `incoming` or `exception-mapper` in the relation's description); a test over
+  one entry of each kind in `ENTRY_KINDS`, iterating the constant, gives one row per kind, so a kind
+  added later is covered with no change to cq;
   `task check` green; each new test inside the 60 s bound.
 
 ## Scope

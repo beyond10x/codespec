@@ -19,7 +19,7 @@ scope:
   path: adapters/jvm/launcher
 - confidence: inferred
   path: website/docs/getting-started.md
-revision: 2
+revision: 4
 ---
 # Story: the release archive ships the Groovy reader and the JVM runners
 
@@ -56,13 +56,19 @@ main `5f82fff97` the archive holds none of the three; `task adapters` builds the
   `expected.txt`. `codespec-run-groovy` runs a conformance case that has a `groovy` directory
   (`conformance/cases/assign-div/groovy`) against its `calls.json` and its output equals that
   case's `expected.txt`.
-- The Groovy launcher with no Groovy runtime jar to be found exits non-zero with one line naming
-  the jar it looked for (a test of the launcher).
+- Each of the three launchers, `codespec-read-groovy`, `codespec-run-java` and
+  `codespec-run-groovy`, run with a `java` older than 17 first on `PATH` (a stub that prints a
+  JDK 11 version), exits non-zero with one line naming the JDK it found and the 17 it needs, and
+  starts no jar (a launcher test, one case per launcher).
+- The Groovy launchers with no Groovy runtime jar to be found exit non-zero with one line naming
+  the jar they looked for (a launcher test).
 - Every file the story adds to the archive is listed in `SHA256SUMS`; the gate test of
   `story:release-jvm-readers` that compares the `tar` list with the programs `codespec-docs`
   reports as shipped passes with the three added.
 - The installing section of `README.md` and `website/docs/getting-started.md` name the Groovy
-  reader and what it needs; `CHANGELOG.md` entry.
+  reader and what it needs; a check of the docs (the smoke step or the docs gate) fails while
+  `website/docs/getting-started.md` still names Groovy among the readers to build from source
+  (today "Build the C, Java and Groovy readers from source"), and passes on the new wording; `CHANGELOG.md` entry.
 
 ## Scope
 

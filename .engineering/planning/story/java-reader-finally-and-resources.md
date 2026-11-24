@@ -17,7 +17,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 2
+revision: 3
 ---
 # Story: finally, try-with-resources and a broad catch
 
@@ -99,12 +99,17 @@ TryForms.java:26 try: catching exceptions is outside cir/1
   `twoResources`; for `withFinally` and `broad`, the values for `"12"`, `"x"` and `""`.
 - try-with-resources cases: the body raises and a `close` raises (the body's exception goes on, the
   later resources are still closed); the body completes and the first of two `close` calls
-  raises (that exception goes on, the second resource is closed); a `null` resource is not
-  closed; the second resource's initializer raises (only the first is closed). Each compares the
-  evaluator's log and result with what Java prints.
+  raises (that exception goes on, the second resource is closed); the body completes and two of
+  three `close` calls raise (the first raised goes on, the later one is suppressed in turn: not
+  raised, and the remaining resource is still closed); a `null` resource is not closed; the second
+  resource's initializer raises (only the first is closed). Each compares the evaluator's log
+  and result with what Java prints.
 - `finally` cases: a `return` in the block runs `F` after the value is computed (`F` changes the
-  variable, the returned value is the old one); a `break` out of a loop runs `F`; a `return` in `F`
-  stays a refusal with its named reason.
+  variable, the returned value is the old one); a `break` out of a loop runs `F`; a `continue` in
+  a loop runs `F` before the next iteration (the log shows `F` once per iteration). Each compares
+  with what Java prints.
+- `finally` refusals, one case each, each with the reason "a jump out of finally discards what the
+  try block was doing": a `return` in `F`, a `break` in `F`, a `continue` in `F`, a `throw` in `F`.
 - Broad catch: `catch (RuntimeException e)` around a known raising call reads (the second case of
   `story:java-reader-try-catch` turns from a refusal into a read case);
   `catch (Throwable e)`, `catch (Error e)` and a broad catch around a call whose exceptions the

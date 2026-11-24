@@ -26,7 +26,7 @@ scope:
   path: crates/model/tests/model.rs
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 6
+revision: 7
 ---
 # Story: a CDI observer method is an entry of kind observes
 
@@ -91,4 +91,7 @@ The second line is a separate refusal of `String.length()` on a parameter in a p
   (its reach case needs the default entries).
 - `crates/model/src/lib.rs`, `crates/model/tests/model.rs` and the schema are changed by the Rust
   wave `wave/rust-misreads-1` too: this story starts after that wave merges, rebased on it.
+- Not `crates/query/tests/expected/schema.txt` or `docs/query-language.md`: `story:cq-entry-relation`
+  describes `entry_point`'s `kind` as "any kind in `ENTRY_KINDS`" and names none, so a new kind
+  needs no edit there.
 - `CHANGELOG.md` gets one line; conflicts there are resolved at merge.

@@ -17,17 +17,19 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 2
+revision: 4
 ---
 # Story: framework annotations that change no behaviour of the module are recorded, not refused
 
 ## Outcome
 
 A project read records `@RegisterForReflection` (`io.quarkus.runtime.annotations`) and
-`jakarta.persistence.Table` as marks, as `@Entity` and `@Column` are recorded in `persistence`
-today: `@Table` with its arguments as written, `@RegisterForReflection` as a mark of the type. The
-class reads as it does without them. Annotations of the same packages that change what the code
-does stay refused.
+`jakarta.persistence.Table` as marks in `persistence`, as `@Entity` and `@Column` are recorded
+there today: `@Table` with its arguments as written, `@RegisterForReflection` as a mark of the
+type. `persistence` is the only list of type marks until `story:java-reader-annotation-facts`
+adds `marks`; that story moves `@RegisterForReflection` there (cq `mark` kind `reflection`), and
+`@Table` stays in `persistence` (kind `persistence`). The class reads as it does without them.
+Annotations of the same packages that change what the code does stay refused.
 
 ## Why
 
@@ -60,7 +62,7 @@ Item.java:8 annotation jakarta.persistence.Table: annotations with behaviour are
 
 - A failing `ReaderTest` case first, on the two classes added to `adapters/java/testdata/project-forms`:
   `Dto` and `Item` are structs, `Item` has a `persistence` mark `Table` with `args` `name = "items"`,
-  `Dto` a mark `RegisterForReflection`, and the module has no refusal for either.
+  `Dto` a `persistence` mark `RegisterForReflection`, and the module has no refusal for either.
 - README "Projects and Quarkus" lists both; `task adapters-check` green.
 
 ## Scope
