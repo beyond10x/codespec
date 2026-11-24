@@ -2,6 +2,7 @@
 //! (`src/main.rs`) runs it; the documentation generator (`codespec-docs`) walks it for the CLI
 //! reference.
 
+pub mod edit;
 pub mod eval;
 pub mod measure;
 pub mod query;
@@ -302,6 +303,24 @@ pub enum Cmd {
     /// statement without a call list, an unresolved call) is marked possible, with the unknown
     /// sites. Path patterns and properties are refused.
     Query(query::Args),
+    /// Change source code with a cq edit program: each row of an `edit` item's body is one
+    /// operation (rename, rename_field), planned on cir/1 and applied to the source by its spans,
+    /// as a dry run printing a unified diff. Exit 0 when every row is planned and verified, or
+    /// there is no row; 1 when a row is refused or verification fails, each reason on standard
+    /// error; 2 on an error.
+    ///
+    /// Each directory is read with `codespec-read-<lang> --spans`; the fact base is built over
+    /// the set as `codespec query` builds it, with source_name from the span documents. A
+    /// possible row is refused with the unknown sites it rests on; so is a row whose target is
+    /// exported, without --closed-world. Before anything is printed, the root the reader resolves
+    /// against (Rust: the Cargo workspace root, the nearest directory above the crate whose
+    /// Cargo.toml has [workspace], else the crate directory) is copied without .git and target
+    /// into the cache directory ($CODESPEC_CACHE_DIR/edit, else $XDG_CACHE_HOME/codespec/edit,
+    /// else ~/.cache/codespec/edit), the edited files are written there, the copied directories
+    /// are read again, and the set read must equal the expected cir/1 byte for byte; the first
+    /// differing path is printed otherwise. Nothing is written to the inputs. Not yet: a language
+    /// other than rust, and the operations retarget and delete (exit 2).
+    Edit(edit::Args),
     /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
     /// print one line per call, as the conformance kit's runners print them. Exit 0 when every
     /// call is made, 1 when the run stops (a foreign statement executed, a raise reached, an

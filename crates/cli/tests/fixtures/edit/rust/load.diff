@@ -1,0 +1,28 @@
+--- a/stock/src/lib.rs
++++ b/stock/src/lib.rs
+@@ -2,7 +2,7 @@
+ 
+ mod store;
+ 
+-use crate::store::load;
++use crate::store::fetch_all;
+ 
+ /// One item of the stock.
+ pub struct Item {
+@@ -12,7 +12,7 @@
+ 
+ /// The sum of two loads.
+ pub fn total() -> u32 {
+-    load() + load()
++    fetch_all() + fetch_all()
+ }
+ 
+ fn make(count: u32) -> Item {
+--- a/stock/src/store.rs
++++ b/stock/src/store.rs
+@@ -1,4 +1,4 @@
+ /// Load gives the number of items.
+-pub fn load() -> u32 {
++pub fn fetch_all() -> u32 {
+     4
+ }

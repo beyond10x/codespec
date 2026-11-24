@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-slice-rust-rename
 kind: story
-status: active
+status: implemented
 title: 'First end-to-end edit: a Rust rename, dry run, verified by re-read'
 summary: codespec edit for Rust rename and rename_field, dry run, re-read of a cache copy compared with the expected cir/1
 relations:
@@ -27,10 +27,11 @@ scope:
   path: crates/edit/src/run.rs
 - confidence: inferred
   path: website/docs/reference/cli.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T01:01:55Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-24T01:16:46Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-24T03:39:04Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: First end-to-end edit: a Rust rename, dry run, verified by re-read
 

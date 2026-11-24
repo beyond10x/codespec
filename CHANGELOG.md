@@ -12,6 +12,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `cir/1` module written beside it is the same as without `--spans`. A reader gives spans when it
   takes `--spans` (`docs/design.md` § 2); one that does not is refused by name. No reader gives
   spans yet. The format and its rules are the crate doc of the new crate `b10x-codespec-edit`.
+- `codespec edit --lang rust [--closed-world] <crate dir>… -e <program>` renames Rust functions
+  and struct fields with a cq edit program (`edit rename(F, "fetch_all") :- func{id: F, name:
+  "Load"}.`, `edit rename_field(T, "count", "amount") :- …`) and prints the change as a unified
+  diff; nothing is written to the inputs. Every edit is checked before it is printed: the crate's
+  Cargo workspace is copied into the cache directory, the edited files are written there and read
+  again, and the result must be the expected `cir/1` exactly. A row that rests on code the fact
+  base cannot see, or names an exported function without `--closed-world`, is refused with its
+  reason (exit 1). Go, `retarget` and `delete` are not there yet (exit 2).
 
 ## 0.12.0
 

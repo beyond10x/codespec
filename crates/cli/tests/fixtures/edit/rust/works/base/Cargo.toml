@@ -1,0 +1,5 @@
+[package]
+name = "base"
+version.workspace = true
+edition.workspace = true
+publish = false
