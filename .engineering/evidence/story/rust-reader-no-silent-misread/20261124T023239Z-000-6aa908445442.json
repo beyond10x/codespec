@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T02:32:39Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-no-silent-misread",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust --locked: 188 passed, 0 failed (reader.rs 99, the 9 new tests red before the fix)"
+  }
+}

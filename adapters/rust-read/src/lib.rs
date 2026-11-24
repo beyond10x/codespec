@@ -27,6 +27,7 @@
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
 //! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
 //! | `impl std::error::Error for …` (empty) | absorbed |
+//! | `#[serde(…)]` on a struct, enum, variant or field with any key but `bound` and `crate` (`rename`, `rename_all`, `skip`, `skip_serializing_if`, `flatten`, `default`, `tag`, `untagged`, `with`, `transparent`, …), or an attribute of a serde helper crate (`#[serde_as]`) | the type refused, the reason naming the attribute: `cir/1` carries no wire names or shape, and the type read without them would serialize differently |
 //! | `pub fn f`, `fn f` | `F`, `f` (Go spelling, golint's initialisms). Two functions (associated ones among them), two methods of one type, two constants or two statics of one Go spelling (`value_2`, `value2`) are each refused at their line and each use of them refused (a crate trait's impl with such a method is refused whole); so are two fields of a struct (refusing it), two parameters of a function (refusing it) and two methods of a trait (refusing it). Items of different kinds are apart in `cir/1` and keep their names; locals are renamed apart, and a `let` of a function's or closure's outermost block that shadows a parameter binds a new name, as Go's parameters share that block's scope |
 //! | `impl T { fn m(&mut self) }` | method with receiver `*T`; once one method of `T` takes `&mut self`, every `&self` method of `T` has `*T` too, otherwise `&self` and `self` are `T` |
 //! | `impl T { fn f(…) }` without `self` | function `F<T>` (`new` → `NewT`) |
@@ -40,7 +41,7 @@
 //! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
 //! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
-//! | `use` | nothing for what is read: names resolve by their last path segment. The calls an `opaque` function or a `foreign` statement lists resolve a path through the module's `use` declarations (`calls`) |
+//! | `use` | nothing of its own: a path names the full path its module's `use` declarations make of it. A std type, trait or function of the reader's tables is matched by that full path, never by its last segment: `Sender` after `use std::sync::mpsc::Sender;` or `std::sync::mpsc::Sender` is a channel, `broadcast::Sender` after `use tokio::sync::broadcast;` is refused. Bare, only the prelude's `String`, `Vec`, `Box`, `Option`, `Result` and `Default` are std's; `HashMap` needs its `use` (a glob import or a `use` inside a function body is not read, so such a name is refused). A name a `use` takes from outside the crate is not the crate's item of that name, and is refused. The crate's own items resolve by name (`files`). The calls an `opaque` function or a `foreign` statement lists resolve a path the same way (`calls`) |
 //! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a module, item or part of one built only for tests (`#[cfg(test)]`) is not read, and one under a `cfg` the reader cannot resolve (a feature, a platform) is refused (`files`). Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
 //!
 //! # Types
@@ -66,6 +67,7 @@
 //! | `T`, a type parameter in scope | `param` |
 //! | `S<A>`, `S` a generic struct | `named` `S` with type arguments `A` |
 //! | other `dyn` and `impl` traits, `&mut T` elsewhere, other `Box`es, other paths | refused |
+//! | a path the table names by its last segment only (`tokio::sync::broadcast::Sender<T>`, `other::Vec<T>`, `Rc<other::RefCell<T>>`) | refused: each row above is matched by the full path the type names after `use` (see Items) |
 //!
 //! # Statements
 //!
@@ -139,6 +141,10 @@
 //! ## Standard methods
 //!
 //! The fixed table of std methods the reader types. A method outside it, on a std type, is refused.
+//! A function of a type (`String::from`, `HashMap::new`, `Rc::new`, `RefCell::new`, `Box::new`) is
+//! the table's by the full path of its type, as Types matches it; the macros `format!`,
+//! `println!`, `vec!` and `write!` are std's bare, unless the crate defines or a `use` brings in
+//! one of that name, or as `std::`, `core::` or `alloc::` paths.
 //!
 //! | receiver | method | cir/1 |
 //! |---|---|---|
@@ -892,6 +898,8 @@ pub(crate) struct Reader {
     pub tables: calls::Tables,
     /// The module path of each item of the file read, in order.
     pub item_modules: Vec<String>,
+    /// The index of each item of the file read, by its address, to find its module.
+    pub item_index: std::collections::HashMap<usize, usize>,
     /// The module path and the impl type of the item being read, for listing its calls.
     pub at: RefCell<(String, Option<String>)>,
     /// The functions refused whole, with their calls.
@@ -927,6 +935,66 @@ pub(crate) struct TraitInfo {
     pub methods: BTreeMap<String, (String, Vec<Type>, Vec<Type>)>,
 }
 
+/// The first attribute among `attrs` that gives serde a wire form other than the derived one,
+/// as its source: `#[serde(…)]` with any key but `bound` and `crate` (`rename`, `rename_all`,
+/// `skip`, `flatten`, `default`, `tag`, `untagged`, `with`, …), or an attribute of a serde helper
+/// crate (`#[serde_as]`).
+fn serde_wire(attrs: &[syn::Attribute]) -> Option<String> {
+    attrs
+        .iter()
+        .find(|a| {
+            let first = a
+                .path()
+                .segments
+                .first()
+                .map(|s| s.ident.to_string())
+                .unwrap_or_default();
+            if first.starts_with("serde_") {
+                return true;
+            }
+            if !a.path().is_ident("serde") {
+                return false;
+            }
+            !a.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|ms| {
+                ms.iter()
+                    .all(|m| m.path().is_ident("bound") || m.path().is_ident("crate"))
+            })
+        })
+        .map(src_of)
+}
+
+/// The serde attribute of a field among `fields` that sets a wire form, and where it stands.
+fn serde_wire_fields(fields: &syn::Fields, of: &str) -> Option<String> {
+    fields.iter().enumerate().find_map(|(k, fl)| {
+        let name = fl
+            .ident
+            .as_ref()
+            .map_or_else(|| k.to_string(), |i| i.to_string());
+        serde_wire(&fl.attrs).map(|a| format!("`{a}` on field {name}{of}"))
+    })
+}
+
+/// The serde attribute of the struct `s` or one of its fields that sets a wire form.
+fn serde_wire_struct(s: &syn::ItemStruct) -> Option<String> {
+    serde_wire(&s.attrs)
+        .map(|a| format!("`{a}`"))
+        .or_else(|| serde_wire_fields(&s.fields, ""))
+}
+
+/// The serde attribute of the enum `e`, a variant or a variant's field that sets a wire form.
+fn serde_wire_enum(e: &syn::ItemEnum) -> Option<String> {
+    serde_wire(&e.attrs).map(|a| format!("`{a}`")).or_else(|| {
+        e.variants.iter().find_map(|v| {
+            serde_wire(&v.attrs)
+                .map(|a| format!("`{a}` on variant {}", v.ident))
+                .or_else(|| serde_wire_fields(&v.fields, &format!(" of variant {}", v.ident)))
+        })
+    })
+}
+
 fn is_pub(v: &syn::Visibility) -> bool {
     matches!(v, syn::Visibility::Public(_))
 }
@@ -950,19 +1018,36 @@ fn doc(attrs: &[syn::Attribute]) -> String {
     lines.join("\n").trim().to_string()
 }
 
-/// Whether `#[derive(…)]` among `attrs` names the trait `name`.
-fn derives(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|a| {
-        a.path().is_ident("derive")
-            && a.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
-            )
-            .is_ok_and(|ps| {
-                ps.iter()
-                    .any(|p| p.segments.last().is_some_and(|s| s.ident == name))
-            })
-    })
-}
+/// The std items the reader's type and call tables name, each by every full path that names it,
+/// its canonical path first. A bare name stands for a prelude item only where no `use` and no
+/// item of the crate takes it. A path is matched whole, after its module's `use` declarations
+/// resolve it: `tokio::sync::broadcast::Sender` is not `std::sync::mpsc::Sender`.
+const STD_ITEMS: &[&[&str]] = &[
+    &["std::string::String", "String", "alloc::string::String"],
+    &["std::vec::Vec", "Vec", "alloc::vec::Vec"],
+    &["std::boxed::Box", "Box", "alloc::boxed::Box"],
+    &["std::option::Option", "Option", "core::option::Option"],
+    &["std::result::Result", "Result", "core::result::Result"],
+    &["std::default::Default", "Default", "core::default::Default"],
+    &[
+        "std::collections::HashMap",
+        "std::collections::hash_map::HashMap",
+    ],
+    &[
+        "std::collections::BTreeMap",
+        "std::collections::btree_map::BTreeMap",
+        "alloc::collections::BTreeMap",
+        "alloc::collections::btree_map::BTreeMap",
+    ],
+    &["std::rc::Rc", "alloc::rc::Rc"],
+    &["std::cell::RefCell", "core::cell::RefCell"],
+    &["std::sync::mpsc::Sender"],
+    &["std::sync::mpsc::SyncSender"],
+    &["std::sync::mpsc::Receiver"],
+    &["std::any::Any", "core::any::Any"],
+    &["std::fmt::Display", "core::fmt::Display"],
+    &["std::error::Error", "core::error::Error"],
+];
 
 /// The last segment of a path type, with its generic arguments.
 fn last_seg(t: &syn::Type) -> Option<(&syn::Ident, Vec<&syn::Type>)> {
@@ -992,6 +1077,14 @@ fn last_seg(t: &syn::Type) -> Option<(&syn::Ident, Vec<&syn::Type>)> {
 fn plain_ident(t: &syn::Type) -> Option<String> {
     match last_seg(t) {
         Some((i, a)) if a.is_empty() => Some(i.to_string()),
+        _ => None,
+    }
+}
+
+/// The name of a primitive type (`str`, `i64`): a path type of one segment, no arguments.
+fn prim_ident(t: &syn::Type) -> Option<String> {
+    match t {
+        syn::Type::Path(p) if p.qself.is_none() => p.path.get_ident().map(|i| i.to_string()),
         _ => None,
     }
 }
@@ -1054,8 +1147,8 @@ fn value_idiom(
         return None;
     };
     let under = match &**rt {
-        syn::Type::Reference(r) if plain_ident(&r.elem).as_deref() == Some("str") => Type::String,
-        t => int_type(&plain_ident(t)?)?,
+        syn::Type::Reference(r) if prim_ident(&r.elem).as_deref() == Some("str") => Type::String,
+        t => int_type(&prim_ident(t)?)?,
     };
     let [syn::Stmt::Expr(syn::Expr::Match(m), None)] = f.block.stmts.as_slice() else {
         return None;
@@ -1126,6 +1219,7 @@ impl Reader {
             refusals: Vec::new(),
             tables: calls::Tables::default(),
             item_modules: Vec::new(),
+            item_index: std::collections::HashMap::new(),
             at: RefCell::new(("crate".into(), None)),
             opaque: Vec::new(),
             apart: Vec::new(),
@@ -1138,6 +1232,107 @@ impl Reader {
         let out = f();
         self.scope.replace(outer);
         out
+    }
+
+    /// Make `item`, an item of the file read, the one being read: the paths it writes resolve
+    /// through its module's `use` declarations.
+    pub fn enter(&self, item: &syn::Item) {
+        let module = self
+            .item_index
+            .get(&(item as *const syn::Item as usize))
+            .and_then(|k| self.item_modules.get(*k))
+            .cloned()
+            .unwrap_or_else(|| "crate".into());
+        let self_ty = match item {
+            syn::Item::Impl(im) => impl_type_name(&im.self_ty),
+            _ => None,
+        };
+        *self.at.borrow_mut() = (module, self_ty);
+    }
+
+    /// The full path the segments `segs` name in the item being read: through its module's
+    /// `use` declarations, `crate` first for the crate's own items, as written for a name
+    /// neither declares (the prelude's).
+    pub fn resolve(&self, segs: &[String]) -> Vec<String> {
+        let (module, self_ty) = self.at.borrow().clone();
+        self.tables.resolve(&module, self_ty.as_deref(), segs)
+    }
+
+    /// The full path `p` names, its generic arguments left out.
+    pub fn full_path(&self, p: &syn::Path) -> Vec<String> {
+        let segs: Vec<String> = p.segments.iter().map(|s| s.ident.to_string()).collect();
+        self.resolve(&segs)
+    }
+
+    /// The std item of the reader's tables the full path `full` names: its first path in
+    /// [`STD_ITEMS`].
+    pub fn std_item(&self, full: &[String]) -> Option<&'static str> {
+        let joined = full.join("::");
+        STD_ITEMS
+            .iter()
+            .find(|ps| ps.contains(&joined.as_str()))
+            .map(|ps| ps[0])
+    }
+
+    /// The std item of the reader's tables the path `p` names.
+    pub fn std_path(&self, p: &syn::Path) -> Option<&'static str> {
+        self.std_item(&self.full_path(p))
+    }
+
+    /// The std item of the reader's tables and the function's name a call path `T::f` names, by
+    /// the full path of `T`: `HashMap::new` with `use std::collections::HashMap;` is
+    /// `("std::collections::HashMap", "new")`.
+    pub fn std_call(&self, p: &syn::Path) -> Option<(&'static str, String)> {
+        if p.segments.len() < 2 {
+            return None;
+        }
+        let full = self.full_path(p);
+        let (f, ty) = full.split_last()?;
+        Some((self.std_item(ty)?, f.clone()))
+    }
+
+    /// The std item of the reader's tables a path type names, with its type arguments.
+    pub fn std_type<'t>(&self, t: &'t syn::Type) -> Option<(&'static str, Vec<&'t syn::Type>)> {
+        let syn::Type::Path(p) = t else { return None };
+        let (_, args) = last_seg(t)?;
+        Some((self.std_path(&p.path)?, args))
+    }
+
+    /// The name of the crate's own item the full path `full` names: `crate`, the crate's
+    /// modules, then the name.
+    pub fn own_item(&self, full: &[String]) -> Option<String> {
+        let (last, prefix) = full.split_last()?;
+        (prefix.first().map(String::as_str) == Some("crate")
+            && (prefix.len() == 1 || self.tables.modules.contains(&prefix.join("::"))))
+        .then(|| last.clone())
+    }
+
+    /// The crate's own type a path type without type arguments names.
+    pub fn own_type(&self, t: &syn::Type) -> Option<String> {
+        let syn::Type::Path(p) = t else { return None };
+        if p.qself.is_some() || !last_seg(t)?.1.is_empty() {
+            return None;
+        }
+        self.own_item(&self.full_path(&p.path))
+    }
+
+    /// The full path a name of one segment, written in the item being read, takes from a `use`
+    /// of something outside the crate: such a name is not the crate's item of that name.
+    pub fn imported_from_outside(&self, name: &str) -> Option<String> {
+        let full = self.resolve(&[name.to_string()]);
+        (full.first().map(String::as_str) != Some("crate") && full != [name])
+            .then(|| full.join("::"))
+    }
+
+    /// Whether `#[derive(…)]` among `attrs` names the std trait `std` by its full path.
+    fn derives(&self, attrs: &[syn::Attribute], std: &str) -> bool {
+        attrs.iter().any(|a| {
+            a.path().is_ident("derive")
+                && a.parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+                )
+                .is_ok_and(|ps| ps.iter().any(|p| self.std_path(p) == Some(std)))
+        })
     }
 
     /// The constraint of the type parameter `name` in scope.
@@ -1233,7 +1428,9 @@ impl Reader {
             }
             _ => return Err(no_form()),
         }
-        let name = seg.ident.to_string();
+        let Some(name) = self.own_item(&self.full_path(&tb.path)) else {
+            return Err(no_form());
+        };
         match self.traits.get(&name) {
             Some(Some(_)) => Ok(Type::Named {
                 name,
@@ -1298,6 +1495,15 @@ impl Reader {
         let not_declared = || "an impl for a type other than a declared one".to_string();
         let (id, args) = last_seg(&im.self_ty).ok_or_else(not_declared)?;
         let name = id.to_string();
+        let syn::Type::Path(sp) = &*im.self_ty else {
+            return Err(not_declared());
+        };
+        if self.own_item(&self.full_path(&sp.path)).as_deref() != Some(name.as_str()) {
+            return Err(format!(
+                "an impl for a type other than a declared one: `{}` is not a type of the crate",
+                src_of(&im.self_ty)
+            ));
+        }
         let Some(tps) = self.type_params.get(&name) else {
             let declared = self.decls.contains_key(&name)
                 || self.error_enum.as_ref().is_some_and(|(e, _)| *e == name)
@@ -1394,16 +1600,19 @@ impl Reader {
         if b.lifetimes.is_some() || b.maybe.is_some() {
             return None;
         }
-        let seg = b.path.segments.last()?;
-        if !matches!(seg.arguments, syn::PathArguments::None) {
+        if b.path
+            .segments
+            .iter()
+            .any(|s| !matches!(s.arguments, syn::PathArguments::None))
+        {
             return None;
         }
-        let n = seg.ident.to_string();
+        let n = self.own_item(&self.full_path(&b.path))?;
         self.traits.contains_key(&n).then_some(n)
     }
 
     /// Whether a `dyn` type is `std::any::Any`.
-    fn dyn_any(t: &syn::Type) -> bool {
+    fn dyn_any(&self, t: &syn::Type) -> bool {
         let syn::Type::TraitObject(o) = t else {
             return false;
         };
@@ -1412,7 +1621,8 @@ impl Reader {
             (bounds.next(), bounds.next()),
             (Some(syn::TypeParamBound::Trait(b)), None)
                 if b.lifetimes.is_none()
-                    && b.path.segments.last().is_some_and(|s| s.ident == "Any" && s.arguments.is_none())
+                    && b.path.segments.iter().all(|s| s.arguments.is_none())
+                    && self.std_path(&b.path) == Some("std::any::Any")
         )
     }
 
@@ -1446,7 +1656,7 @@ impl Reader {
                 if r.mutability.is_some() {
                     return Err("a mutable reference `&mut T` is outside cir/1".into());
                 }
-                if plain_ident(&r.elem).as_deref() == Some("str") {
+                if prim_ident(&r.elem).as_deref() == Some("str") {
                     return Ok(Type::String);
                 }
                 self.ty(&r.elem, self_ty)
@@ -1539,128 +1749,159 @@ impl Reader {
                         _ => Err(format!("`{name}` without exactly one type argument")),
                     }
                 };
-                if let Some(it) = int_type(&name)
-                    && args.is_empty()
-                {
-                    return Ok(it);
-                }
-                match (name.as_str(), args.as_slice()) {
-                    ("bool", []) => Ok(Type::Bool),
-                    ("String" | "str", []) => Ok(Type::String),
-                    ("f64", []) => Ok(Type::Float {
-                        bits: FloatBits::W64,
-                    }),
-                    ("f32", []) => Ok(Type::Float {
-                        bits: FloatBits::W32,
-                    }),
-                    // `Rc<dyn Any>`: Go's `any`, a shared value that is never mutated.
-                    ("Rc", [inner]) if Reader::dyn_any(inner) => Ok(Type::Any),
-                    // `Rc<(SyncSender<T>, Receiver<T>)>`, the Rust writer's channel with both
-                    // ends: Go's `chan T`.
-                    ("Rc", [syn::Type::Tuple(tt)]) => {
-                        let ends: Vec<_> = tt.elems.iter().map(last_seg).collect();
-                        match ends.as_slice() {
-                            [Some((s, sa)), Some((r, ra))]
-                                if *s == "SyncSender"
-                                    && *r == "Receiver"
-                                    && sa.len() == 1
-                                    && ra.len() == 1 =>
-                            {
-                                let elem = self.ty(sa[0], self_ty)?;
-                                if self.ty(ra[0], self_ty)? != elem {
-                                    return Err(
-                                        "a channel whose two ends carry different types".into()
-                                    );
-                                }
-                                Ok(Type::Chan {
-                                    elem: Box::new(elem),
-                                    dir: codespec_model::ChanDir::Both,
-                                })
-                            }
-                            _ => Err(
-                                "`Rc` of a tuple other than `(SyncSender<T>, Receiver<T>)`".into()
-                            ),
-                        }
-                    }
-                    ("Box", [syn::Type::TraitObject(o)]) => match self.dyn_trait(o) {
-                        Some(name) => Ok(Type::Named {
-                            targs: Vec::new(),
-                            name,
-                        }),
-                        None => Err("a trait object (`dyn`) of other than a trait of the crate is outside cir/1".into()),
-                    },
-                    ("Vec", a) => Ok(Type::Slice {
-                        elem: Box::new(one(a)?),
-                    }),
-                    ("HashMap" | "BTreeMap", [k, v]) => Ok(Type::Map {
-                        key: Box::new(self.ty(k, self_ty)?),
-                        elem: Box::new(self.ty(v, self_ty)?),
-                    }),
-                    ("Rc", [inner]) => match last_seg(inner) {
-                        Some((cell, ia)) if cell == "RefCell" && ia.len() == 1 => {
-                            let elem = self.ty(ia[0], self_ty)?;
-                            match &elem {
-                                Type::Named { name, .. }
-                                    if matches!(self.decls.get(name), Some(Decl::Struct(_))) =>
-                                {
-                                    Ok(Type::Ptr {
-                                        elem: Box::new(elem),
-                                    })
-                                }
-                                _ => Err("`Rc<RefCell<T>>` of a type that is not a struct".into()),
-                            }
-                        }
-                        _ => Err("`Rc` other than `Rc<RefCell<T>>` is outside cir/1".into()),
-                    },
-                    ("Sender", [m]) => {
-                        let elem = match plain_ident(m) {
-                            Some(n) if self.message_enums.contains(&n) => Type::Any,
-                            _ => self.ty(m, self_ty)?,
-                        };
-                        Ok(Type::Chan {
-                            elem: Box::new(elem),
-                            dir: codespec_model::ChanDir::Send,
-                        })
-                    }
-                    ("Self", []) => match self_ty {
+                if p.path.is_ident("Self") {
+                    return match self_ty {
                         Some(s) => Ok(Type::Named {
                             targs: self.scope.borrow().self_targs.clone(),
                             name: s.into(),
                         }),
                         None => Err("`Self` outside an impl".into()),
-                    },
-                    ("Option" | "Result", _) => Err(format!(
-                        "`{name}` other than as a function's result is outside cir/1"
-                    )),
-                    (n, []) if self.error_enum.as_ref().is_some_and(|(e, _)| e == n) => {
-                        Ok(Type::Error)
+                    };
+                }
+                // A path is mapped by the full path it names, never by its last segment.
+                let full = self.full_path(&p.path);
+                // A primitive type: one segment no `use` and no item of the crate takes.
+                if full == [name.clone()] && args.is_empty() {
+                    if let Some(it) = int_type(&name) {
+                        return Ok(it);
                     }
-                    // A generic struct, with as many type arguments as it declares parameters.
-                    (n, a) if self.type_params.contains_key(n) && self.decls.contains_key(n) => {
-                        let declared = self.type_params[n].len();
-                        if a.len() != declared {
-                            return Err(format!(
-                                "the generic struct {n} with {} type arguments, where it declares {declared}",
-                                a.len()
-                            ));
+                    match name.as_str() {
+                        "bool" => return Ok(Type::Bool),
+                        "str" => return Ok(Type::String),
+                        "f64" => {
+                            return Ok(Type::Float {
+                                bits: FloatBits::W64,
+                            });
                         }
-                        Ok(Type::Named {
-                            targs: a
-                                .iter()
-                                .map(|x| self.ty(x, self_ty))
-                                .collect::<Result<Vec<_>, _>>()?,
-                            name: n.into(),
-                        })
+                        "f32" => {
+                            return Ok(Type::Float {
+                                bits: FloatBits::W32,
+                            });
+                        }
+                        _ => {}
                     }
-                    (n, []) if self.decls.contains_key(n) => Ok(Type::Named {
+                }
+                if let Some(std) = self.std_item(&full) {
+                    return match (std, args.as_slice()) {
+                        ("std::string::String", []) => Ok(Type::String),
+                        // `Rc<dyn Any>`: Go's `any`, a shared value that is never mutated.
+                        ("std::rc::Rc", [inner]) if self.dyn_any(inner) => Ok(Type::Any),
+                        // `Rc<(SyncSender<T>, Receiver<T>)>`, the Rust writer's channel with both
+                        // ends: Go's `chan T`.
+                        ("std::rc::Rc", [syn::Type::Tuple(tt)]) => {
+                            let ends: Vec<_> = tt.elems.iter().map(|e| self.std_type(e)).collect();
+                            match ends.as_slice() {
+                                [
+                                    Some(("std::sync::mpsc::SyncSender", sa)),
+                                    Some(("std::sync::mpsc::Receiver", ra)),
+                                ] if sa.len() == 1 && ra.len() == 1 => {
+                                    let elem = self.ty(sa[0], self_ty)?;
+                                    if self.ty(ra[0], self_ty)? != elem {
+                                        return Err(
+                                            "a channel whose two ends carry different types".into()
+                                        );
+                                    }
+                                    Ok(Type::Chan {
+                                        elem: Box::new(elem),
+                                        dir: codespec_model::ChanDir::Both,
+                                    })
+                                }
+                                _ => Err(
+                                    "`Rc` of a tuple other than `(SyncSender<T>, Receiver<T>)` of `std::sync::mpsc`".into()
+                                ),
+                            }
+                        }
+                        ("std::boxed::Box", [syn::Type::TraitObject(o)]) => match self.dyn_trait(o) {
+                            Some(name) => Ok(Type::Named {
+                                targs: Vec::new(),
+                                name,
+                            }),
+                            None => Err("a trait object (`dyn`) of other than a trait of the crate is outside cir/1".into()),
+                        },
+                        ("std::vec::Vec", a) => Ok(Type::Slice {
+                            elem: Box::new(one(a)?),
+                        }),
+                        ("std::collections::HashMap" | "std::collections::BTreeMap", [k, v]) => {
+                            Ok(Type::Map {
+                                key: Box::new(self.ty(k, self_ty)?),
+                                elem: Box::new(self.ty(v, self_ty)?),
+                            })
+                        }
+                        ("std::rc::Rc", [inner]) => match self.std_type(inner) {
+                            Some(("std::cell::RefCell", ia)) if ia.len() == 1 => {
+                                let elem = self.ty(ia[0], self_ty)?;
+                                match &elem {
+                                    Type::Named { name, .. }
+                                        if matches!(self.decls.get(name), Some(Decl::Struct(_))) =>
+                                    {
+                                        Ok(Type::Ptr {
+                                            elem: Box::new(elem),
+                                        })
+                                    }
+                                    _ => Err(
+                                        "`Rc<RefCell<T>>` of a type that is not a struct".into()
+                                    ),
+                                }
+                            }
+                            _ => Err(
+                                "`Rc` other than `Rc<RefCell<T>>` is outside cir/1".into()
+                            ),
+                        },
+                        ("std::sync::mpsc::Sender", [m]) => {
+                            let elem = match self.own_type(m) {
+                                Some(n) if self.message_enums.contains(&n) => Type::Any,
+                                _ => self.ty(m, self_ty)?,
+                            };
+                            Ok(Type::Chan {
+                                elem: Box::new(elem),
+                                dir: codespec_model::ChanDir::Send,
+                            })
+                        }
+                        ("std::option::Option" | "std::result::Result", _) => Err(format!(
+                            "`{name}` other than as a function's result is outside cir/1"
+                        )),
+                        _ => Err(format!("type `{}` is outside cir/1", src_of(t))),
+                    };
+                }
+                let Some(n) = self.own_item(&full) else {
+                    return Err(format!(
+                        "type `{}` (`{}`) is outside cir/1: the reader maps a path by the full path it names",
+                        src_of(t),
+                        full.join("::")
+                    ));
+                };
+                let n = n.as_str();
+                let a = args.as_slice();
+                if a.is_empty() && self.error_enum.as_ref().is_some_and(|(e, _)| e == n) {
+                    return Ok(Type::Error);
+                }
+                // A generic struct, with as many type arguments as it declares parameters.
+                if self.type_params.contains_key(n) && self.decls.contains_key(n) {
+                    let declared = self.type_params[n].len();
+                    if a.len() != declared {
+                        return Err(format!(
+                            "the generic struct {n} with {} type arguments, where it declares {declared}",
+                            a.len()
+                        ));
+                    }
+                    return Ok(Type::Named {
+                        targs: a
+                            .iter()
+                            .map(|x| self.ty(x, self_ty))
+                            .collect::<Result<Vec<_>, _>>()?,
+                        name: n.into(),
+                    });
+                }
+                if a.is_empty() && self.decls.contains_key(n) {
+                    return Ok(Type::Named {
                         targs: Vec::new(),
                         name: n.into(),
-                    }),
-                    (n, []) if self.known.contains(n) => {
-                        Err(format!("type {n}, which the reader could not map"))
-                    }
-                    _ => Err(format!("type `{}` is outside cir/1", src_of(t))),
+                    });
                 }
+                if a.is_empty() && self.known.contains(n) {
+                    return Err(format!("type {n}, which the reader could not map"));
+                }
+                Err(format!("type `{}` is outside cir/1", src_of(t)))
             }
             _ => Err(format!("type `{}` is outside cir/1", src_of(t))),
         }
@@ -1681,12 +1922,12 @@ impl Reader {
                 t => Ok(vec![self.ty(t, self_ty)?]),
             }
         };
-        if let Some((id, args)) = last_seg(t) {
-            if id == "Result" {
+        if let Some((id, args)) = self.std_type(t) {
+            if id == "std::result::Result" {
                 let [ok, err] = args.as_slice() else {
                     return Err("`Result` without two type arguments".into());
                 };
-                let is_error = match (&self.error_enum, plain_ident(err)) {
+                let is_error = match (&self.error_enum, self.own_type(err)) {
                     (Some((e, _)), Some(n)) => *e == n,
                     _ => false,
                 };
@@ -1700,7 +1941,7 @@ impl Reader {
                 rs.push(Type::Error);
                 return Ok((rs, Shape::Fallible));
             }
-            if id == "Option" {
+            if id == "std::option::Option" {
                 let [inner] = args.as_slice() else {
                     return Err("`Option` without one type argument".into());
                 };
@@ -2019,11 +2260,18 @@ impl Reader {
     /// Everything the bodies need before any is read: types, the error and message enums,
     /// receivers and signatures.
     fn scan(&mut self, f: &syn::File) {
+        self.item_index = f
+            .items
+            .iter()
+            .enumerate()
+            .map(|(k, i)| (i as *const syn::Item as usize, k))
+            .collect();
         for item in &f.items {
+            self.enter(item);
             match item {
                 syn::Item::Struct(s) => {
                     self.known.insert(s.ident.to_string());
-                    if derives(&s.attrs, "Default") {
+                    if self.derives(&s.attrs, "std::default::Default") {
                         self.defaults.insert(s.ident.to_string());
                     }
                 }
@@ -2036,17 +2284,39 @@ impl Reader {
                 _ => {}
             }
         }
+        // A type a serde attribute gives a wire form of its own (wire names, a shape other than
+        // the derived one) is refused naming the attribute: `cir/1` carries no wire form.
+        let wire: BTreeMap<String, (proc_macro2::Span, String)> = f
+            .items
+            .iter()
+            .filter_map(|item| {
+                let (name, why) = match item {
+                    syn::Item::Struct(s) => (s.ident.to_string(), serde_wire_struct(s)?),
+                    syn::Item::Enum(e) => (e.ident.to_string(), serde_wire_enum(e)?),
+                    _ => return None,
+                };
+                let why = format!(
+                    "{why} sets the type's serde wire form, which cir/1 does not carry: the reader does not read a type whose wire names or shape a serde attribute changes"
+                );
+                Some((name, (item.span(), why)))
+            })
+            .collect();
         // Message enums and the error enum, by shape.
         for item in &f.items {
+            self.enter(item);
             let syn::Item::Enum(e) = item else { continue };
             let name = e.ident.to_string();
+            if wire.contains_key(&name) {
+                continue;
+            }
             if !e.generics.params.is_empty() {
                 continue;
             }
             let wraps_own_name = !e.variants.is_empty()
                 && e.variants.iter().all(|v| match &v.fields {
                     syn::Fields::Unnamed(u) if u.unnamed.len() == 1 => {
-                        plain_ident(&u.unnamed[0].ty).is_some_and(|t| v.ident == t)
+                        self.own_type(&u.unnamed[0].ty)
+                            .is_some_and(|t| v.ident == t)
                             && f.items
                                 .iter()
                                 .any(|i| matches!(i, syn::Item::Struct(s) if s.ident == v.ident))
@@ -2061,15 +2331,25 @@ impl Reader {
         // name is known, so fields may name types declared later.
         let mut pending: Vec<&syn::Item> = Vec::new();
         for item in &f.items {
+            self.enter(item);
             match item {
-                syn::Item::Struct(_) | syn::Item::Enum(_) => pending.push(item),
+                syn::Item::Struct(s) if !wire.contains_key(&s.ident.to_string()) => {
+                    pending.push(item)
+                }
+                syn::Item::Enum(e) if !wire.contains_key(&e.ident.to_string()) => {
+                    pending.push(item)
+                }
                 _ => {}
             }
         }
         // Enums first (their decls do not depend on struct fields), then structs; refusals are
         // recorded once, at the end of `scan`, in source order.
         let mut deferred: Vec<(proc_macro2::Span, String, String)> = Vec::new();
+        for (name, (span, why)) in &wire {
+            deferred.push((*span, name.clone(), why.clone()));
+        }
         for item in &pending {
+            self.enter(item);
             if let syn::Item::Enum(e) = item {
                 let name = e.ident.to_string();
                 if self.message_enums.contains(&name) || (name == "Error") {
@@ -2099,6 +2379,7 @@ impl Reader {
         }
         // Newtypes and structs may refer to each other: insert placeholders first.
         for item in &pending {
+            self.enter(item);
             if let syn::Item::Struct(s) = item {
                 self.decls
                     .insert(s.ident.to_string(), Decl::Struct(Vec::new()));
@@ -2106,6 +2387,7 @@ impl Reader {
         }
         // Newtypes before structs, so a struct field of a newtype type resolves.
         for item in &pending {
+            self.enter(item);
             if let syn::Item::Struct(s) = item
                 && let syn::Fields::Unnamed(u) = &s.fields
             {
@@ -2139,8 +2421,9 @@ impl Reader {
         }
         // The error enum, now that every struct name is declared.
         for item in &f.items {
+            self.enter(item);
             let syn::Item::Enum(e) = item else { continue };
-            if e.ident != "Error" {
+            if e.ident != "Error" || wire.contains_key("Error") {
                 continue;
             }
             let mut vs = BTreeMap::new();
@@ -2157,8 +2440,12 @@ impl Reader {
                         );
                     }
                     syn::Fields::Unnamed(u) if u.unnamed.len() == 1 => {
-                        match plain_ident(&u.unnamed[0].ty) {
-                            Some(t) if t == "String" => {
+                        let ty = &u.unnamed[0].ty;
+                        let string = self
+                            .std_type(ty)
+                            .is_some_and(|(s, a)| s == "std::string::String" && a.is_empty());
+                        match self.own_type(ty) {
+                            _ if string => {
                                 vs.insert(vn, ErrVariant::Msg);
                             }
                             Some(t) if matches!(self.decls.get(&t), Some(Decl::Struct(_))) => {
@@ -2196,6 +2483,7 @@ impl Reader {
         // Traits, once every type name is declared: each method's signature. A trait that does
         // not read is forgotten, so no `dyn` of it reads either.
         for item in &f.items {
+            self.enter(item);
             let syn::Item::Trait(t) = item else { continue };
             let name = t.ident.to_string();
             match self.trait_info(t) {
@@ -2211,6 +2499,7 @@ impl Reader {
         // The type parameters of generic structs, before any field names one: each constrained
         // by `any` or a trait of the crate.
         for item in &pending {
+            self.enter(item);
             if let syn::Item::Struct(s) = item
                 && !matches!(s.fields, syn::Fields::Unnamed(_))
                 && (!s.generics.params.is_empty() || s.generics.where_clause.is_some())
@@ -2232,6 +2521,7 @@ impl Reader {
         }
         // Struct fields.
         for item in &pending {
+            self.enter(item);
             if let syn::Item::Struct(s) = item {
                 let name = s.ident.to_string();
                 if matches!(s.fields, syn::Fields::Unnamed(_)) || !self.decls.contains_key(&name) {
@@ -2261,7 +2551,7 @@ impl Reader {
                                 } else {
                                     names::unexported(&rust)
                                 };
-                                if let Some(k) = body::map_kind(&fl.ty) {
+                                if let Some(k) = body::map_kind(self, &fl.ty) {
                                     self.map_fields.insert((name.clone(), go.clone()), k);
                                 }
                                 fields.push(FieldInfo { go, rust, t })
@@ -2349,20 +2639,21 @@ impl Reader {
         }
         // `impl Trait for T` of a crate trait.
         for item in &f.items {
+            self.enter(item);
             if let syn::Item::Impl(im) = item
                 && let Some((p, _)) = &im.trait_
-                && let Some(tr) = p.get_ident().map(|i| i.to_string())
+                && let Some(tr) = self.own_item(&self.full_path(p))
                 && matches!(self.traits.get(&tr), Some(Some(_)))
             {
                 match &*im.self_ty {
                     // `impl Tr for &T`: kept apart, since the reader reads `&T` as `T`.
                     syn::Type::Reference(r) => {
-                        if let Some(t) = plain_ident(&r.elem) {
+                        if let Some(t) = self.own_type(&r.elem) {
                             self.ref_impls.insert((t, tr));
                         }
                     }
                     t => {
-                        if let Some(t) = plain_ident(t).filter(|t| self.decls.contains_key(t)) {
+                        if let Some(t) = self.own_type(t).filter(|t| self.decls.contains_key(t)) {
                             self.impls.insert((t, tr));
                         }
                     }
@@ -2400,6 +2691,7 @@ impl Reader {
         }
         // Receivers: a type with any `&mut self` method has pointer receivers throughout.
         for item in &f.items {
+            self.enter(item);
             let syn::Item::Impl(im) = item else { continue };
             if im.trait_.is_some() {
                 continue;
@@ -2418,6 +2710,7 @@ impl Reader {
         }
         // Value enums.
         for item in &f.items {
+            self.enter(item);
             let syn::Item::Impl(im) = item else { continue };
             if im.trait_.is_some() {
                 continue;
@@ -2443,18 +2736,29 @@ impl Reader {
                 }
             }
         }
-        // Display impls: which types render.
+        // Display impls: which types render. An impl of a trait named `Display` that is not
+        // std's (`impl other::Display for T`) gives `{}` and `to_string()` of `T` no reading.
         for item in &f.items {
+            self.enter(item);
             if let syn::Item::Impl(im) = item
                 && let Some((p, _)) = &im.trait_
-                && p.segments.last().is_some_and(|s| s.ident == "Display")
                 && let Some(t) = plain_ident(&im.self_ty)
             {
-                self.displays.insert(t);
+                if self.std_path(p) == Some("std::fmt::Display") {
+                    self.displays.insert(t);
+                } else if p.segments.last().is_some_and(|s| s.ident == "Display") {
+                    let why = format!(
+                        "its impl of `{}` is not std's Display (`{}`)",
+                        src_of(p),
+                        self.full_path(p).join("::")
+                    );
+                    self.refused_displays.insert(t, why);
+                }
             }
         }
         // Constants.
         for item in &f.items {
+            self.enter(item);
             if let syn::Item::Const(c) = item {
                 let rust = c.ident.to_string();
                 let go = if is_pub(&c.vis) {
@@ -2481,6 +2785,7 @@ impl Reader {
         // Statics: Go's module-level variables. A `static mut` is read and written only inside
         // `unsafe`, without synchronisation, as Go's variable is.
         for item in &f.items {
+            self.enter(item);
             if let syn::Item::Static(s) = item {
                 let rust = s.ident.to_string();
                 let go = if is_pub(&s.vis) {
@@ -2507,6 +2812,7 @@ impl Reader {
         // Signatures; the methods of a crate trait's impl by the trait.
         let mut from_trait: BTreeMap<(Option<String>, String), String> = BTreeMap::new();
         for item in &f.items {
+            self.enter(item);
             match item {
                 syn::Item::Fn(func) => {
                     if let Ok(s) = self.sig(&func.sig, is_pub(&func.vis), None) {
@@ -2522,7 +2828,7 @@ impl Reader {
                     let public = match &im.trait_ {
                         None => None,
                         Some((p, _)) => {
-                            let tr = p.get_ident().map(|i| i.to_string()).unwrap_or_default();
+                            let tr = self.own_item(&self.full_path(p)).unwrap_or_default();
                             if self.trait_clashes.contains_key(&(t.clone(), tr.clone())) {
                                 continue;
                             }
@@ -2547,7 +2853,7 @@ impl Reader {
                             if let Some((p, _)) = &im.trait_ {
                                 from_trait.insert(
                                     key.clone(),
-                                    p.get_ident().map(|i| i.to_string()).unwrap_or_default(),
+                                    self.own_item(&self.full_path(p)).unwrap_or_default(),
                                 );
                             }
                             self.sigs.insert(key, s);
@@ -2568,7 +2874,8 @@ impl Reader {
                 .filter_map(|item| match item {
                     syn::Item::Impl(im)
                         if im.trait_.as_ref().is_some_and(|(p, _)| {
-                            p.segments.last().is_some_and(|s| s.ident == "Display")
+                            self.enter(item);
+                            self.std_path(p) == Some("std::fmt::Display")
                         }) =>
                     {
                         let t = plain_ident(&im.self_ty)?;
@@ -2804,7 +3111,7 @@ impl Reader {
                         }
                     };
                     let crate_trait = im.trait_.as_ref().and_then(|(p, _)| {
-                        let n = p.get_ident()?.to_string();
+                        let n = self.own_item(&self.full_path(p))?;
                         matches!(self.traits.get(&n), Some(Some(_))).then_some(n)
                     });
                     if let Some(tr) = &crate_trait
@@ -2906,10 +3213,11 @@ impl Reader {
                                 .last()
                                 .map(|s| s.ident.to_string())
                                 .unwrap_or_default();
-                            if tr == "Error" && im.items.is_empty() {
+                            let std = self.std_path(p);
+                            if std == Some("std::error::Error") && im.items.is_empty() {
                                 continue;
                             }
-                            if tr == "Display" {
+                            if std == Some("std::fmt::Display") {
                                 if self.error_enum.as_ref().is_some_and(|(e, _)| *e == t)
                                     || self.message_enums.contains(&t)
                                 {
@@ -3198,16 +3506,19 @@ impl Reader {
     ) -> Option<Vec<ErrorVar>> {
         let (_, vs) = self.error_enum.as_ref()?;
         let pos = self.pos(e.span());
+        let at = self.at.borrow().clone();
         let display = f.items.iter().find_map(|i| match i {
             syn::Item::Impl(im)
                 if im.trait_.as_ref().is_some_and(|(p, _)| {
-                    p.segments.last().is_some_and(|s| s.ident == "Display")
+                    self.enter(i);
+                    self.std_path(p) == Some("std::fmt::Display")
                 }) && plain_ident(&im.self_ty).as_deref() == Some("Error") =>
             {
                 Some(im)
             }
             _ => None,
         });
+        *self.at.borrow_mut() = at;
         let Some(display) = display else {
             refusals.push(Refusal {
                 pos,
