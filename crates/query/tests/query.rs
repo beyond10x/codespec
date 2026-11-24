@@ -1338,3 +1338,24 @@ fn a_bound_an_unknown_site_leaves_open_makes_the_value_any_value_and_the_recursi
         "17\tpossible: example.com/plugin.hook at example.com/plugin/plugin.go:12 (opaque function: declared without a body)\n"
     );
 }
+
+/// Adversary: the order of two comparisons bounding one step must not decide the answer.
+/// `Y < 3` bounds the step whatever the wild `call{line: M}` holds, so `n` holds 0 to 3 and no
+/// unknown site can add a value: the count is 4, definitely, and `n(50)` is definitely absent.
+#[test]
+fn a_step_bounded_by_a_literal_stays_definite_whatever_order_its_comparisons_are_written_in() {
+    let possible = || vec![module(&fixture("unknown/possible/plugin.cir.json"))];
+    for order in ["Y < 3, Y < M", "Y < M, Y < 3"] {
+        let rules = format!(
+            "n(0) :- module{{path: _}}.\n\
+             n(X) :- n(Y), call{{line: M}}, {order}, X = Y + 1.\n\
+             far(50) :- module{{path: _}}.\n"
+        );
+        let count = in_time(format!("{rules}?- N = count{{ n(K) }}."), possible())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(count, "4\n", "{order}");
+        let absent = in_time(format!("{rules}?- far(K), !n(K)."), possible())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(absent, "50\n", "{order}");
+    }
+}

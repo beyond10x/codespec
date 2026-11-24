@@ -243,6 +243,10 @@ public final class ReaderTest {
         cases.add(() -> t.inheritedRefused("PathsResource.java", "a @Path of its own", List.of("PathsResource.list")));
         names.add("inherited_the_clash_package_refuses_exactly_at_its_markers_and_keeps_the_agreeing_entry");
         cases.add(t::inheritedTheClashPackageRefusesExactlyAtItsMarkers);
+        names.add("adversary_inherited_a_method_of_a_super_interface_is_served_under_the_path_of_the_interface_the_class_implements");
+        cases.add(t::adversaryInheritedSuperInterfaceMethodIsServedUnderTheImplementedInterfacePath);
+        names.add("adversary_inherited_no_path_on_the_class_or_any_interface_is_no_root_resource_and_no_entry");
+        cases.add(t::adversaryInheritedNoTypePathIsNoEntry);
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -1663,6 +1667,62 @@ public final class ReaderTest {
             + Json.write(doc.getOrDefault("refusals", List.of())).replaceAll("\\s+", " "));
         List<String> entries = httpEntries(doc);
         check(entries.equals(List.of("TasksResource.remove DELETE /tasks/{id} consumes=[] produces=[]")), "org.example.clash entries " + entries);
+    }
+
+    // ---- adversary: inherited http entries the fixture adversary-inherited holds ----
+
+    private Map<String, Map<String, Object>> adversaryInheritedRead;
+
+    /**
+     * The fixture {@code adversary-inherited} read as a project: the interfaces under its {@code gen}
+     * directory compiled onto the class path beside the jars, as in {@link #inherited}.
+     */
+    private Map<String, Map<String, Object>> adversaryInherited() throws Exception {
+        if (adversaryInheritedRead != null) {
+            return adversaryInheritedRead;
+        }
+        Path fixture = testdata.resolve("adversary-inherited");
+        Path classes = work.resolve("adversary-inherited-classes");
+        Files.createDirectories(classes);
+        List<String> args = new ArrayList<>(List.of("--release", "17", "-proc:none", "-d", classes.toString(), "-cp",
+            String.join(":", classpath().stream().map(Path::toString).toList())));
+        try (Stream<Path> s = Files.walk(fixture.resolve("gen"))) {
+            s.filter(p -> p.toString().endsWith(".java")).sorted().forEach(p -> args.add(p.toString()));
+        }
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        int rc = javax.tools.ToolProvider.getSystemJavaCompiler().run(null, err, err, args.toArray(new String[0]));
+        check(rc == 0, "javac of the fixture's gen interfaces: " + err.toString(StandardCharsets.UTF_8));
+        List<Path> cp = new ArrayList<>(classpath());
+        cp.add(classes);
+        adversaryInheritedRead = Reader.readProject(fixture, cp);
+        return adversaryInheritedRead;
+    }
+
+    /**
+     * {@code ShopResource} implements {@code @Path("/api") ShopApi}, which extends {@code BaseApi},
+     * both on the class path, and {@code BaseApi.ping} carries {@code @GET @Path("/ping")} under no
+     * type-level {@code @Path}. JAX-RS finds the root
+     * resource through {@code ShopApi} and serves {@code ping} at {@code /api/ping}: an entry on any
+     * other path is a wrong entry read silently (a refusal would be acceptable).
+     */
+    private void adversaryInheritedSuperInterfaceMethodIsServedUnderTheImplementedInterfacePath() throws Exception {
+        Map<String, Object> doc = adversaryInherited().get("org.example.chain");
+        List<String> got = httpEntries(doc);
+        for (String e : got) {
+            check(e.startsWith("ShopResource.ping GET /api/ping "), "org.example.chain entry " + e + ", JAX-RS serves GET /api/ping");
+        }
+        check(!got.isEmpty() || doc.containsKey("refusals"), "org.example.chain: neither an entry nor a refusal");
+    }
+
+    /**
+     * {@code LooseResource} carries no {@code @Path} and implements {@code LooseApi}, which carries
+     * none on the type either, only {@code @GET @Path("/loose")} on its method. Neither is a root
+     * resource, so JAX-RS serves nothing at {@code /loose}; a class with that annotation of its own
+     * gets no entry either.
+     */
+    private void adversaryInheritedNoTypePathIsNoEntry() throws Exception {
+        List<String> got = httpEntries(adversaryInherited().get("org.example.loose"));
+        check(got.isEmpty(), "org.example.loose entries " + got + ": no @Path on a type, no root resource");
     }
 
     /**
