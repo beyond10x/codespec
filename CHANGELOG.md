@@ -53,6 +53,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
 
+### Fixed
+
+- `codespec query` runs a depth-limited recursion again (refused since 0.11.0): a step `D + c`
+  (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
+  made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
+  one bounds it from below; any other value made from a derived one stays refused with the same
+  message.
+
 ## 0.12.0
 
 ### Added

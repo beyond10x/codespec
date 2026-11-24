@@ -381,6 +381,16 @@ struct CRule {
     args: Vec<Arg>,
     steps: Vec<Step>,
     vars: usize,
+    widen: Widen,
+}
+
+/// What the upper evaluation of a recursive rule widens ([`finite`]): when a term of `bounds`,
+/// the finite side of a comparison that bounds a value a step made, holds `Top`, the head
+/// positions `heads`, which hold such values, hold `Top`.
+#[derive(Default)]
+struct Widen {
+    bounds: Vec<Arg>,
+    heads: Vec<usize>,
 }
 
 /// A relation the program derives: a user's, or one the compiler made for a negation or an
@@ -1088,6 +1098,7 @@ impl Compiler<'_> {
                 args: plan.0,
                 steps: plan.1,
                 vars: plan.2,
+                widen: Widen::default(),
             });
         }
         Ok(())
@@ -1464,7 +1475,7 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         )?;
         edits.push(d);
     }
-    let strata = stratify(&c.derived, &c.rules, &props)?;
+    let strata = stratify(&c.derived, &mut c.rules, &props)?;
     let mut by_head: Vec<Vec<usize>> = vec![Vec::new(); c.derived.len()];
     for (k, r) in c.rules.iter().enumerate() {
         by_head[r.head].push(k);
@@ -1628,11 +1639,16 @@ impl Compiler<'_> {
 }
 
 /// Each derived relation's stratum: 1 for one over the fact base only, one more than any it
-/// negates or aggregates over. A negation or an aggregate inside a recursion is refused.
-fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec<usize>, String> {
+/// negates or aggregates over. A negation or an aggregate inside a recursion is refused. Sets
+/// each rule's [`Widen`].
+fn stratify(
+    derived: &[Derived],
+    rules: &mut [CRule],
+    props: &[CProp],
+) -> Result<Vec<usize>, String> {
     let n = derived.len();
     let mut edges: Vec<BTreeSet<(usize, bool)>> = vec![BTreeSet::new(); n];
-    for r in rules {
+    for r in rules.iter() {
         for s in &r.steps {
             match s {
                 Step::Scan(Rel::Derived(d), _) => {
@@ -1673,7 +1689,10 @@ fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec
             comp_of[v] = k;
         }
     }
-    finite(derived, rules, &comp_of)?;
+    let widen = finite(derived, rules, &comp_of)?;
+    for (r, w) in rules.iter_mut().zip(widen) {
+        r.widen = w;
+    }
     let mut strata = vec![1; n];
     for (k, comp) in comps.iter().enumerate() {
         let mut s = 1;
@@ -1703,13 +1722,25 @@ fn stratify(derived: &[Derived], rules: &[CRule], props: &[CProp]) -> Result<Vec
 /// Refuses a recursion that can derive without end: a rule that scans a relation of its own
 /// head's component (a recursive rule) and puts into its head a new value, one that arithmetic or
 /// a builtin made from a value of the recursion. Every value of a recursive relation is then a
-/// constant, a value of a relation outside the recursion, or one made from those alone: finitely
-/// many, so evaluation reaches its fixed point.
+/// constant, a value of a relation outside the recursion, one made from those alone, or one a
+/// bounded step made: finitely many, so evaluation reaches its fixed point.
 ///
 /// A variable of a recursive rule is finite when a relation outside the recursion, a names
 /// list, a path or an aggregate binds it, or when it is made from finite variables alone; it
 /// is derived when the recursion binds it, or it is a copy of a derived one; else it is new.
-fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(), String> {
+///
+/// A bounded step is `D + c` or `c + D` (up) or `D - c` (down), `c` a positive integer literal
+/// and `D` derived, where a comparison of the same rule bounds `D`, or the variable the step is
+/// bound to, on the side the step moves to by a finite term: `D < M`, `D <= M`, `M > D` or
+/// `M >= D` for a step up, `D > M`, `D >= M`, `M < D` or `M <= D` for a step down. Its value is
+/// derived: each value a step up makes is larger than the one it was made from and at most the
+/// largest bound plus `c`, and arithmetic stops at the ends of the integers, so the values of
+/// the recursion lie between the least and the largest of finitely many. Any other term over a
+/// derived value, a bound by a derived value and a step of a variable's size stay new.
+///
+/// Returns each rule's [`Widen`]: in the upper evaluation a bound may be a field of a wild fact,
+/// `Top`, which bounds nothing; the values the bounded steps made are then `Top` themselves.
+fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<Vec<Widen>, String> {
     const FINITE: u8 = 0;
     const DERIVED: u8 = 1;
     const NEW: u8 = 2;
@@ -1724,6 +1755,81 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(),
             Arg::Val(_) | Arg::Any => {}
         }
     }
+    fn set(class: &mut [u8], a: &Arg, c: u8) {
+        if let Arg::Var(x) = a {
+            class[*x] = class[*x].min(c);
+        }
+    }
+    // What a term holds: a variable's class; arithmetic is finite over finite inputs alone.
+    fn of(class: &[u8], a: &Arg) -> u8 {
+        match a {
+            Arg::Var(x) => class[*x],
+            Arg::Val(_) | Arg::Any => FINITE,
+            Arg::Arith(..) => {
+                let mut vs = Vec::new();
+                vars(a, &mut vs);
+                if vs.iter().all(|&x| class[x] == FINITE) {
+                    FINITE
+                } else {
+                    NEW
+                }
+            }
+        }
+    }
+    // A step of a fixed size from one variable: `D + c` or `c + D` up, `D - c` down, `c` a
+    // positive integer literal.
+    fn step(a: &Arg) -> Option<(usize, bool)> {
+        let Arg::Arith(x, op, y) = a else {
+            return None;
+        };
+        let positive = |a: &Arg| matches!(a, Arg::Val(V::Int(c)) if *c > 0);
+        match (&**x, *op, &**y) {
+            (Arg::Var(d), '+', c) | (c, '+', Arg::Var(d)) if positive(c) => Some((*d, true)),
+            (Arg::Var(d), '-', c) if positive(c) => Some((*d, false)),
+            _ => None,
+        }
+    }
+    // The finite term a comparison of `steps` bounds the variable `x` by, above for `up`, below
+    // otherwise.
+    fn bound<'s>(steps: &'s [Step], class: &[u8], x: usize, up: bool) -> Option<&'s Arg> {
+        steps.iter().find_map(|s| {
+            let Step::Cmp(a, op, b) = s else {
+                return None;
+            };
+            let (low, high) = match op {
+                Op::Lt | Op::Le => (a, b),
+                Op::Gt | Op::Ge => (b, a),
+                _ => return None,
+            };
+            let (own, other) = if up { (low, high) } else { (high, low) };
+            (matches!(own, Arg::Var(v) if *v == x) && of(class, other) == FINITE).then_some(other)
+        })
+    }
+    // The bound of `a` when it is a bounded step from a derived variable, `out` the variable
+    // it is bound to.
+    fn bounded<'s>(steps: &'s [Step], class: &[u8], a: &Arg, out: Option<&Arg>) -> Option<&'s Arg> {
+        let (d, up) = step(a)?;
+        if class[d] != DERIVED {
+            return None;
+        }
+        bound(steps, class, d, up).or_else(|| match out {
+            Some(Arg::Var(x)) => bound(steps, class, *x, up),
+            _ => None,
+        })
+    }
+    // What a term holds, a bounded step derived.
+    fn made(steps: &[Step], class: &[u8], a: &Arg, out: Option<&Arg>) -> u8 {
+        match of(class, a) {
+            NEW if bounded(steps, class, a, out).is_some() => DERIVED,
+            c => c,
+        }
+    }
+    fn keep(w: &mut Widen, b: &Arg) {
+        if !w.bounds.contains(b) {
+            w.bounds.push(b.clone());
+        }
+    }
+    let mut widen = Vec::with_capacity(rules.len());
     for r in rules {
         let own = |rel: &Rel| matches!(rel, Rel::Derived(d) if comp_of[*d] == comp_of[r.head]);
         if !r
@@ -1731,14 +1837,10 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(),
             .iter()
             .any(|s| matches!(s, Step::Scan(rel, _) if own(rel)))
         {
+            widen.push(Widen::default());
             continue;
         }
         let mut class = vec![UNBOUND; r.vars];
-        fn set(class: &mut [u8], a: &Arg, c: u8) {
-            if let Arg::Var(x) = a {
-                class[*x] = class[*x].min(c);
-            }
-        }
         for s in &r.steps {
             match s {
                 Step::Scan(rel, args) => {
@@ -1759,28 +1861,13 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(),
                 _ => {}
             }
         }
-        // What a term holds: a variable's class; arithmetic is finite over finite inputs alone.
-        let of = |class: &[u8], a: &Arg| -> u8 {
-            match a {
-                Arg::Var(x) => class[*x],
-                Arg::Val(_) | Arg::Any => FINITE,
-                Arg::Arith(..) => {
-                    let mut vs = Vec::new();
-                    vars(a, &mut vs);
-                    if vs.iter().all(|&x| class[x] == FINITE) {
-                        FINITE
-                    } else {
-                        NEW
-                    }
-                }
-            }
-        };
         loop {
             let before = class.clone();
             for s in &r.steps {
                 match s {
                     Step::Cmp(x, Op::Bind, y) => {
-                        let (cx, cy) = (of(&class, x), of(&class, y));
+                        let cx = made(&r.steps, &class, x, Some(y));
+                        let cy = made(&r.steps, &class, y, Some(x));
                         set(&mut class, x, cy);
                         set(&mut class, y, cx);
                     }
@@ -1806,14 +1893,61 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(),
                 break;
             }
         }
-        if r.args.iter().any(|a| of(&class, a) == NEW) {
+        if r.args
+            .iter()
+            .any(|a| made(&r.steps, &class, a, None) == NEW)
+        {
             let name = derived[r.head].name.trim_start_matches('_');
             return Err(format!(
                 "{name}: a rule of a recursion puts a new value into its head, made by arithmetic or a builtin from a value the recursion derived: it could derive without end; make the value from facts outside the recursion, or bound it by a relation of the fact base"
             ));
         }
+        // The variables holding a value a bounded step made, and the bounds of those steps.
+        let mut w = Widen::default();
+        let mut holds = vec![false; r.vars];
+        loop {
+            let before = holds.clone();
+            for s in &r.steps {
+                if let Step::Cmp(x, Op::Bind, y) = s {
+                    for (out, a) in [(x, y), (y, x)] {
+                        let Arg::Var(v) = out else { continue };
+                        if of(&class, a) == NEW
+                            && let Some(b) = bounded(&r.steps, &class, a, Some(out))
+                        {
+                            keep(&mut w, b);
+                            holds[*v] = true;
+                        }
+                        if let Arg::Var(u) = a
+                            && holds[*u]
+                        {
+                            holds[*v] = true;
+                        }
+                    }
+                }
+            }
+            if holds == before {
+                break;
+            }
+        }
+        for (k, a) in r.args.iter().enumerate() {
+            let mut vs = Vec::new();
+            vars(a, &mut vs);
+            let step_bound = (of(&class, a) == NEW)
+                .then(|| bounded(&r.steps, &class, a, None))
+                .flatten();
+            if let Some(b) = step_bound {
+                keep(&mut w, b);
+            }
+            if step_bound.is_some() || vs.iter().any(|&x| holds[x]) {
+                w.heads.push(k);
+            }
+        }
+        if w.heads.is_empty() {
+            w.bounds.clear();
+        }
+        widen.push(w);
     }
-    Ok(())
+    Ok(widen)
 }
 
 /// The user's rules, properties and edit items under the stratum of their heads, then the query.
@@ -3083,8 +3217,23 @@ impl<'a> Eval<'a> {
         out: &mut Vec<(Vec<V>, Ann)>,
     ) {
         let mut b: Vec<Option<V>> = vec![None; r.vars];
-        let head =
-            |b: &[Option<V>]| -> Option<Vec<V>> { r.args.iter().map(|a| value_of(a, b)).collect() };
+        let head = |b: &[Option<V>]| -> Option<Vec<V>> {
+            let mut t: Vec<V> = r
+                .args
+                .iter()
+                .map(|a| value_of(a, b))
+                .collect::<Option<_>>()?;
+            // A bound a wild fact holds bounds nothing: what the bounded steps made is any value.
+            if mode == Mode::Upper
+                && r.widen
+                    .bounds
+                    .iter()
+                    .any(|a| value_of(a, b).is_some_and(|v| v.has_top()))
+            {
+                r.widen.heads.iter().for_each(|&k| t[k] = V::Top);
+            }
+            Some(t)
+        };
         if r.steps.is_empty() {
             if let Some(t) = head(&b) {
                 out.push((t, Vec::new()));
