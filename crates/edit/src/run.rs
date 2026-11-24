@@ -7,7 +7,7 @@
 //! 1. each input directory is read with `codespec-read-<lang> --spans`;
 //! 2. the fact base is built over the set with `source_name` from the span documents, and the
 //!    `edit` items are evaluated; a possible row is refused with the unknown sites it rests on;
-//! 3. the definite rows' operations are planned into a change set ([`crate::change::plan`]);
+//! 3. the definite rows' operations are planned into a change set ([`crate::change::plan_with`]);
 //!    a refusal of any row refuses the set;
 //! 4. the root the readers resolve against ([`cargo_root`] for Rust) is copied without `.git`
 //!    and `target` into a fresh directory under the cache directory, the edited files are
@@ -216,7 +216,8 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     let opts = Options {
         closed_world: r.closed_world,
     };
-    let cs = match change::plan(&inputs, &ops, &opts) {
+    let source = |file: &str| source_at(&inputs, &paths, file).map(|(_, _, bytes)| bytes);
+    let cs = match change::plan_with(&inputs, &ops, &opts, &source) {
         Ok(cs) => Some(cs),
         Err(rs) => {
             refused.extend(rs.into_iter().map(|mut f| {
@@ -234,23 +235,7 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     // The edited files' bytes, as read.
     let mut sources: BTreeMap<String, (usize, String, Vec<u8>)> = BTreeMap::new();
     for file in cs.files() {
-        let (k, path, sha) = inputs
-            .iter()
-            .enumerate()
-            .find_map(|(k, i)| {
-                i.spans
-                    .files
-                    .iter()
-                    .find(|f| join(&i.dir, &f.path) == file)
-                    .map(|f| (k, f.path.clone(), f.sha256.clone()))
-            })
-            .ok_or_else(|| format!("{file}: an edit names a file no input read"))?;
-        let on_disk = paths[k].join(&path);
-        let bytes = std::fs::read(&on_disk).map_err(|e| format!("{}: {e}", on_disk.display()))?;
-        if sha256_hex(&bytes) != sha {
-            return Err(format!("{file}: changed since it was read"));
-        }
-        sources.insert(file.to_string(), (k, path, bytes));
+        sources.insert(file.to_string(), source_at(&inputs, &paths, file)?);
     }
 
     // The copy, the edited files in it, the re-read.
@@ -305,6 +290,32 @@ fn join(dir: &str, path: &str) -> String {
     } else {
         format!("{dir}/{path}")
     }
+}
+
+/// The file an edit path names: its input, its path in the input's span document, and its bytes,
+/// which must still have the SHA-256 they had when read.
+fn source_at(
+    inputs: &[Input],
+    paths: &[PathBuf],
+    file: &str,
+) -> Result<(usize, String, Vec<u8>), String> {
+    let (k, path, sha) = inputs
+        .iter()
+        .enumerate()
+        .find_map(|(k, i)| {
+            i.spans
+                .files
+                .iter()
+                .find(|f| join(&i.dir, &f.path) == file)
+                .map(|f| (k, f.path.clone(), f.sha256.clone()))
+        })
+        .ok_or_else(|| format!("{file}: an edit names a file no input read"))?;
+    let on_disk = paths[k].join(&path);
+    let bytes = std::fs::read(&on_disk).map_err(|e| format!("{}: {e}", on_disk.display()))?;
+    if sha256_hex(&bytes) != sha {
+        return Err(format!("{file}: changed since it was read"));
+    }
+    Ok((k, path, bytes))
 }
 
 /// The operation a definite row of `item` binds.

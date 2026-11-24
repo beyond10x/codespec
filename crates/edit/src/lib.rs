@@ -77,7 +77,8 @@
 //! # Change sets
 //!
 //! Between the rows of an edit program and the files, with no process, file system or adapter
-//! call: [`change::plan`] turns the operations of the rows (`rename`, `rename_field`; [`rename`])
+//! call: [`change::plan_with`] turns the operations of the rows (`rename`, `rename_field`:
+//! [`rename`]; `retarget`: [`retarget`]; `delete`: [`delete`], which needs the files' bytes)
 //! into the expected set `S'` on `cir/1` and text edits from the span documents, refusing what
 //! the reader could not see ([`change::RULES`]); [`compare::compare`] compares a re-read set
 //! with `S'`; [`diff::unified`] prints the edits as a unified diff. [`lang`] holds the little a
@@ -85,10 +86,12 @@
 
 pub mod change;
 pub mod compare;
+pub mod delete;
 pub mod diff;
 pub mod ids;
 pub mod lang;
 pub mod refs;
 pub mod rename;
+pub mod retarget;
 pub mod run;
 pub mod spans;

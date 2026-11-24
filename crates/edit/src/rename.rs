@@ -20,6 +20,8 @@ use crate::spans::{Form, Role, Span};
 /// An operation resolved against the read set.
 #[derive(Debug, Clone)]
 pub(crate) enum Resolved {
+    Retarget(crate::retarget::RetargetTarget),
+    Delete(crate::delete::DeleteTarget),
     Func(FuncTarget),
     Field(FieldTarget),
 }
@@ -53,7 +55,7 @@ pub(crate) struct FieldTarget {
 impl FuncTarget {
     /// Whether `item`, in module `k`, refers to the target; `Some(true)` for a bare name a local
     /// could capture.
-    fn hits(&self, k: usize, item: &Item) -> Option<bool> {
+    pub(crate) fn hits(&self, k: usize, item: &Item) -> Option<bool> {
         let own = k == self.module;
         let other = !own && !self.mpath.is_empty();
         let named = |n: &String| *n == self.name;
@@ -78,7 +80,7 @@ impl FuncTarget {
     }
 
     /// Whether the listed call `c`, in module `k`, calls or uses the target.
-    fn lists(&self, k: usize, c: &CallRef) -> bool {
+    pub(crate) fn lists(&self, k: usize, c: &CallRef) -> bool {
         let own = |p: &str| {
             if p.is_empty() {
                 k == self.module
@@ -104,7 +106,7 @@ impl FuncTarget {
         }
     }
 
-    fn key(&self, name: &str) -> String {
+    pub(crate) fn key(&self, name: &str) -> String {
         match &self.recv {
             Some(t) => format!("{t}.{name}"),
             None => name.to_string(),
@@ -132,7 +134,7 @@ impl FieldTarget {
 }
 
 /// The name an item spells.
-fn name_of<'a>(item: Item<'a>) -> Option<&'a mut String> {
+pub(crate) fn name_of<'a>(item: Item<'a>) -> Option<&'a mut String> {
     match item {
         Item::Call { name }
         | Item::Method { name, .. }
@@ -146,7 +148,7 @@ fn name_of<'a>(item: Item<'a>) -> Option<&'a mut String> {
 }
 
 /// What a span document says of an (`at`, `name`).
-enum Lookup<'s> {
+pub(crate) enum Lookup<'s> {
     Span(&'s Span),
     Implicit,
     Lowered(String),
@@ -162,11 +164,11 @@ pub(crate) struct Out {
 
 /// The read set, as the operations see it.
 pub(crate) struct Cx<'a> {
-    inputs: &'a [Input],
-    opts: &'a Options,
+    pub(crate) inputs: &'a [Input],
+    pub(crate) opts: &'a Options,
     /// The languages whose readers fill call lists: a module of the set has a `foreign`
     /// statement with a call list or an opaque function with calls.
-    call_lists: BTreeSet<String>,
+    pub(crate) call_lists: BTreeSet<String>,
 }
 
 impl<'a> Cx<'a> {
@@ -191,27 +193,24 @@ impl<'a> Cx<'a> {
         }
     }
 
-    fn lookup(&self, k: usize, at: &str) -> Lookup<'a> {
+    pub(crate) fn lookup(&self, k: usize, at: &str) -> Lookup<'a> {
+        self.lookup_role(k, at, Role::Name)
+    }
+
+    /// What the span document of module `k` says of (`at`, `role`).
+    pub(crate) fn lookup_role(&self, k: usize, at: &str, role: Role) -> Lookup<'a> {
         let doc = &self.inputs[k].spans;
-        if let Some(s) = doc
-            .spans
-            .iter()
-            .find(|s| s.at == at && s.role == Role::Name)
-        {
+        if let Some(s) = doc.spans.iter().find(|s| s.at == at && s.role == role) {
             return Lookup::Span(s);
         }
-        match doc
-            .unspanned
-            .iter()
-            .find(|u| u.at == at && u.role == Role::Name)
-        {
+        match doc.unspanned.iter().find(|u| u.at == at && u.role == role) {
             Some(u) if u.reason == "implicit" => Lookup::Implicit,
             Some(u) => Lookup::Lowered(u.reason.clone()),
             None => Lookup::Missing,
         }
     }
 
-    fn file_path(&self, k: usize, file: usize) -> String {
+    pub(crate) fn file_path(&self, k: usize, file: usize) -> String {
         let inp = &self.inputs[k];
         let path = &inp.spans.files[file].path;
         let dir = inp.dir.trim_end_matches('/');
@@ -225,7 +224,7 @@ impl<'a> Cx<'a> {
     /// Propose replacing the bytes `start..end` of file `file` of module `k`, unless the file is
     /// generated.
     #[allow(clippy::too_many_arguments)]
-    fn edit(
+    pub(crate) fn edit(
         &self,
         row: usize,
         k: usize,
@@ -260,7 +259,14 @@ impl<'a> Cx<'a> {
         });
     }
 
-    fn span_edit(&self, row: usize, k: usize, s: &Span, replacement: String, out: &mut Out) {
+    pub(crate) fn span_edit(
+        &self,
+        row: usize,
+        k: usize,
+        s: &Span,
+        replacement: String,
+        out: &mut Out,
+    ) {
         self.edit(
             row,
             k,
@@ -274,7 +280,7 @@ impl<'a> Cx<'a> {
 
     /// The `name` span of the declaration at `at` in module `k`, or the refusal saying why there
     /// is none.
-    fn decl_span(
+    pub(crate) fn decl_span(
         &self,
         row: usize,
         k: usize,
@@ -574,7 +580,7 @@ impl<'a> Cx<'a> {
         Some(Resolved::Func(t))
     }
 
-    fn find_func(&self, id: &str) -> Option<(usize, bool, usize)> {
+    pub(crate) fn find_func(&self, id: &str) -> Option<(usize, bool, usize)> {
         for (k, inp) in self.inputs.iter().enumerate() {
             let m = &inp.module;
             let Some(key) = id.strip_prefix(label(m)).and_then(|r| r.strip_prefix('.')) else {
@@ -592,7 +598,7 @@ impl<'a> Cx<'a> {
 
     /// Refuse a method of `ty` named `name` when `ty` implements an interface of the set that has
     /// a method of that name (every method of the interface in the type's methods, by name).
-    fn interfaces(&self, row: usize, mi: usize, ty: &str, name: &str, out: &mut Out) {
+    pub(crate) fn interfaces(&self, row: usize, mi: usize, ty: &str, name: &str, out: &mut Out) {
         let m = &self.inputs[mi].module;
         let mut names: BTreeSet<&str> = BTreeSet::new();
         for f in &m.funcs {
@@ -626,7 +632,7 @@ impl<'a> Cx<'a> {
                         rule: "interface",
                         site: key.clone(),
                         message: format!(
-                            "{ty} implements {key}, which has a method {name}: renaming it breaks the interface"
+                            "{ty} implements {key}, which has a method {name}: renaming or deleting it breaks the interface"
                         ),
                     });
                 }
@@ -902,6 +908,8 @@ pub(crate) fn apply(set: &mut [Module], r: &Resolved, new: &str) {
     match r {
         Resolved::Func(t) => apply_func(set, t, new),
         Resolved::Field(t) => apply_field(set, t, new),
+        Resolved::Retarget(t) => crate::retarget::apply(set, t),
+        Resolved::Delete(t) => crate::delete::apply(set, t),
     }
 }
 
