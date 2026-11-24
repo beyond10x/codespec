@@ -132,7 +132,9 @@
 //! | `T { f: x, .. }` | `struct`; a field whose value is the zero literal (`0`, `false`, `""`, `String::new()`) is left out, as Go does |
 //! | `Rc::new(RefCell::new(x))` | `&x` |
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
-//! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `+ - * / % & | ^`, `<< >>` (next row), comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `x << n`, `x >> n`, `x <<= n`, `x >>= n` on integers | `binop`, `assign`, only where the count `n` is proven below the width W of `x`'s type (8, 16, 32, 64): an integer literal below W (unsuffixed, Rust's `i32`), a `const` whose literal is below W, `e & m` with a literal `m` at most W - 1, or `e % k` with a literal `k` at most W and `e` unsigned; on a `usize` or `isize` (`platform`, 32 or 64 bits) only an integer literal below 32. Any other shift is refused at its line: Rust panics on a count at or past W with `overflow-checks` and masks it without, where Go gives 0 or the sign |
+//! | `==`, `!=` (and a match guard `v if v == e`) on a type whose `PartialEq` the crate writes by hand; `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does; either on a type that holds such a type (a field, the type a newtype wraps, a type argument, an element) | refused at its line: Rust calls the impl, where `cir/1`'s comparison is Go's built-in one. A derived `PartialEq`, `PartialOrd` or `Ord` reads as the built-in comparison |
 //! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
 //! | `x.clone()` of a value without a slice or map inside, an array's elements and a generic struct's type arguments included | `x` (Go copies) |
 //! | `*p`, `p` bound to `&mut x` | `*p` |
@@ -940,6 +942,12 @@ pub(crate) struct Reader {
     pub sigs: BTreeMap<(Option<String>, String), Sig>,
     pub ptr_types: BTreeSet<String>,
     pub consts: BTreeMap<String, (String, Type)>,
+    /// The literal value of each read `const`, by Go name: what proves a shift's count.
+    pub const_values: BTreeMap<String, String>,
+    /// Types whose `PartialEq` the crate writes by hand, by Rust name.
+    pub hand_eq: BTreeSet<String>,
+    /// Types whose `PartialOrd` or `Ord` the crate writes by hand, by Rust name.
+    pub hand_ord: BTreeSet<String>,
     /// Types `enum Error` wraps: their `Display` is their `Error()`.
     pub error_structs: BTreeSet<String>,
     /// Unit enums whose `value()` method was absorbed.
@@ -1285,6 +1293,9 @@ impl Reader {
             sigs: BTreeMap::new(),
             ptr_types: BTreeSet::new(),
             consts: BTreeMap::new(),
+            const_values: BTreeMap::new(),
+            hand_eq: BTreeSet::new(),
+            hand_ord: BTreeSet::new(),
             error_structs: BTreeSet::new(),
             value_enums: BTreeSet::new(),
             displays: BTreeSet::new(),
@@ -2897,6 +2908,36 @@ impl Reader {
                 }
             }
         }
+        // Comparison impls written by hand: `==`, `<` and the rest on the type call them, which
+        // `cir/1`'s built-in comparison is not. A trait of that name the crate declares is not
+        // std's, unless named by a std path.
+        for item in &f.items {
+            self.enter(item);
+            if let syn::Item::Impl(im) = item
+                && let Some((p, _)) = &im.trait_
+                && let Some(tr) = p.segments.last().map(|s| s.ident.to_string())
+                && (!self.traits.contains_key(&tr)
+                    || matches!(
+                        self.full_path(p).first().map(String::as_str),
+                        Some("std" | "core")
+                    ))
+                && let Some((t, _)) = last_seg(match &*im.self_ty {
+                    syn::Type::Reference(r) => &r.elem,
+                    t => t,
+                })
+            {
+                let t = t.to_string();
+                match tr.as_str() {
+                    "PartialEq" => {
+                        self.hand_eq.insert(t);
+                    }
+                    "PartialOrd" | "Ord" => {
+                        self.hand_ord.insert(t);
+                    }
+                    _ => {}
+                }
+            }
+        }
         // Constants.
         for item in &f.items {
             self.enter(item);
@@ -2911,9 +2952,12 @@ impl Reader {
                 // is refused naming it.
                 let read = self
                     .ty(&c.ty, None)
-                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|_| t));
+                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|v| (t, v)));
                 match read {
-                    Ok(t) => {
+                    Ok((t, v)) => {
+                        if let Expr::Lit { value, .. } = v {
+                            self.const_values.insert(go.clone(), value);
+                        }
                         self.consts.insert(rust, (go, t));
                     }
                     Err(e) => {
