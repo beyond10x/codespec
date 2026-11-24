@@ -6,8 +6,9 @@ import (
 )
 
 // A call of a function of another package with cir/1 types is an extern call, declared once from
-// the callee's signature, a variadic callee (path.Join) declared variadic; one with a parameter of another
-// package's type that cir/1 has no type for stays foreign with a refusal.
+// the callee's signature, a variadic callee (path.Join) declared variadic; a nil argument typed from its
+// parameter (os.WriteFile); one with a parameter type cir/1 has no type for (complex128) stays
+// foreign with a refusal.
 func TestStandardLibraryCallsReadAsExternsUnlessForeignTyped(t *testing.T) {
 	m := loadSource(t, `package p
 
@@ -33,6 +34,10 @@ func Under(s string) string {
 func Save(s string) error {
 	return os.WriteFile(s, nil, 0o600)
 }
+
+func Complex() string {
+	return strconv.FormatComplex(1i, 'g', -1, 128)
+}
 `)
 	doc, err := encode(m)
 	if err != nil {
@@ -44,7 +49,7 @@ func Save(s string) error {
 		n := x.(node)
 		got = append(got, n["path"].(string)+"."+n["name"].(string))
 	}
-	want := []string{"os.Getenv", "path.Join", "strconv.Atoi", "strings.ToUpper"}
+	want := []string{"os.Getenv", "os.WriteFile", "path.Join", "strconv.Atoi", "strings.ToUpper"}
 	if len(got) != len(want) {
 		t.Fatalf("externs %v, want %v", got, want)
 	}
@@ -53,7 +58,7 @@ func Save(s string) error {
 			t.Fatalf("externs %v, want %v", got, want)
 		}
 	}
-	if len(m.Refusals) != 1 || !strings.Contains(m.Refusals[0].What, "os.WriteFile") {
-		t.Fatalf("want only os.WriteFile (fs.FileMode) refused, got %v", m.Refusals)
+	if len(m.Refusals) != 1 || !strings.Contains(m.Refusals[0].What, "strconv.FormatComplex") {
+		t.Fatalf("want only strconv.FormatComplex (complex128) refused, got %v", m.Refusals)
 	}
 }
