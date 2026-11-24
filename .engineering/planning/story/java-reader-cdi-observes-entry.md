@@ -26,7 +26,7 @@ scope:
   path: crates/model/tests/model.rs
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 7
+revision: 8
 ---
 # Story: a CDI observer method is an entry of kind observes
 
@@ -65,7 +65,8 @@ Listener.java:10 annotation jakarta.enterprise.event.Observes: annotations with 
 Listener.java:11 String.length on a { "k": "string" }: the value is not an object of a class outside the module
 ```
 
-The second line is a separate refusal of `String.length()` on a parameter in a project read.
+The second line is a separate refusal of `String.length()` on a parameter in a project read; it is
+`story:java-reader-string-methods`.
 
 ## Done When
 

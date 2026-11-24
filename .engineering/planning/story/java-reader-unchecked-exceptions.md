@@ -19,7 +19,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 5
+revision: 6
 ---
 # Story: a project's unchecked exception classes and their throws outside entries
 
@@ -84,4 +84,5 @@ Lookup.java:6   throw of java.lang.IllegalArgumentException in a method no entry
 
 - An `ExceptionMapper` of an exception class of the project as an `exception-mapper` entry. The
   kind exists and the reader gives it to a mapper of a jar's exception; a mapper of the project's
-  own class was not asked for by the consumer and is left to a story of its own.
+  own class is `story:java-reader-exception-mapper-of-project-exceptions` (the consumer's re-read
+  counts 8 refusals), which follows this story.
