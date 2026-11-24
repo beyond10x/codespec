@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T05:17:56Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-spans-go-reader",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 ./cmd/codespec-read-go/ (adapters/go, CODESPEC=target/debug/codespec): TestSpansOfTheGoExamplesReadStrictlyAndTheirCirIsTheCheckedInRead PASS 1.71s, TestSpansOfNamedCases (13 cases) PASS 0.62s, TestSpansOfNamedResultsCoverTheWholeDeclaration PASS; package ok 65.2s; gofmt -l empty, go vet ./... clean",
+    "reference": "adapters/go/cmd/codespec-read-go/spans_test.go"
+  }
+}

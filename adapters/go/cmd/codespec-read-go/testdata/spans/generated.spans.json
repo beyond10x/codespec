@@ -1,0 +1,68 @@
+{
+  "files": [
+    {
+      "generated": true,
+      "len": 81,
+      "path": "gen.go",
+      "sha256": "fda32e9ef5fb2fa31d06315a2be14c0ed9e3008e7728b6295cdfd239c4ac2088"
+    },
+    {
+      "generated": false,
+      "len": 44,
+      "path": "main.go",
+      "sha256": "ebe03497179eb2619d308239377326c222d5f0c0b0120b781ffaf21c2131e765"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 80,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "decl",
+      "start": 52
+    },
+    {
+      "at": "funcs.0",
+      "end": 61,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "name",
+      "start": 57,
+      "text": "Made"
+    },
+    {
+      "at": "funcs.1",
+      "end": 43,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "decl",
+      "start": 11
+    },
+    {
+      "at": "funcs.1",
+      "end": 19,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "name",
+      "start": 16,
+      "text": "Use"
+    },
+    {
+      "at": "funcs.1.body.0.results.0",
+      "end": 39,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "name",
+      "start": 35,
+      "text": "Made"
+    }
+  ],
+  "unspanned": []
+}

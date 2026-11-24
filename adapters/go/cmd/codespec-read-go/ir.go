@@ -1,5 +1,10 @@
 package main
 
+import (
+	"go/ast"
+	"go/token"
+)
+
 // The frontend's working model: what front.go builds and encode.go turns into cir/1. It is
 // internal to this adapter; cir/1 itself is defined by the Rust crate b10x-codespec-model.
 
@@ -24,6 +29,9 @@ type Module struct {
 	// Interface types: the package's own in source order, then those of other packages a call
 	// goes through (candidates; the encoder emits those an interface call uses).
 	Interfaces []Interface `json:"interfaces,omitempty"`
+	// For --spans (spans.go): the file set positions point into, and the files read in order.
+	Fset    *token.FileSet `json:"-"`
+	Sources []Source       `json:"-"`
 }
 
 // Interface is an interface type with its whole method set, sorted by name; with Path, one of
@@ -89,6 +97,7 @@ type Field struct {
 	Name     string `json:"name"`
 	T        Type   `json:"t"`
 	Embedded bool   `json:"embedded,omitempty"`
+	NameTok  Tok    `json:"-"`
 }
 
 type Variant struct {
@@ -152,6 +161,9 @@ type Func struct {
 	Body     []Stmt      `json:"body"`
 	Pos      string      `json:"pos"`
 	Doc      string      `json:"doc,omitempty"`
+	// For --spans: the declaration from its doc comment to its end, and its identifier.
+	DeclPos, DeclEnd token.Pos `json:"-"`
+	NameTok          Tok       `json:"-"`
 }
 
 // Stmt is a statement.
@@ -256,6 +268,28 @@ type Expr struct {
 	Results  []Type   `json:"results,omitempty"`
 	Captures []string `json:"captures,omitempty"`
 	Body     []Stmt   `json:"body,omitempty"`
+	// For --spans: the identifier naming a call, method, extern, extern_method, func_ref or
+	// field, and the one naming each field of a struct literal.
+	NameTok   Tok   `json:"-"`
+	FieldToks []Tok `json:"-"`
+}
+
+// Tok is where a name stands in the files read (spans.go): the bytes of its identifier, or, with
+// no position, why no identifier spells it there: "implicit" or "lowered: <why>". A zero Tok is a
+// node the reader made from no token of its own.
+type Tok struct {
+	Pos, End token.Pos
+	Why      string
+}
+
+// idTok is the identifier id as a name's token.
+func idTok(id *ast.Ident) Tok { return Tok{Pos: id.Pos(), End: id.End()} }
+
+// Source is a file read: its path and whether it is generated (its header says
+// `// Code generated … DO NOT EDIT.`).
+type Source struct {
+	Path      string
+	Generated bool
 }
 
 type Refusal struct {

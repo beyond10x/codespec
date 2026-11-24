@@ -1,0 +1,74 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 113,
+      "path": "p.go",
+      "sha256": "d23968f8b21c441173b960358cc44be1e4af998a22ccb1600d6d96339488dfaf"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 112,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "decl",
+      "start": 76
+    },
+    {
+      "at": "funcs.0",
+      "end": 84,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "name",
+      "start": 81,
+      "text": "Get"
+    },
+    {
+      "at": "funcs.0.body.0.results.0",
+      "end": 110,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "name",
+      "start": 109,
+      "text": "n"
+    },
+    {
+      "at": "types.0.fields.0",
+      "end": 32,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 31,
+      "text": "n"
+    },
+    {
+      "at": "types.1.fields.1",
+      "end": 68,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 67,
+      "text": "m"
+    }
+  ],
+  "unspanned": [
+    {
+      "at": "funcs.0.body.0.results.0.x",
+      "reason": "implicit",
+      "role": "name"
+    },
+    {
+      "at": "types.1.fields.0",
+      "reason": "lowered: an embedded field is named by its type",
+      "role": "name"
+    }
+  ]
+}

@@ -62,7 +62,7 @@ func (f *front) receiver(e *ast.SelectorExpr, sel *types.Selection) (Expr, bool)
 		}
 		ft := f.typ(fl.Type())
 		inner := x
-		x = Expr{K: "field", X: &inner, Name: fl.Name(), T: &ft}
+		x = Expr{K: "field", X: &inner, Name: fl.Name(), T: &ft, NameTok: Tok{Why: "implicit"}}
 		t = fl.Type()
 	}
 	return x, true

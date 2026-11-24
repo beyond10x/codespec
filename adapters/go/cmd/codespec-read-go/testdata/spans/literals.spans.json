@@ -1,0 +1,103 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 140,
+      "path": "p.go",
+      "sha256": "3be07beae4e68cfefff5c13e062df167a045289bba64850cd30c75153176b46a"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 90,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "decl",
+      "start": 44
+    },
+    {
+      "at": "funcs.0",
+      "end": 59,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 49,
+      "text": "Positional"
+    },
+    {
+      "at": "funcs.1",
+      "end": 139,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "decl",
+      "start": 92
+    },
+    {
+      "at": "funcs.1",
+      "end": 102,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 97,
+      "text": "Keyed"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.fields.0.name",
+      "end": 127,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 126,
+      "text": "y"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.fields.1.name",
+      "end": 133,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 132,
+      "text": "x"
+    },
+    {
+      "at": "types.0.fields.0",
+      "end": 33,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 32,
+      "text": "x"
+    },
+    {
+      "at": "types.0.fields.1",
+      "end": 36,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 35,
+      "text": "y"
+    }
+  ],
+  "unspanned": [
+    {
+      "at": "funcs.0.body.0.results.0.fields.0.name",
+      "reason": "implicit",
+      "role": "name"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.1.name",
+      "reason": "implicit",
+      "role": "name"
+    }
+  ]
+}

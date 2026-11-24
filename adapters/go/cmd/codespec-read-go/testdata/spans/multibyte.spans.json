@@ -1,0 +1,92 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 147,
+      "path": "p.go",
+      "sha256": "9c24153e4374f508e1a217239dc4f7c005b28e1eede66b453ec412b7e1bac123"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 91,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "decl",
+      "start": 46
+    },
+    {
+      "at": "funcs.0",
+      "end": 58,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 51,
+      "text": "Größe"
+    },
+    {
+      "at": "funcs.0.body.0.results.0",
+      "end": 89,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 82,
+      "text": "größe"
+    },
+    {
+      "at": "funcs.1",
+      "end": 146,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "decl",
+      "start": 93
+    },
+    {
+      "at": "funcs.1",
+      "end": 103,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 98,
+      "text": "Über"
+    },
+    {
+      "at": "funcs.1.body.0.results.0",
+      "end": 126,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 119,
+      "text": "Größe"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.args.0.fields.0.name",
+      "end": 139,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 132,
+      "text": "größe"
+    },
+    {
+      "at": "types.0.fields.0",
+      "end": 38,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 31,
+      "text": "größe"
+    }
+  ],
+  "unspanned": []
+}

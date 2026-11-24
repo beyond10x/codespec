@@ -49,6 +49,9 @@ type Opaque struct {
 	Reason string
 	NoBody bool
 	Calls  []CallRef
+	// For --spans: the declaration from its doc comment to its end, and its identifier.
+	DeclPos, DeclEnd token.Pos
+	NameTok          Tok
 }
 
 type MethodSet struct {
@@ -400,7 +403,8 @@ func (f *front) callExpr(c *ast.CallExpr, out *[]CallRef) {
 // opaque records a function declaration whose body cir/1 does not hold. A second declaration
 // with the same key (Go allows several `init`) adds nothing: nothing calls it by name.
 func (f *front) opaque(d *ast.FuncDecl, reason string) {
-	o := Opaque{Name: d.Name.Name, Pos: f.pos(d.Pos()), Reason: reason, NoBody: d.Body == nil, Calls: []CallRef{}}
+	o := Opaque{Name: d.Name.Name, Pos: f.pos(d.Pos()), Reason: reason, NoBody: d.Body == nil, Calls: []CallRef{}, NameTok: idTok(d.Name)}
+	o.DeclPos, o.DeclEnd = declRange(d)
 	if d.Name.Name == "_" {
 		return
 	}

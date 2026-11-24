@@ -439,7 +439,7 @@ tasks:
       - diff -r target/examples-go-pass examples/orders/out/go
       - test -z "$(gofmt -l target/examples-go-pass)"
       - go vet ./target/examples-go-pass/orders.go
-      - cd adapters/go && go test -count=1 ./...
+      - cd adapters/go && CODESPEC={{.CODESPEC}} go test -count=1 ./...
 
   examples-rust:
     desc: Write the orders example as Rust, require it equal to the checked-in copy, Audit its one refusal, a build without warnings, and a module without facts refused.

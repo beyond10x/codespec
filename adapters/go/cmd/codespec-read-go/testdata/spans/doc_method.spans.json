@@ -1,0 +1,101 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 216,
+      "path": "p.go",
+      "sha256": "5615b2ba475124ef6ffbb39f66db182e90f53240204fc7605f1af23174eb604d"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 120,
+      "end_line": 9,
+      "file": 0,
+      "line": 7,
+      "role": "decl",
+      "start": 39
+    },
+    {
+      "at": "funcs.0",
+      "end": 99,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 95,
+      "text": "Size"
+    },
+    {
+      "at": "funcs.0.body.0.results.0",
+      "end": 118,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 117,
+      "text": "n"
+    },
+    {
+      "at": "funcs.1",
+      "end": 193,
+      "end_line": 13,
+      "file": 0,
+      "line": 11,
+      "role": "decl",
+      "start": 122
+    },
+    {
+      "at": "funcs.1",
+      "end": 131,
+      "end_line": 11,
+      "file": 0,
+      "line": 11,
+      "role": "name",
+      "start": 127,
+      "text": "Each"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.body.0.results.0",
+      "end": 187,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "name",
+      "start": 183,
+      "text": "Size"
+    },
+    {
+      "at": "opaque.0",
+      "end": 215,
+      "end_line": 15,
+      "file": 0,
+      "line": 15,
+      "role": "decl",
+      "start": 195
+    },
+    {
+      "at": "opaque.0",
+      "end": 204,
+      "end_line": 15,
+      "file": 0,
+      "line": 15,
+      "role": "name",
+      "start": 200,
+      "text": "Fast"
+    },
+    {
+      "at": "types.0.fields.0",
+      "end": 31,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 30,
+      "text": "n"
+    }
+  ],
+  "unspanned": []
+}

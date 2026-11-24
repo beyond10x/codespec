@@ -6,12 +6,30 @@ the Go source and a refusal at its line.
 
 ```console
 codespec-read-go <package dir>
+codespec-read-go --spans <package dir>
 codespec-read-go --describe
 ```
 
 `--describe` prints the manifest (`describe.go`). The reader claims every feature whose
 conformance kit case it reads, `stmt.foreign` among them (a `defer` kept verbatim). Facts are
 computed by `codespec pass` and never claimed by a reader.
+
+## Spans
+
+`--spans` prints `{"cir", "files", "spans", "unspanned", "refs"}`, the module unchanged beside where
+its names stand in the files read (`docs/code-edit-language.md` § 6.2, `spans.go`), for
+`codespec read --spans` and `codespec edit`. Offsets are bytes of the file as read, a byte-order
+mark counted.
+
+- `decl`: each function of `funcs` and `opaque`, from its doc comment, else `func`, to its end.
+- `name`: each function, field of a struct declaration, `call`, `method`, `extern`,
+  `extern_method`, `func_ref`, `field` and keyed struct literal field: the identifier as written.
+- `unspanned`, `implicit`: a field of a positional struct literal, the hidden hop of a promoted
+  field. `lowered`: an embedded field (named by its type), a node the reader made from no token.
+- A file whose header says `// Code generated … DO NOT EDIT.` is `generated`. `refs` is empty: a Go
+  package names its own functions without imports.
+- The lowered forms keep their spans: the call of `_ = f()`, of a local `var v = f()` and of a
+  hoisted `if` or `switch` init; a named result read as a local is a `var`, which has no name.
 
 ## Limits
 
