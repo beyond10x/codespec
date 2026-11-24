@@ -1,0 +1,65 @@
+{
+  "format": "codespec-spans/1",
+  "module": "probe",
+  "cir_sha256": "<cir_sha256>",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "sha256": "652f6248266ce0dcefc02047f04cef0fda35d95004887f6a242da9a3075314e4",
+      "len": 508,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 308,
+      "end": 425,
+      "line": 14,
+      "end_line": 19
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 315,
+      "end": 320,
+      "line": 14,
+      "end_line": 14,
+      "text": "valid"
+    },
+    {
+      "at": "funcs.1",
+      "role": "decl",
+      "file": 0,
+      "start": 426,
+      "end": 507,
+      "line": 20,
+      "end_line": 23
+    },
+    {
+      "at": "funcs.1",
+      "role": "name",
+      "file": 0,
+      "start": 433,
+      "end": 440,
+      "line": 20,
+      "end_line": 20,
+      "text": "guarded"
+    },
+    {
+      "at": "funcs.1.body.0.rhs.0",
+      "role": "name",
+      "file": 0,
+      "start": 485,
+      "end": 490,
+      "line": 21,
+      "end_line": 21,
+      "text": "valid"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

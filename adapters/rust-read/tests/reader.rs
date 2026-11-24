@@ -2706,3 +2706,365 @@ fn code_under_a_condition_the_reader_cannot_resolve_is_refused() {
         "{opaque:?}"
     );
 }
+
+// ----- `--spans`: where the nodes stand in the files (`docs/code-edit-language.md` § 6.3) -----
+
+/// A crate `probe` of the one file `src/lib.rs` holding the bytes `src`, written under the test
+/// target's temporary directory and read with `--spans`; both documents read strictly by
+/// `crates/edit`, and the `cir/1` module the one a plain read gives.
+fn spanned(case: &str, src: &[u8]) -> codespec_edit::run::Spanned {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("spans-{case}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("src/lib.rs"), src).unwrap();
+    let program = Path::new(env!("CARGO_BIN_EXE_codespec-read-rust"));
+    let s =
+        codespec_edit::run::read_spanned(program, &dir).unwrap_or_else(|e| panic!("{case}: {e}"));
+    let plain = codespec_read_rust::read_crate(&dir).expect("a plain read");
+    assert_eq!(
+        s.cir_json(),
+        plain.to_json(),
+        "{case}: --spans reads another cir/1"
+    );
+    assert!(s.cir.refusals.is_empty(), "{case}: {:?}", s.cir.refusals);
+    s
+}
+
+/// The span document is `tests/spans/<case>.spans.json`, its `cir_sha256` (which moves with the
+/// reader's version) written `<cir_sha256>`. With `CODESPEC_BLESS_SPANS` set the file is written.
+fn expect_spans(case: &str, s: &codespec_edit::run::Spanned) {
+    let got = s.spans_json().replace(&s.spans.cir_sha256, "<cir_sha256>");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/spans/{case}.spans.json"));
+    if std::env::var_os("CODESPEC_BLESS_SPANS").is_some() {
+        std::fs::write(&path, &got).unwrap();
+    }
+    let want = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert_eq!(
+        got,
+        want,
+        "{case}: the span document differs from {}",
+        path.display()
+    );
+}
+
+/// The text of the `role` span of `at`.
+fn span_text(
+    s: &codespec_edit::run::Spanned,
+    at: &str,
+    role: codespec_edit::spans::Role,
+) -> String {
+    let sp = s
+        .spans
+        .spans
+        .iter()
+        .find(|x| x.at == at && x.role == role)
+        .unwrap_or_else(|| panic!("no {role} span at {at}: {:?}", s.spans.spans));
+    sp.text.clone().unwrap_or_default()
+}
+
+/// The `(start, end)` of the `role` span of `at`.
+fn span_range(
+    s: &codespec_edit::run::Spanned,
+    at: &str,
+    role: codespec_edit::spans::Role,
+) -> (usize, usize) {
+    let sp = s
+        .spans
+        .spans
+        .iter()
+        .find(|x| x.at == at && x.role == role)
+        .unwrap_or_else(|| panic!("no {role} span at {at}: {:?}", s.spans.spans));
+    (sp.start, sp.end)
+}
+
+use codespec_edit::spans::Role::{Decl as DECL, Name as NAME};
+
+#[test]
+fn spans_of_inventory_read_strictly_and_its_cir_is_the_checked_in_read() {
+    let dir = root().join("examples/inventory/source");
+    let program = Path::new(env!("CARGO_BIN_EXE_codespec-read-rust"));
+    let s = codespec_edit::run::read_spanned(program, &dir).expect("strict reading");
+    let checked_in =
+        std::fs::read_to_string(root().join("examples/inventory/inventory.read.cir.json")).unwrap();
+    assert_eq!(s.cir_json(), checked_in);
+    let out = std::process::Command::new(program)
+        .arg("--spans")
+        .arg(&dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["cir", "files", "refs", "spans", "unspanned"]);
+    let files: Vec<&str> = s.spans.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(files, ["src/lib.rs"]);
+    assert!(!s.spans.files[0].generated);
+}
+
+#[test]
+fn spans_pub_fn_load_is_load_in_the_source_and_load_capitalised_in_cir() {
+    let s = spanned(
+        "load",
+        b"pub fn load(n: i64) -> i64 {\n    n\n}\n\npub fn twice(n: i64) -> i64 {\n    load(n) + load(n)\n}\n",
+    );
+    assert_eq!(s.cir.funcs[0].name, "Load");
+    assert_eq!(span_text(&s, "funcs.0", NAME), "load");
+    assert_eq!(span_range(&s, "funcs.0", DECL), (0, 36));
+    assert_eq!(span_text(&s, "funcs.1.body.0.results.0.x", NAME), "load");
+    assert_eq!(span_text(&s, "funcs.1.body.0.results.0.y", NAME), "load");
+    assert_ne!(
+        span_range(&s, "funcs.1.body.0.results.0.x", NAME),
+        span_range(&s, "funcs.1.body.0.results.0.y", NAME)
+    );
+    expect_spans("load", &s);
+}
+
+#[test]
+fn spans_a_method_in_an_impl_its_call_and_its_field() {
+    let s = spanned(
+        "method",
+        b"pub struct Counter {\n    pub hits: i64,\n}\n\nimpl Counter {\n    pub fn total(&self) -> i64 {\n        self.hits\n    }\n}\n\npub fn read(c: Counter) -> i64 {\n    c.total()\n}\n",
+    );
+    assert_eq!(s.cir.funcs[0].key(), "Counter.Total");
+    assert_eq!(span_text(&s, "funcs.0", NAME), "total");
+    assert_eq!(span_text(&s, "funcs.0.body.0.results.0", NAME), "hits");
+    assert_eq!(span_text(&s, "funcs.1.body.0.results.0", NAME), "total");
+    assert_eq!(span_text(&s, "types.0.fields.0", NAME), "hits");
+    expect_spans("method", &s);
+}
+
+#[test]
+fn spans_a_function_declaration_starts_at_its_first_doc_comment() {
+    let src = "/// Adds one.\n/// Saturates never.\n#[inline]\n#[must_use]\npub fn inc(n: i64) -> i64 {\n    n + 1i64\n}\n";
+    let s = spanned("attributes", src.as_bytes());
+    let (start, end) = span_range(&s, "funcs.0", DECL);
+    assert_eq!((start, end), (0, src.len() - 1));
+    let decl = s
+        .spans
+        .spans
+        .iter()
+        .find(|x| x.at == "funcs.0" && x.role == DECL)
+        .unwrap();
+    assert_eq!((decl.line, decl.end_line), (1, 7));
+    assert_eq!(span_text(&s, "funcs.0", NAME), "inc");
+    expect_spans("attributes", &s);
+}
+
+#[test]
+fn spans_a_shorthand_and_a_keyed_struct_literal_field() {
+    let s = spanned(
+        "literal",
+        b"pub struct Point {\n    pub x: i64,\n    pub y: i64,\n}\n\npub fn make(x: i64) -> Point {\n    Point { x, y: 2i64 }\n}\n",
+    );
+    let fields: Vec<_> = s
+        .spans
+        .spans
+        .iter()
+        .filter(|x| x.at.ends_with(".name"))
+        .map(|x| (x.at.as_str(), x.text.as_deref().unwrap(), x.form))
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            (
+                "funcs.0.body.0.results.0.fields.0.name",
+                "x",
+                Some(codespec_edit::spans::Form::Shorthand)
+            ),
+            ("funcs.0.body.0.results.0.fields.1.name", "y", None),
+        ]
+    );
+    expect_spans("literal", &s);
+}
+
+#[test]
+fn spans_use_paths_are_refs_and_an_alias_is_outside_them() {
+    let s = spanned(
+        "use",
+        b"mod m {\n    pub fn load() -> i64 {\n        1i64\n    }\n}\n\nuse crate::m::load;\nuse crate::m::load as fetch;\n\npub fn both() -> i64 {\n    load() + fetch()\n}\n",
+    );
+    let refs: Vec<_> = s
+        .spans
+        .refs
+        .iter()
+        .map(|r| (r.target.as_str(), r.text.as_str(), r.start))
+        .collect();
+    assert_eq!(
+        refs,
+        [("probe.Load", "load", 71), ("probe.Load", "load", 91)]
+    );
+    let both = s.cir.funcs.iter().position(|f| f.name == "Both").unwrap();
+    assert_eq!(
+        span_text(&s, &format!("funcs.{both}.body.0.results.0.x"), NAME),
+        "load"
+    );
+    assert_eq!(
+        span_text(&s, &format!("funcs.{both}.body.0.results.0.y"), NAME),
+        "fetch"
+    );
+    let Stmt::Return { results, .. } = &s.cir.funcs[both].body[0] else {
+        panic!("{:?}", s.cir.funcs[both].body)
+    };
+    let Expr::Binop { y, .. } = &results[0] else {
+        panic!("{results:?}")
+    };
+    assert!(
+        matches!(&**y, Expr::Call { name, .. } if name == "Load"),
+        "{y:?}"
+    );
+    expect_spans("use", &s);
+}
+
+const PROPAGATE: &str = "use std::fmt;\n\
+#[derive(Debug, Clone, PartialEq, Eq)]\n\
+pub enum Error {\n\
+\x20   Negative,\n\
+}\n\
+impl fmt::Display for Error {\n\
+\x20   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n\
+\x20       match self {\n\
+\x20           Error::Negative => write!(f, \"negative\"),\n\
+\x20       }\n\
+\x20   }\n\
+}\n\
+impl std::error::Error for Error {}\n\
+pub fn valid(n: i64) -> Result<i64, Error> {\n\
+\x20   if n < 0i64 {\n\
+\x20       return Err(Error::Negative);\n\
+\x20   }\n\
+\x20   Ok(n)\n\
+}\n\
+pub fn guarded(n: i64) -> Result<i64, Error> {\n\
+\x20   let v = valid(n)?;\n\
+\x20   Ok(v)\n\
+}\n";
+
+#[test]
+fn spans_a_question_mark_keeps_its_call_spelled_and_makes_no_named_node() {
+    let s = spanned("question", PROPAGATE.as_bytes());
+    let g = s
+        .cir
+        .funcs
+        .iter()
+        .position(|f| f.name == "Guarded")
+        .unwrap();
+    let in_guarded: Vec<_> = s
+        .spans
+        .spans
+        .iter()
+        .filter(|x| x.at.starts_with(&format!("funcs.{g}.body.")))
+        .map(|x| (x.at.as_str(), x.text.as_deref().unwrap()))
+        .collect();
+    assert_eq!(
+        in_guarded,
+        [(format!("funcs.{g}.body.0.rhs.0").as_str(), "valid")]
+    );
+    assert!(s.spans.unspanned.is_empty(), "{:?}", s.spans.unspanned);
+    expect_spans("question", &s);
+}
+
+#[test]
+fn spans_a_display_impl_read_as_a_method_has_no_name_token() {
+    let s = spanned(
+        "display",
+        b"use std::fmt;\n\npub struct Tag {\n    pub n: i64,\n}\n\nimpl fmt::Display for Tag {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        write!(f, \"tag {}\", self.n)\n    }\n}\n",
+    );
+    let at = format!(
+        "funcs.{}",
+        s.cir.funcs.iter().position(|f| f.name == "String").unwrap()
+    );
+    let u = s
+        .spans
+        .unspanned
+        .iter()
+        .find(|u| u.at == at)
+        .expect("String unspanned");
+    assert_eq!(u.role, NAME);
+    assert!(u.reason.starts_with("lowered: "), "{}", u.reason);
+    assert_eq!(span_range(&s, &at, DECL).0, 51);
+    expect_spans("display", &s);
+}
+
+#[test]
+fn spans_crlf_line_ends_count_their_bytes() {
+    let lf = "pub fn load(n: i64) -> i64 {\n    n\n}\n\npub fn twice(n: i64) -> i64 {\n    load(n) + load(n)\n}\n";
+    let s = spanned("crlf", lf.replace('\n', "\r\n").as_bytes());
+    assert_eq!(span_range(&s, "funcs.1.body.0.results.0.y", NAME), (87, 91));
+    let sp = s
+        .spans
+        .spans
+        .iter()
+        .find(|x| x.at == "funcs.1.body.0.results.0.y")
+        .unwrap();
+    assert_eq!(sp.line, 6);
+    expect_spans("crlf", &s);
+}
+
+#[test]
+fn spans_a_byte_order_mark_counts_its_three_bytes() {
+    let src = "\u{feff}pub fn load(n: i64) -> i64 {\n    n\n}\n";
+    let s = spanned("bom", src.as_bytes());
+    assert_eq!(span_range(&s, "funcs.0", DECL), (3, src.len() - 1));
+    assert_eq!(span_range(&s, "funcs.0", NAME), (10, 14));
+    expect_spans("bom", &s);
+}
+
+#[test]
+fn spans_a_raw_identifier_is_spelled_with_its_prefix() {
+    let s = spanned(
+        "raw",
+        b"pub fn r#type(n: i64) -> i64 {\n    n\n}\n\npub fn call() -> i64 {\n    r#type(1i64)\n}\n",
+    );
+    assert_eq!(s.cir.funcs[0].name, "Type");
+    assert_eq!(span_text(&s, "funcs.0", NAME), "r#type");
+    assert_eq!(span_text(&s, "funcs.1.body.0.results.0", NAME), "r#type");
+    expect_spans("raw", &s);
+}
+
+#[test]
+fn spans_of_every_example_crate_and_kit_case_read_strictly() {
+    let program = Path::new(env!("CARGO_BIN_EXE_codespec-read-rust"));
+    let mut dirs: Vec<PathBuf> = ["fees", "greeter", "inventory", "ledger", "orders", "series"]
+        .iter()
+        .map(|e| root().join(format!("examples/{e}/out/rust")))
+        .collect();
+    let kit = Path::new(env!("CARGO_TARGET_TMPDIR")).join("spans-kit");
+    let _ = std::fs::remove_dir_all(&kit);
+    let mut cases: Vec<PathBuf> = std::fs::read_dir(root().join("conformance/cases"))
+        .unwrap()
+        .map(|e| e.unwrap().path().join("rust/case.rs"))
+        .filter(|p| p.is_file())
+        .collect();
+    cases.sort();
+    assert!(cases.len() > 100, "{} kit cases", cases.len());
+    for case in cases {
+        let name = case
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .file_name()
+            .unwrap();
+        let dir = kit.join(name);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"case\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        std::fs::copy(&case, dir.join("src/lib.rs")).unwrap();
+        dirs.push(dir);
+    }
+    for dir in dirs {
+        let s = codespec_edit::run::read_spanned(program, &dir)
+            .unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+        let plain = codespec_read_rust::read_crate(&dir).unwrap();
+        assert_eq!(s.cir_json(), plain.to_json(), "{}", dir.display());
+    }
+}

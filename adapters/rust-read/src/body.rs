@@ -3307,14 +3307,18 @@ impl<'r> Fx<'r> {
                             "the function {x}, which gives a `Result` or `Option`, used as a value"
                         ));
                     }
-                    return Ok(Expr::FuncRef {
+                    let f = Expr::FuncRef {
                         name: sig.go.clone(),
                         recv: None,
                         t: Type::Func {
                             params: sig.params.iter().map(|(_, _, t)| t.clone()).collect(),
                             results: sig.results.clone(),
                         },
-                    });
+                    };
+                    if let Some(seg) = p.segments.last() {
+                        self.r.note(&f, seg.ident.span());
+                    }
+                    return Ok(f);
                 }
                 Err(format!(
                     "`{x}`, which is neither a local, a constant, a static nor a function"
@@ -3350,6 +3354,29 @@ impl<'r> Fx<'r> {
             }
             _ => Err(format!("the path `{}`", segs.join("::"))),
         }
+    }
+
+    /// `v`, a call of a function of the crate, noted for `--spans` with the last segment of the
+    /// path written, which spells the callee.
+    fn noted(&self, v: V, path: &syn::Path) -> V {
+        if let (V::E(x) | V::Opt(x) | V::Res(x), Some(seg)) = (&v, path.segments.last()) {
+            self.r.note(x, seg.ident.span());
+        }
+        v
+    }
+
+    /// The free function of the crate that `name` is imported as by the module's
+    /// `use crate::…::f as name;`: `f`'s signature.
+    fn aliased_fn(&self, name: &str) -> Option<Sig> {
+        let module = self.r.at.borrow().0.clone();
+        let full = self.r.tables.uses.get(&module)?.get(name)?;
+        let (item, parent) = full.split_last()?;
+        if parent.first().map(String::as_str) != Some("crate")
+            || !self.r.tables.modules.contains(&parent.join("::"))
+        {
+            return None;
+        }
+        self.r.sigs.get(&(None, item.clone())).cloned()
     }
 
     fn sig_value(&self, sig: &Sig, x: Expr) -> V {
@@ -3400,11 +3427,13 @@ impl<'r> Fx<'r> {
                     .iter()
                     .find(|fi| fi.rust == name)
                     .ok_or_else(|| format!("{tn} has no field {name}"))?;
-                Ok(V::E(Expr::Field {
+                let x = Expr::Field {
                     x: Box::new(base),
                     name: fi.go.clone(),
                     t: fi.t.clone(),
-                }))
+                };
+                self.r.note(&x, f.member.span());
+                Ok(V::E(x))
             }
             syn::Expr::Reference(r) => {
                 if r.mutability.is_some() {
@@ -3691,9 +3720,16 @@ impl<'r> Fx<'r> {
                 Err(format!("`{n}(…)` outside a return"))
             }
             [n] => {
-                if let Some(sig) = self.r.sigs.get(&(None, n.clone())).cloned() {
+                if let Some(sig) = self
+                    .r
+                    .sigs
+                    .get(&(None, n.clone()))
+                    .cloned()
+                    .or_else(|| self.aliased_fn(n))
+                {
                     let written = self.seg_targs(&p.path.segments[base])?;
-                    return self.call_fn(&sig, written, &c.args, want);
+                    let v = self.call_fn(&sig, written, &c.args, want)?;
+                    return Ok(self.noted(v, &p.path));
                 }
                 if let Some(Decl::Newtype(under)) = self.r.decls.get(n).cloned() {
                     let a = arg(0)
@@ -3868,7 +3904,8 @@ impl<'r> Fx<'r> {
                     if by_self && written.len() != sig.tparams.len() {
                         written.clear();
                     }
-                    return self.call_fn(&sig, written, &c.args, want);
+                    let v = self.call_fn(&sig, written, &c.args, want)?;
+                    return Ok(self.noted(v, &p.path));
                 }
                 Err(format!("a call of `{t}::{f}`, outside the reader's table"))
             }
@@ -4122,6 +4159,7 @@ impl<'r> Fx<'r> {
                 args,
                 t: sig.value_type(),
             };
+            self.r.note(&call, mc.method.span());
             return Ok(self.sig_value(&sig, call));
         }
         let wrapping = |op: &str| -> Option<&'static str> {
@@ -4283,6 +4321,8 @@ impl<'r> Fx<'r> {
             map = tps.iter().cloned().zip(targs.iter().cloned()).collect();
         }
         let mut fields = Vec::new();
+        // The identifier of each field kept, and whether it is written in shorthand (`T { x }`).
+        let mut toks = Vec::new();
         for fv in &s.fields {
             let syn::Member::Named(id) = &fv.member else {
                 return Err("a struct literal with a positional field".into());
@@ -4312,6 +4352,7 @@ impl<'r> Fx<'r> {
             if is_zero_lit(&value) && *value.t() == ft {
                 continue;
             }
+            toks.push((id.span(), fv.colon_token.is_none()));
             fields.push(FieldInit {
                 name: fi.go.clone(),
                 value,
@@ -4322,14 +4363,16 @@ impl<'r> Fx<'r> {
                 "a struct literal of {name} whose type arguments its fields do not fix: write them (`{name}::<…> {{ … }}`)"
             ));
         }
-        Ok(Expr::Struct {
+        let x = Expr::Struct {
             name: name.clone(),
             fields,
             t: Type::Named {
                 targs: tps.iter().map(|n| map[n].clone()).collect(),
                 name,
             },
-        })
+        };
+        self.r.note_literal(&x, &toks);
+        Ok(x)
     }
 
     /// The type arguments written on a path segment (`f::<i64>`, `Pair::<Item>`), read as types.

@@ -1,0 +1,52 @@
+{
+  "format": "codespec-spans/1",
+  "module": "probe",
+  "cir_sha256": "<cir_sha256>",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "sha256": "6a27985898ac1a339c33ea26f64d967771875db405d794d67a55641c31c34fae",
+      "len": 186,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 51,
+      "end": 185,
+      "line": 7,
+      "end_line": 11
+    },
+    {
+      "at": "funcs.0.body.0.results.0.args.1",
+      "role": "name",
+      "file": 0,
+      "start": 175,
+      "end": 176,
+      "line": 9,
+      "end_line": 9,
+      "text": "n"
+    },
+    {
+      "at": "types.0.fields.0",
+      "role": "name",
+      "file": 0,
+      "start": 40,
+      "end": 41,
+      "line": 4,
+      "end_line": 4,
+      "text": "n"
+    }
+  ],
+  "unspanned": [
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "reason": "lowered: the method String is the impl's fmt, no token spells it"
+    }
+  ],
+  "refs": []
+}

@@ -256,12 +256,14 @@ name = "codespec-read-rust"
 version = "0.12.0"
 dependencies = [
  "b10x-codespec-conformance",
+ "b10x-codespec-edit",
  "b10x-codespec-model",
  "b10x-codespec-passes",
  "b10x-codespec-query",
  "proc-macro2",
  "serde",
  "serde_json",
+ "sha2",
  "syn",
  "toml",
 ]

@@ -1,0 +1,36 @@
+{
+  "format": "codespec-spans/1",
+  "module": "probe",
+  "cir_sha256": "<cir_sha256>",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "sha256": "24d9cd2ae29e848c72ac5439bdd34a9cd456bfff52cefba6dfea1a63e3151a08",
+      "len": 100,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 0,
+      "end": 99,
+      "line": 1,
+      "end_line": 7
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 64,
+      "end": 67,
+      "line": 5,
+      "end_line": 5,
+      "text": "inc"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

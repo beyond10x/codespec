@@ -19,11 +19,13 @@ path = "src/main.rs"
 b10x-codespec-model = { path = "../../crates/model" }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 syn = { workspace = true, features = ["visit", "visit-mut"] }
 toml.workspace = true
 
 [dev-dependencies]
 b10x-codespec-conformance = { path = "../../crates/conformance" }
+b10x-codespec-edit = { path = "../../crates/edit" }
 b10x-codespec-passes = { path = "../../crates/passes" }
 b10x-codespec-query = { path = "../../crates/query" }
-serde_json.workspace = true
