@@ -3859,8 +3859,8 @@ fn a_comparison_through_a_hand_written_partial_eq_or_ord_is_refused_at_its_line(
     assert_foreign(&m, "SameApprox", "lib.rs:26", "by hand");
     // A derived `PartialEq` of a struct holding `Mode` calls `Mode`'s impl for the field.
     assert_foreign(&m, "SameHolder", "lib.rs:31", "by hand");
-    // A match guard `v if v == e` compares through the same impl.
-    assert_foreign(&m, "Pick", "lib.rs:34", "by hand");
+    // A match guard `v if v == e` compares through the same impl: refused at the guard's line.
+    assert_foreign(&m, "Pick", "lib.rs:35", "by hand");
 }
 
 /// A derived `PartialEq`, `PartialOrd` and `Ord` keep the built-in comparison; so does `==` on a
@@ -3995,4 +3995,295 @@ fn a_module_with_nothing_left_out_has_no_left_out_key() {
     let m = read(&lines(&["pub fn double(x: i64) -> i64 { x * 2 }"]));
     assert!(m.left_out.is_empty());
     assert!(!m.to_json().contains("left_out"), "{}", m.to_json());
+}
+
+// ----- adversary, wave 1 -----------------------------------------------------------------------
+
+/// A derived `PartialEq` of an enum with data calls the `PartialEq` of each variant's field, so
+/// `==` on an enum (a `cir/1` union) that holds a hand-compared type, or on a struct holding such
+/// an enum, goes through the hand-written impl. rustc: `wrap_eq(Wrap::K(Key { v: 1 }),
+/// Wrap::K(Key { v: 11 }))` is `true`; `cir/1`'s built-in `==` gives `false`.
+#[test]
+fn adversary_a_comparison_of_an_enum_holding_a_hand_compared_type_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub struct Key { pub v: i64 }",
+        "impl PartialEq for Key { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "#[derive(PartialEq)]",
+        "pub enum Wrap { K(Key), Nothing }",
+        "#[derive(PartialEq)]",
+        "pub struct Outer { pub e: Wrap }",
+        "pub fn wrap_eq(a: Wrap, b: Wrap) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn outer_ne(a: Outer, b: Outer) -> bool {",
+        "    a != b",
+        "}",
+        "pub fn pick(a: Wrap, b: Wrap) -> i64 {",
+        "    match a {",
+        "        v if v == b => 1,",
+        "        _ => 0,",
+        "    }",
+        "}",
+    ]));
+    assert_foreign(&m, "WrapEq", "lib.rs:8", "by hand");
+    assert_foreign(&m, "OuterNe", "lib.rs:11", "by hand");
+    assert_foreign(&m, "Pick", "lib.rs:15", "by hand");
+}
+
+/// A hand-written `PartialEq` whose impl names its type by an alias, or names the trait by a
+/// renamed import, is the impl `==` calls all the same. rustc: both functions return `true` for
+/// `v` 1 and 11.
+#[test]
+fn adversary_a_hand_written_partial_eq_through_an_alias_or_a_renamed_trait_is_refused() {
+    let m = read(&lines(&[
+        "pub struct Alias { pub v: i64 }",
+        "pub type Al = Alias;",
+        "impl PartialEq for Al { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "pub fn alias_eq(a: Alias, b: Alias) -> bool {",
+        "    a == b",
+        "}",
+        "pub struct Renamed { pub v: i64 }",
+        "use std::cmp::PartialEq as Peq;",
+        "impl Peq for Renamed { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "pub fn renamed_eq(a: Renamed, b: Renamed) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "AliasEq", "lib.rs:5", "by hand");
+    assert_foreign(&m, "RenamedEq", "lib.rs:11", "by hand");
+}
+
+/// A `HashMap` finds a key through its hand-written `PartialEq` (and `Hash`); `cir/1`'s map
+/// compares keys as Go's built-in `==`. rustc: `size(1, 11)` is 1. Read, it is refused, or it
+/// evaluates to what Rust gives.
+#[test]
+fn adversary_a_map_keyed_by_a_hand_compared_type_is_refused_or_evaluates_equal_to_rust() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "use std::hash::{Hash, Hasher};",
+        "#[derive(Clone, Copy, Eq)]",
+        "pub struct Key { pub v: i64 }",
+        "impl PartialEq for Key { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "impl Hash for Key { fn hash<H: Hasher>(&self, h: &mut H) { (self.v % 10).hash(h); } }",
+        "pub fn size(a: i64, b: i64) -> i64 {",
+        "    let mut m: HashMap<Key, i64> = HashMap::new();",
+        "    m.insert(Key { v: a }, 5);",
+        "    m.insert(Key { v: b }, 6);",
+        "    m.len() as i64",
+        "}",
+    ]));
+    let size = m.funcs.iter().find(|f| f.name == "Size").expect("Size");
+    let refused = all_stmts(&size.body)
+        .iter()
+        .any(|s| matches!(s, Stmt::Foreign { .. }));
+    if !refused {
+        let out = evaluate(&m, &[("Size", &["1", "11"])]);
+        assert!(
+            out.trim_end().ends_with('1') && !out.trim_end().ends_with("11"),
+            "Size(1, 11) read without a refusal printed {out:?}; Rust gives 1"
+        );
+    }
+}
+
+/// A `#[test]` function is built only by the test harness, with or without `#[cfg(test)]`
+/// around it: a normal build leaves it out, so it is listed in `left_out` and not read.
+#[test]
+fn adversary_a_test_function_outside_a_cfg_test_module_is_left_out() {
+    let m = read(&lines(&[
+        "pub fn double(x: i64) -> i64 { x * 2 }",
+        "#[test]",
+        "fn doubles() { assert_eq!(double(2), 4); }",
+    ]));
+    assert_eq!(
+        m.funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        ["Double"]
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert!(
+        m.left_out.iter().any(|l| l.what == "fn doubles"),
+        "{:?}",
+        m.left_out
+    );
+}
+
+// ----- the classes of the wave-1 adversary findings ---------------------------------------------
+
+/// A derived comparison calls the hand-written impl of a type held at any depth: an enum inside
+/// an enum, an array of enums, a `Box` in a variant,
+/// `<` through a derived `PartialOrd`. A comparison inside a longer statement is refused at its
+/// own line. An enum that holds only built-in types still compares as the built-in `==`.
+#[test]
+fn a_comparison_of_a_type_holding_a_hand_compared_type_at_any_depth_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub struct Key { pub v: i64 }",
+        "impl PartialEq for Key { fn eq(&self, _o: &Self) -> bool { true } }",
+        "impl PartialOrd for Key { fn partial_cmp(&self, _o: &Self) -> Option<std::cmp::Ordering> { None } }",
+        "#[derive(PartialEq, PartialOrd)]",
+        "pub enum Inner { K(Key), N }",
+        "#[derive(PartialEq, PartialOrd)]",
+        "pub enum Outer { I(Inner), M { m: i64 } }",
+        "#[derive(PartialEq)]",
+        "pub enum Boxed { B(Box<Key>), N }",
+        "pub fn nested_eq(a: Outer, b: Outer) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn nested_lt(a: Outer, b: Outer) -> bool {",
+        "    a < b",
+        "}",
+        "pub fn array_eq(a: [Inner; 2], b: [Inner; 2]) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn boxed_eq(a: Boxed, b: Boxed) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn spread(a: Outer, b: Outer) -> bool {",
+        "    let same =",
+        "        a == b;",
+        "    same",
+        "}",
+        "#[derive(PartialEq)]",
+        "pub enum Plain { A(i64), B }",
+        "pub fn plain_eq(a: Plain, b: Plain) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "NestedEq", "lib.rs:11", "by hand");
+    assert_foreign(&m, "NestedLt", "lib.rs:14", "PartialOrd or Ord of Key");
+    assert_foreign(&m, "ArrayEq", "lib.rs:17", "by hand");
+    assert_foreign(&m, "BoxedEq", "lib.rs:20", "by hand");
+    assert_foreign(&m, "Spread", "lib.rs:24", "by hand");
+    let plain = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "PlainEq")
+        .expect("PlainEq");
+    assert!(
+        matches!(&plain.body[..], [Stmt::Return { .. }]),
+        "{:?}",
+        plain.body
+    );
+}
+
+/// An impl counts by the trait its path resolves to and by the type an alias chain names: a
+/// renamed `PartialOrd`, an alias of an alias, `core::cmp::PartialEq`.
+#[test]
+fn a_hand_written_comparison_impl_counts_through_alias_chains_and_resolved_trait_paths() {
+    let m = read(&lines(&[
+        "pub struct Twice { pub v: i64 }",
+        "pub type T1 = Twice;",
+        "pub type T2 = T1;",
+        "use std::cmp::PartialOrd as Po;",
+        "impl PartialEq for T2 { fn eq(&self, _o: &Self) -> bool { true } }",
+        "impl Po for T2 { fn partial_cmp(&self, _o: &Self) -> Option<std::cmp::Ordering> { None } }",
+        "pub fn chained_eq(a: Twice, b: Twice) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn chained_lt(a: Twice, b: Twice) -> bool {",
+        "    a < b",
+        "}",
+        "pub struct ByCore { pub v: i64 }",
+        "impl core::cmp::PartialEq for ByCore { fn eq(&self, _o: &Self) -> bool { true } }",
+        "pub fn core_eq(a: ByCore, b: ByCore) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "ChainedEq", "lib.rs:8", "PartialEq of Twice");
+    assert_foreign(&m, "ChainedLt", "lib.rs:11", "PartialOrd or Ord of Twice");
+    assert_foreign(&m, "CoreEq", "lib.rs:16", "PartialEq of ByCore");
+}
+
+/// A `BTreeMap` orders its keys by their `Ord`, a `HashMap` finds them by their `Hash` and
+/// `PartialEq`: a map whose key is, or holds, a type with such an impl written by hand is refused
+/// at its line, in a local, a parameter and a struct field. A map whose value alone has one reads.
+#[test]
+fn a_map_keyed_by_a_type_ordered_or_hashed_by_hand_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "use std::collections::{BTreeMap, HashMap};",
+        "use std::hash::{Hash, Hasher};",
+        "#[derive(PartialEq, Eq, PartialOrd)]",
+        "pub struct Ranked { pub v: i64 }",
+        "impl Ord for Ranked { fn cmp(&self, o: &Self) -> std::cmp::Ordering { o.v.cmp(&self.v) } }",
+        "#[derive(PartialEq, Eq)]",
+        "pub struct Hashed { pub v: i64 }",
+        "impl Hash for Hashed { fn hash<H: Hasher>(&self, h: &mut H) { 0.hash(h); } }",
+        "#[derive(PartialEq, Eq, Hash)]",
+        "pub struct HoldsHashed { pub h: Hashed }",
+        "pub struct Index { pub by: BTreeMap<Ranked, i64> }",
+        "pub fn ordered(a: i64) -> i64 {",
+        "    let m: BTreeMap<Ranked, i64> = BTreeMap::new();",
+        "    a",
+        "}",
+        "pub fn held(a: i64) -> i64 {",
+        "    let m: HashMap<HoldsHashed, i64> = HashMap::new();",
+        "    a",
+        "}",
+        "pub fn param(m: HashMap<Hashed, i64>) -> i64 {",
+        "    0",
+        "}",
+        "pub fn by_value(a: i64) -> i64 {",
+        "    let m: HashMap<i64, Hashed> = HashMap::new();",
+        "    a",
+        "}",
+    ]));
+    assert_foreign(&m, "Ordered", "lib.rs:13", "PartialOrd or Ord");
+    assert_foreign(&m, "Held", "lib.rs:17", "which holds Hashed");
+    let refused = |pos: &str| {
+        m.refusals
+            .iter()
+            .any(|r| r.pos == pos && r.reason.contains("by hand"))
+    };
+    assert!(refused("lib.rs:11"), "{:?}", m.refusals);
+    assert!(refused("lib.rs:20"), "{:?}", m.refusals);
+    assert!(!m.funcs.iter().any(|f| f.name == "Param"));
+    let by_value = m
+        .funcs
+        .iter()
+        .find(|f| f.name == "ByValue")
+        .expect("ByValue");
+    assert!(
+        !all_stmts(&by_value.body)
+            .iter()
+            .any(|s| matches!(s, Stmt::Foreign { .. })),
+        "{:?}",
+        by_value.body
+    );
+}
+
+/// Every item only the test harness builds is left out with its line: `#[bench]`, a test
+/// framework's `#[<path>::test]`, a `#[test]` beside other attributes.
+#[test]
+fn items_marked_for_the_test_harness_are_left_out() {
+    let m = read(&lines(&[
+        "pub fn double(x: i64) -> i64 { x * 2 }",
+        "#[bench]",
+        "fn bench_double(b: &mut Bencher) {}",
+        "#[tokio::test]",
+        "async fn async_double() {}",
+        "#[test]",
+        "#[should_panic]",
+        "fn panics() { panic!(\"x\") }",
+    ]));
+    assert_eq!(
+        m.funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        ["Double"]
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let got: Vec<(&str, &str)> = m
+        .left_out
+        .iter()
+        .map(|l| (l.pos.as_str(), l.what.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("lib.rs:2", "fn bench_double"),
+            ("lib.rs:4", "fn async_double"),
+            ("lib.rs:6", "fn panics"),
+        ]
+    );
+    assert!(
+        m.left_out[0].reason.contains("`#[bench]`"),
+        "{:?}",
+        m.left_out
+    );
 }

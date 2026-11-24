@@ -67,6 +67,10 @@ pub(crate) struct Fx<'r> {
     /// The function's names bound only to a `BTreeMap` (`true`) or only to a `HashMap`
     /// (`false`), by Rust name (`map_kinds`).
     map_kinds: BTreeMap<String, bool>,
+    /// The line of the construct the last refusal names, with its reason, where that is not the
+    /// line its statement starts on (a comparison inside a longer statement, a match guard): the
+    /// statement's `foreign` takes it.
+    at_line: Option<(String, String)>,
 }
 
 /// Whether `name` is one of the Rust writer's temporaries for `base`: `__base`, then as many `_`
@@ -968,38 +972,57 @@ fn path_idents(p: &syn::Path) -> Vec<String> {
 }
 
 /// The crate type in `t` whose `PartialEq` (`ord` false) or `PartialOrd`/`Ord` (`ord` true) the
-/// crate writes by hand, which comparing a `t` calls: `t` itself, or a type it holds (a field, the
-/// type a newtype wraps, a type argument, an element), whose impl a derived one of `t` calls.
+/// crate writes by hand, which comparing a `t` calls (`hand_written`).
 fn hand_compared(r: &Reader, t: &Type, ord: bool, seen: &mut BTreeSet<String>) -> Option<String> {
+    hand_written(r, t, if ord { &r.hand_ord } else { &r.hand_eq }, seen)
+}
+
+/// The type in `t` whose impl `set` lists it in (a `PartialEq`, `Ord`, `Hash` the crate writes by
+/// hand), which a derived impl of `t` calls: `t` itself, or a type it holds at any depth (a
+/// field, an enum variant's field, the type a newtype wraps or an alias names, a type argument,
+/// an element, what an `Option` or `Box` in a field's type holds). A type of the crate is looked
+/// into by every name its declaration writes (`Reader::held`), so a type the reader does not
+/// read, or reads without its fields' types, is looked into all the same.
+pub(crate) fn hand_written(
+    r: &Reader,
+    t: &Type,
+    set: &BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+) -> Option<String> {
     match t {
-        Type::Named { name, targs } => {
-            if (if ord { &r.hand_ord } else { &r.hand_eq }).contains(name) {
-                return Some(name.clone());
-            }
-            if !seen.insert(name.clone()) {
-                return None;
-            }
-            if let Some(n) = targs.iter().find_map(|a| hand_compared(r, a, ord, seen)) {
-                return Some(n);
-            }
-            match r.decls.get(name) {
-                Some(Decl::Struct(fields)) => fields
-                    .iter()
-                    .find_map(|f| hand_compared(r, &f.t, ord, seen)),
-                Some(Decl::Newtype(u)) => hand_compared(r, u, ord, seen),
-                _ => None,
-            }
-        }
+        Type::Named { name, targs } => targs
+            .iter()
+            .find_map(|a| hand_written(r, a, set, seen))
+            .or_else(|| hand_named(r, name, set, seen)),
         Type::Ptr { elem }
         | Type::Slice { elem }
         | Type::Array { elem, .. }
-        | Type::Chan { elem, .. } => hand_compared(r, elem, ord, seen),
+        | Type::Chan { elem, .. } => hand_written(r, elem, set, seen),
         Type::Map { key, elem } => {
-            hand_compared(r, key, ord, seen).or_else(|| hand_compared(r, elem, ord, seen))
+            hand_written(r, key, set, seen).or_else(|| hand_written(r, elem, set, seen))
         }
-        Type::Tuple { elems } => elems.iter().find_map(|e| hand_compared(r, e, ord, seen)),
+        Type::Tuple { elems } => elems.iter().find_map(|e| hand_written(r, e, set, seen)),
         _ => None,
     }
+}
+
+/// `hand_written` of the type named `name`: in `set` itself, or holding one that is.
+fn hand_named(
+    r: &Reader,
+    name: &str,
+    set: &BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+) -> Option<String> {
+    if set.contains(name) {
+        return Some(name.to_string());
+    }
+    if !seen.insert(name.to_string()) {
+        return None;
+    }
+    r.held
+        .get(name)?
+        .iter()
+        .find_map(|n| hand_named(r, n, set, seen))
 }
 
 fn strip_ref(e: &syn::Expr) -> &syn::Expr {
@@ -1099,7 +1122,15 @@ impl<'r> Fx<'r> {
             mut_refs: Vec::new(),
             lambdas: Vec::new(),
             map_kinds: BTreeMap::new(),
+            at_line: None,
         }
+    }
+
+    /// `reason`, refused at the line of `n`: the `foreign` of the statement holding `n` is at
+    /// that line.
+    fn refused_at(&mut self, n: &impl Spanned, reason: String) -> String {
+        self.at_line = Some((self.pos(n), reason.clone()));
+        reason
     }
 
     fn pos(&self, n: &impl Spanned) -> String {
@@ -1181,7 +1212,10 @@ impl<'r> Fx<'r> {
     }
 
     fn foreign(&mut self, n: &(impl Spanned + crate::calls::Listed), reason: String) -> Stmt {
-        let pos = self.pos(n);
+        let pos = match self.at_line.take() {
+            Some((at, r)) if r == reason => at,
+            _ => self.pos(n),
+        };
         let src = src_of(n);
         let calls = n.listed(self.r);
         let reason = crate::one_line(&reason);
@@ -2824,9 +2858,9 @@ impl<'r> Fx<'r> {
                     return Err("a match guard other than `v if v == e`".into());
                 }
                 if let Some(n) = hand_compared(self.r, &tt, false, &mut BTreeSet::new()) {
-                    return Err(format!(
+                    return Err(self.refused_at(&**guard, format!(
                         "a match guard `v if v == e` through the PartialEq of {n}, which the crate writes by hand: Rust calls that impl, where Go's `case` compares as its built-in operator"
-                    ));
+                    )));
                 }
                 values.push(self.val(strip_ref(&b.right), Some(&tt))?);
             }
@@ -3801,9 +3835,9 @@ impl<'r> Fx<'r> {
                 } else {
                     "PartialEq"
                 };
-                return Err(format!(
+                return Err(self.refused_at(b, format!(
                     "`{op}` through the {tr} of {n}, which the crate writes by hand: Rust calls that impl, where cir/1 compares as Go's built-in operator"
-                ));
+                )));
             }
         }
         let t = match kind {
