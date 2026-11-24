@@ -1,0 +1,85 @@
+{
+  "format": "cir/1",
+  "name": "store",
+  "path": "example.com/store",
+  "reader": {"language": "go", "name": "codespec-read-go", "version": "0.12.0"},
+  "doc": "Package store keeps items.",
+  "types": [
+    {"k": "struct", "name": "Shelf", "exported": true,
+     "fields": [{"name": "Items", "t": {"k": "int", "width": "platform", "signed": true}}],
+     "doc": "Shelf holds items.", "pos": "store.go:5"}
+  ],
+  "funcs": [
+    {"name": "Load", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "3", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:11"}
+     ],
+     "doc": "Load gives the number of items.", "pos": "store.go:10"},
+    {"name": "LoadCached", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "4", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:16"}
+     ],
+     "doc": "LoadCached gives the number of items, cached.", "pos": "store.go:15"},
+    {"name": "Fetch", "exported": true,
+     "params": [{"name": "n", "t": {"k": "int", "width": "platform", "signed": true}}],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "var", "name": "n", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:21"}
+     ],
+     "doc": "Fetch gives n items.", "pos": "store.go:20"},
+    {"name": "spare", "exported": false, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "5", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:25"}
+     ],
+     "pos": "store.go:24"},
+    {"name": "Sum", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "binop", "op": "+",
+          "x": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "platform", "signed": true}},
+          "y": {"k": "call", "name": "Fetch",
+                "args": [{"k": "lit", "value": "1", "t": {"k": "int", "width": "platform", "signed": true}}],
+                "t": {"k": "int", "width": "platform", "signed": true}},
+          "t": {"k": "int", "width": "platform", "signed": true}}
+       ], "pos": "store.go:30"}
+     ],
+     "doc": "Sum adds the items.", "pos": "store.go:29"},
+    {"name": "size", "exported": false,
+     "recv": {"name": "s", "t": {"k": "named", "name": "Shelf"}},
+     "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "field", "x": {"k": "var", "name": "s", "t": {"k": "named", "name": "Shelf"}},
+          "name": "Items", "t": {"k": "int", "width": "platform", "signed": true}}
+       ], "pos": "store.go:36"}
+     ],
+     "doc": "size gives the items of the shelf.\nIt is a method.", "pos": "store.go:35"},
+    {"name": "weight", "exported": false,
+     "recv": {"name": "s", "t": {"k": "named", "name": "Shelf"}},
+     "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "2", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:40"}
+     ],
+     "pos": "store.go:39"},
+    {"name": "tidy", "exported": false, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "0", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "store.go:44"}
+     ],
+     "pos": "store.go:43"}
+  ],
+  "layout": ["type:Shelf", "func:Load", "func:LoadCached", "func:Fetch", "func:spare", "func:Sum",
+             "func:Shelf.size", "func:Shelf.weight", "func:tidy"],
+  "methods": [
+    {"t": "Shelf", "methods": [
+      {"name": "size", "sig": "func() int", "target": {"k": "method", "recv": "Shelf", "name": "size", "pos": "store.go:35"}},
+      {"name": "weight", "sig": "func() int", "target": {"k": "method", "recv": "Shelf", "name": "weight", "pos": "store.go:39"}}
+    ]}
+  ]
+}
