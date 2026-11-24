@@ -7,7 +7,7 @@ title: The Rust reader reads a shift only when its count is proven below the wid
 summary: A << or >> whose count is not proven below the operand's width is refused at its line, not read as Go's shift; the profile-aware reading comes with story:rust-reader-integer-overflow.
 relations:
 - decomposes: epic:async-network-service-translation
-- depends_on: story:rust-reader-integer-overflow
+- informed_by: story:rust-reader-integer-overflow
 scope:
 - confidence: cited
   path: CHANGELOG.md
