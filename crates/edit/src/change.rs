@@ -2,14 +2,15 @@
 //! its span documents into (1) the expected set `S'` on `cir/1` (`docs/code-edit-language.md`
 //! § 5) and (2) text edits of the source files. Pure: no process, no file system, no adapter.
 //!
-//! - Every refusal of § 7.1 that applies to an operation is computed here ([`crate::rename`]),
-//!   over the `cir/1` set and the span documents; a set with any refusal plans nothing and
-//!   returns every refusal.
+//! - Every refusal of § 7.1 that applies to an operation is computed here ([`crate::rename`],
+//!   [`crate::retarget`], [`crate::delete`]), over the `cir/1` set and the span documents; a set
+//!   with any refusal plans nothing and returns every refusal.
 //! - Edits of several rows that are byte-identical merge; overlapping different ones refuse the
 //!   set (`overlap`). A row equal to an earlier one is that row once.
 //! - Edits are sorted by file path, then start, and applied from the end of a file
 //!   ([`apply`]). An edit that changes the number of lines moves every later position of that
-//!   file in `S'` ([`shift_lines`]); a rename never does.
+//!   file in `S'` ([`shift_lines`]): a delete does, a rename or retarget never. Deletes apply
+//!   to `S'` after every other operation.
 //! - `S'` takes the reader's spelling `o'` of each new name ([`ChangeSet::expected`]): Go keeps
 //!   the name as written, the Rust reader writes it in Go spelling. [`crate::compare`] takes
 //!   `o'` from the re-read declaration.
@@ -19,6 +20,7 @@ use std::collections::BTreeSet;
 use codespec_model::Module;
 use serde_json::Value;
 
+use crate::delete;
 use crate::rename::{self, Resolved};
 use crate::spans::SpanDoc;
 
@@ -44,13 +46,20 @@ pub enum Op {
         old: String,
         new: String,
     },
+    /// `retarget(Site, G)`: a call node's cq id and the id of a function of the callee's module
+    /// with the callee's signature.
+    Retarget { site: String, func: String },
+    /// `delete(F)`: a function or method id.
+    Delete { func: String },
 }
 
 impl Op {
-    /// The name the source is to hold.
+    /// The name the source is to hold; empty for an operation that writes no new name
+    /// (`retarget` writes the spelling of a declaration that exists, `delete` none).
     pub fn new_name(&self) -> &str {
         match self {
             Op::Rename { new, .. } | Op::RenameField { new, .. } => new,
+            Op::Retarget { .. } | Op::Delete { .. } => "",
         }
     }
 }
@@ -129,6 +138,22 @@ pub const RULES: &[&str] = &[
     "generated",
     // two edits overlap and differ
     "overlap",
+    // `delete`: the bytes of the declaration's file were not given, or differ from those read
+    "source",
+    // `delete`: the declaration shares its first or last line with other text
+    "lines",
+    // `delete`: something of the set references the target (a call, a function value, an
+    // `extern` of another module, a Rust `use` path, an entry, a linkname, `transactional`)
+    "referenced",
+    // `delete`: the target is `main` or `init`
+    "main",
+    // `retarget`: the new callee is in another module than the current one
+    "module",
+    // `retarget`: the new callee's signature (type parameters, receiver type, parameters,
+    // results, raises) differs from the current one's, or one of them is not read
+    "signature",
+    // `retarget`: the new callee is unexported and the call is in another module
+    "unexported",
 ];
 
 /// What planning gives: the operations resolved, and the edits sorted and merged.
@@ -161,8 +186,26 @@ pub(crate) struct Planned {
     pub lines: (usize, usize),
 }
 
-/// Plan `ops` (rows in order) over `inputs`. Every refusal of every row, or the change set.
+/// The bytes of a file by its edit path (the input's `dir` joined with the span document's
+/// path), as [`crate::diff::unified`] takes them.
+pub type Source<'a> = &'a dyn Fn(&str) -> Result<Vec<u8>, String>;
+
+/// Plan `ops` (rows in order) over `inputs`, without the files' bytes: a `delete` is refused
+/// (`source`); [`plan_with`] gives them.
 pub fn plan(inputs: &[Input], ops: &[Op], opts: &Options) -> Result<ChangeSet, Vec<Refusal>> {
+    plan_with(inputs, ops, opts, &|p| {
+        Err(format!("no bytes given for {p}"))
+    })
+}
+
+/// Plan `ops` (rows in order) over `inputs`, `source` giving the bytes of a file a `delete`
+/// removes lines of. Every refusal of every row, or the change set.
+pub fn plan_with(
+    inputs: &[Input],
+    ops: &[Op],
+    opts: &Options,
+    source: Source<'_>,
+) -> Result<ChangeSet, Vec<Refusal>> {
     let cx = rename::Cx::new(inputs, opts);
     let mut refusals = Vec::new();
     let mut planned = Vec::new();
@@ -176,6 +219,8 @@ pub fn plan(inputs: &[Input], ops: &[Op], opts: &Options) -> Result<ChangeSet, V
         let r = match op {
             Op::Rename { func, new } => cx.rename(row, func, new, &mut out),
             Op::RenameField { ty, old, new } => cx.rename_field(row, ty, old, new, &mut out),
+            Op::Retarget { site, func } => cx.retarget(row, site, func, &mut out),
+            Op::Delete { func } => cx.delete(row, func, source, &mut out),
         };
         refusals.extend(out.refusals);
         planned.extend(out.edits);
@@ -270,11 +315,22 @@ impl ChangeSet {
             self.ops.len(),
             "one spelling per operation"
         );
+        // Deletes go last, from the highest index down, so every index an operation holds is
+        // the one it had in the read set.
         let mut set = self.base.clone();
+        let mut deletes = Vec::new();
         for ((_, r), o) in self.ops.iter().zip(spellings) {
-            rename::apply(&mut set, r, o);
+            match r {
+                Resolved::Delete(d) => deletes.push(d),
+                r => rename::apply(&mut set, r, o),
+            }
         }
-        for s in &self.shifts {
+        deletes.sort_by_key(|d| std::cmp::Reverse((d.func.module, d.func.opaque, d.func.index)));
+        for d in deletes {
+            delete::apply(&mut set, d);
+        }
+        // From the end of each file up, so each shift's line is still the one it was read at.
+        for s in self.shifts.iter().rev() {
             set[s.module] = shift_lines(&set[s.module], &s.pos_file, s.line, s.delta);
         }
         set
@@ -293,6 +349,19 @@ impl ChangeSet {
     /// The resolved operations, for [`crate::compare`].
     pub(crate) fn resolved(&self) -> impl Iterator<Item = &Resolved> {
         self.ops.iter().map(|(_, r)| r)
+    }
+
+    /// The index in `S'` of `funcs[index]` (or `opaque[index]`) of module `module`: lower by
+    /// the deleted functions before it.
+    pub(crate) fn index_in_expected(&self, module: usize, opaque: bool, index: usize) -> usize {
+        let before = self
+            .resolved()
+            .filter(|r| {
+                matches!(r, Resolved::Delete(d)
+                    if d.func.module == module && d.func.opaque == opaque && d.func.index < index)
+            })
+            .count();
+        index - before
     }
 
     /// The bytes of `file` with its edits applied; `bytes` unchanged when it has none.

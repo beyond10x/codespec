@@ -56,7 +56,7 @@ pub fn compare(cs: &ChangeSet, reread: &[Module]) -> Comparison {
     }
     let mut spellings = Vec::new();
     for r in cs.resolved() {
-        match spelled(r, reread) {
+        match spelled(cs, r, reread) {
             Ok(o) => spellings.push(o),
             Err(d) => return d,
         }
@@ -150,7 +150,7 @@ fn first_difference(a: &Value, b: &Value, path: String) -> Option<(String, Value
 
 /// The re-read spelling `o'` of a resolved operation's new name, or the difference saying it
 /// has none.
-fn spelled(r: &Resolved, reread: &[Module]) -> Result<String, Comparison> {
+fn spelled(cs: &ChangeSet, r: &Resolved, reread: &[Module]) -> Result<String, Comparison> {
     let missing = |m: &Module, path: String| Comparison::Differs {
         module: label(m).to_string(),
         path,
@@ -158,14 +158,17 @@ fn spelled(r: &Resolved, reread: &[Module]) -> Result<String, Comparison> {
         actual: Value::Null,
     };
     match r {
+        // Neither writes a new name.
+        Resolved::Retarget(_) | Resolved::Delete(_) => Ok(String::new()),
         Resolved::Func(t) => {
             let m = &reread[t.module];
+            let index = cs.index_in_expected(t.module, t.opaque, t.index);
             let (list, name) = if t.opaque {
-                ("opaque", m.opaque.get(t.index).map(|o| o.name.clone()))
+                ("opaque", m.opaque.get(index).map(|o| o.name.clone()))
             } else {
-                ("funcs", m.funcs.get(t.index).map(|f| f.name.clone()))
+                ("funcs", m.funcs.get(index).map(|f| f.name.clone()))
             };
-            name.ok_or_else(|| missing(m, format!("{list}.{}.name", t.index)))
+            name.ok_or_else(|| missing(m, format!("{list}.{index}.name")))
         }
         Resolved::Field(t) => {
             let m = &reread[t.module];
@@ -192,6 +195,7 @@ fn elsewhere(r: &Resolved, base: &[Module], o: &str) -> Option<Comparison> {
         actual: Value::String(o.to_string()),
     };
     match r {
+        Resolved::Retarget(_) | Resolved::Delete(_) => None,
         Resolved::Func(t) => {
             let m = &base[t.module];
             let recv = |r: Option<&str>| r == t.recv.as_deref();

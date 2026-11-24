@@ -853,10 +853,10 @@ fn refused_an_embedded_field() {
 
 #[test]
 fn every_rule_has_a_refusing_test_here() {
-    let me = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/change_sets/mod.rs"),
-    )
-    .unwrap();
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/change_sets");
+    let me = ["mod.rs", "delete_retarget.rs"]
+        .map(|f| std::fs::read_to_string(dir.join(f)).unwrap())
+        .concat();
     for rule in change::RULES {
         assert!(
             me.contains(&format!("refused_at(&r, \"{rule}\"")),
@@ -1053,3 +1053,6 @@ fn a_change_in_line_count_moves_later_positions_of_that_file() {
     let other = change::shift_lines(&m, "other.go", 0, 2);
     assert_eq!(other, m);
 }
+
+/// `retarget` and `delete` (`story:edit-engine-delete-retarget`).
+mod delete_retarget;
