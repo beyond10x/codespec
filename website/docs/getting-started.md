@@ -19,7 +19,7 @@ target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-gnu`,
 holds `codespec`, readers, writers and runners for Go, Rust, Elixir, Gleam and Odin, and writers
 and runners for C and the evaluator. Keep `beam/` beside the Elixir and Gleam programs. Download
 the archive for your machine and `SHA256SUMS`, check it and extract it. `<tag>` is the release, for
-example `0.12.0`. On macOS you can verify it with `shasum -a 256 -c --ignore-missing SHA256SUMS`.
+example `0.13.0`. On macOS you can verify it with `shasum -a 256 -c --ignore-missing SHA256SUMS`.
 
 ```shell-session
 $ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz
@@ -31,7 +31,7 @@ $ tar -xzf codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/share/code
 $ export PATH="$HOME/.local/share/codespec:$PATH"
 $ export CODESPEC_ADAPTERS="$HOME/.local/share/codespec"
 $ codespec --version
-codespec 0.12.0
+codespec 0.13.0
 ```
 
 `codespec` runs an adapter from the directory `CODESPEC_ADAPTERS` names, or from `--adapters` on
@@ -239,7 +239,7 @@ codespec-write-go
 codespec-write-odin
 codespec-write-rust
 $ target/debug/codespec --version
-codespec 0.12.0
+codespec 0.13.0
 ```
 
 A source build runs as `target/debug/codespec` with `CODESPEC_ADAPTERS=target/adapters`.
