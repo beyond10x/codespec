@@ -24,7 +24,7 @@ scope:
   path: examples/entries/
 - confidence: inferred
   path: website/docs/guides/
-revision: 7
+revision: 8
 ---
 # Story: reach entries as a reviewed data file, by name, by pattern or by recorded kind
 
@@ -62,3 +62,21 @@ function.
   `crates/effects/src/lib.rs` (entry matching), `examples/entries/`,
   `website/docs/guides` (one section), `CHANGELOG.md`. Inferred; recorded as typed scope.
 - Runs after `story:reach-three-valued` (same files).
+
+## Requested again: Java http entries and `codespec check unreached`
+
+On 2026-11-24 by the consumer of a Java service (codespec 0.12.0): `codespec check unreached`
+needs `--entry` on Java documents although the reader records `http` entries in `Module.entries`.
+Reproduced on main `5f82fff97` over documents of `codespec-read-java --all` whose
+`org.example.api` module has two `http` entries (`DirectResource.get`, `DirectResource.load`):
+
+```text
+$ codespec check unreached <documents>
+codespec: unreached: the set has no main.main; name the entries with --entry or --exported
+```
+
+With `--entry org.example.api.DirectResource.load` the other `http` entry,
+`DirectResource.get`, is reported unreached. `check unreached` shares the entry list with
+`reach`; the `kind: http` line of this story's file has to reach it too: one more acceptance
+line, a `crates/cli/tests/check.rs` case where `check unreached --entries` with `kind: http` over
+the fixture reports no `http` entry as unreached.
