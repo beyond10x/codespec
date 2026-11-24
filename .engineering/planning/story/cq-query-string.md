@@ -19,7 +19,7 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 2
+revision: 3
 ---
 # Story: cq reads the query string a call passes to an entity manager or Panache
 
@@ -91,8 +91,10 @@ a query.
   - a non-constant argument (`"… '" + label + "'"`, and a parameter passed alone): `text` empty,
     `constant` false;
   - Panache `find`, `list`, `stream`, `count`, `update` and `delete`, each with a string first
-    argument: one row each with its text.
-- Near misses, no row each: a Panache `delete(entity)` whose first argument is not a string; a
+    argument: one row each with its text; `find` and `list` once on an entity extending
+    `PanacheEntityBase` and once on a repository implementing `PanacheRepositoryBase`, a row each.
+- Near misses, no row each: a `find` and a `list` with a string argument on a project type of the
+  same method names that is not a Panache type; a Panache `delete(entity)` whose first argument is not a string; a
   `String.format` call with a literal first argument (not a query call); a method named
   `createQuery` of a type outside `jakarta.persistence`.
 - `crates/query/tests/expected/schema.txt` and `docs/query-language.md` § 4.2 name the relation;
