@@ -2,6 +2,57 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
+  functions, struct fields, calls, field accesses and struct literal fields are in the source
+  files, by byte range and line. It is checked strictly against the module and the files; the
+  `cir/1` module written beside it is the same as without `--spans`. A reader gives spans when it
+  takes `--spans` (`docs/design.md` § 2); one that does not is refused by name. The Go and Rust
+  readers give spans. The format and its rules are the crate doc of the new crate `b10x-codespec-edit`.
+- `codespec edit --lang rust [--closed-world] <crate dir>… -e <program>` renames Rust functions
+  and struct fields with a cq edit program (`edit rename(F, "fetch_all") :- func{id: F, name:
+  "Load"}.`, `edit rename_field(T, "count", "amount") :- …`) and prints the change as a unified
+  diff; nothing is written to the inputs. Every edit is checked before it is printed: the crate's
+  Cargo workspace is copied into the cache directory, the edited files are written there and read
+  again, and the result must be the expected `cir/1` exactly. A row that rests on code the fact
+  base cannot see, or names an exported function without `--closed-world`, is refused with its
+  reason (exit 1).
+- `codespec edit` also edits Go (`--lang go <package dir>…`; the copy checked is the directory of
+  the `go.mod` above the packages, a relative `replace` path in it made absolute) and runs
+  `retarget` (point a call at another function of the callee's package with the same signature)
+  and `delete` (remove a function nothing calls, with its doc comment). `--apply` writes the
+  checked change, each file through a temporary file and a rename, and only when no file read has
+  changed since; otherwise nothing is written (exit 1). `--format json` prints a
+  `codespec-edit-report/1` document: each row's status (`planned`, `applied`, `refused`) and
+  reasons, each edited file's SHA-256 before and after, and the diff. Diff and report name files
+  relative to the current directory, also for an absolute input directory. A reader that gives no
+  spans (`--lang java`) is refused by name (exit 1).
+- `codespec edit --build` compiles the checked copy before anything is written (Go: `go build` and
+  `go vet` over `./...`, test files included; Rust: `cargo check --all-targets`), so a test that
+  still calls a deleted function is caught; a failure exits 1 with the compiler's first 20 lines.
+  An edited Go file that was `gofmt`-clean is realigned by `gofmt` (as part of the diff); other
+  files keep their spacing.
+- `examples/edit` holds a Go module and a Rust crate with one edit program per operation and per
+  refusal their source can show, each with its expected diff or refusal; `task examples-edit`
+  runs them in the gate, applies each operation to a copy with `--build` and checks that a
+  refusal writes nothing. The site has a page on code edits: the notation, the operations, the
+  refusals and the verification ([Code edits](https://beyond10x.github.io/codespec/docs/concepts/code-edits)).
+- `codespec edit` refuses what leaves the read set or the reader's view: rule `reflect` for a
+  name reflection may read (a field of a Go struct with a tag or whose values go to `fmt` or into
+  an interface, a field of a Rust struct deriving `Debug` or another trait that reads field
+  names, an exported Go method whose values go outside the inputs, `fmt.Stringer`), even with
+  `--closed-world`; rule `trait` for a Rust method of an `impl` of a trait no input declares
+  (`Default`); rule `unread` also for code the reader refused that holds the name (a
+  `macro_rules!` body, a `static`), for a call of a macro of that name, and for a rename of a
+  function the reader kept opaque; a `retarget` between Rust `&self` and `self` methods, or Go
+  `T` and `*T`, is a different signature. A Rust `delete` of a function with another one below it
+  in its file is verified (it failed on every such delete). `--apply` writes every temporary file
+  before the first rename and puts back what it renamed when a rename fails, so a failed write
+  leaves every file as read (exit 2).
+
 ## 0.12.0
 
 ### Added

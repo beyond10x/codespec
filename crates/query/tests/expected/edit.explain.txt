@@ -1,0 +1,5 @@
+stratum 1
+  called(F) :- calls(_, F).
+  edit rename(F, "LoadAll") :- func{id: F, name: "Load"}.
+stratum 2
+  edit delete(F) :- func{id: F, module: "example.com/orders", kind: "func", exported: false}, !called(F).

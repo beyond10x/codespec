@@ -1,0 +1,11 @@
+--- a/source/stock/stock.go
++++ b/source/stock/stock.go
+@@ -45,8 +45,3 @@
+ 	heft := Load()
+ 	return weigh(heft)
+ }
+-
+-// spare gives a count nothing calls.
+-func spare() int {
+-	return 5
+-}

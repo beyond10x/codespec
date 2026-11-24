@@ -26,7 +26,7 @@ scope:
   path: docs/static-analysis.md
 - confidence: inferred
   path: website/docs/reference/cli.md
-revision: 5
+revision: 6
 ---
 # Story: codespec reach reports reached, unreachable or unknown, with distance and nearest entry
 
@@ -96,5 +96,5 @@ All in `crates/effects/tests/reach.rs` unless named otherwise.
   `docs/static-analysis.md`, `website/docs/reference/cli.md` (generated), `CHANGELOG.md`.
   Inferred; recorded as the story's typed scope.
 - `crates/cli/src/lib.rs` and `main.rs` are also edited by `story:mcp-server-read-tools` and
-  `story:reader-function-spans`; `story:mcp-server-read-tools` depends on this story for that
+  `story:edit-spans-format`; `story:mcp-server-read-tools` depends on this story for that
   reason only.

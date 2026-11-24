@@ -52,6 +52,18 @@ pub enum Group {
     Documents,
     Bodies,
     Graph,
+    /// Records the caller gives beside the documents: [`SourceName`].
+    Caller,
+}
+
+/// The source spelling of a node, given by the caller (`codespec edit` takes it from the span
+/// documents, `docs/code-edit-language.md` § 6.2): a fact of `source_name`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceName {
+    /// A function, type or body node id, or `<type id>#<field name>` for a struct field.
+    pub node: String,
+    /// The name as the source file spells it.
+    pub text: String,
 }
 
 /// One relation of the fact base.
@@ -374,6 +386,12 @@ pub const RELATIONS: &[Relation] = &[
         about: "the method set of t holds every method of the interface iface with an identical signature (the CHA test); iface a declared interface or one a call list names",
         group: Group::Graph,
     },
+    Relation {
+        name: "source_name",
+        fields: &[("node", N), ("text", S)],
+        about: "text is node's name as the source file spells it (a struct field's node <type id>#<field name>); given by the caller, codespec edit from the span documents, else empty",
+        group: Group::Caller,
+    },
 ];
 
 /// The relations computed when a query names them, not stored or cached.
@@ -427,6 +445,7 @@ pub fn schema_text() -> String {
                 Group::Documents => "\n// From the documents, every reader.\n\n",
                 Group::Bodies => "\n// Derived per read body.\n\n",
                 Group::Graph => "\n// From codespec's graph.\n\n",
+                Group::Caller => "\n// Given by the caller beside the documents.\n\n",
             };
         }
         let fields: Vec<String> = r
@@ -2384,6 +2403,22 @@ impl FactBase {
         FactBase::build_with(modules, &[], None)
     }
 
+    /// [`FactBase::build_with`], and `source_name` from `names`; with none, the same fact base.
+    pub fn build_with_names(
+        modules: &[Module],
+        summaries: &[codespec_effects::Summary],
+        barrier: Option<&codespec_effects::Barrier>,
+        names: &[SourceName],
+    ) -> FactBase {
+        let mut fb = FactBase::build_with(modules, summaries, barrier);
+        if !names.is_empty() {
+            let rows: BTreeSet<Vec<Value>> =
+                names.iter().map(|n| vec![s(&n.node), s(&n.text)]).collect();
+            fb.rels.insert("source_name", rows.into_iter().collect());
+        }
+        fb
+    }
+
     /// The fact base of `modules`, `effect` and `syscall` from `summaries` and `barrier` as
     /// `codespec effects` reads them.
     pub fn build_with(
@@ -2700,7 +2735,16 @@ impl FactBase {
             Value::List(_) => unreachable!("no stored relation holds a list"),
         };
         let mut rels = Map::new();
-        for r in RELATIONS.iter().filter(|r| !ON_DEMAND.contains(&r.name)) {
+        // A relation the caller gives is written only when given, so a fact base without one
+        // encodes as it did before the relation existed.
+        let given = |r: &&Relation| {
+            r.group != Group::Caller || self.rels.get(r.name).is_some_and(|v| !v.is_empty())
+        };
+        for r in RELATIONS
+            .iter()
+            .filter(|r| !ON_DEMAND.contains(&r.name))
+            .filter(given)
+        {
             let rows: Vec<J> = self
                 .rels
                 .get(r.name)

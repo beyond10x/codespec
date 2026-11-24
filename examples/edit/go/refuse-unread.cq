@@ -1,0 +1,2 @@
+// Refused: Total is called inside a go statement, code the reader keeps as foreign.
+edit rename(F, "Sum") :- func{id: F, name: "Total"}.

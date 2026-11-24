@@ -1,0 +1,39 @@
+--- a/store/item.go
++++ b/store/item.go
+@@ -3,21 +3,21 @@
+ 
+ // Item is one kind of thing on a shelf.
+ type Item struct {
+-	Name  string
++	Name     string
+-	Count int
++	Quantity int
+ }
+ 
+ // Fill gives n items of the named kind.
+ func Fill(name string, n int) Item {
+ 	return Item{
+-		Name:  name,
++		Name:     name,
+-		Count: n,
++		Quantity: n,
+ 	}
+ }
+ 
+ // Left gives how many items are left.
+ func Left(it Item) int {
+-	return it.Count
++	return it.Quantity
+ }
+ 
+ // spare gives a count nothing here calls.
+--- a/store/loose.go
++++ b/store/loose.go
+@@ -4,6 +4,6 @@
+ func Spread(name string) Item {
+ 	return Item{
+ 		Name:   name,
+-		Count:  1,
++		Quantity:  1,
+ 	}
+ }

@@ -1,0 +1,111 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 237,
+      "path": "p.go",
+      "sha256": "974511d6137711cbc348e8eb7e383c44f018aa76559dc4ad742a9aa9a01f2201"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 128,
+      "end_line": 10,
+      "file": 0,
+      "line": 10,
+      "role": "decl",
+      "start": 70
+    },
+    {
+      "at": "funcs.0",
+      "end": 79,
+      "end_line": 10,
+      "file": 0,
+      "line": 10,
+      "role": "name",
+      "start": 75,
+      "text": "Link"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.x.fields.0.name",
+      "end": 113,
+      "end_line": 10,
+      "file": 0,
+      "line": 10,
+      "role": "name",
+      "start": 110,
+      "text": "val"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.x.fields.1.name",
+      "end": 122,
+      "end_line": 10,
+      "file": 0,
+      "line": 10,
+      "role": "name",
+      "start": 118,
+      "text": "next"
+    },
+    {
+      "at": "funcs.1",
+      "end": 169,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "decl",
+      "start": 130
+    },
+    {
+      "at": "funcs.1",
+      "end": 140,
+      "end_line": 12,
+      "file": 0,
+      "line": 12,
+      "role": "name",
+      "start": 135,
+      "text": "Fresh"
+    },
+    {
+      "at": "funcs.2",
+      "end": 236,
+      "end_line": 17,
+      "file": 0,
+      "line": 14,
+      "role": "decl",
+      "start": 171
+    },
+    {
+      "at": "funcs.2",
+      "end": 180,
+      "end_line": 14,
+      "file": 0,
+      "line": 14,
+      "role": "name",
+      "start": 176,
+      "text": "Zero"
+    },
+    {
+      "at": "types.0.fields.0",
+      "end": 49,
+      "end_line": 6,
+      "file": 0,
+      "line": 6,
+      "role": "name",
+      "start": 46,
+      "text": "val"
+    },
+    {
+      "at": "types.0.fields.1",
+      "end": 60,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 56,
+      "text": "next"
+    }
+  ],
+  "unspanned": []
+}

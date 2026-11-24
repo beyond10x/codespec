@@ -1,0 +1,2 @@
+// Rename the field count of Item; the shorthand Item { count } becomes Item { amount: count }.
+edit rename_field(T, "count", "amount") :- type{id: T, name: "Item"}, type_field{type: T, name: "count"}.

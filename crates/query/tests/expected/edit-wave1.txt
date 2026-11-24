@@ -1,0 +1,12 @@
+edit rename at 4:1
+  example.com/orders.Load, LoadAll
+edit rename at 7:1
+  example.com/orders.GetLine, FetchLine
+  example.com/orders.GetTotal, FetchTotal
+edit rename_field at 11:1
+  example.com/orders.line, qty, quantity
+edit retarget at 14:1
+  example.com/orders.Gather#0.results.0, example.com/orders.LoadCached
+edit delete at 18:1
+  example.com/orders.stale
+  example.com/orders.unused

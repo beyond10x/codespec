@@ -395,6 +395,10 @@ func load(dir string) (*Module, error) {
 		f.linknames(files)
 		f.inits(files)
 	}
+	f.mod.Fset = fset
+	for _, file := range files {
+		f.mod.Sources = append(f.mod.Sources, Source{Path: fset.File(file.FileStart).Name(), Generated: ast.IsGenerated(file)})
+	}
 	f.mod.Layout = f.layout
 	return f.mod, nil
 }
@@ -614,7 +618,7 @@ func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
 	case *types.Struct:
 		td.K = "struct"
 		for i := 0; i < u.NumFields(); i++ {
-			td.Fields = append(td.Fields, Field{Name: u.Field(i).Name(), T: f.typ(u.Field(i).Type()), Embedded: u.Field(i).Embedded()})
+			td.Fields = append(td.Fields, Field{Name: u.Field(i).Name(), T: f.typ(u.Field(i).Type()), Embedded: u.Field(i).Embedded(), NameTok: fieldTok(ts, u.Field(i))})
 		}
 	case *types.Basic, *types.Signature, *types.Map, *types.Slice:
 		td.K = "newtype"
@@ -852,7 +856,8 @@ func (f *front) isPkgFunc(e ast.Expr, pkg, name string) bool {
 
 func (f *front) funcDecl(d *ast.FuncDecl) {
 	f.beginDecl(d)
-	fn := Func{Name: d.Name.Name, Exported: d.Name.IsExported(), Pos: f.pos(d.Pos()), Doc: docText(d.Doc)}
+	fn := Func{Name: d.Name.Name, Exported: d.Name.IsExported(), Pos: f.pos(d.Pos()), Doc: docText(d.Doc), NameTok: idTok(d.Name)}
+	fn.DeclPos, fn.DeclEnd = declRange(d)
 	sig := f.info.Defs[d.Name].Type().(*types.Signature)
 	if d.Body == nil {
 		f.refuse(d, d.Name.Name, "function without a Go body (assembly or linkname)")
@@ -1537,7 +1542,7 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			if o.Pkg() != f.pkg || t == nil || t.K != "func" {
 				return f.no("function value of " + f.funcTypeShape(o.Type()))
 			}
-			return Expr{K: "func_ref", Name: e.Name, T: t}, true
+			return Expr{K: "func_ref", Name: e.Name, T: t, NameTok: idTok(e)}, true
 		case *types.TypeName:
 			return f.no("type as an operand")
 		case *types.Builtin:
@@ -1572,14 +1577,14 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			if !ok {
 				return Expr{}, false
 			}
-			return Expr{K: "func_ref", Name: e.Sel.Name, X: &x, T: t}, true
+			return Expr{K: "func_ref", Name: e.Sel.Name, X: &x, T: t, NameTok: idTok(e.Sel)}, true
 		}
 		if sel := f.info.Selections[e]; sel != nil {
 			x, ok := f.receiver(e, sel)
 			if !ok {
 				return Expr{}, false
 			}
-			return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+			return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t, NameTok: idTok(e.Sel)}, true
 		}
 		if id, ok := e.X.(*ast.Ident); ok {
 			if _, ok := f.info.Uses[id].(*types.PkgName); ok {
@@ -1602,7 +1607,7 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		if !ok {
 			return Expr{}, false
 		}
-		return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+		return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t, NameTok: idTok(e.Sel)}, true
 	case *ast.FuncLit:
 		return f.lambda(e, t)
 	case *ast.IndexExpr:
@@ -1706,10 +1711,11 @@ func (f *front) literalOf(e *ast.CompositeLit, t *Type, gt types.Type) (Expr, bo
 	}
 	out := Expr{K: "struct", Name: t.Name, T: t}
 	for i, el := range e.Elts {
-		val, fv := el, (*types.Var)(nil)
+		val, fv, tok := el, (*types.Var)(nil), Tok{Why: "implicit"}
 		if kv, ok := el.(*ast.KeyValueExpr); ok {
 			val = kv.Value
 			fv, _ = f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var)
+			tok = idTok(kv.Key.(*ast.Ident))
 		} else if i < st.NumFields() {
 			fv = st.Field(i)
 		}
@@ -1721,6 +1727,7 @@ func (f *front) literalOf(e *ast.CompositeLit, t *Type, gt types.Type) (Expr, bo
 			return Expr{}, false
 		}
 		out.FieldNames = append(out.FieldNames, fv.Name())
+		out.FieldToks = append(out.FieldToks, tok)
 		out.Args = append(out.Args, f.given(v, fv.Type()))
 	}
 	return out, true
@@ -1912,7 +1919,7 @@ func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Ty
 		return f.no("call of another package's function with a type outside cir/1")
 	}
 	f.extern(x)
-	return Expr{K: "extern", Path: x.Path, Name: x.Name, Targs: targs, Args: args, T: t}, true
+	return Expr{K: "extern", Path: x.Path, Name: x.Name, Targs: targs, Args: args, T: t, NameTok: idTok(sel)}, true
 }
 
 // extern declares x once; the encoder sorts the declarations.
@@ -2041,7 +2048,7 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			if !ok {
 				return f.no("call of a generic function with a type argument outside cir/1")
 			}
-			return Expr{K: "call", Name: fun.Name, Targs: targs, Args: args, T: t}, true
+			return Expr{K: "call", Name: fun.Name, Targs: targs, Args: args, T: t, NameTok: idTok(fun)}, true
 		}
 	case *ast.SelectorExpr:
 		if x, ok := fun.X.(*ast.Ident); ok {
@@ -2061,9 +2068,11 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 				return f.ifaceCall(n, fun.Sel.Name, x, args, t)
 			}
 			if fn, ok := sel.Obj().(*types.Func); ok && fn.Pkg() != nil && fn.Pkg() != f.pkg {
-				return f.externMethod(fn, x, args, t)
+				m, ok := f.externMethod(fn, x, args, t)
+				m.NameTok = idTok(fun.Sel)
+				return m, ok
 			}
-			return Expr{K: "method", X: &x, Name: fun.Sel.Name, Args: args, T: t}, true
+			return Expr{K: "method", X: &x, Name: fun.Sel.Name, Args: args, T: t, NameTok: idTok(fun.Sel)}, true
 		}
 	}
 	// A call of a function value: a local, a parameter, a field, a function literal. A function

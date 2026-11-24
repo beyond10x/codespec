@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:sound-reach
 - depends_on: story:reader-indirect-call-sites
 - depends_on: story:reader-rust-kit
-- depends_on: story:reader-function-spans
+- depends_on: story:edit-spans-rust-reader
 scope:
 - confidence: inferred
   path: CHANGELOG.md
@@ -18,7 +18,7 @@ scope:
   path: adapters/rust-read/
 - confidence: inferred
   path: examples/reach-rust/
-revision: 4
+revision: 5
 ---
 # Story: the Rust reader states the calls it cannot resolve as indirect sites
 
@@ -50,4 +50,4 @@ gets no entry.
 - Own: `adapters/rust-read`, `examples/reach-rust`, `Taskfile.yml`, `CHANGELOG.md`. Inferred;
   recorded as typed scope.
 - Depends on `story:reader-indirect-call-sites` (the field and the matching) and on
-  `story:reader-rust-kit` and `story:reader-function-spans` (the same adapter).
+  `story:reader-rust-kit` and `story:edit-spans-rust-reader` (the same adapter).

@@ -1,0 +1,3 @@
+// Refused: two rows rename spare to different names.
+edit rename(F, "extra") :- func{id: F, name: "spare"}.
+edit rename(F, "backup") :- func{id: F, name: "spare"}.

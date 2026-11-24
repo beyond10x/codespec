@@ -1,0 +1,31 @@
+--- a/source/stock/stock.go
++++ b/source/stock/stock.go
+@@ -3,8 +3,8 @@
+ 
+ // Item is one kind of good on the shelves.
+ type Item struct {
+-	Name  string
++	Name     string
+-	Count int
++	Quantity int
+ }
+ 
+ // Load gives the number of goods on the shelves.
+@@ -25,14 +25,14 @@
+ // Fill gives n goods of the named kind.
+ func Fill(name string, n int) Item {
+ 	return Item{
+-		Name:  name,
++		Name:     name,
+-		Count: n,
++		Quantity: n,
+ 	}
+ }
+ 
+ // Left gives how many goods of an item are left.
+ func Left(it Item) int {
+-	return it.Count
++	return it.Quantity
+ }
+ 
+ // weigh gives the weight of n goods.

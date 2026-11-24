@@ -1,0 +1,1 @@
+codespec edit: refused: row 1: interface: example.com/depot/stock.Sized: Shelf implements example.com/depot/stock.Sized, which has a method Size: renaming or deleting it breaks the interface

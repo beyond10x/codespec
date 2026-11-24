@@ -1,0 +1,175 @@
+{
+  "format": "cir/1",
+  "name": "orders",
+  "path": "example.com/orders",
+  "reader": {"language": "go", "name": "hand-written", "version": "0"},
+  "types": [
+    {
+      "k": "struct",
+      "name": "line",
+      "exported": false,
+      "fields": [
+        {"name": "qty", "t": {"k": "int", "width": "platform", "signed": true}},
+        {"name": "sku", "t": {"k": "string"}}
+      ],
+      "pos": "orders.go:3"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Load",
+      "exported": true,
+      "params": [{"name": "id", "t": {"k": "string"}}],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "count",
+              "args": [{"k": "var", "name": "id", "t": {"k": "string"}}],
+              "t": {"k": "int", "width": "platform", "signed": true}
+            }
+          ],
+          "pos": "orders.go:9"
+        }
+      ],
+      "pos": "orders.go:8"
+    },
+    {
+      "name": "LoadCached",
+      "exported": true,
+      "params": [{"name": "id", "t": {"k": "string"}}],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "count",
+              "args": [{"k": "var", "name": "id", "t": {"k": "string"}}],
+              "t": {"k": "int", "width": "platform", "signed": true}
+            }
+          ],
+          "pos": "orders.go:13"
+        }
+      ],
+      "pos": "orders.go:12"
+    },
+    {
+      "name": "GetLine",
+      "exported": true,
+      "params": [{"name": "id", "t": {"k": "string"}}],
+      "results": [{"k": "named", "name": "line"}],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "struct",
+              "name": "line",
+              "fields": [
+                {"name": "qty", "value": {"k": "lit", "value": "1", "t": {"k": "int", "width": "platform", "signed": true}}},
+                {"name": "sku", "value": {"k": "var", "name": "id", "t": {"k": "string"}}}
+              ],
+              "t": {"k": "named", "name": "line"}
+            }
+          ],
+          "pos": "orders.go:17"
+        }
+      ],
+      "pos": "orders.go:16"
+    },
+    {
+      "name": "GetTotal",
+      "exported": true,
+      "params": [{"name": "l", "t": {"k": "named", "name": "line"}}],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {"k": "var", "name": "l", "t": {"k": "named", "name": "line"}},
+              "name": "qty",
+              "t": {"k": "int", "width": "platform", "signed": true}
+            }
+          ],
+          "pos": "orders.go:21"
+        }
+      ],
+      "pos": "orders.go:20"
+    },
+    {
+      "name": "Gather",
+      "exported": true,
+      "params": [{"name": "id", "t": {"k": "string"}}],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "Load",
+              "args": [{"k": "var", "name": "id", "t": {"k": "string"}}],
+              "t": {"k": "int", "width": "platform", "signed": true}
+            }
+          ],
+          "pos": "orders.go:25"
+        }
+      ],
+      "pos": "orders.go:24"
+    },
+    {
+      "name": "count",
+      "exported": false,
+      "params": [{"name": "id", "t": {"k": "string"}}],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [{"k": "lit", "value": "1", "t": {"k": "int", "width": "platform", "signed": true}}],
+          "pos": "orders.go:29"
+        }
+      ],
+      "pos": "orders.go:28"
+    },
+    {
+      "name": "stale",
+      "exported": false,
+      "params": [],
+      "results": [{"k": "int", "width": "platform", "signed": true}],
+      "body": [
+        {
+          "k": "return",
+          "results": [{"k": "lit", "value": "0", "t": {"k": "int", "width": "platform", "signed": true}}],
+          "pos": "orders.go:33"
+        }
+      ],
+      "pos": "orders.go:32"
+    },
+    {
+      "name": "unused",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [],
+      "pos": "orders.go:36"
+    }
+  ],
+  "layout": [
+    "type:line",
+    "func:Load",
+    "func:LoadCached",
+    "func:GetLine",
+    "func:GetTotal",
+    "func:Gather",
+    "func:count",
+    "func:stale",
+    "func:unused"
+  ]
+}

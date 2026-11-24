@@ -1,0 +1,14 @@
+tally.Item.Add Add
+tally.Item.Add#0.results.0.fields.0 Name
+tally.Item.Add#0.results.0.fields.0.name Name
+tally.Item.Add#0.results.0.fields.1.name Count
+tally.Item.Add#0.results.0.fields.1.x Count
+tally.total total
+tally.total#1.body.0.rhs.0 Count
+tally.Total Total
+tally.Total#1.body.0.cond HasPrefix
+tally.Total#1.body.0.cond.args.0 Name
+tally.Total#1.body.0.then.0.rhs.0.args.1 Add
+tally.Total#2.results.0 total
+tally.Item#Name Name
+tally.Item#Count Count

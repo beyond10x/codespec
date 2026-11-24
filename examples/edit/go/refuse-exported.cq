@@ -1,0 +1,2 @@
+// Refused: Load is exported and --closed-world is not given.
+edit rename(F, "Fetch") :- func{id: F, name: "Load"}.

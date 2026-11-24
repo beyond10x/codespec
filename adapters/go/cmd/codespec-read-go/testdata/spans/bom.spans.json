@@ -1,0 +1,62 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 77,
+      "path": "p.go",
+      "sha256": "da24c7b322227fb10d1e0112404e750dde427e0229c29557251d730d30b9bdf1"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 42,
+      "end_line": 3,
+      "file": 0,
+      "line": 3,
+      "role": "decl",
+      "start": 14
+    },
+    {
+      "at": "funcs.0",
+      "end": 23,
+      "end_line": 3,
+      "file": 0,
+      "line": 3,
+      "role": "name",
+      "start": 19,
+      "text": "Load"
+    },
+    {
+      "at": "funcs.1",
+      "end": 76,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "decl",
+      "start": 44
+    },
+    {
+      "at": "funcs.1",
+      "end": 52,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "name",
+      "start": 49,
+      "text": "Use"
+    },
+    {
+      "at": "funcs.1.body.0.results.0",
+      "end": 72,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "name",
+      "start": 68,
+      "text": "Load"
+    }
+  ],
+  "unspanned": []
+}

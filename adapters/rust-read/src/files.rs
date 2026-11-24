@@ -144,6 +144,12 @@ pub(crate) struct Tree {
     /// The functions and impls refused for a name declared in two modules, each with its
     /// module's path and the reason: opaque functions whose calls are listed.
     pub apart: Vec<(syn::Item, String, String)>,
+    /// The path of each file read, in the order read, relative to the crate's directory (the
+    /// file's name for a source read alone), `/` between segments.
+    pub paths: Vec<String>,
+    /// Where in each file read the text `syn` parsed starts: after a byte-order mark and a `#!`
+    /// line, which a span's byte offsets do not count.
+    pub offsets: Vec<usize>,
 }
 
 impl Tree {
@@ -301,6 +307,8 @@ impl Walk {
                 span_files: BTreeMap::new(),
                 refusals: Vec::new(),
                 apart: Vec::new(),
+                paths: Vec::new(),
+                offsets: Vec::new(),
             },
             seen: BTreeMap::new(),
             bytes: 0,
@@ -342,6 +350,14 @@ impl Walk {
             self.tree.span_files.insert(sp.file(), at.rel.clone());
         }
         self.tree.files.push(at.rel.clone());
+        let bom = if src.starts_with('\u{feff}') { 3 } else { 0 };
+        self.tree
+            .offsets
+            .push(bom + ast.shebang.as_ref().map_or(0, String::len));
+        self.tree.paths.push(match &self.dirs {
+            Some(d) => rel_to(&d.krate, &d.root.join(&at.rel)),
+            None => at.rel.clone(),
+        });
         self.tree.sources.push(src);
         self.items(ast.items, at)
     }

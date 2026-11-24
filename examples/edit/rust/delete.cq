@@ -1,0 +1,2 @@
+// Delete spare, which nothing calls.
+edit delete(F) :- func{id: F, name: "spare"}, !calls(_, F).

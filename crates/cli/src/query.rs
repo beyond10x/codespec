@@ -56,6 +56,8 @@ pub fn run(a: &Args) -> Result<ExitCode, String> {
         print!("{}", codespec_query::explain(&program)?);
         return Ok(ExitCode::SUCCESS);
     }
+    // An edit item is codespec edit's: refused before any document is read.
+    program.refuse_edits()?;
     if documents.is_empty() {
         return Err(String::from("query: no documents"));
     }

@@ -1,0 +1,478 @@
+{
+  "format": "cir/1",
+  "name": "tally",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.12.0"
+  },
+  "doc": "Package tally counts items.",
+  "types": [
+    {
+      "k": "struct",
+      "name": "Item",
+      "exported": true,
+      "fields": [
+        {
+          "name": "Name",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "Count",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "Item is one counted thing.",
+      "pos": "tally.go:7"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Add",
+      "exported": true,
+      "recv": {
+        "name": "it",
+        "t": {
+          "k": "named",
+          "name": "Item"
+        }
+      },
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "named",
+          "name": "Item"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "struct",
+              "name": "Item",
+              "fields": [
+                {
+                  "name": "Name",
+                  "value": {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "it",
+                      "t": {
+                        "k": "named",
+                        "name": "Item"
+                      }
+                    },
+                    "name": "Name",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                },
+                {
+                  "name": "Count",
+                  "value": {
+                    "k": "binop",
+                    "op": "+",
+                    "x": {
+                      "k": "field",
+                      "x": {
+                        "k": "var",
+                        "name": "it",
+                        "t": {
+                          "k": "named",
+                          "name": "Item"
+                        }
+                      },
+                      "name": "Count",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "y": {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    },
+                    "t": {
+                      "k": "int",
+                      "width": "platform",
+                      "signed": true
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          ],
+          "pos": "tally.go:14"
+        }
+      ],
+      "doc": "Add returns the item with n more.",
+      "pos": "tally.go:13"
+    },
+    {
+      "name": "total",
+      "exported": false,
+      "params": [
+        {
+          "name": "items",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "named",
+              "name": "Item"
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "let",
+          "names": [
+            "sum"
+          ],
+          "rhs": [
+            {
+              "k": "lit",
+              "value": "0",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "tally.go:18"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "it",
+          "over": {
+            "k": "var",
+            "name": "items",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "assign",
+              "op": "+=",
+              "lhs": [
+                {
+                  "k": "var",
+                  "name": "sum",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "rhs": [
+                {
+                  "k": "field",
+                  "x": {
+                    "k": "var",
+                    "name": "it",
+                    "t": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  },
+                  "name": "Count",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "pos": "tally.go:20"
+            }
+          ],
+          "pos": "tally.go:19"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "sum",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "tally.go:22"
+        }
+      ],
+      "pos": "tally.go:17"
+    },
+    {
+      "name": "Total",
+      "exported": true,
+      "params": [
+        {
+          "name": "items",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "named",
+              "name": "Item"
+            }
+          }
+        },
+        {
+          "name": "prefix",
+          "t": {
+            "k": "string"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "var",
+          "name": "picked",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "named",
+              "name": "Item"
+            }
+          },
+          "pos": "tally.go:27"
+        },
+        {
+          "k": "for_range",
+          "key": "_",
+          "val": "it",
+          "over": {
+            "k": "var",
+            "name": "items",
+            "t": {
+              "k": "slice",
+              "elem": {
+                "k": "named",
+                "name": "Item"
+              }
+            }
+          },
+          "body": [
+            {
+              "k": "if",
+              "cond": {
+                "k": "extern",
+                "path": "strings",
+                "name": "HasPrefix",
+                "args": [
+                  {
+                    "k": "field",
+                    "x": {
+                      "k": "var",
+                      "name": "it",
+                      "t": {
+                        "k": "named",
+                        "name": "Item"
+                      }
+                    },
+                    "name": "Name",
+                    "t": {
+                      "k": "string"
+                    }
+                  },
+                  {
+                    "k": "var",
+                    "name": "prefix",
+                    "t": {
+                      "k": "string"
+                    }
+                  }
+                ],
+                "t": {
+                  "k": "bool"
+                }
+              },
+              "then": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "picked",
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "named",
+                          "name": "Item"
+                        }
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "intrinsic",
+                      "name": "append",
+                      "args": [
+                        {
+                          "k": "var",
+                          "name": "picked",
+                          "t": {
+                            "k": "slice",
+                            "elem": {
+                              "k": "named",
+                              "name": "Item"
+                            }
+                          }
+                        },
+                        {
+                          "k": "method",
+                          "x": {
+                            "k": "var",
+                            "name": "it",
+                            "t": {
+                              "k": "named",
+                              "name": "Item"
+                            }
+                          },
+                          "name": "Add",
+                          "args": [
+                            {
+                              "k": "lit",
+                              "value": "0",
+                              "t": {
+                                "k": "int",
+                                "width": "platform",
+                                "signed": true
+                              }
+                            }
+                          ],
+                          "t": {
+                            "k": "named",
+                            "name": "Item"
+                          }
+                        }
+                      ],
+                      "t": {
+                        "k": "slice",
+                        "elem": {
+                          "k": "named",
+                          "name": "Item"
+                        }
+                      }
+                    }
+                  ],
+                  "pos": "tally.go:30"
+                }
+              ],
+              "pos": "tally.go:29"
+            }
+          ],
+          "pos": "tally.go:28"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "call",
+              "name": "total",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "picked",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "named",
+                      "name": "Item"
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "tally.go:33"
+        }
+      ],
+      "doc": "Total sums the items whose name has the prefix — each match once.",
+      "pos": "tally.go:26"
+    }
+  ],
+  "externs": [
+    {
+      "path": "strings",
+      "name": "HasPrefix",
+      "params": [
+        {
+          "k": "string"
+        },
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "bool"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "type:Item",
+    "func:Item.Add",
+    "func:total",
+    "func:Total"
+  ]
+}

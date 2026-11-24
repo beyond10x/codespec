@@ -1,0 +1,2 @@
+// Refused: heavy calls weigh and has a local heft, which would capture the call.
+edit rename(F, "heft") :- func{id: F, name: "weigh"}.

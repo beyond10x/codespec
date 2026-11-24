@@ -34,6 +34,10 @@ Read with every package it imports, a Go repository maps down to syscalls: `code
 lists the syscalls each function may reach, `codespec reach` the dead code from given entries,
 `codespec trace` the call tree from one function down to its syscalls
 ([worked example](https://beyond10x.github.io/codespec/docs/examples/netcheck), `examples/netcheck`).
+`codespec edit` changes Go and Rust source with a cq program: rename a function or a struct
+field, point calls at another function, delete a function nothing calls. Each change is read
+again and must be the expected `cir/1` before it is printed or written
+([Code edits](https://beyond10x.github.io/codespec/docs/concepts/code-edits), `examples/edit`).
 [Vision](https://beyond10x.github.io/codespec/docs/vision) has the rules and the milestones.
 
 ## Status
@@ -84,12 +88,14 @@ output.
 | `crates/passes` | `lookup-guard` and the facts |
 | `crates/harness` | the comparison harness |
 | `crates/cli` | the `codespec` command |
+| `crates/edit` | the code edits behind `codespec edit` |
 | `crates/docs` | `codespec-docs`, the generator of the site's derived pages |
 | `adapters/go` | the Go reader and the Go writer |
 | `adapters/rust` | the Rust writer |
 | `adapters/elixir`, `adapters/gleam`, `adapters/odin` | readers, writers and native runners for typed scalar functions ([translation guide](website/docs/guides/elixir-gleam-odin.md)) |
 | `schemas/cir-1.schema.json` | the JSON Schema, generated from the model |
 | `examples/orders`, `examples/greeter` | Go programs, their `cir/1` documents and their Go and Rust outputs |
+| `examples/edit` | a Go module and a Rust crate with one edit program per operation and refusal, and their expected diffs and refusals |
 | `website/` | the documentation site |
 
 Changing the repository: [AGENTS.md](AGENTS.md).

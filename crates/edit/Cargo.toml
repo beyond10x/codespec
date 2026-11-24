@@ -1,0 +1,18 @@
+[package]
+name = "b10x-codespec-edit"
+description = "Code edits in cir/1 terms, behind codespec edit: rename, rename_field, retarget and delete as byte-span edits of Go and Rust source from the codespec-spans/1 document, gofmt's whitespace merged, the edited copy read again and compared with the expected cir/1, compiled with --build, and written only when no file read has changed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_edit"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-query = { path = "../query" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+sha2.workspace = true

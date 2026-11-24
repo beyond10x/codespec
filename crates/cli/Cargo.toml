@@ -24,6 +24,10 @@ b10x-codespec-effects = { path = "../effects" }
 b10x-codespec-check = { path = "../check" }
 b10x-codespec-query = { path = "../query" }
 b10x-codespec-eval = { path = "../eval" }
+b10x-codespec-edit = { path = "../edit" }
 serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+codespec-read-rust = { path = "../../adapters/rust-read" }

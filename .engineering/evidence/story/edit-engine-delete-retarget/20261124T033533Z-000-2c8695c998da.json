@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T03:35:33Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-engine-delete-retarget",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-edit --locked: 95 passed, 0 failed (38 new in change_sets::delete_retarget, 0.06 s total); clippy -D warnings clean; fmt clean",
+    "reference": "crates/edit/tests/change_sets/delete_retarget.rs"
+  }
+}

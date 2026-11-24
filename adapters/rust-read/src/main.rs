@@ -14,6 +14,11 @@
 //! (`codespec_model::manifest`): the features it reads, outside a `foreign` statement, from the
 //! hand-written Rust source of their conformance cases (`conformance/cases/<case>/rust/case.rs`).
 //! What it does not claim, and why, is in the crate doc of the library.
+//!
+//! `codespec-read-rust --spans <crate dir>` prints one JSON object `{"cir", "files", "spans",
+//! "unspanned", "refs"}`: the same `cir/1` module and where its nodes stand in the crate's files,
+//! the lists of a `codespec-spans/1` document (`docs/code-edit-language.md` § 6.3; what each
+//! span covers is the library's module `spans`).
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -59,8 +64,22 @@ fn main() -> ExitCode {
         print!("{}", manifest().to_json());
         return ExitCode::SUCCESS;
     }
+    if let [flag, dir] = args.as_slice()
+        && flag == "--spans"
+    {
+        return match codespec_read_rust::read_crate_spans(Path::new(dir)) {
+            Ok(out) => {
+                print!("{out}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("codespec-read-rust: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let [dir] = args.as_slice() else {
-        eprintln!("usage: codespec-read-rust <crate dir> | --describe");
+        eprintln!("usage: codespec-read-rust <crate dir> | --spans <crate dir> | --describe");
         return ExitCode::from(2);
     };
     match codespec_read_rust::read_crate(Path::new(dir)) {

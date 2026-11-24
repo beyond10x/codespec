@@ -1,0 +1,26 @@
+--- a/source/src/lib.rs
++++ b/source/src/lib.rs
+@@ -6,7 +6,7 @@
+ 
+ /// One kind of good in the yard.
+ pub struct Item {
+-    count: u32,
++    amount: u32,
+     weight: u32,
+ }
+ 
+@@ -54,12 +54,12 @@
+ 
+ /// An item of n goods.
+ pub fn make(count: u32) -> Item {
+-    Item { count, weight: 1 }
++    Item { amount: count, weight: 1 }
+ }
+ 
+ /// The goods and the weight of an item.
+ pub fn count_of(i: Item) -> u32 {
+-    i.count + i.weight
++    i.amount + i.weight
+ }
+ 
+ fn weigh(n: u32) -> u32 {

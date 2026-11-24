@@ -1,0 +1,2 @@
+// Refused: Bin::size implements the trait Measure.
+edit rename(F, "area") :- func{id: F, name: "Size"}.

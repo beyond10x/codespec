@@ -1,0 +1,62 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 103,
+      "path": "p.go",
+      "sha256": "1fac94689e73452d16033e540f22cc9d1cd02c2e835fefa9b8c6e838384ef325"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 39,
+      "end_line": 3,
+      "file": 0,
+      "line": 3,
+      "role": "decl",
+      "start": 11
+    },
+    {
+      "at": "funcs.0",
+      "end": 20,
+      "end_line": 3,
+      "file": 0,
+      "line": 3,
+      "role": "name",
+      "start": 16,
+      "text": "load"
+    },
+    {
+      "at": "funcs.1",
+      "end": 102,
+      "end_line": 9,
+      "file": 0,
+      "line": 5,
+      "role": "decl",
+      "start": 41
+    },
+    {
+      "at": "funcs.1",
+      "end": 49,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "name",
+      "start": 46,
+      "text": "Run"
+    },
+    {
+      "at": "funcs.1.body.0.rhs.0",
+      "end": 71,
+      "end_line": 6,
+      "file": 0,
+      "line": 6,
+      "role": "name",
+      "start": 67,
+      "text": "load"
+    }
+  ],
+  "unspanned": []
+}

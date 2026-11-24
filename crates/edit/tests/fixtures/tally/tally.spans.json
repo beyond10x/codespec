@@ -1,0 +1,184 @@
+{
+  "format": "codespec-spans/1",
+  "module": "tally",
+  "cir_sha256": "a7e25c43a78c3607d85eb34ce04a23d2f2fbed3e870c8bfed77e935fd320f219",
+  "files": [
+    {
+      "path": "tally.go",
+      "sha256": "814514782da184dc2186d07c410adab2521a22dd29669db2a311b15af7b66b55",
+      "len": 643,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 141,
+      "end": 261,
+      "line": 12,
+      "end_line": 15
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 193,
+      "end": 196,
+      "line": 13,
+      "end_line": 13,
+      "text": "Add"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.0",
+      "role": "name",
+      "file": 0,
+      "start": 233,
+      "end": 237,
+      "line": 14,
+      "end_line": 14,
+      "text": "Name"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.0.name",
+      "role": "name",
+      "file": 0,
+      "start": 224,
+      "end": 228,
+      "line": 14,
+      "end_line": 14,
+      "text": "Name"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.1.name",
+      "role": "name",
+      "file": 0,
+      "start": 239,
+      "end": 244,
+      "line": 14,
+      "end_line": 14,
+      "text": "Count"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.1.x",
+      "role": "name",
+      "file": 0,
+      "start": 249,
+      "end": 254,
+      "line": 14,
+      "end_line": 14,
+      "text": "Count"
+    },
+    {
+      "at": "funcs.1",
+      "role": "decl",
+      "file": 0,
+      "start": 263,
+      "end": 366,
+      "line": 17,
+      "end_line": 23
+    },
+    {
+      "at": "funcs.1",
+      "role": "name",
+      "file": 0,
+      "start": 268,
+      "end": 273,
+      "line": 17,
+      "end_line": 17,
+      "text": "total"
+    },
+    {
+      "at": "funcs.1.body.1.body.0.rhs.0",
+      "role": "name",
+      "file": 0,
+      "start": 344,
+      "end": 349,
+      "line": 20,
+      "end_line": 20,
+      "text": "Count"
+    },
+    {
+      "at": "funcs.2",
+      "role": "decl",
+      "file": 0,
+      "start": 368,
+      "end": 642,
+      "line": 25,
+      "end_line": 34
+    },
+    {
+      "at": "funcs.2",
+      "role": "name",
+      "file": 0,
+      "start": 444,
+      "end": 449,
+      "line": 26,
+      "end_line": 26,
+      "text": "Total"
+    },
+    {
+      "at": "funcs.2.body.1.body.0.cond",
+      "role": "name",
+      "file": 0,
+      "start": 545,
+      "end": 554,
+      "line": 29,
+      "end_line": 29,
+      "text": "HasPrefix"
+    },
+    {
+      "at": "funcs.2.body.1.body.0.cond.args.0",
+      "role": "name",
+      "file": 0,
+      "start": 558,
+      "end": 562,
+      "line": 29,
+      "end_line": 29,
+      "text": "Name"
+    },
+    {
+      "at": "funcs.2.body.1.body.0.then.0.rhs.0.args.1",
+      "role": "name",
+      "file": 0,
+      "start": 604,
+      "end": 607,
+      "line": 30,
+      "end_line": 30,
+      "text": "Add"
+    },
+    {
+      "at": "funcs.2.body.2.results.0",
+      "role": "name",
+      "file": 0,
+      "start": 627,
+      "end": 632,
+      "line": 33,
+      "end_line": 33,
+      "text": "total"
+    },
+    {
+      "at": "types.0.fields.0",
+      "role": "name",
+      "file": 0,
+      "start": 114,
+      "end": 118,
+      "line": 8,
+      "end_line": 8,
+      "text": "Name"
+    },
+    {
+      "at": "types.0.fields.1",
+      "role": "name",
+      "file": 0,
+      "start": 128,
+      "end": 133,
+      "line": 9,
+      "end_line": 9,
+      "text": "Count"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

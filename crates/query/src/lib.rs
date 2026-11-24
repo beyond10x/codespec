@@ -24,6 +24,13 @@
 //! summaries and barrier, for `effect` and `syscall`, to the input and to the digest; the
 //! summaries in the order given, since the first summary naming an extern gives its effects.
 //!
+//! `source_name(node, text)` holds what the caller gives beside the documents
+//! ([`FactBase::build_with_names`], [`load_with_names`]): a node's name as the source file
+//! spells it, which `codespec edit` takes from the span documents. Without names it is empty,
+//! and the digest and the cache file are those [`load_with`] writes; with names the digest adds
+//! `source_name <SHA-256>` of the pairs, sorted, so the same names in any order give the same
+//! file.
+//!
 //! `reaches_path(F, G, P)` is `reaches` with its witness `P`, the functions of a path from `F` to
 //! `G` as a path pattern over calls gives it. [`WAITING`] lists what the schema names as not
 //! built yet: nothing now.
@@ -74,9 +81,18 @@
 //! written. One `?- body.` is the query: its rows are the bindings of its variables outside
 //! aggregates and negations, in the order they first occur, sorted.
 //!
+//! An edit item, `edit <op>(args) :- body.` (`docs/code-edit-language.md` § 3.1), takes the
+//! place of the query: its operation is one of [`EDIT_OPS`] (`rename/2`, `rename_field/3`,
+//! `retarget/2`, `delete/1`), each argument a variable its body binds or a value. An unknown
+//! operation, a wrong number of arguments, an argument `_` or one no row binds, and a query
+//! beside an edit item are refused at their position. [`edit_rows`] gives each item's rows in
+//! program order, sorted, the arguments in order, each definite or possible with its sites as a
+//! query's row; [`run`] and `codespec query` refuse a program with an edit item, naming it and
+//! `codespec edit`.
+//!
 //! Evaluation is bottom-up and semi-naive, stratum by stratum; a negation or an aggregate inside
-//! a recursion is refused. [`explain`] prints the rules and properties under the stratum of
-//! their heads.
+//! a recursion is refused. [`explain`] prints the rules, properties and edit items under the
+//! stratum of their heads.
 //!
 //! # Path patterns
 //!
@@ -194,9 +210,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub use engine::MAX_BODIES;
-pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, WAITING, schema_text};
+pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, SourceName, WAITING, schema_text};
 pub use regex::{INST_BYTES, MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
-pub use syntax::{MAX_BODY, MAX_NESTING, MAX_REGISTERS, Program};
+pub use syntax::{EDIT_OPS, Edit, MAX_BODY, MAX_NESTING, MAX_REGISTERS, Program};
 
 /// The format of the JSON report.
 pub const REPORT_FORMAT: &str = "codespec-query-report/1";
@@ -259,6 +275,18 @@ pub fn digest(documents: &[Vec<u8>]) -> String {
 /// then `summary <SHA-256>` for each summary, in the order given (the first summary naming an
 /// extern gives its effects), and `barrier <SHA-256>`.
 pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option<&[u8]>) -> String {
+    digest_names(documents, summaries, barrier, &[])
+}
+
+/// [`digest_with`], then, when names are given, `source_name <SHA-256>` of the names as a JSON
+/// array of `[node, text]` pairs, sorted and each once: the same names in any order give the
+/// same key, no names the key of [`digest_with`].
+fn digest_names(
+    documents: &[Vec<u8>],
+    summaries: &[Vec<u8>],
+    barrier: Option<&[u8]>,
+    names: &[SourceName],
+) -> String {
     let mut each: Vec<String> = documents.iter().map(|d| sha256::hex(d)).collect();
     each.sort();
     let mut key = format!("{}\n{}\n", FACTS_FORMAT, env!("CARGO_PKG_VERSION"));
@@ -273,6 +301,15 @@ pub fn digest_with(documents: &[Vec<u8>], summaries: &[Vec<u8>], barrier: Option
     }
     if let Some(b) = barrier {
         key += &format!("barrier {}\n", sha256::hex(b));
+    }
+    if !names.is_empty() {
+        let pairs: std::collections::BTreeSet<(&str, &str)> = names
+            .iter()
+            .map(|n| (n.node.as_str(), n.text.as_str()))
+            .collect();
+        let json = serde_json::to_vec(&pairs.into_iter().collect::<Vec<_>>())
+            .expect("pairs of strings serialize");
+        key += &format!("source_name {}\n", sha256::hex(&json));
     }
     sha256::hex(key.as_bytes())
 }
@@ -314,6 +351,17 @@ pub fn load_with(
     load_in(paths, summaries, barrier, cache_dir().as_deref())
 }
 
+/// [`load_with`], and `source_name` from the caller's `names`, part of the cache key when given:
+/// with none, the same fact base and the same cache file as [`load_with`].
+pub fn load_with_names(
+    paths: &[PathBuf],
+    summaries: &[PathBuf],
+    barrier: Option<&Path>,
+    names: &[SourceName],
+) -> Result<Loaded, String> {
+    load_in_with_names(paths, summaries, barrier, names, cache_dir().as_deref())
+}
+
 /// [`load_with`] with the cache in the directory `cache`, or none. Every document is read and
 /// validated first; then the facts are read from `<cache>/<digest>.facts` when that file names
 /// the same digest, else built from the documents and written there. A cache directory inside the
@@ -323,6 +371,17 @@ pub fn load_in(
     paths: &[PathBuf],
     summaries: &[PathBuf],
     barrier: Option<&Path>,
+    cache: Option<&Path>,
+) -> Result<Loaded, String> {
+    load_in_with_names(paths, summaries, barrier, &[], cache)
+}
+
+/// [`load_with_names`] with the cache in the directory `cache`, or none, as [`load_in`].
+pub fn load_in_with_names(
+    paths: &[PathBuf],
+    summaries: &[PathBuf],
+    barrier: Option<&Path>,
+    names: &[SourceName],
     cache: Option<&Path>,
 ) -> Result<Loaded, String> {
     if paths.is_empty() {
@@ -358,7 +417,7 @@ pub fn load_in(
             codespec_model::Module::from_json(d).map_err(|e| format!("{}: {e}", p.display()))?,
         );
     }
-    let digest = digest_with(&docs, &sum_bytes, bar_bytes.as_deref());
+    let digest = digest_names(&docs, &sum_bytes, bar_bytes.as_deref(), names);
     let inputs: Vec<&Path> = paths
         .iter()
         .chain(summaries)
@@ -378,7 +437,7 @@ pub fn load_in(
             cache,
         });
     }
-    let facts = FactBase::build_with(&modules, &sums, bar.as_ref());
+    let facts = FactBase::build_with_names(&modules, &sums, bar.as_ref(), names);
     if let (Some(dir), Some(file)) = (dir, &cache)
         && std::fs::create_dir_all(dir).is_ok()
     {
@@ -512,6 +571,17 @@ pub struct Row {
     pub unknown: Vec<Site>,
 }
 
+impl Row {
+    /// `definite`, or `possible` when it rests on unknown sites.
+    pub fn certainty(&self) -> &'static str {
+        if self.unknown.is_empty() {
+            "definite"
+        } else {
+            "possible"
+        }
+    }
+}
+
 /// What a query gives: its variables and its rows, sorted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answer {
@@ -560,7 +630,7 @@ impl Answer {
             .map(|r| {
                 let mut o = json!({
                     "values": r.values.iter().map(j).collect::<Vec<_>>(),
-                    "certainty": if r.unknown.is_empty() { "definite" } else { "possible" },
+                    "certainty": r.certainty(),
                 });
                 if !r.unknown.is_empty() {
                     o["unknown"] = r
@@ -579,8 +649,43 @@ impl Answer {
     }
 }
 
-/// Run the query of `p` over `facts`, the names lists of `names` replacing the module's own.
+/// Run the query of `p` over `facts`, the names lists of `names` replacing the module's own. A
+/// program with an edit item is refused, naming it: [`edit_rows`] runs it.
 pub fn run(p: &Program, facts: &FactBase, names: &Names) -> Result<Answer, String> {
+    p.refuse_edits()?;
     let c = engine::compile(p, names)?;
     Ok(engine::evaluate(&c, facts))
+}
+
+/// The rows of one edit item: each binds the operation's arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditRows {
+    /// The operation, one of [`EDIT_OPS`].
+    pub op: String,
+    /// Where the item stands in the program, 1-based.
+    pub line: usize,
+    pub col: usize,
+    /// Its rows, sorted: the arguments in the operation's order, and the unknown sites a
+    /// possible row rests on.
+    pub rows: Vec<Row>,
+}
+
+/// The rows of each edit item of `p` over `facts`, in program order (`docs/code-edit-language.md`
+/// § 3.1). A program without an edit item is refused, and so is an item with an argument that a
+/// row of its body does not bind, at the item's position.
+pub fn edit_rows(p: &Program, facts: &FactBase) -> Result<Vec<EditRows>, String> {
+    if p.edits.is_empty() {
+        return Err("no edit item: write edit <op>(…) :- body.".into());
+    }
+    let c = engine::compile(p, &Names::default())?;
+    Ok(p.edits
+        .iter()
+        .zip(engine::evaluate_edits(&c, facts))
+        .map(|(e, rows)| EditRows {
+            op: e.op.clone(),
+            line: e.line,
+            col: e.col,
+            rows,
+        })
+        .collect())
 }

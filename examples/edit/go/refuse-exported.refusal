@@ -1,0 +1,1 @@
+codespec edit: refused: row 1: exported: example.com/depot/stock.Load: it is exported and --closed-world is not given: callers outside the inputs are not read

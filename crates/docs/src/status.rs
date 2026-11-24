@@ -381,6 +381,14 @@ pub const CAPABILITIES: &[Capability] = &[
         evidence: Some("Taskfile.yml::eval-kit"),
         href: "/docs/reference/cli",
     },
+    Capability {
+        area: "Editing",
+        label: "codespec edit",
+        detail: "A cq program renames functions and struct fields, points calls at another function and deletes functions nothing calls, in Go and Rust source; each change is read again and must equal the expected cir/1 before it is printed or written, --build compiles the changed copy, and a row the reader could not see whole is refused, naming the site.",
+        status: "shipped",
+        evidence: Some("Taskfile.yml::examples-edit"),
+        href: "/docs/concepts/code-edits",
+    },
 ];
 
 /// Whether `source`, the text of `file`, defines the check `name`.

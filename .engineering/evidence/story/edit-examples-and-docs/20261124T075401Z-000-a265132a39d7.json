@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T07:54:01Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-examples-and-docs",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "slot task examples-edit: exit 0 in 14-18 s wall (self-test detects a one-byte change; go 4 operations and 6 refusals, rust 4 and 5; dry runs equal to .diff/.refusal and exit code, sources unchanged; operations applied with --apply --build on copies and run again with no change; refusals with --apply wrote nothing); self-test with the comparison forced equal: exit 1 'a .diff with one byte changed compared equal'; cargo test -p codespec-docs --locked: 46 passed (every_generated_file_is_current_in_this_tree, every_shipped_capability_rests_on_a_test_that_exists; before regeneration: cli.md is stale); cargo test -p b10x-codespec-edit -p b10x-codespec-cli --locked: all passed, 35 s; check-parts inventory: 143 targets",
+    "reference": "scripts/examples-edit.sh"
+  }
+}

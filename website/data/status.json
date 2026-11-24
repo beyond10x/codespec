@@ -281,6 +281,13 @@
       "href": "/docs/reference/cli",
       "label": "Evaluator",
       "status": "shipped"
+    },
+    {
+      "area": "Editing",
+      "detail": "A cq program renames functions and struct fields, points calls at another function and deletes functions nothing calls, in Go and Rust source; each change is read again and must equal the expected cir/1 before it is printed or written, --build compiles the changed copy, and a row the reader could not see whole is refused, naming the site.",
+      "href": "/docs/concepts/code-edits",
+      "label": "codespec edit",
+      "status": "shipped"
     }
   ],
   "source": "codespec-docs, from its capability list; every shipped item names the test or gate task that holds it",

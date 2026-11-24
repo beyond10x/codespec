@@ -1,0 +1,28 @@
+--- a/front/front.go
++++ b/front/front.go
+@@ -5,12 +5,12 @@
+ 
+ // Count gives the number of items to show.
+ func Count() int {
+-	return stock.Load() * 2
++	return stock.LoadCached() * 2
+ }
+ 
+ // Heavy gives the weight of the shelves.
+ func Heavy() int {
+-	return stock.Weight(stock.Load())
++	return stock.Weight(stock.LoadCached())
+ }
+ 
+ // Refresh counts again in the background.
+--- a/stock/stock.go
++++ b/stock/stock.go
+@@ -13,7 +13,7 @@
+ 
+ // Total adds two counts.
+ func Total() int {
+-	return Load() + Load()
++	return LoadCached() + LoadCached()
+ }
+ 
+ // spare is called by nothing.

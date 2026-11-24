@@ -15,8 +15,8 @@ use std::rc::Rc;
 use crate::facts::{FactBase, ON_DEMAND, Ty, relation};
 use crate::regex::Regex;
 use crate::syntax::{
-    AggFn, Args, Atom, Avoid, Event, Field, Lit, MAX_BODY, Op, Over, PathForm, PathPat, Program,
-    Property, Rule, Scope, Term, placeholders, query_text, registers_read,
+    AggFn, Args, Atom, Avoid, Edit, Event, Field, Lit, MAX_BODY, Op, Over, PathForm, PathPat,
+    Program, Property, Rule, Scope, Term, placeholders, query_text, registers_read,
 };
 use crate::{Answer, CHECK_LISTS, Glob, Names, Row, Value};
 
@@ -396,8 +396,11 @@ pub struct Compiled {
     rules: Vec<CRule>,
     /// The rules of each derived relation.
     by_head: Vec<Vec<usize>>,
-    query: usize,
+    /// The query's relation, `__query`; none in a program of edit items.
+    query: Option<usize>,
     vars: Vec<String>,
+    /// Each edit item's relation, `__edit<k>`, in program order.
+    edits: Vec<usize>,
     /// Each derived relation's stratum, from 1.
     strata: Vec<usize>,
     props: Vec<CProp>,
@@ -557,6 +560,9 @@ struct Compiler<'a> {
     fresh: usize,
     /// The bodies compiled so far.
     bodies: usize,
+    /// How messages name the rule of a derived relation the compiler made for an item: an edit
+    /// item by its position and head.
+    labels: HashMap<String, String>,
 }
 
 fn negate(op: Op) -> Option<Op> {
@@ -1027,10 +1033,11 @@ impl Compiler<'_> {
                 r.head
             ));
         };
+        let label = self.labels.get(&r.head.rel).cloned();
         let what = if r.head.rel == "__query" {
             "the query".to_string()
         } else {
-            r.head.to_string()
+            label.clone().unwrap_or_else(|| r.head.to_string())
         };
         let n = bodies(&r.body);
         if n > MAX_BODIES {
@@ -1071,7 +1078,11 @@ impl Compiler<'_> {
                 let elsewhere = |v: &str| others.iter().any(|o| o == v);
                 self.lower(l, &elsewhere, &mut lows)?;
             }
-            let plan = self.plan(&r.head.to_string(), head_terms, lows)?;
+            let plan = self.plan(
+                &label.clone().unwrap_or_else(|| r.head.to_string()),
+                head_terms,
+                lows,
+            )?;
             self.rules.push(CRule {
                 head,
                 args: plan.0,
@@ -1345,9 +1356,9 @@ fn query_vars(body: &[Lit]) -> Vec<String> {
 
 /// Compile a program with the names lists `names` gives over the program's own.
 pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
-    let Some(query) = &p.query else {
+    if p.query.is_none() && p.edits.is_empty() {
         return Err("the module has no query: add one, ?- …".into());
-    };
+    }
     // A names file serves several modules and codespec check: a list this module does not
     // declare is left alone, one neither it nor codespec check has is refused, as codespec check
     // refuses it.
@@ -1375,6 +1386,7 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         lists: HashMap::new(),
         fresh: 0,
         bodies: 0,
+        labels: HashMap::new(),
     };
     for r in &p.rules {
         if relation(&r.head.rel).is_some() || Builtin::of(&r.head.rel).is_some() {
@@ -1415,18 +1427,43 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
     for (prop, head) in p.properties.iter().zip(heads) {
         props.push(c.property(prop, head)?);
     }
-    let vars = query_vars(query);
-    let q = c.derived("__query", vars.len())?;
-    c.rule(
-        &Rule {
-            head: Atom {
-                rel: "__query".into(),
-                args: Args::Positional(vars.iter().cloned().map(Term::Var).collect()),
+    let mut vars = Vec::new();
+    let mut q = None;
+    if let Some(query) = &p.query {
+        vars = query_vars(query);
+        let d = c.derived("__query", vars.len())?;
+        c.rule(
+            &Rule {
+                head: Atom {
+                    rel: "__query".into(),
+                    args: Args::Positional(vars.iter().cloned().map(Term::Var).collect()),
+                },
+                body: query.clone(),
             },
-            body: query.clone(),
-        },
-        q,
-    )?;
+            d,
+        )?;
+        q = Some(d);
+    }
+    // Each edit item is a rule of a relation of its own, its arguments the head: a row binds
+    // every argument, or the item is refused at its position.
+    let mut edits = Vec::new();
+    for (k, e) in p.edits.iter().enumerate() {
+        let rel = format!("__edit{k}");
+        let d = c.derived(&rel, e.args.len())?;
+        c.labels
+            .insert(rel.clone(), format!("{}:{}: {}", e.line, e.col, e.head()));
+        c.rule(
+            &Rule {
+                head: Atom {
+                    rel,
+                    args: Args::Positional(e.args.clone()),
+                },
+                body: e.body.clone(),
+            },
+            d,
+        )?;
+        edits.push(d);
+    }
     let strata = stratify(&c.derived, &c.rules, &props)?;
     let mut by_head: Vec<Vec<usize>> = vec![Vec::new(); c.derived.len()];
     for (k, r) in c.rules.iter().enumerate() {
@@ -1443,6 +1480,7 @@ pub fn compile(p: &Program, names: &Names) -> Result<Compiled, String> {
         rules: c.rules,
         query: q,
         vars,
+        edits,
         strata,
         props,
         prop_of,
@@ -1778,7 +1816,7 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<(),
     Ok(())
 }
 
-/// The user's rules under the stratum of their heads, then the query.
+/// The user's rules, properties and edit items under the stratum of their heads, then the query.
 pub fn explain(p: &Program) -> Result<String, String> {
     let c = compile(p, &Names::default())?;
     let mut by: BTreeMap<usize, Vec<&Rule>> = BTreeMap::new();
@@ -1794,8 +1832,17 @@ pub fn explain(p: &Program) -> Result<String, String> {
             .or_default()
             .push(pr);
     }
+    let mut edits: BTreeMap<usize, Vec<&Edit>> = BTreeMap::new();
+    for (e, &d) in p.edits.iter().zip(&c.edits) {
+        edits.entry(c.strata[d]).or_default().push(e);
+    }
     let mut out = String::new();
-    let strata: BTreeSet<usize> = by.keys().chain(props.keys()).copied().collect();
+    let strata: BTreeSet<usize> = by
+        .keys()
+        .chain(props.keys())
+        .chain(edits.keys())
+        .copied()
+        .collect();
     for s in strata {
         out += &format!("stratum {s}\n");
         for pr in props.get(&s).into_iter().flatten() {
@@ -1804,12 +1851,14 @@ pub fn explain(p: &Program) -> Result<String, String> {
         for r in by.get(&s).into_iter().flatten() {
             out += &format!("  {r}\n");
         }
+        for e in edits.get(&s).into_iter().flatten() {
+            out += &format!("  {e}\n");
+        }
     }
-    out += "query\n";
-    out += &format!(
-        "  {}\n",
-        query_text(p.query.as_deref().expect("compile requires a query"))
-    );
+    if let Some(query) = &p.query {
+        out += "query\n";
+        out += &format!("  {}\n", query_text(query));
+    }
     Ok(out)
 }
 
@@ -3544,17 +3593,34 @@ impl std::ops::Deref for StoreRef<'_> {
     }
 }
 
-/// Run a compiled program over a fact base.
+/// Run a compiled program's query over a fact base.
 pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
     evaluate_counting(c, fb).0
 }
 
 /// [`evaluate`], with how many functions the `reaches_path` witnesses it built hold.
 fn evaluate_counting(c: &Compiled, fb: &FactBase) -> (Answer, usize) {
+    let q = c.query.expect("a program with a query");
+    let (mut rows, built) = evaluate_roots(c, fb, &[q]);
+    let answer = Answer {
+        vars: c.vars.clone(),
+        rows: rows.pop().expect("one root"),
+    };
+    (answer, built)
+}
+
+/// The rows of each of a compiled program's edit items over a fact base, in program order.
+pub fn evaluate_edits(c: &Compiled, fb: &FactBase) -> Vec<Vec<Row>> {
+    evaluate_roots(c, fb, &c.edits).0
+}
+
+/// The rows of each relation of `roots`, sorted, and how many functions the `reaches_path`
+/// witnesses built hold.
+fn evaluate_roots(c: &Compiled, fb: &FactBase, roots: &[usize]) -> (Vec<Vec<Row>>, usize) {
     let n = c.derived.len();
-    // The relations the query needs, and those it needs an upper bound of.
+    // The relations the roots need, and those they need an upper bound of.
     let mut need = vec![false; n];
-    let mut stack = vec![c.query];
+    let mut stack = roots.to_vec();
     while let Some(d) = stack.pop() {
         if std::mem::replace(&mut need[d], true) {
             continue;
@@ -3642,33 +3708,34 @@ fn evaluate_counting(c: &Compiled, fb: &FactBase) -> (Answer, usize) {
             ev.stratum(&up, Mode::Upper);
         }
     }
-    let q = &ev.lower[c.query];
-    let mut rows: Vec<(Vec<V>, &Ann)> = q.tuples.iter().cloned().zip(&q.anns).collect();
-    rows.sort();
-    let answer = Answer {
-        vars: c.vars.clone(),
-        rows: rows
-            .into_iter()
-            .map(|(t, a)| {
-                let extra = ev.extra.borrow();
-                let mut unknown: Vec<crate::Site> = a
-                    .iter()
-                    .map(|&k| match fb.sites.get(k as usize) {
-                        Some(s) => s.clone(),
-                        None => extra[k as usize - fb.sites.len()].clone(),
-                    })
-                    .collect();
-                unknown.sort_by(|x, y| {
-                    (&x.site, &x.pos, &x.reason).cmp(&(&y.site, &y.pos, &y.reason))
-                });
-                Row {
-                    values: t.iter().map(V::value).collect(),
-                    unknown,
-                }
-            })
-            .collect(),
-    };
-    (answer, ev.witness_elems.get())
+    let answers = roots
+        .iter()
+        .map(|&root| {
+            let q = &ev.lower[root];
+            let mut rows: Vec<(Vec<V>, &Ann)> = q.tuples.iter().cloned().zip(&q.anns).collect();
+            rows.sort();
+            rows.into_iter()
+                .map(|(t, a)| {
+                    let extra = ev.extra.borrow();
+                    let mut unknown: Vec<crate::Site> = a
+                        .iter()
+                        .map(|&k| match fb.sites.get(k as usize) {
+                            Some(s) => s.clone(),
+                            None => extra[k as usize - fb.sites.len()].clone(),
+                        })
+                        .collect();
+                    unknown.sort_by(|x, y| {
+                        (&x.site, &x.pos, &x.reason).cmp(&(&y.site, &y.pos, &y.reason))
+                    });
+                    Row {
+                        values: t.iter().map(V::value).collect(),
+                        unknown,
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    (answers, ev.witness_elems.get())
 }
 
 #[cfg(test)]

@@ -6,8 +6,9 @@ status: draft
 title: codespec reach answers for a list of file:line positions
 relations:
 - decomposes: epic:sound-reach
-- depends_on: story:reader-function-spans
 - depends_on: story:reader-indirect-call-sites
+- depends_on: story:edit-spans-format
+- depends_on: story:edit-spans-go-reader
 scope:
 - confidence: inferred
   path: CHANGELOG.md
@@ -21,7 +22,7 @@ scope:
   path: crates/effects/src/lib.rs
 - confidence: inferred
   path: website/docs/guides/
-revision: 6
+revision: 7
 ---
 # Story: codespec reach answers for a list of file:line positions
 
@@ -38,7 +39,7 @@ through byte for byte, in the input's order. `reach` is a list holding, in this 
   position, with the reason from the module's refusal list;
 - when the list would be empty, the single entry `{"answer": "no function"}`.
 
-Which function holds a line: with the span file of `story:reader-function-spans`
+Which function holds a line: with the `codespec-spans/1` documents of `story:edit-spans-format` (`decl` spans)
 (`--spans <file>`), the function whose span holds it. Without it, the function with the greatest
 `pos` line at or before the line in that file, and each such entry carries `approximate: true`;
 a line before the first function of its file, or in a file no document names, has no holding
@@ -64,5 +65,5 @@ In `crates/cli/tests/reach.rs`, each against a checked-in expected output:
   `crates/effects/src/lib.rs`, `website/docs/guides` (one section), `CHANGELOG.md`. Inferred;
   recorded as typed scope.
 - Depends on `story:reader-indirect-call-sites`, the story before it on the reach pass in
-  `crates/effects` and `crates/cli`, and on `story:reader-function-spans` for `--spans`. It
+  `crates/effects` and `crates/cli`, and on `story:edit-spans-format` and `story:edit-spans-go-reader` for `--spans`. It
   shares no file with the three other reader stories and can be worked beside them.

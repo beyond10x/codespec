@@ -1,5 +1,8 @@
 //! `codespec query`: the schema, a query from a file and the same query inline, `--explain`, and
-//! the exit status (0 no rows, 1 rows, 2 an error), on the fixtures of `crates/query`.
+//! the exit status (0 no rows, 1 rows, 2 an error), on the fixtures of `crates/query`. The module
+//! `edit` tests `codespec read --spans`.
+
+mod edit;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -89,4 +92,21 @@ fn no_rows_exit_0_and_an_error_exits_2() {
     );
     let missing = codespec(&["?- func{id: F}.", "no-such-document.json"]);
     assert_eq!(missing.status.code(), Some(2), "{missing:?}");
+}
+
+/// A program with an edit item is `codespec edit`'s: `codespec query` exits 2, naming the item
+/// and `codespec edit`, and prints no row.
+#[test]
+fn a_program_with_an_edit_item_exits_2_naming_it_and_codespec_edit() {
+    let doc = shop("edit-item");
+    let src = "r(F) :- func{id: F}.\nedit delete(F) :- r(F), func{id: F, name: \"handle\"}.";
+    for o in [codespec(&[src, &doc]), codespec(&[src])] {
+        assert_eq!(o.status.code(), Some(2), "{o:?}");
+        assert_eq!(stdout(&o), "");
+        let err = String::from_utf8_lossy(&o.stderr);
+        assert!(
+            err.contains("2:1") && err.contains("edit delete(F)") && err.contains("codespec edit"),
+            "{err}"
+        );
+    }
 }

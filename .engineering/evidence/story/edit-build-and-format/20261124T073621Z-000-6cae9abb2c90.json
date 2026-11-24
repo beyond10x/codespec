@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T07:36:21Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-build-and-format",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-edit --locked: 101 passed (the_whitespace_alignment_of_a_gofmt_realigned_struct_gives_the_expected_merged_edits, texts_that_differ_outside_whitespace_are_refused); cargo test -p b10x-codespec-cli --locked: all passed, package 39 s, query edit:: 31 passed (renaming_a_field_of_a_gofmt_aligned_struct_realigns_it_and_a_loose_file_keeps_its_spacing, go_build_of_a_delete_a_test_file_calls_exits_1_naming_it_and_without_build_is_planned 0.53 s, rust_build_of_a_delete_a_cfg_test_module_calls_exits_1_naming_the_file 0.34 s, rust_rename_with_build_exits_0 0.29 s, build_of_a_rename_in_a_workspace_member_exits_0_the_copy_holding_the_workspace_root 0.34 s); cargo test -p codespec-docs: 46 passed",
+    "reference": "crates/cli/tests/edit/mod.rs"
+  }
+}

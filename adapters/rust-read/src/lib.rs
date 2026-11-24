@@ -41,7 +41,7 @@
 //! | `impl<T> S<T> { fn m(&self) }` | a method with receiver `S[T]`, binding `T`; a function without `self` there is generic over `T` too. The impl names each of the struct's parameters once, in order, with the struct's bounds |
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
 //! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
-//! | `use` | nothing of its own: a path names the full path its module's `use` declarations make of it. A std type, trait or function of the reader's tables is matched by that full path, never by its last segment: `Sender` after `use std::sync::mpsc::Sender;` or `std::sync::mpsc::Sender` is a channel, `broadcast::Sender` after `use tokio::sync::broadcast;` is refused. Bare, only the prelude's `String`, `Vec`, `Box`, `Option`, `Result` and `Default` are std's; `HashMap` needs its `use` (a glob import or a `use` inside a function body is not read, so such a name is refused). A name a `use` takes from outside the crate is not the crate's item of that name, and is refused. The crate's own items resolve by name (`files`). The calls an `opaque` function or a `foreign` statement lists resolve a path the same way (`calls`) |
+//! | `use` | nothing of its own: a path names the full path its module's `use` declarations make of it. A std type, trait or function of the reader's tables is matched by that full path, never by its last segment: `Sender` after `use std::sync::mpsc::Sender;` or `std::sync::mpsc::Sender` is a channel, `broadcast::Sender` after `use tokio::sync::broadcast;` is refused. Bare, only the prelude's `String`, `Vec`, `Box`, `Option`, `Result` and `Default` are std's; `HashMap` needs its `use` (a glob import or a `use` inside a function body is not read, so such a name is refused). A name a `use` takes from outside the crate is not the crate's item of that name, and is refused. The crate's own items resolve by name (`files`), and a call `g(…)` of a function the module imports as `use crate::m::f as g;` is a call of `f`. The calls an `opaque` function or a `foreign` statement lists resolve a path the same way (`calls`) |
 //! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a module, item or part of one built only for tests (`#[cfg(test)]`) is not read, and one under a `cfg` the reader cannot resolve (a feature, a platform) is refused (`files`). Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
 //!
 //! # Types
@@ -189,6 +189,13 @@
 //! | `decl.variadic`, `expr.spread` | Rust: a function takes a fixed number of arguments (C-variadic `...` exists only on `extern "C"` declarations, and a variadic-looking `println!` is a macro); a slice parameter is a `slice` |
 //! | `expr.extern`, `expr.extern_method`, `type.extern` | this reader, not Rust: Rust calls other crates and its std (`s.repeat(n)`, `String::with_capacity`), and the reader refuses each call, method and type outside its std table instead of reading it as an extern. Claiming them takes (1) reading such a call as `extern`/`extern_method` with an `externs` entry of its path and signature, which the reader would take from the call's argument and result types, as it reads one file without the crate's dependencies, and (2) step 4 running the module: the Go program written from it calls the extern's path as a Go package, so a Rust path (`std::…`) would need a Go package of that path doing what Rust's does. The cases' references call Go's `strings` and `strconv`, which a Rust source does not name |//!
 //!
+//! # Spans
+//!
+//! [`read_crate_spans`] (`codespec-read-rust --spans <dir>`) reads the same module and tells
+//! where its functions, struct fields and named nodes stand in the crate's files, and which `use`
+//! paths name its items: the lists of a `codespec-spans/1` document. What each span covers, and
+//! when a node is `lowered`, is the module `spans`.
+//!
 //! # Limits
 //!
 //! A source is untrusted: what it can cost the reader is bounded, and a source past a bound is
@@ -206,6 +213,7 @@ mod body;
 mod calls;
 mod files;
 mod names;
+mod spans;
 
 pub use files::{MAX_CRATE_BYTES, MAX_FILES, MAX_MODULE_DEPTH};
 
@@ -229,6 +237,22 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// only as regular files inside `dir`; a manifest that does not parse is an error naming its
 /// line, without quoting it.
 pub fn read_crate(dir: &Path) -> Result<Module, String> {
+    let (name, root) = crate_root(dir)?;
+    on_read_thread(|| read_tree(&name, files::crate_tree(dir, &root)?))
+}
+
+/// What `codespec-read-rust --spans <dir>` prints: the crate in `dir` read as [`read_crate`]
+/// reads it, as one JSON object `{"cir", "files", "spans", "unspanned", "refs"}`
+/// (`docs/code-edit-language.md` § 6.3; what each span covers: `spans`), file paths relative to
+/// `dir`. The `cir/1` module is the one [`read_crate`] gives.
+pub fn read_crate_spans(dir: &Path) -> Result<String, String> {
+    let (name, root) = crate_root(dir)?;
+    on_read_thread(|| read_tree_spans(&name, files::crate_tree(dir, &root)?, true))
+        .map(|(_, out)| out.unwrap_or_default())
+}
+
+/// The crate's name (`[package] name`, `-` as `_`) and its root file.
+fn crate_root(dir: &Path) -> Result<(String, std::path::PathBuf), String> {
     let manifest = dir.join("Cargo.toml");
     files::regular_inside(&manifest, dir, "the manifest")?;
     let text = read_bounded(&manifest)?;
@@ -264,7 +288,7 @@ pub fn read_crate(dir: &Path) -> Result<Module, String> {
         }
         None => dir.join("src/main.rs"),
     };
-    on_read_thread(|| read_tree(&name, files::crate_tree(dir, &root)?))
+    Ok((name, root))
 }
 
 /// Read one source file as the module `name`, the root of a crate of one file: its inline
@@ -276,7 +300,7 @@ pub fn read_source(name: &str, file: &str, src: &str) -> Result<Module, String> 
 
 /// `f` run on a thread with a stack of [`STACK_BYTES`]: parsing, lifting and dropping the syntax
 /// trees. Spans name their file per thread, so every file of a crate is parsed on this one.
-fn on_read_thread(f: impl FnOnce() -> Result<Module, String> + Send) -> Result<Module, String> {
+fn on_read_thread<T: Send>(f: impl FnOnce() -> Result<T, String> + Send) -> Result<T, String> {
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .name("rust-read".into())
@@ -290,6 +314,15 @@ fn on_read_thread(f: impl FnOnce() -> Result<Module, String> + Send) -> Result<M
 
 /// The module of a crate's files: their items read as those of one file.
 fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
+    read_tree_spans(name, tree, false).map(|(m, _)| m)
+}
+
+/// [`read_tree`], and with `spans` what `--spans` prints.
+fn read_tree_spans(
+    name: &str,
+    tree: files::Tree,
+    spans: bool,
+) -> Result<(Module, Option<String>), String> {
     let files::Tree {
         attrs,
         items,
@@ -298,7 +331,30 @@ fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
         span_files,
         refusals,
         apart,
+        paths,
+        offsets,
     } = tree;
+    let recorder = spans.then(|| {
+        let order: BTreeMap<&String, usize> =
+            files.iter().enumerate().map(|(k, f)| (f, k)).collect();
+        let keys = span_files
+            .iter()
+            .filter_map(|(key, rel)| Some((key.clone(), *order.get(rel)?)))
+            .collect();
+        let srcs = paths
+            .iter()
+            .zip(&files)
+            .zip(&sources)
+            .zip(&offsets)
+            .map(|(((path, pos_name), text), offset)| spans::Src {
+                path: path.clone(),
+                pos_name: pos_name.clone(),
+                text: text.clone(),
+                offset: *offset,
+            })
+            .collect();
+        spans::Recorder::on(srcs, keys)
+    });
     let modules: Vec<String> = items.iter().map(|(_, m)| m.clone()).collect();
     let mut ast = syn::File {
         shebang: None,
@@ -322,8 +378,36 @@ fn read_tree(name: &str, tree: files::Tree) -> Result<Module, String> {
     r.tables = tables;
     r.item_modules = modules;
     r.apart = apart;
+    if let Some(rec) = recorder {
+        *r.spans.borrow_mut() = rec;
+    }
     r.scan(&ast);
-    Ok(r.module(name, &ast))
+    let shared = r.spans.clone();
+    let rust_names = spans.then(|| spans_names(&r));
+    let m = r.module(name, &ast);
+    let out = rust_names.map(|names| {
+        let rec = std::mem::take(&mut *shared.borrow_mut());
+        spans::output(&m, name, rec, &names)
+    });
+    Ok((m, out))
+}
+
+/// How a `use` leaf's item is named in `cir/1`: free functions (read, or opaque as the lister
+/// names them) and declared types.
+fn spans_names(r: &Reader) -> spans::RustNames {
+    let mut n = spans::RustNames::default();
+    for (rust, go) in &r.tables.fns {
+        n.fns.insert(rust.clone(), go.clone());
+    }
+    for ((ty, rust), sig) in &r.sigs {
+        if ty.is_none() {
+            n.fns.insert(rust.clone(), sig.go.clone());
+        }
+    }
+    for t in r.decls.keys() {
+        n.types.insert(t.clone(), t.clone());
+    }
+    n
 }
 
 /// The name of the type an impl is of: the last segment of its path, through references.
@@ -907,6 +991,8 @@ pub(crate) struct Reader {
     /// The functions and impls refused for a name two modules declare, each with its module's
     /// path and the reason: read as opaque functions only.
     pub apart: Vec<(syn::Item, String, String)>,
+    /// The tokens a read with `--spans` notes (`spans`); off otherwise.
+    pub spans: spans::Shared,
 }
 
 /// The type parameters in scope while an item is read, a generic function's or impl's, and the
@@ -1223,6 +1309,61 @@ impl Reader {
             at: RefCell::new(("crate".into(), None)),
             opaque: Vec::new(),
             apart: Vec::new(),
+            spans: spans::Shared::default(),
+        }
+    }
+
+    /// Note for `--spans` the body node `x` and the identifier spelling its name.
+    pub(crate) fn note(&self, x: &Expr, name: proc_macro2::Span) {
+        self.spans.borrow_mut().node(x, name);
+    }
+
+    /// Note for `--spans` the struct literal `x` and the identifier of each field it kept, with
+    /// whether it is written in shorthand.
+    pub(crate) fn note_literal(&self, x: &Expr, fields: &[(proc_macro2::Span, bool)]) {
+        self.spans.borrow_mut().literal(x, fields);
+    }
+
+    /// Whether a read notes spans.
+    pub(crate) fn noting(&self) -> bool {
+        self.spans.borrow().is_on()
+    }
+
+    /// Note for `--spans` each leaf of a `use` item standing in module `module` that names an
+    /// item of the crate: its path is the crate's (`crate::`, `self::`, `super::` or a module of
+    /// the crate) and leads to a module, not into a type.
+    fn note_use(&self, module: &str, tree: &syn::UseTree, prefix: &mut Vec<String>) {
+        match tree {
+            syn::UseTree::Path(p) => {
+                prefix.push(p.ident.to_string());
+                self.note_use(module, &p.tree, prefix);
+                prefix.pop();
+            }
+            syn::UseTree::Name(syn::UseName { ident })
+            | syn::UseTree::Rename(syn::UseRename { ident, .. }) => {
+                let leaf = ident.to_string();
+                if leaf == "self" {
+                    return;
+                }
+                let mut path = prefix.clone();
+                path.push(leaf.clone());
+                let full = self.tables.resolve(module, None, &path);
+                if full.len() > 1
+                    && full[0] == "crate"
+                    && self
+                        .tables
+                        .modules
+                        .contains(&full[..full.len() - 1].join("::"))
+                {
+                    self.spans.borrow_mut().use_leaf(leaf, ident.span());
+                }
+            }
+            syn::UseTree::Group(g) => {
+                for t in &g.items {
+                    self.note_use(module, t, prefix);
+                }
+            }
+            syn::UseTree::Glob(_) => {}
         }
     }
 
@@ -2925,6 +3066,7 @@ impl Reader {
                 _ => None,
             };
             *self.at.borrow_mut() = (module, self_ty);
+            self.spans.borrow_mut().clear();
             match item {
                 syn::Item::Struct(s) => {
                     let n = s.ident.to_string();
@@ -2932,21 +3074,24 @@ impl Reader {
                     let d = doc(&s.attrs);
                     let exported = is_pub(&s.vis);
                     match self.decls.get(&n) {
-                        Some(Decl::Struct(fields)) => types.push(TypeDecl::Struct {
-                            tparams: self.type_params.get(&n).cloned().unwrap_or_default(),
-                            name: n.clone(),
-                            exported,
-                            fields: fields
-                                .iter()
-                                .map(|fi| Field {
-                                    name: fi.go.clone(),
-                                    t: fi.t.clone(),
-                                    embedded: false,
-                                })
-                                .collect(),
-                            doc: d,
-                            pos,
-                        }),
+                        Some(Decl::Struct(fields)) => {
+                            self.note_fields(types.len(), s, fields);
+                            types.push(TypeDecl::Struct {
+                                tparams: self.type_params.get(&n).cloned().unwrap_or_default(),
+                                name: n.clone(),
+                                exported,
+                                fields: fields
+                                    .iter()
+                                    .map(|fi| Field {
+                                        name: fi.go.clone(),
+                                        t: fi.t.clone(),
+                                        embedded: false,
+                                    })
+                                    .collect(),
+                                doc: d,
+                                pos,
+                            })
+                        }
                         Some(Decl::Newtype(under)) => types.push(TypeDecl::Newtype {
                             tparams: Vec::new(),
                             name: n.clone(),
@@ -3078,6 +3223,11 @@ impl Reader {
                             });
                             late_refusals.extend(rs);
                             layout.push(format!("func:{}", fu.key()));
+                            self.spans.borrow_mut().func(
+                                funcs.len(),
+                                func.span(),
+                                Ok(func.sig.ident.span()),
+                            );
                             funcs.push(fu);
                         }
                         None => {
@@ -3088,6 +3238,7 @@ impl Reader {
                                     .err()
                                     .unwrap_or_default(),
                             };
+                            self.note_opaque(func.span(), &func.sig);
                             self.push_opaque(None, &func.sig, &func.block, &reason);
                             late_refusals.push(Refusal {
                                 pos: self.pos(func.sig.ident.span()),
@@ -3185,6 +3336,11 @@ impl Reader {
                                         });
                                         late_refusals.extend(rs);
                                         layout.push(format!("func:{}", fu.key()));
+                                        self.spans.borrow_mut().func(
+                                            funcs.len(),
+                                            func.span(),
+                                            Ok(func.sig.ident.span()),
+                                        );
                                         funcs.push(fu);
                                     }
                                     None => {
@@ -3197,6 +3353,7 @@ impl Reader {
                                                 .err()
                                                 .unwrap_or_default(),
                                         };
+                                        self.note_opaque(func.span(), &func.sig);
                                         self.push_opaque(Some(&t), &func.sig, &func.block, &reason);
                                         late_refusals.push(Refusal {
                                             pos: self.pos(func.sig.ident.span()),
@@ -3227,6 +3384,14 @@ impl Reader {
                                     Ok(Some((fu, rs))) => {
                                         late_refusals.extend(rs);
                                         layout.push(format!("func:{}", fu.key()));
+                                        self.spans.borrow_mut().func(
+                                            funcs.len(),
+                                            im.span(),
+                                            Err(format!(
+                                                "the method {} is the impl's fmt, no token spells it",
+                                                fu.name
+                                            )),
+                                        );
                                         funcs.push(fu);
                                     }
                                     Ok(None) => {}
@@ -3326,7 +3491,12 @@ impl Reader {
                         pos: self.pos(tr.span()),
                     });
                 }
-                syn::Item::Use(_) => {}
+                syn::Item::Use(u) => {
+                    if self.noting() {
+                        let module = self.at.borrow().0.clone();
+                        self.note_use(&module, &u.tree, &mut Vec::new());
+                    }
+                }
                 other => {
                     let what = first_line(&src_of(other));
                     late_refusals.push(Refusal {
@@ -3444,6 +3614,7 @@ impl Reader {
             match &item {
                 syn::Item::Fn(f) => {
                     let name = calls::fn_name(&f.sig.ident.to_string(), is_pub(&f.vis));
+                    self.note_opaque(f.span(), &f.sig);
                     push(self, None, name, (&f.sig, &f.block));
                 }
                 syn::Item::Impl(im) => {
@@ -3451,6 +3622,7 @@ impl Reader {
                     for ii in &im.items {
                         let syn::ImplItem::Fn(f) = ii else { continue };
                         let base = calls::fn_name(&f.sig.ident.to_string(), is_pub(&f.vis));
+                        self.note_opaque(f.span(), &f.sig);
                         if matches!(f.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
                             push(self, Some(t.clone()), base, (&f.sig, &f.block));
                         } else {
@@ -3470,7 +3642,33 @@ impl Reader {
         };
         for ii in &im.items {
             if let syn::ImplItem::Fn(func) = ii {
+                self.note_opaque(func.span(), &func.sig);
                 self.push_opaque(Some(&t), &func.sig, &func.block, reason);
+            }
+        }
+    }
+
+    /// Note for `--spans` the next opaque function: its whole item and its identifier.
+    fn note_opaque(&self, decl: proc_macro2::Span, sig: &syn::Signature) {
+        self.spans
+            .borrow_mut()
+            .opaque(self.opaque.len(), decl, sig.ident.span());
+    }
+
+    /// Note for `--spans` the identifier of each field of the struct declaration `s`, read as the
+    /// struct at `index` of `types` with `fields`.
+    fn note_fields(&self, index: usize, s: &syn::ItemStruct, fields: &[FieldInfo]) {
+        if !self.noting() {
+            return;
+        }
+        for (j, fi) in fields.iter().enumerate() {
+            if let Some(id) = s
+                .fields
+                .iter()
+                .filter_map(|f| f.ident.as_ref())
+                .find(|id| **id == fi.rust)
+            {
+                self.spans.borrow_mut().field(index, j, id.span());
             }
         }
     }

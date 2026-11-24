@@ -1,0 +1,72 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 114,
+      "path": "p.go",
+      "sha256": "a2451074bb13d7134a17c86bc69c440816dada242bd342cb53536cba194f5f9e"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 64,
+      "end_line": 6,
+      "file": 0,
+      "line": 3,
+      "role": "decl",
+      "start": 13
+    },
+    {
+      "at": "funcs.0",
+      "end": 42,
+      "end_line": 4,
+      "file": 0,
+      "line": 4,
+      "role": "name",
+      "start": 38,
+      "text": "Load"
+    },
+    {
+      "at": "funcs.1",
+      "end": 112,
+      "end_line": 10,
+      "file": 0,
+      "line": 8,
+      "role": "decl",
+      "start": 68
+    },
+    {
+      "at": "funcs.1",
+      "end": 76,
+      "end_line": 8,
+      "file": 0,
+      "line": 8,
+      "role": "name",
+      "start": 73,
+      "text": "Use"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.x",
+      "end": 98,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 94,
+      "text": "Load"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.y",
+      "end": 107,
+      "end_line": 9,
+      "file": 0,
+      "line": 9,
+      "role": "name",
+      "start": 103,
+      "text": "Load"
+    }
+  ],
+  "unspanned": []
+}

@@ -3,9 +3,11 @@
 // statements and listed as refusals.
 //
 //	codespec-read-go <package dir>
+//	codespec-read-go --spans <package dir>
 //	codespec-read-go --describe
 //
-// --describe prints the reader's codespec-adapter/1 manifest (describe.go).
+// --spans prints the module with where its names stand in the source (spans.go); --describe prints
+// the reader's codespec-adapter/1 manifest (describe.go).
 package main
 
 import (
@@ -21,8 +23,15 @@ func main() {
 		fmt.Print(describe())
 		return
 	}
+	if len(os.Args) == 3 && os.Args[1] == "--spans" {
+		if err := writeSpans(os.Stdout, os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "codespec-read-go:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: codespec-read-go <package dir> | --describe")
+		fmt.Fprintln(os.Stderr, "usage: codespec-read-go [--spans] <package dir> | --describe")
 		os.Exit(2)
 	}
 	m, err := load(os.Args[1])

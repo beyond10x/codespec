@@ -1,7 +1,8 @@
 //! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
 //! passes, run reader and writer adapters, compare implementations of an example on seeded traces
 //! (`harness`), run the conformance kit against an adapter (`conform`), measure how much of a
-//! module a reader read (`measure`) and run the built-in defect checks (`check`).
+//! module a reader read (`measure`), run the built-in defect checks (`check`) and change source
+//! code with a cq edit program (`edit`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -38,6 +39,9 @@ fn main() -> ExitCode {
                 ExitCode::from(2)
             }
         };
+    }
+    if let Cmd::Edit(args) = &command {
+        return codespec_cli::edit::run(args);
     }
     if let Cmd::Eval {
         module,
@@ -207,9 +211,18 @@ fn run(cmd: Cmd) -> Result<(), String> {
             lang,
             source,
             out,
+            spans,
             adapters,
         } => {
             let prog = adapter(&adapters, "read", &lang)?;
+            if let Some(spans) = spans {
+                let read = codespec_edit::run::read_spanned(&prog, &source)?;
+                std::fs::write(&out, read.cir_json())
+                    .map_err(|e| format!("{}: {e}", out.display()))?;
+                std::fs::write(&spans, read.spans_json())
+                    .map_err(|e| format!("{}: {e}", spans.display()))?;
+                return Ok(());
+            }
             let output = Command::new(&prog)
                 .arg(&source)
                 .stderr(Stdio::inherit())
@@ -360,6 +373,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
         Cmd::Check { .. } => check(cmd).map(|_| ()),
         Cmd::Query(args) => codespec_cli::query::run(&args).map(|_| ()),
         Cmd::Eval { .. } => unreachable!("main runs eval"),
+        Cmd::Edit(_) => unreachable!("main runs edit"),
         Cmd::Harness {
             example,
             seeds,

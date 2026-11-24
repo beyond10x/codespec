@@ -11,8 +11,9 @@ relations:
 - depends_on: story:cir1-raise-out-of-entry
 - depends_on: story:cir1-fields-of-imported-types
 - depends_on: story:cir1-defer-receiver-root
-- depends_on: story:reader-function-spans
 - depends_on: story:reader-c-kit-conventions
+- depends_on: story:edit-spans-c-reader
+- depends_on: story:edit-spans-format
 scope:
 - confidence: inferred
   path: AGENTS.md
@@ -38,7 +39,7 @@ scope:
   path: examples/reach-c/
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 6
+revision: 7
 ---
 # Story: cir/1 states a call the reader could not resolve as a site with kind, signature and what it calls through; the C reader gives it
 
@@ -138,6 +139,6 @@ The Rust, Go, Java and Groovy readers follow in `story:reader-indirect-sites-rus
   `AGENTS.md`, `CHANGELOG.md`. Inferred; recorded as typed scope.
 - `crates/model/src/lib.rs` and the schema are also edited by `story:cir1-raise-out-of-entry`,
   `story:cir1-fields-of-imported-types` and `story:cir1-defer-receiver-root`; `adapters/c-read`,
-  `docs/design.md` by `story:reader-function-spans`, `story:readers-bound-untrusted-input` and
+  `docs/design.md` by `story:edit-spans-format`, `story:edit-spans-c-reader`, `story:readers-bound-untrusted-input` and
   `story:reader-c-kit-conventions`. This story depends on each of them for that reason only.
 - Runs after `story:reach-entry-file` (the reach pass in `crates/effects`).
