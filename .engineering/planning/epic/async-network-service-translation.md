@@ -21,7 +21,7 @@ relations:
 - depends_on: story:cir1-defer-receiver-root
 - depends_on: story:listed-macro-format-string
 - depends_on: story:reader-indirect-sites-rust
-revision: 7
+revision: 8
 ---
 # Epic: An async network service read from Rust and written as Go
 
@@ -205,3 +205,14 @@ that takes it (19 to stories that exist, 1 new):
 | a storage server's command set and other users' data | `story:extern-ports` |
 | a test suite's runs and generated inputs | `story:slice-held-to-ess-suite` |
 | a doc per declaration only, none per statement or branch | `story:cir1-statement-docs` (new) |
+
+The same list names the limits of the tools the consumer met, each with the story that takes it
+(1 by design, 4 new):
+
+| tool limit | story |
+|---|---|
+| a module name must be an identifier | `story:writers-validate-names` (by design: a writer emits the name) |
+| `validate` checks the schema only: undeclared variables and type mismatches pass | `story:validate-names-and-types` (new, `epic:cir1-model-and-go-reader`) |
+| `eval` passes and returns scalars only, and takes no escape in a string argument | `story:eval-composite-call-values` (new, `epic:cir-evaluator`) |
+| `eval` formats `%d %s %v` only and has no handler for the string externs a service calls (split, contains, prefix, replace, case-folded equality, quoting) | `story:eval-string-handlers-and-verbs` (new, `epic:cir-evaluator`) |
+| the Rust writer refuses a copied slice | `story:rust-writer-copied-slices` (new, `epic:go-and-rust-writers-with-harness`) |
