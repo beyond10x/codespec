@@ -8,6 +8,7 @@ summary: Items under cfg(feature) and cfg(debug_assertions) are read as the defa
 relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: design:cir1-checked-integer-operators
+- depends_on: story:rust-reader-integer-overflow
 scope:
 - confidence: inferred
   path: CHANGELOG.md

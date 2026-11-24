@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-platform-int-width
 kind: story
-status: draft
+status: active
 title: usize and isize keep their type through the Rust reader
 summary: len() in a usize function reads to a module in which every returned value has the result's type, and its Go output builds; the Rust writer's isize/usize is story:rust-writer-platform-int-width.
 relations:
@@ -16,7 +16,10 @@ scope:
   path: adapters/rust-read/tests/reader.rs
 - confidence: inferred
   path: examples/series/series.rust-read.cir.json
-revision: 9
+revision: 12
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 11}
+- {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 12}
 ---
 # Story: usize and isize keep their type through the Rust reader
 
@@ -51,7 +54,7 @@ signed value from an unsigned result:
 ## Done When
 
 - A failing test first in `adapters/rust-read/tests/reader.rs`: `count` above reads to a module
-  in which every returned value has the result's type (or a refusal), red on main.
+  in which every returned value has the result's type, red on main.
 - The Go written from the crate above builds and vets.
 
 ## Scope

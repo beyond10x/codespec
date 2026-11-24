@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-hand-written-comparisons
 kind: story
-status: draft
+status: active
 title: The Rust reader refuses a comparison through a hand-written PartialEq or Ord
 summary: == != < <= > >= on a type whose PartialEq, PartialOrd or Ord the crate writes by hand is refused at its line, never read as the built-in comparison; reading it as a call is story:rust-reader-iterators-and-std-impls.
 relations:
@@ -18,7 +18,10 @@ scope:
   path: adapters/rust-read/src/lib.rs
 - confidence: cited
   path: adapters/rust-read/tests/reader.rs
-revision: 9
+revision: 11
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 10}
+- {from: "proposed", to: "active", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 11}
 ---
 # Story: The Rust reader refuses a comparison through a hand-written PartialEq or Ord
 

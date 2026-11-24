@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-shift-count
 kind: story
-status: draft
+status: active
 title: The Rust reader reads a shift only when its count is proven below the width
 summary: A << or >> whose count is not proven below the operand's width is refused at its line, not read as Go's shift; the profile-aware reading comes with story:rust-reader-integer-overflow.
 relations:
@@ -17,7 +17,10 @@ scope:
   path: adapters/rust-read/src/lib.rs
 - confidence: cited
   path: adapters/rust-read/tests/reader.rs
-revision: 10
+revision: 13
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 12}
+- {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 13}
 ---
 # Story: The Rust reader reads a shift only when its count is proven below the width
 
@@ -81,5 +84,5 @@ The Go writer writes `x << n`, the Rust writer `x.checked_shl(…).unwrap_or(0)`
 
 The reading of a shift whose count is not proven below W by the profile's `overflow-checks` (a
 panic with them, the masked count without) is part of `story:rust-reader-integer-overflow`, as
-`design:cir1-checked-integer-operators` states; this story's `depends_on` edge to it is for that
+`design:cir1-checked-integer-operators` states; this story is `informed_by` it (no edge blocks this story) for that
 later reading only. Until then this story's refusal stands.

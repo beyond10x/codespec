@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-tuple-variant-fields
 kind: story
-status: draft
+status: active
 title: A tuple variant reads and writes back as a tuple variant
 summary: 'Circle(i64) read and written as Rust is Circle(i64) again, not Circle { _0: i64 }; a struct variant whose field is named _<digits> is refused.'
 relations:
@@ -23,7 +23,10 @@ scope:
   path: examples/series/out/rust
 - confidence: inferred
   path: examples/series/series.rust-read.cir.json
-revision: 8
+revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 9}
+- {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 10}
 ---
 # Story: A tuple variant reads and writes back as a tuple variant
 

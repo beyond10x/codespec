@@ -2,13 +2,15 @@
 format: aep.planning-md/3
 id: design:cir1-checked-integer-operators
 kind: design
-status: draft
+status: in_review
 title: 'Checked integer operators in cir/1: the design note'
 summary: How cir/1 states a Rust integer operator (+ - * neg / % << >>) whose overflow depends on the build, written and adversary-reviewed before story:rust-reader-integer-overflow is implemented.
 relations:
 - designs: story:rust-reader-integer-overflow
 - decomposes: epic:async-network-service-translation
-revision: 1
+revision: 2
+transitions:
+- {from: "draft", to: "in_review", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 2}
 ---
 # Design: Checked integer operators in cir/1
 

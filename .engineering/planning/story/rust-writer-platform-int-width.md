@@ -7,7 +7,8 @@ title: The Rust writer writes platform-width integers as isize and usize
 summary: A cir/1 int of platform width is written as isize/usize, not i64/u64, so a Rust round trip keeps them and builds.
 relations:
 - decomposes: epic:go-and-rust-writers-with-harness
-- informed_by: story:rust-reader-platform-int-width
+- depends_on: story:rust-reader-platform-int-width
+- depends_on: story:rust-tuple-variant-fields
 scope:
 - confidence: cited
   path: CHANGELOG.md

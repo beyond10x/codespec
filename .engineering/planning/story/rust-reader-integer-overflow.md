@@ -8,7 +8,8 @@ summary: Integer + - * neg / % are read with the meaning the crate's build gives
 relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: design:cir1-checked-integer-operators
-revision: 5
+- depends_on: story:rust-reader-shift-count
+revision: 6
 ---
 # Story: The Rust reader does not read integer overflow as wrapping without saying so
 
@@ -73,6 +74,9 @@ Conditions:
   evaluated does not return -2147483648 (a panic, or a refusal at its line); red on main.
 - A second test: the crate above with `[profile.release] overflow-checks = true` is not read as
   wrapping `+`.
+- A shift test: with `overflow-checks = true`, `x << n` where `n` is not proven below the
+  width reads as the checked shift (panics at a count at or past the width); without it, as the
+  masked shift; red on main.
 - The crate doc names the build whose meaning the reader reads.
 
 ## Scope
