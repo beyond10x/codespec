@@ -959,6 +959,41 @@ fn path_idents(p: &syn::Path) -> Vec<String> {
     p.segments.iter().map(|s| s.ident.to_string()).collect()
 }
 
+/// The crate type in `t` whose `PartialEq` (`ord` false) or `PartialOrd`/`Ord` (`ord` true) the
+/// crate writes by hand, which comparing a `t` calls: `t` itself, or a type it holds (a field, the
+/// type a newtype wraps, a type argument, an element), whose impl a derived one of `t` calls.
+fn hand_compared(r: &Reader, t: &Type, ord: bool, seen: &mut BTreeSet<String>) -> Option<String> {
+    match t {
+        Type::Named { name, targs } => {
+            if (if ord { &r.hand_ord } else { &r.hand_eq }).contains(name) {
+                return Some(name.clone());
+            }
+            if !seen.insert(name.clone()) {
+                return None;
+            }
+            if let Some(n) = targs.iter().find_map(|a| hand_compared(r, a, ord, seen)) {
+                return Some(n);
+            }
+            match r.decls.get(name) {
+                Some(Decl::Struct(fields)) => fields
+                    .iter()
+                    .find_map(|f| hand_compared(r, &f.t, ord, seen)),
+                Some(Decl::Newtype(u)) => hand_compared(r, u, ord, seen),
+                _ => None,
+            }
+        }
+        Type::Ptr { elem }
+        | Type::Slice { elem }
+        | Type::Array { elem, .. }
+        | Type::Chan { elem, .. } => hand_compared(r, elem, ord, seen),
+        Type::Map { key, elem } => {
+            hand_compared(r, key, ord, seen).or_else(|| hand_compared(r, elem, ord, seen))
+        }
+        Type::Tuple { elems } => elems.iter().find_map(|e| hand_compared(r, e, ord, seen)),
+        _ => None,
+    }
+}
+
 fn strip_ref(e: &syn::Expr) -> &syn::Expr {
     match e {
         syn::Expr::Reference(r) if r.mutability.is_none() => strip_ref(&r.expr),
@@ -2772,6 +2807,11 @@ impl<'r> Fx<'r> {
                 {
                     return Err("a match guard other than `v if v == e`".into());
                 }
+                if let Some(n) = hand_compared(self.r, &tt, false, &mut BTreeSet::new()) {
+                    return Err(format!(
+                        "a match guard `v if v == e` through the PartialEq of {n}, which the crate writes by hand: Rust calls that impl, where Go's `case` compares as its built-in operator"
+                    ));
+                }
                 values.push(self.val(strip_ref(&b.right), Some(&tt))?);
             }
             for p in pats {
@@ -3734,6 +3774,19 @@ impl<'r> Fx<'r> {
         }
         if matches!(x.t(), Type::Func { .. }) {
             return Err("a comparison of function values, which Go has no operator for".into());
+        }
+        if kind == 'c' {
+            let ord = !matches!(op, "==" | "!=");
+            if let Some(n) = hand_compared(self.r, x.t(), ord, &mut BTreeSet::new()) {
+                let tr = if ord {
+                    "PartialOrd or Ord"
+                } else {
+                    "PartialEq"
+                };
+                return Err(format!(
+                    "`{op}` through the {tr} of {n}, which the crate writes by hand: Rust calls that impl, where cir/1 compares as Go's built-in operator"
+                ));
+            }
         }
         let t = match kind {
             'c' | 'l' => Type::Bool,

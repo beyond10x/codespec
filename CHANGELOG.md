@@ -60,6 +60,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
   a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read
   Go's shift before; the kit's Rust sources of `op-shl`, `op-shr`, `assign-shl` and `assign-shr`
   mask their count (`b & 63`).
+- The Rust reader refuses `==`, `!=` and a match guard `v if v == e` on a type whose `PartialEq`
+  the crate writes by hand, and `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does
+  (or on a type that holds one), at the comparison's line; it read them as the built-in
+  comparison before. A derived impl reads as before.
 
 ## 0.12.0
 

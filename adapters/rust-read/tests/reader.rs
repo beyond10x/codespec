@@ -3598,3 +3598,91 @@ fn a_shift_whose_count_is_the_first_outside_its_rule_is_refused_at_its_line() {
     assert_foreign(&m, "Word", "lib.rs:18", "count");
     assert_foreign(&m, "InPlace", "lib.rs:21", "count");
 }
+
+/// A comparison through a `PartialEq`, `PartialOrd` or `Ord` the crate writes by hand: Rust calls
+/// the impl, where `cir/1`'s comparison is Go's built-in one (the order of the declaration, every
+/// field equal).
+#[test]
+fn a_comparison_through_a_hand_written_partial_eq_or_ord_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "use std::cmp::Ordering;",
+        "#[derive(Clone, Copy, PartialEq, Eq)]",
+        "pub enum Rank { Low, High }",
+        "impl PartialOrd for Rank { fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(self.cmp(o)) } }",
+        "impl Ord for Rank {",
+        "    fn cmp(&self, o: &Self) -> Ordering {",
+        "        match (self, o) {",
+        "            (Rank::Low, Rank::High) => Ordering::Greater,",
+        "            (Rank::High, Rank::Low) => Ordering::Less,",
+        "            _ => Ordering::Equal,",
+        "        }",
+        "    }",
+        "}",
+        "pub fn ranks_first(a: Rank, b: Rank) -> bool {",
+        "    a < b",
+        "}",
+        "#[derive(Clone, Copy)]",
+        "pub enum Mode { On, Off }",
+        "impl PartialEq for Mode { fn eq(&self, _o: &Self) -> bool { true } }",
+        "pub fn same_mode(a: Mode, b: Mode) -> bool {",
+        "    a == b",
+        "}",
+        "pub struct Approx { pub v: i64 }",
+        "impl PartialEq for Approx { fn eq(&self, o: &Self) -> bool { self.v / 10 == o.v / 10 } }",
+        "pub fn same_approx(a: Approx, b: Approx) -> bool {",
+        "    a == b",
+        "}",
+        "#[derive(PartialEq)]",
+        "pub struct Holder { pub m: Mode }",
+        "pub fn same_holder(a: Holder, b: Holder) -> bool {",
+        "    a != b",
+        "}",
+        "pub fn pick(a: Mode, b: Mode) -> i64 {",
+        "    match a {",
+        "        v if v == b => 1,",
+        "        _ => 0,",
+        "    }",
+        "}",
+    ]));
+    assert_foreign(&m, "RanksFirst", "lib.rs:15", "by hand");
+    assert_foreign(&m, "SameMode", "lib.rs:21", "by hand");
+    assert_foreign(&m, "SameApprox", "lib.rs:26", "by hand");
+    // A derived `PartialEq` of a struct holding `Mode` calls `Mode`'s impl for the field.
+    assert_foreign(&m, "SameHolder", "lib.rs:31", "by hand");
+    // A match guard `v if v == e` compares through the same impl.
+    assert_foreign(&m, "Pick", "lib.rs:34", "by hand");
+}
+
+/// A derived `PartialEq`, `PartialOrd` and `Ord` keep the built-in comparison; so does `==` on a
+/// type whose `PartialEq` is derived and whose order alone is written by hand.
+#[test]
+fn a_comparison_through_a_derived_partial_eq_or_ord_reads_as_the_built_in_one() {
+    let m = read(&lines(&[
+        "use std::cmp::Ordering;",
+        "#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]",
+        "pub enum Level { Low, High }",
+        "#[derive(PartialEq)]",
+        "pub struct Point { pub x: i64 }",
+        "#[derive(Clone, Copy, PartialEq, Eq)]",
+        "pub enum Rank { Low, High }",
+        "impl PartialOrd for Rank { fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(Ordering::Equal) } }",
+        "pub fn below(a: Level, b: Level) -> bool {",
+        "    a < b",
+        "}",
+        "pub fn same(a: Point, b: Point) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn same_rank(a: Rank, b: Rank) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    let refused: Vec<_> = m.refusals.iter().filter(|r| r.pos != "lib.rs:8").collect();
+    assert!(refused.is_empty(), "{refused:?}");
+    for (f, op) in [("Below", "<"), ("Same", "=="), ("SameRank", "==")] {
+        let body = &m.funcs.iter().find(|x| x.name == f).expect(f).body;
+        assert!(
+            matches!(&body[..], [Stmt::Return { results, .. }] if matches!(&results[..], [Expr::Binop { op: o, .. }] if o == op)),
+            "{f}: {body:?}"
+        );
+    }
+}
