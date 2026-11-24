@@ -2802,13 +2802,18 @@ public final class Reader {
      * the type's path joined with the method's. A method of a class that implements a method of an
      * interface carrying a verb (an interface of the sources or of the class path, directly or through
      * another interface): that method's verb and {@code @Path} under the class's {@code @Path}, else
-     * the interface's, its media types the interface method's, else the class's, else the interface's,
-     * and its parameters bound by the interface method's. JAX-RS applies an
-     * interface method's annotations to an implementing method that declares none of its own. Refused,
+     * the one {@code @Path} of the interfaces the class implements, directly or through another (the
+     * class is a root resource through it, whichever interface declares the method), its media types
+     * the interface method's, else the class's, else the declaring interface's, and its parameters
+     * bound by the interface method's. JAX-RS applies an
+     * interface method's annotations to an implementing method that declares none of its own. No
+     * entry when neither the class nor an interface it implements carries a {@code @Path}: the class
+     * is no root resource. Refused,
      * with no verb: a class method with JAX-RS annotations of its own (on it or a parameter) whose
      * verb or {@code @Path} differ from the interface method's (at its line), interface methods that
-     * give the method different verbs or paths, and a class {@code @Path} that differs from the
-     * interface's (at the class's line).
+     * give the method different verbs or paths, a class {@code @Path} that differs from the {@code
+     * @Path} of an interface it implements, and, with no class {@code @Path}, interfaces it implements
+     * with different {@code @Path} values (at the class's line).
      */
     private Http http(ExecutableElement m) {
         if (!(m.getEnclosingElement() instanceof TypeElement) || m.getKind() != ElementKind.METHOD) {
@@ -2845,22 +2850,36 @@ public final class Reader {
                     + "." + other.getSimpleName() + " (" + binding(other) + "): which one JAX-RS serves is not read", true);
             }
         }
-        String resource = classPath == null ? null : attribute(classPath, "value");
-        for (ExecutableElement x : inherited) {
-            String iface = pathValue(x.getEnclosingElement());
-            if (resource != null && iface != null && !joinPaths(resource, null).equals(joinPaths(iface, null))) {
-                return refusal("class " + te.getSimpleName() + " has a @Path of its own (" + joinPaths(resource, null)
-                    + ") that differs from the @Path (" + joinPaths(iface, null) + ") of interface "
-                    + ((TypeElement) x.getEnclosingElement()).getQualifiedName() + " it implements: which one JAX-RS serves is not read", true);
+        // The class is a root resource through its own @Path or through the @Path of an interface it
+        // implements, directly or through another: not through the interface that declares the method.
+        Map<String, TypeElement> roots = new LinkedHashMap<>();
+        for (TypeElement x : superInterfaces(te)) {
+            String iface = pathValue(x);
+            if (iface != null) {
+                roots.putIfAbsent(joinPaths(iface, null), x);
+            }
+        }
+        String resource = classPath == null ? null : joinPaths(attribute(classPath, "value"), null);
+        for (Map.Entry<String, TypeElement> root : roots.entrySet()) {
+            if (resource != null && !resource.equals(root.getKey())) {
+                return refusal("class " + te.getSimpleName() + " has a @Path of its own (" + resource
+                    + ") that differs from the @Path (" + root.getKey() + ") of interface "
+                    + root.getValue().getQualifiedName() + " it implements: which one JAX-RS serves is not read", true);
             }
         }
         if (resource == null) {
-            resource = pathValue(ie);
+            if (roots.isEmpty()) {
+                return NO_HTTP;
+            }
+            if (roots.size() > 1) {
+                List<String> named = new ArrayList<>();
+                roots.forEach((path, x) -> named.add(x.getQualifiedName() + " (" + path + ")"));
+                return refusal("class " + te.getSimpleName() + " has no @Path of its own and implements interfaces with different @Path values, "
+                    + String.join(" and ", named) + ": which one JAX-RS serves is not read", true);
+            }
+            resource = roots.keySet().iterator().next();
         }
         String methodPath = pathValue(im);
-        if (resource == null && methodPath == null) {
-            return NO_HTTP;
-        }
         if (ownJaxrs(m)) {
             boolean same = own.equals(verbs(im)) && Objects.equals(ownPath == null ? null : joinPaths(ownPath, null),
                 methodPath == null ? null : joinPaths(methodPath, null));

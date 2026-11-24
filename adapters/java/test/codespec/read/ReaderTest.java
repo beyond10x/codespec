@@ -247,6 +247,10 @@ public final class ReaderTest {
         cases.add(t::adversaryInheritedSuperInterfaceMethodIsServedUnderTheImplementedInterfacePath);
         names.add("adversary_inherited_no_path_on_the_class_or_any_interface_is_no_root_resource_and_no_entry");
         cases.add(t::adversaryInheritedNoTypePathIsNoEntry);
+        names.add("inherited_a_class_without_a_path_implementing_interfaces_of_different_paths_is_refused_at_the_class_line");
+        cases.add(() -> t.inheritedRefused("TwoRootsResource.java", "interfaces with different @Path values", List.of("TwoRootsResource.leaf")));
+        names.add("inherited_a_class_path_differing_from_the_path_of_an_interface_it_implements_through_none_of_its_methods_is_refused");
+        cases.add(() -> t.inheritedRefused("OwnRootResource.java", "a @Path of its own", List.of("OwnRootResource.leaf")));
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {

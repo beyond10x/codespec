@@ -59,10 +59,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
   made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
   one bounds it from below; any other value made from a derived one stays refused with the same
-  message.
+  message. A step bounded by several comparisons stays definite when one of them is not a field
+  an unknown site could add, in whatever order they are written.
 - The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
   sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
-  refuses differing annotations at their line instead of reading no entry.
+  refuses differing annotations at their line instead of reading no entry. The entry's path starts
+  with the `@Path` of the class or of the interface it implements, directly or through another,
+  not of the interface that declares the method; a class with none is no resource and gets no
+  entry, and one whose interfaces name different paths is refused at its line.
 
 ## 0.12.0
 

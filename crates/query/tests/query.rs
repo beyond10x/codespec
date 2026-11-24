@@ -1359,3 +1359,25 @@ fn a_step_bounded_by_a_literal_stays_definite_whatever_order_its_comparisons_are
         assert_eq!(absent, "50\n", "{order}");
     }
 }
+
+/// A step by a literal that is not positive is no bounded step: `D + -1` under `D < 3` moves away
+/// from its bound, as `-1 + D` does and `D - -1` under `D > -3`, and `D + 0` makes no step at all.
+/// Each stays refused.
+#[test]
+fn a_step_by_a_literal_that_is_not_positive_is_no_bounded_step_and_stays_refused() {
+    let walk = "reach(F, G, D), call{func: G, site: Y}, edge(Y, H)";
+    for bound in [
+        "D < 3, D2 = D + -1",
+        "D < 3, D2 = -1 + D",
+        "D > -3, D2 = D - -1",
+        "D < 3, D2 = D + 0",
+        "D > -3, D2 = D - 0",
+    ] {
+        let q = reach(&format!("{walk}, {bound}"));
+        assert_eq!(
+            in_time(q.clone(), vec![chain(6)]).unwrap_err(),
+            UNBOUNDED,
+            "{q}"
+        );
+    }
+}

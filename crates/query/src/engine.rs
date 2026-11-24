@@ -384,12 +384,13 @@ struct CRule {
     widen: Widen,
 }
 
-/// What the upper evaluation of a recursive rule widens ([`finite`]): when a term of `bounds`,
-/// the finite side of a comparison that bounds a value a step made, holds `Top`, the head
-/// positions `heads`, which hold such values, hold `Top`.
+/// What the upper evaluation of a recursive rule widens ([`finite`]): each group of `bounds`
+/// holds the finite sides of every comparison that bounds one step; when each term of one group
+/// holds `Top`, nothing bounds that step, and the head positions `heads`, which hold the values
+/// steps made, hold `Top`. One term that is no `Top` bounds the step whatever the others hold.
 #[derive(Default)]
 struct Widen {
-    bounds: Vec<Arg>,
+    bounds: Vec<Vec<Arg>>,
     heads: Vec<usize>,
 }
 
@@ -1739,7 +1740,8 @@ fn stratify(
 /// derived value, a bound by a derived value and a step of a variable's size stay new.
 ///
 /// Returns each rule's [`Widen`]: in the upper evaluation a bound may be a field of a wild fact,
-/// `Top`, which bounds nothing; the values the bounded steps made are then `Top` themselves.
+/// `Top`, which bounds nothing; when every bound of a step is such a one, the values the bounded
+/// steps made are then `Top` themselves.
 fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<Vec<Widen>, String> {
     const FINITE: u8 = 0;
     const DERIVED: u8 = 1;
@@ -1789,44 +1791,53 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<Vec
             _ => None,
         }
     }
-    // The finite term a comparison of `steps` bounds the variable `x` by, above for `up`, below
-    // otherwise.
-    fn bound<'s>(steps: &'s [Step], class: &[u8], x: usize, up: bool) -> Option<&'s Arg> {
-        steps.iter().find_map(|s| {
-            let Step::Cmp(a, op, b) = s else {
-                return None;
-            };
-            let (low, high) = match op {
-                Op::Lt | Op::Le => (a, b),
-                Op::Gt | Op::Ge => (b, a),
-                _ => return None,
-            };
-            let (own, other) = if up { (low, high) } else { (high, low) };
-            (matches!(own, Arg::Var(v) if *v == x) && of(class, other) == FINITE).then_some(other)
-        })
+    // The finite terms the comparisons of `steps` bound the variable `x` by, above for `up`,
+    // below otherwise: every one of them, so that one a wild fact holds does not hide another.
+    fn bound<'s>(steps: &'s [Step], class: &[u8], x: usize, up: bool) -> Vec<&'s Arg> {
+        steps
+            .iter()
+            .filter_map(|s| {
+                let Step::Cmp(a, op, b) = s else {
+                    return None;
+                };
+                let (low, high) = match op {
+                    Op::Lt | Op::Le => (a, b),
+                    Op::Gt | Op::Ge => (b, a),
+                    _ => return None,
+                };
+                let (own, other) = if up { (low, high) } else { (high, low) };
+                (matches!(own, Arg::Var(v) if *v == x) && of(class, other) == FINITE)
+                    .then_some(other)
+            })
+            .collect()
     }
-    // The bound of `a` when it is a bounded step from a derived variable, `out` the variable
-    // it is bound to.
-    fn bounded<'s>(steps: &'s [Step], class: &[u8], a: &Arg, out: Option<&Arg>) -> Option<&'s Arg> {
-        let (d, up) = step(a)?;
+    // The bounds of `a` when it is a bounded step from a derived variable, `out` the variable
+    // it is bound to: those of the variable it steps from and those of `out`, empty when `a` is
+    // no bounded step.
+    fn bounded<'s>(steps: &'s [Step], class: &[u8], a: &Arg, out: Option<&Arg>) -> Vec<&'s Arg> {
+        let Some((d, up)) = step(a) else {
+            return Vec::new();
+        };
         if class[d] != DERIVED {
-            return None;
+            return Vec::new();
         }
-        bound(steps, class, d, up).or_else(|| match out {
-            Some(Arg::Var(x)) => bound(steps, class, *x, up),
-            _ => None,
-        })
+        let mut all = bound(steps, class, d, up);
+        if let Some(Arg::Var(x)) = out {
+            all.extend(bound(steps, class, *x, up));
+        }
+        all
     }
     // What a term holds, a bounded step derived.
     fn made(steps: &[Step], class: &[u8], a: &Arg, out: Option<&Arg>) -> u8 {
         match of(class, a) {
-            NEW if bounded(steps, class, a, out).is_some() => DERIVED,
+            NEW if !bounded(steps, class, a, out).is_empty() => DERIVED,
             c => c,
         }
     }
-    fn keep(w: &mut Widen, b: &Arg) {
-        if !w.bounds.contains(b) {
-            w.bounds.push(b.clone());
+    fn keep(w: &mut Widen, group: &[&Arg]) {
+        let group: Vec<Arg> = group.iter().map(|&b| b.clone()).collect();
+        if !w.bounds.contains(&group) {
+            w.bounds.push(group);
         }
     }
     let mut widen = Vec::with_capacity(rules.len());
@@ -1911,11 +1922,12 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<Vec
                 if let Step::Cmp(x, Op::Bind, y) = s {
                     for (out, a) in [(x, y), (y, x)] {
                         let Arg::Var(v) = out else { continue };
-                        if of(&class, a) == NEW
-                            && let Some(b) = bounded(&r.steps, &class, a, Some(out))
-                        {
-                            keep(&mut w, b);
-                            holds[*v] = true;
+                        if of(&class, a) == NEW {
+                            let group = bounded(&r.steps, &class, a, Some(out));
+                            if !group.is_empty() {
+                                keep(&mut w, &group);
+                                holds[*v] = true;
+                            }
                         }
                         if let Arg::Var(u) = a
                             && holds[*u]
@@ -1932,13 +1944,15 @@ fn finite(derived: &[Derived], rules: &[CRule], comp_of: &[usize]) -> Result<Vec
         for (k, a) in r.args.iter().enumerate() {
             let mut vs = Vec::new();
             vars(a, &mut vs);
-            let step_bound = (of(&class, a) == NEW)
-                .then(|| bounded(&r.steps, &class, a, None))
-                .flatten();
-            if let Some(b) = step_bound {
-                keep(&mut w, b);
+            let group = if of(&class, a) == NEW {
+                bounded(&r.steps, &class, a, None)
+            } else {
+                Vec::new()
+            };
+            if !group.is_empty() {
+                keep(&mut w, &group);
             }
-            if step_bound.is_some() || vs.iter().any(|&x| holds[x]) {
+            if !group.is_empty() || vs.iter().any(|&x| holds[x]) {
                 w.heads.push(k);
             }
         }
@@ -3223,12 +3237,14 @@ impl<'a> Eval<'a> {
                 .iter()
                 .map(|a| value_of(a, b))
                 .collect::<Option<_>>()?;
-            // A bound a wild fact holds bounds nothing: what the bounded steps made is any value.
+            // A bound a wild fact holds bounds nothing: when every bound of a step is such a
+            // one, what the bounded steps made is any value.
             if mode == Mode::Upper
-                && r.widen
-                    .bounds
-                    .iter()
-                    .any(|a| value_of(a, b).is_some_and(|v| v.has_top()))
+                && r.widen.bounds.iter().any(|group| {
+                    group
+                        .iter()
+                        .all(|a| value_of(a, b).is_some_and(|v| v.has_top()))
+                })
             {
                 r.widen.heads.iter().for_each(|&k| t[k] = V::Top);
             }
