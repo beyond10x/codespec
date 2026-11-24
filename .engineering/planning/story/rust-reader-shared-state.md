@@ -6,7 +6,7 @@ status: draft
 title: The Rust reader reads shared state behind Arc and a mutex
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 1
+revision: 2
 ---
 # Story: The Rust reader reads shared state behind Arc and a mutex
 
@@ -35,3 +35,23 @@ Shared state behind these types is the usual shape of an async service's store.
 
 - `adapters/rust-read/src/`, `adapters/go/` when a node is added, `crates/model` only for an
   additive node, `CHANGELOG.md`. Inferred.
+
+## Evidence: consumer report of 2026-11-24
+
+A consumer report on 0.12.0 from an async network service ranks values of `Arc` and `Mutex`
+second. Reproduced on main `f09c740fc` (2026-11-24) with a crate written from scratch
+(`target/repro/shared/` of the planning tree, not committed):
+
+```rust
+use std::sync::{Arc, Mutex};
+pub struct Counter { pub hits: Arc<Mutex<i64>> }
+impl Counter { pub fn new() -> Counter { Counter { hits: Arc::new(Mutex::new(0)) } }
+               pub fn hit(&self) -> i64 { let mut n = self.hits.lock().unwrap(); *n += 1; *n } }
+pub fn share(c: Arc<Mutex<i64>>) -> Arc<Mutex<i64>> { Arc::clone(&c) }
+```
+
+`read 0 of 3 functions`: "field hits: type `Arc<Mutex<i64>>` (`std::sync::Arc`) is outside
+cir/1: the reader maps a path by the full path it names", then "an impl for a type other than a
+declared one" for the whole `impl Counter`. One field takes every method of the state struct
+with it. A failing test first in `adapters/rust-read/tests/reader.rs`: `hit` called twice on one
+`Counter` evaluates to 2.

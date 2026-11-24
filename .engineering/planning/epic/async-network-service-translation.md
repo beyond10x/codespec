@@ -21,7 +21,7 @@ relations:
 - depends_on: story:cir1-defer-receiver-root
 - depends_on: story:listed-macro-format-string
 - depends_on: story:reader-indirect-sites-rust
-revision: 2
+revision: 3
 ---
 # Epic: An async network service read from Rust and written as Go
 
@@ -82,19 +82,35 @@ Timo's pick of 2026-11-24 about 03:05 CET (relayed by the operator), in the orde
 proposed. A step starts when the one before it is implemented, except where a story's own
 `depends_on` edges say otherwise.
 
-1. Silent misreads first: `story:rust-reader-no-silent-misread` (serde wire attributes and
-   last-segment type paths are refused instead of read wrongly), then
-   `story:rust-reader-std-types-by-path` for the parts that story does not take.
-2. Reader coverage: `story:rust-reader-externs`, `story:rust-reader-option-values`,
-   `story:rust-reader-shared-state`, `story:rust-reader-iterators-and-std-impls`,
-   `story:rust-reader-async` (async functions and `.await`; spawn and `select!` wait for step 3),
-   `story:wire-names-from-serde`, `story:rust-reader-log-and-metric-macros`,
-   `story:rust-reader-http-entries`.
+Revised 2026-11-24 from a second consumer report on 0.12.0 (an async network service: 10 of 472
+functions read, 420 refusals), each construct reproduced on main `f09c740fc` with a crate
+written from scratch. The operator's rule: a misread without a refusal is a correctness defect
+and ranks before any refusal. Refusals are ranked by how many functions of an async service
+each likely blocks.
+
+1. Silent misreads first: `story:rust-reader-no-silent-misread` (implemented: serde wire
+   attributes and last-segment type paths are refused instead of read wrongly), then
+   `story:rust-reader-shift-count` (wrong in every Rust build), `story:rust-reader-integer-overflow`
+   (`MIN / -1` wrong in every build; `+ - *` wrong with overflow checks),
+   `story:rust-reader-platform-int-width` (a `usize` function reads to Go and Rust that do not
+   build), then `story:rust-reader-std-types-by-path` for the parts that story does not take.
+2. Reader coverage: `story:rust-reader-externs`, `story:rust-reader-async` (async functions and
+   `.await`; spawn and `select!` wait for step 3), `story:rust-reader-shared-state`,
+   `story:rust-reader-module-paths`, `story:rust-reader-mut-refs`, `story:rust-reader-json-values`,
+   `story:rust-reader-duration`, `story:rust-reader-option-values`,
+   `story:rust-reader-iterators-and-std-impls`, `story:rust-reader-impls-on-undeclared-types`,
+   `story:rust-reader-lifetimes`, `story:wire-names-from-serde`,
+   `story:rust-reader-log-and-metric-macros`, `story:rust-reader-http-entries`, then
+   `story:rust-reader-count-test-only-items` (a count, no function blocked).
 3. `story:cir1-tasks-and-select` (decided: `cir/1` states tasks and `select`), then
    `story:eval-deterministic-tasks`.
 4. Go writer: `story:go-writer-partial-module`, `story:go-writer-extern-map`.
 5. Equivalence: `story:harness-service-traces`, `story:example-async-service`,
    `story:sealed-translation-run`.
+
+Outside this epic (Rust writer, Rust to Rust), from the same report, in this order:
+`story:rust-tuple-variant-fields` (a misread on the round trip), `story:writer-rust-floats`,
+`story:rust-writer-interfaces-and-generics`.
 
 ## Acceptance
 

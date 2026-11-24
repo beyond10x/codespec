@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: story:cir1-tasks-and-select
 - depends_on: story:rust-reader-externs
-revision: 1
+revision: 2
 ---
 # Story: The Rust reader reads async functions, await, spawned tasks, runtime channels and select
 
@@ -46,3 +46,20 @@ generic, async or unsafe".
 ## Scope
 
 - `adapters/rust-read/src/`, `adapters/rust-read/tests/`, `CHANGELOG.md`. Inferred.
+
+## Evidence: consumer report of 2026-11-24
+
+A consumer report on 0.12.0 from an async network service (10 of 472 functions read, 420
+refusals) ranks `async fn` first. Reproduced on main `f09c740fc` (2026-11-24) with a crate written
+from scratch (`target/repro/asyncfn/` of the planning tree, not committed):
+
+```rust
+pub async fn fetch(x: i64) -> i64 { x + 1 }
+pub async fn twice(x: i64) -> i64 { let a = fetch(x).await; fetch(a).await }
+impl Handler { pub async fn handle(&self, x: i64) -> i64 { self.base + x }
+               pub fn sync_handle(&self, x: i64) -> i64 { self.base + x } }
+```
+
+`read 1 of 4 functions`; "an async function is outside cir/1" at each `async fn` (lib.rs:1, 5,
+15). Only `sync_handle` is read. A failing test first in `adapters/rust-read/tests/reader.rs`:
+`twice` reads with no refusal and evaluates to `fetch(fetch(x))`.

@@ -5,7 +5,7 @@ kind: story
 status: draft
 title: The Rust writer writes floats
 summary: type.float and float expressions are written as Rust, where the writer refuses them today.
-revision: 2
+revision: 3
 ---
 # Story: the Rust writer writes floats
 
@@ -31,3 +31,20 @@ in its core. The Go writer already writes floats (`story:cir1-arrays-floats`,
   harness's seeds; the rounding and formatting rules the writer relies on are stated in its
   README.
 - `task check` exits 0.
+
+## Evidence: consumer report of 2026-11-24
+
+A consumer report on 0.12.0 from an async network service found the Rust round trip "drops
+floats". Reproduced on main `f09c740fc` (2026-11-24) with a crate written from scratch
+(`target/repro/wfloat/` of the planning tree, not committed):
+
+```rust
+pub fn half(x: f64) -> f64 { x / 2.0 }
+pub fn count() -> i64 { 3 }
+```
+
+The reader reads both (`read 2 of 2 functions`); `codespec write --lang rust` exits 0 and the
+written `lib.rs` holds only `count`. The function is not lost silently: the written
+`refusals.json` lists `{"name": "Half", "pos": "lib.rs:1", "reason": "type.float: this writer
+has no Rust form for a float"}`. A failing test first in `adapters/rust/tests/writer.rs`: `half`
+read and written back is in the written crate and returns 1.25 for 2.5.
