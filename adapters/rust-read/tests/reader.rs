@@ -3473,3 +3473,128 @@ fn a_map_renamed_on_import_keeps_its_order() {
     let json = serde_json::to_string(&f.map(|f| &f.body)).unwrap();
     assert!(json.contains("sorted_keys"), "{json}");
 }
+
+/// What the `cir/1` evaluator prints for `calls` against `m` after the passes; a stop fails.
+fn evaluate(m: &Module, calls: &[(&str, &[&str])]) -> String {
+    let passed = codespec_passes::run(m);
+    let calls = codespec_conformance::Calls {
+        format: "codespec-calls/1".into(),
+        calls: calls
+            .iter()
+            .map(|(f, args)| codespec_conformance::Call {
+                func: (*f).into(),
+                args: args.iter().map(|a| (*a).into()).collect(),
+            })
+            .collect(),
+    };
+    let run = codespec_eval::run_calls(&passed, &calls, &codespec_eval::Options::default())
+        .expect("the evaluator takes the calls");
+    assert!(run.stop.is_none(), "{:?}\n{}", run.stop, run.stdout);
+    run.stdout
+}
+
+/// A shift whose count is not proven below the left operand's width, the consumer's three: Rust
+/// panics (with overflow checks) or masks the count, where `cir/1`'s Go shift gives 0.
+#[test]
+fn a_shift_whose_count_is_not_proven_below_the_width_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub fn shl(x: u32, n: u32) -> u32 {",
+        "    x << n",
+        "}",
+        "pub fn mask(bits: u8) -> u64 {",
+        "    (1u64 << bits) - 1",
+        "}",
+        "pub fn shl_signed(x: i64, n: u32) -> i64 {",
+        "    x << n",
+        "}",
+    ]));
+    assert_foreign(&m, "Shl", "lib.rs:2", "count");
+    assert_foreign(&m, "Mask", "lib.rs:5", "count");
+    assert_foreign(&m, "ShlSigned", "lib.rs:8", "count");
+}
+
+/// Each count the rule proves below the width reads, and evaluates to what Rust prints.
+#[test]
+fn a_shift_whose_count_is_proven_below_the_width_reads_and_evaluates_equal_to_rust() {
+    let m = read(&lines(&[
+        "const STEP: u32 = 7;",
+        "pub fn lit(x: i32) -> i32 {",
+        "    x << 31",
+        "}",
+        "pub fn by_const(x: i64) -> i64 {",
+        "    x >> STEP",
+        "}",
+        "pub fn masked(x: i64, n: u32) -> i64 {",
+        "    x << (n & 63)",
+        "}",
+        "pub fn modulo(x: i8, n: u64) -> i8 {",
+        "    x >> (n % 8)",
+        "}",
+        "pub fn word(x: isize) -> isize {",
+        "    x << 31",
+        "}",
+        "pub fn in_place(mut x: i16, n: i16) -> i16 {",
+        "    x <<= n & 15;",
+        "    x",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let out = evaluate(
+        &m,
+        &[
+            ("Lit", &["3"]),
+            ("ByConst", &["1000"]),
+            ("Masked", &["1", "64"]),
+            ("Masked", &["-3", "65"]),
+            ("Modulo", &["-100", "9"]),
+            ("Word", &["3"]),
+            ("InPlace", &["1", "17"]),
+        ],
+    );
+    // What the Rust source returns for the same calls.
+    let rust = ["-2147483648", "7", "1", "-6", "-50", "6442450944", "2"];
+    let got: Vec<&str> = out.lines().collect();
+    assert_eq!(got.len(), rust.len(), "{out}");
+    for (g, r) in got.iter().zip(rust) {
+        assert!(g.ends_with(r), "printed {g:?}, Rust gives {r}\n{out}");
+    }
+}
+
+/// The first count outside each rule is refused at its line: a literal of the width, a mask of
+/// the width, a remainder by the width plus one, a remainder of a signed value, a constant of
+/// the width, and a `usize` shifted by 32 (its width is 32 or 64 bits).
+#[test]
+fn a_shift_whose_count_is_the_first_outside_its_rule_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "const WIDE: u32 = 32;",
+        "pub fn lit(x: u32) -> u32 {",
+        "    x << 32",
+        "}",
+        "pub fn masked(x: u32, n: u32) -> u32 {",
+        "    x << (n & 32)",
+        "}",
+        "pub fn modulo(x: u32, n: u32) -> u32 {",
+        "    x >> (n % 33)",
+        "}",
+        "pub fn signed_modulo(x: u32, n: i32) -> u32 {",
+        "    x >> (n % 32)",
+        "}",
+        "pub fn by_const(x: u32) -> u32 {",
+        "    x << WIDE",
+        "}",
+        "pub fn word(x: usize) -> usize {",
+        "    x << 32",
+        "}",
+        "pub fn in_place(mut x: u8, n: u8) -> u8 {",
+        "    x >>= n;",
+        "    x",
+        "}",
+    ]));
+    assert_foreign(&m, "Lit", "lib.rs:3", "count");
+    assert_foreign(&m, "Masked", "lib.rs:6", "count");
+    assert_foreign(&m, "Modulo", "lib.rs:9", "count");
+    assert_foreign(&m, "SignedModulo", "lib.rs:12", "count");
+    assert_foreign(&m, "ByConst", "lib.rs:15", "count");
+    assert_foreign(&m, "Word", "lib.rs:18", "count");
+    assert_foreign(&m, "InPlace", "lib.rs:21", "count");
+}

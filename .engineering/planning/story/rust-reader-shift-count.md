@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-shift-count
 kind: story
-status: active
+status: implemented
 title: The Rust reader reads a shift only when its count is proven below the width
 summary: A << or >> whose count is not proven below the operand's width is refused at its line, not read as Go's shift; the profile-aware reading comes with story:rust-reader-integer-overflow.
 relations:
@@ -17,10 +17,11 @@ scope:
   path: adapters/rust-read/src/lib.rs
 - confidence: cited
   path: adapters/rust-read/tests/reader.rs
-revision: 13
+revision: 14
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 12}
 - {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 13}
+- {from: "active", to: "implemented", at: "2026-11-24T15:30:44Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader reads a shift only when its count is proven below the width
 

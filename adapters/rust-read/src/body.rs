@@ -2972,6 +2972,9 @@ impl<'r> Fx<'r> {
             _ => (op, &*b.right),
         };
         let r = self.val(right, Some(l.t()))?;
+        if matches!(op, "<<=" | ">>=") {
+            self.shift_count(op, l.t(), &r)?;
+        }
         let mut out = Vec::new();
         let r = if hold && !fixed(&r) {
             self.hold(r, pos, &mut out)
@@ -3600,6 +3603,65 @@ impl<'r> Fx<'r> {
         }
     }
 
+    /// A shift `x op y` (`<<`, `>>`, `<<=`, `>>=`) whose count `y` is proven below the width W of
+    /// `x`'s type `t`, where Rust and `cir/1` (Go) agree. Past it Rust panics with overflow
+    /// checks and masks the count without them, where Go gives 0 or the sign, so any other count
+    /// is refused. Proven: an integer literal below W, a constant whose literal is, `e & m` with
+    /// a literal `m` at most W - 1, `e % k` with a literal `k` from 1 to W and `e` unsigned. A
+    /// `usize` or `isize` (`platform`, 32 or 64 bits) only by a literal below 32.
+    fn shift_count(&self, op: &str, t: &Type, y: &Expr) -> R<()> {
+        let lit = |e: &Expr| match e {
+            Expr::Lit {
+                value,
+                t: Type::Int { .. },
+            } => value.parse::<u128>().ok(),
+            _ => None,
+        };
+        let w: u128 = match t {
+            Type::Int { width, .. } => match width {
+                IntWidth::W8 => 8,
+                IntWidth::W16 => 16,
+                IntWidth::W32 => 32,
+                IntWidth::W64 => 64,
+                IntWidth::Platform => {
+                    return match lit(y) {
+                        Some(n) if n < 32 => Ok(()),
+                        _ => Err(format!(
+                            "`{op}` on a usize or isize (32 or 64 bits wide) whose count is not an integer literal below 32: Rust panics or masks a count at or past the width, where Go gives 0 or the sign"
+                        )),
+                    };
+                }
+            },
+            _ => {
+                return Err(format!(
+                    "`{op}` on a value other than an integer: Rust calls its operator trait's impl, which the reader does not read"
+                ));
+            }
+        };
+        let proven = match y {
+            Expr::Lit { .. } => lit(y).is_some_and(|n| n < w),
+            Expr::Const { name, .. } => self
+                .r
+                .const_values
+                .get(name)
+                .and_then(|v| v.parse::<u128>().ok())
+                .is_some_and(|n| n < w),
+            Expr::Binop { op: o, y: m, .. } if o == "&" => lit(m).is_some_and(|m| m < w),
+            Expr::Binop { op: o, x, y: k, .. } if o == "%" => {
+                matches!(x.t(), Type::Int { signed: false, .. })
+                    && lit(k).is_some_and(|k| (1..=w).contains(&k))
+            }
+            _ => false,
+        };
+        if proven {
+            Ok(())
+        } else {
+            Err(format!(
+                "`{op}` whose count is not proven below {w}, the width of its left operand (a literal or constant below it, `e & m` with `m` below it, or `e % k` with `k` at most it and `e` unsigned): Rust panics or masks such a count, where Go gives 0 or the sign"
+            ))
+        }
+    }
+
     fn binary(&mut self, b: &syn::ExprBinary, want: Option<&Type>) -> R<Expr> {
         use syn::BinOp as B;
         let (op, kind) = match b.op {
@@ -3647,7 +3709,13 @@ impl<'r> Fx<'r> {
         }
         let (x, y) = if kind == 's' {
             let x = self.val(&b.left, operand_want.as_ref())?;
-            let y = self.val(&b.right, None)?;
+            // An unsuffixed count is Rust's `i32`, the type its inference falls back to.
+            let count_want = unsuffixed_int(&b.right).then_some(Type::Int {
+                width: IntWidth::W32,
+                signed: true,
+            });
+            let y = self.val(&b.right, count_want.as_ref())?;
+            self.shift_count(op, x.t(), &y)?;
             (x, y)
         } else if unsuffixed_int(&b.left) && operand_want.is_none() {
             let y = self.val(strip_ref(&b.right), None)?;

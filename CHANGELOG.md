@@ -53,6 +53,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
 
+### Changed
+
+- The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
+  the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
+  a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read
+  Go's shift before; the kit's Rust sources of `op-shl`, `op-shr`, `assign-shl` and `assign-shr`
+  mask their count (`b & 63`).
+
 ## 0.12.0
 
 ### Added
