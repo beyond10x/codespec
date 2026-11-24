@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T02:58:36Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-engine-rename",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-edit --locked: 57 passed, 0 failed (32 in change_sets, 0.05 s); clippy -D warnings and fmt --check clean",
+    "reference": "crates/edit/tests/change_sets/mod.rs"
+  }
+}
