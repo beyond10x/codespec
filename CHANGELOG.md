@@ -60,6 +60,9 @@ Every change a user of `codespec` or of `cir/1` would notice.
   made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
   one bounds it from below; any other value made from a derived one stays refused with the same
   message.
+- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
+  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
+  refuses differing annotations at their line instead of reading no entry.
 
 ## 0.12.0
 
