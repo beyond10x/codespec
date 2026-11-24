@@ -17,7 +17,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 3
+revision: 4
 ---
 # Story: a project read reads a record, top-level or nested, as a value struct
 
@@ -68,6 +68,10 @@ compared by identity through its pointer".
 - A failing `ReaderTest` case first, over a record and a nested record added to
   `adapters/java/testdata/project-forms`: both are structs, `sum` and `size` read with no refusal,
   and the module run by the evaluator gives what Java prints for a `calls.json` of three calls.
+- A record with a method of its own (`int area()` over its components) and a compact constructor
+  that throws on a negative component reads with no refusal, as a class's method and constructor
+  do; the evaluator gives what Java prints for a call of the method and for a construction with a
+  negative component (the raise), in the same `calls.json`.
 - `p == q` on two records is a refusal at its line (a second case).
 - A record used as a map key (`Map<Point, Integer>` `put` and `get`) and as a lock
   (`synchronized (p)`) are refusals at their lines (a case each).

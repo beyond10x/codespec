@@ -16,7 +16,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-inherited-entries
-revision: 3
+revision: 4
 ---
 # Story: a resource method gets its http entry from JAX-RS annotations on the interface it implements
 
@@ -84,7 +84,9 @@ The same with `ItemsApi.java` copied into `src/main/java`: no entry, no refusal.
   annotated interface in `src/main/java` and one compiled onto the class path, each implemented by
   a class without annotations; the read has an `http` entry `GET /items/{id}` naming
   `ItemsResource.get` and `POST /items` naming `ItemsResource.create`, and the path parameter
-  `id` reads without the null refusal.
+  `id` reads without the null refusal. The class-path interface also declares a `@PUT`, a
+  `@DELETE` and a `@PATCH` method, each implemented without annotations, and the read has the
+  three `http` entries with those verbs.
 - A class method with its own differing verb or path is a refusal at its line (a second case).
 - A class implementing two annotated interfaces that give one method two verbs (`@GET` on one,
   `@POST` on the other) is a refusal at the class's line, and the method has no `http` entry (a

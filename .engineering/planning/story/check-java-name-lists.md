@@ -19,7 +19,7 @@ scope:
   path: crates/check/tests/fixtures
 - confidence: inferred
   path: crates/cli/tests/check.rs
-revision: 7
+revision: 9
 ---
 # Story: built-in checks carry Java name lists and say when a set has no name for its language
 
@@ -40,7 +40,16 @@ Defect (silent false negative). Reported by the consumer of a Java service: 17 o
 checks give 0 rows on its Java documents; their name lists are Go standard-library names. The
 check logic itself works on Java documents: with `--names` the rows appear. A Java
 `ReentrantLock` is reentrant, so a relock in its own span is no self-deadlock: a Java list must
-not carry it into a self-deadlock check.
+not carry it into a check that reports a second lock in one span as a defect.
+
+The source of the lists is part D of the consumer's ask, quoted: "Java name lists:
+java.util.concurrent locks, JDBC and EntityManager, transactions, SecureRandom against Random,
+constant-time comparison of secrets". Transactions are not in this first set: a transaction begun
+with no commit or rollback on a path is a check of its own, recorded as Later.
+
+Later: a check for a transaction (`EntityTransaction.begin`, `Connection.setAutoCommit(false)`)
+with a path to a return that passes neither commit nor rollback; drafted when this story is
+implemented, not part of it.
 
 ## Reproducer
 
@@ -81,7 +90,11 @@ that form.
 - `secret-compare`: `token.equals(given)` is a row; `MessageDigest.isEqual(token, given)` and
   `name.equals(given)` are none (tests).
 - `lock-without-unlock`, `insecure-random` and `conn-leak` over the Java reproducer are applicable
-  and give their rows with no `--names` (a `crates/cli/tests/check.rs` case).
+  and give their rows with no `--names` (a `crates/cli/tests/check.rs` case). The same case's
+  fixture has a `ReentrantReadWriteLock` read lock, its write lock and a `StampedLock` each taken
+  with a return before the unlock, and each is a `lock-without-unlock` row.
+- A method that takes one `ReentrantLock` twice and releases it twice gives no row from any
+  built-in check (a near-miss case run over every check of `codespec check --list`).
 - `codespec check --list` prints `secret-compare` and the Java entries (a test); the crate doc of
   `b10x-codespec-check` names them.
 - `task check` green.

@@ -7,7 +7,7 @@ title: Read a Maven project's dependencies from their sources jars
 summary: scripts/read-repo-java.sh --deps reads the dependencies' sources jars from the local Maven repository, so reach crosses into library code.
 relations:
 - decomposes: epic:java-quarkus-reader
-- depends_on: story:check-java-name-lists
+- depends_on: story:java-reader-public-corpus
 scope:
 - confidence: inferred
   path: Taskfile.yml
@@ -19,7 +19,7 @@ scope:
   path: scripts/read-repo-java.sh
 - confidence: inferred
   path: website/docs/guides/read-a-quarkus-project.md
-revision: 2
+revision: 4
 ---
 # Story: read a Maven project's dependencies from their sources jars
 
@@ -53,10 +53,15 @@ a lock) is an extern's name only, and a defect one layer down stays invisible to
   local repository directory of the fixture (`m2/`), passed to the script in place of
   `~/.m2/repository`; the script reads the project and the library, and the library's documents
   have `path` equal to its Java packages.
+- Without `--deps` the script over the same project writes documents byte-equal to those of
+  `codespec read --lang java` over it, and reads no library (a case).
 - `codespec reach` over both sets of documents, from the project's resource method (an `http`
   entry), reaches a function of the library module (the same test).
 - A second dependency with a jar and no sources jar is named on one line with its coordinates,
   the script reads the rest and exits 0 (a case).
+- Nothing is fetched: a third dependency with neither jar nor sources jar in the fixture's
+  repository is named on one line as missing, the script exits 0, and the file list of the
+  fixture's repository directory is the same before and after the run (a case).
 - The per-library line of `codespec measure` is printed for the library (a case).
 - No network: the test runs with the fixture's repository only, inside the 60 s bound of one test
   and the 120 s budget of the test step.
@@ -67,5 +72,7 @@ a lock) is an extern's name only, and a defect one layer down stays invisible to
 - Own: `scripts/read-repo-java.sh`, `adapters/java/testdata/maven-deps/`,
   `adapters/java/src/codespec/read/Main.java` (a sources or class-path input, if one is needed),
   `Taskfile.yml` (the test's task), `website/docs/guides/read-a-quarkus-project.md`. Inferred.
-- Last of Lane B in the epic's Order; its reach case reads the entries the reader records.
+- After `story:java-reader-public-corpus` (a `depends_on` edge): both add a task to
+  `Taskfile.yml`, as `story:release-jvm-readers` before them does. Its reach case reads the
+  entries the reader records.
 - `CHANGELOG.md` gets one line; conflicts there are resolved at merge.

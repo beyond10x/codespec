@@ -18,7 +18,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 3
+revision: 4
 ---
 # Story: a project read reads a stream pipeline over a list ending in a terminal call
 
@@ -61,9 +61,15 @@ Flow.java:41 stream: Stream.toList is outside cir/1
   repeat).
 - One method per further terminal or stage reads with no refusal, and the evaluator gives what Java
   prints on the same three lists: `xs.stream().sorted().toList()`,
-  `xs.stream().mapToInt(x -> x * 2).sum()`, `xs.stream().anyMatch(x -> x > 2)` and
-  `xs.stream().findFirst().orElse(-1)`.
-- `parallelStream()` and a lambda writing a captured array element are refusals at their lines.
+  `xs.stream().mapToInt(x -> x * 2).sum()`, `xs.stream().anyMatch(x -> x > 2)`,
+  `xs.stream().allMatch(x -> x > 0)`, `xs.stream().noneMatch(x -> x < 0)`,
+  `xs.stream().findFirst().orElse(-1)` and `xs.stream().collect(Collectors.toSet()).size()`.
+- A `Set<Integer>` source: `s.stream().filter(x -> x > 1).count()` reads with no refusal and the
+  evaluator gives what Java prints on three sets (empty, one element, several).
+- A write to a `toList()` result (`ys.add(1)` after `ys = xs.stream().toList()`) is a refusal at
+  the write's line.
+- `parallelStream()`, a `peek` stage and a lambda writing a captured array element are refusals at
+  their lines (a case each).
 - README row; `task adapters-check` green.
 
 ## Scope

@@ -19,7 +19,7 @@ scope:
   path: crates/cli/src/main.rs
 - confidence: inferred
   path: crates/cli/tests/check.rs
-revision: 2
+revision: 3
 ---
 # Story: a check with no name for the set's language says it is not applicable
 
@@ -58,6 +58,12 @@ standard error.
   `not applicable to java` line and `--format json` has `not_applicable: "java"`; neither has
   0 rows as its only content.
 - Over a Go set the same check is applicable and its output has no such line (a test).
+- The rule is not Java's: the same check over a set of Rust documents read by
+  `codespec-read-rust` reports not applicable to `rust` (a test).
+- A check with no name list is always applicable: `unsigned-below-zero` (the one built-in check
+  with `lists: &[]` on main `5f82fff97`) over the Java set prints no not-applicable line on
+  standard error, its text output has none, and its JSON report has no `not_applicable` field
+  (a test).
 - The crate doc of `b10x-codespec-check` states the result; `task check` green.
 
 ## Scope

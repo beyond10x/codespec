@@ -8,6 +8,7 @@ summary: 'Refused 8 times: calls through an interface another package of the pro
 relations:
 - decomposes: epic:java-quarkus-reader
 - depends_on: story:java-reader-enum-constant-arguments
+- depends_on: story:reach-entry-file
 scope:
 - confidence: inferred
   path: adapters/java/README.md
@@ -19,7 +20,7 @@ scope:
   path: adapters/java/testdata/project-forms
 - confidence: inferred
   path: crates/cli/tests/reach.rs
-revision: 2
+revision: 3
 ---
 # Story: a call through an interface of another package of the project
 
@@ -72,4 +73,6 @@ DirectResource.java:21 call of org.example.store.Store.load through an interface
 - Own: `adapters/java/src/codespec/read/Reader.java`, `adapters/java/test/codespec/read/ReaderTest.java`,
   `adapters/java/testdata/project-forms`, `adapters/java/README.md`, `crates/cli/tests/reach.rs`,
   `CHANGELOG.md`. Inferred.
+- After `story:java-reader-enum-constant-arguments` (same `Reader.java`, `ReaderTest.java`,
+  `project-forms`) and after `story:reach-entry-file` (same `crates/cli/tests/reach.rs`).
 - Shares `Reader.java` with `story:reader-indirect-sites-jvm`, which states unresolved calls.

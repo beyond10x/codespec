@@ -7,7 +7,6 @@ title: Reach entries as a reviewed data file, by name, by pattern or by recorded
 relations:
 - decomposes: epic:sound-reach
 - depends_on: story:reach-three-valued
-- depends_on: story:java-reader-public-corpus
 scope:
 - confidence: inferred
   path: crates/check/src/checks.rs
@@ -27,7 +26,7 @@ scope:
   path: examples/entries/
 - confidence: inferred
   path: website/docs/guides/
-revision: 14
+revision: 15
 ---
 # Story: reach entries as a reviewed data file, by name, by pattern or by recorded kind
 
@@ -84,8 +83,8 @@ message) only when the set records no entry. A set with `main.main` keeps it as 
 - `story:check-not-applicable` and then `story:check-java-name-lists` run after this one: they
   change `crates/check/src/checks.rs`, `crates/cli/src/main.rs` and `crates/cli/tests/check.rs`
   too.
-- `story:java-reader-cross-package-interface-calls` also adds a case to `crates/cli/tests/reach.rs`;
-  `aep plan artifact waves` keeps the two apart.
+- `story:java-reader-cross-package-interface-calls` runs after this one (a `depends_on` edge):
+  both edit `crates/cli/tests/reach.rs`.
 - `CHANGELOG.md` gets one line; the epic's Order says conflicts there are resolved at merge.
 
 ## Requested again: Java http entries and `codespec check unreached`

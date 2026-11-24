@@ -7,7 +7,7 @@ title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
@@ -89,9 +89,9 @@ Lane A, one implementer, serial. Each story depends on the one before it: they s
 9. `story:java-reader-generic-instance-methods`: 10.
 10. `story:java-reader-static-field-initializers`: 10.
 11. `story:java-reader-enum-constant-arguments`: 9.
-12. `story:java-reader-cross-package-interface-calls`: 8; also adds a case to
-    `crates/cli/tests/reach.rs`, which `story:reach-entry-file` changes; `waves` keeps the two
-    apart.
+12. `story:java-reader-cross-package-interface-calls`: 8; also depends on
+    `story:reach-entry-file` (Lane B): both edit `crates/cli/tests/reach.rs`, and
+    `story:reach-entry-file` goes first.
 13. `story:java-reader-try-catch`: 5; also depends on 3.
 14. `story:java-reader-cdi-observes-entry`: 15. Near the end because it changes `crates/model`
     and the schema, which the Rust wave changes too: it starts after that wave merges, rebased.
@@ -99,22 +99,36 @@ Lane A, one implementer, serial. Each story depends on the one before it: they s
 15. `story:java-reader-scheduled-startup-entries`: kind `startup` (`scheduled` exists). After 14
     (`ENTRY_KINDS`, schema) and `story:reach-entry-file`, for the same reasons.
 
-Lane B, one implementer, serial (they share `Taskfile.yml`, `crates/check`, `crates/cli`):
+Lane B, one implementer. Its stories carry a `depends_on` edge only where two of them edit the
+same file, and the edge names that file:
+
+- `story:release-jvm-readers`, then `story:java-reader-public-corpus`, then
+  `story:java-read-dependencies`: each adds a task to `Taskfile.yml`.
+- `story:reach-entry-file`, then `story:check-not-applicable`, then `story:check-java-name-lists`:
+  they edit `crates/check/src/checks.rs` and `crates/cli/tests/check.rs` (the first two also
+  `crates/cli/src/main.rs`).
+- `story:query-recursion-bounded-by-comparison` (`crates/query`) shares no file with the others
+  and has no edge.
+
+The order in which the one implementer takes them is a priority, not an edge, and `waves` does not
+enforce it:
 
 1. `story:query-recursion-bounded-by-comparison` (`epic:codebase-transformations`): defect, a
    bounded recursion refused on any documents since 0.11.0.
-2. `story:release-jvm-readers`: packaging, the archives carry no JVM reader; the consumer's
+2. `story:release-jvm-readers`: packaging, the archives carry no Java reader; the consumer's
    re-read needs a release binary.
 3. `story:java-reader-public-corpus`: the public measurement, early so every later wave is
    measured.
 4. `story:reach-entry-file` (`epic:sound-reach`): after `story:reach-three-valued`; gives `reach`
    and `check unreached` the recorded entries as their default.
 5. `story:check-not-applicable` (`epic:codebase-transformations`): defect, checks give 0 rows on
-   a language they have no names for, silently; after 4 (`crates/check/src/checks.rs`,
-   `crates/cli/tests/check.rs`).
+   a language they have no names for, silently.
 6. `story:check-java-name-lists` (`epic:codebase-transformations`): the Java lists and
-   `secret-compare`; after 5.
-7. `story:java-read-dependencies`: the dependencies one layer down; last.
+   `secret-compare`.
+7. `story:java-read-dependencies`: the dependencies one layer down.
+
+The Groovy reader and the JVM runners in the archive are
+`story:release-groovy-reader-and-jvm-runners` (`epic:groovy-grails-reader`), outside this epic.
 
 `story:reader-indirect-sites-jvm` (`epic:sound-reach`) lands on all of `adapters/java` and
 `adapters/groovy`: it runs after Lane A.
