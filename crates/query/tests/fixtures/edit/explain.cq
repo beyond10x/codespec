@@ -1,0 +1,5 @@
+// A rule and two edit items: the delete sits a stratum above the rule it negates.
+called(F) :- calls(_, F).
+edit delete(F) :- func{id: F, module: "example.com/orders", kind: "func", exported: false},
+                  !called(F).
+edit rename(F, "LoadAll") :- func{id: F, name: "Load"}.

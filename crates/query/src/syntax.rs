@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! module  = item*
-//! item    = names | rule | fact | query | property
+//! item    = names | rule | fact | query | property | edit
 //! names   = "names" lname "=" "[" string ("," string)* ","? "]" "."
 //! rule    = atom ":-" body "."         fact = atom "."         query = "?-" body "."
 //! body    = lit ("," lit)*
@@ -24,7 +24,12 @@
 //! trans   = ident "->" ident ":" event ("=>" ident ":=" Var ("," ident ":=" Var)*)?
 //! event   = "exit" | "call" "{" field ("," field)* "}"
 //! message = "message" string
+//! edit    = "edit" op "(" term ("," term)* ")" ":-" body "."
 //! ```
+//!
+//! `edit` followed by a name starts an edit item (`docs/code-edit-language.md` § 3.1); `edit(`
+//! is still a relation named `edit`. Its operation is one of [`EDIT_OPS`] with that many
+//! arguments, none `_`; a program holding an edit item holds no query.
 //!
 //! A variable starts with an upper-case letter, a relation with a lower-case one; `//` starts a
 //! comment. In a string `\"` is a quote and `\\` a backslash; any other backslash stays, so a
@@ -61,6 +66,54 @@ pub struct Program {
     pub query: Option<Vec<Lit>>,
     /// Its properties, in order.
     pub properties: Vec<Property>,
+    /// Its edit items, in order; a program with one holds no query.
+    pub edits: Vec<Edit>,
+}
+
+/// The edit operations, each with the names of its arguments, in the order an edit item gives
+/// them (`docs/code-edit-language.md` § 4.1).
+pub const EDIT_OPS: &[(&str, &[&str])] = &[
+    ("rename", &["F", "New"]),
+    ("rename_field", &["T", "Old", "New"]),
+    ("retarget", &["Site", "G"]),
+    ("delete", &["F"]),
+];
+
+/// An edit item, `edit <op>(args) :- body.` (`docs/code-edit-language.md` § 3.1): each row of
+/// the body binds the operation's arguments.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Edit {
+    /// The operation, one of [`EDIT_OPS`].
+    pub op: String,
+    /// Its arguments: variables the body binds, or values.
+    pub args: Vec<Term>,
+    pub body: Vec<Lit>,
+    /// Where `edit` stands, 1-based.
+    pub line: usize,
+    pub col: usize,
+}
+
+impl Edit {
+    /// `edit <op>(args)`, as messages name the item.
+    pub fn head(&self) -> String {
+        let args: Vec<String> = self.args.iter().map(Term::to_string).collect();
+        format!("edit {}({})", self.op, args.join(", "))
+    }
+}
+
+impl Program {
+    /// Refused when the program holds an edit item: `codespec edit` runs it, not a query.
+    pub fn refuse_edits(&self) -> Result<(), String> {
+        match self.edits.first() {
+            Some(e) => Err(format!(
+                "{}:{}: {} is an edit item; codespec query runs a query (?- …), codespec edit runs edit items",
+                e.line,
+                e.col,
+                e.head()
+            )),
+            None => Ok(()),
+        }
+    }
 }
 
 /// The edges a path pattern follows.
@@ -399,6 +452,12 @@ impl fmt::Display for Rule {
     }
 }
 
+impl fmt::Display for Edit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} :- {}.", self.head(), body_text(&self.body))
+    }
+}
+
 /// The query as `--explain` prints it.
 pub fn query_text(body: &[Lit]) -> String {
     format!("?- {}.", body_text(body))
@@ -651,9 +710,18 @@ impl Parser {
             names: Vec::new(),
             query: None,
             properties: Vec::new(),
+            edits: Vec::new(),
         };
         while self.peek().is_some() {
-            if self.eat("?-") {
+            if self.is("?-") {
+                let at = self.here();
+                if let Some(e) = p.edits.first() {
+                    return Err(format!(
+                        "{at}: a query (?- …) beside the edit item at {}:{}; a program with edit items holds no query",
+                        e.line, e.col
+                    ));
+                }
+                self.k += 1;
                 let body = self.body()?;
                 self.expect(".")?;
                 if p.query.is_some() {
@@ -663,6 +731,17 @@ impl Parser {
                 continue;
             }
             match (self.peek(), self.peek_at(1)) {
+                (Some(Tok::Ident(w)), Some(Tok::Ident(_))) if w == "edit" => {
+                    let e = self.edit()?;
+                    if p.query.is_some() {
+                        return Err(format!(
+                            "{}:{}: an edit item beside a query (?- …); a program with edit items holds no query",
+                            e.line, e.col
+                        ));
+                    }
+                    p.edits.push(e);
+                    continue;
+                }
                 (Some(Tok::Ident(w)), Some(Tok::Ident(_))) if w == "property" => {
                     let prop = self.property()?;
                     if p.properties.iter().any(|q| q.name == prop.name) {
@@ -1088,6 +1167,70 @@ impl Parser {
             return Ok(Avoid::Where(v, lits));
         }
         Ok(Avoid::Node(self.term()?))
+    }
+
+    /// `edit <op>(args) :- body.`, checked: an operation of [`EDIT_OPS`] with its number of
+    /// arguments, each a variable or a value, never `_`.
+    fn edit(&mut self) -> Result<Edit, String> {
+        let (line, col) = (self.toks[self.k].line, self.toks[self.k].col);
+        let at = self.here();
+        self.k += 1;
+        let op_at = self.here();
+        let op = self.ident()?;
+        let Some((_, params)) = EDIT_OPS.iter().find(|(o, _)| *o == op) else {
+            let known: Vec<String> = EDIT_OPS
+                .iter()
+                .map(|(o, ps)| format!("{o}/{}", ps.len()))
+                .collect();
+            return Err(format!(
+                "{op_at}: no edit operation {op}; the operations are {}",
+                known.join(", ")
+            ));
+        };
+        self.expect("(")?;
+        let mut args = vec![self.term()?];
+        while self.eat(",") {
+            args.push(self.term()?);
+        }
+        self.expect(")")?;
+        if args.len() != params.len() {
+            return Err(format!(
+                "{at}: edit {op} takes {} argument{} ({op}({})), given {}",
+                params.len(),
+                if params.len() == 1 { "" } else { "s" },
+                params.join(", "),
+                args.len()
+            ));
+        }
+        for (k, a) in args.iter().enumerate() {
+            match a {
+                Term::Any => {
+                    return Err(format!(
+                        "{at}: edit {op}: argument {} ({}) is _, which no row binds",
+                        k + 1,
+                        params[k]
+                    ));
+                }
+                Term::Attr(..) | Term::Arith(..) => {
+                    return Err(format!(
+                        "{at}: edit {op}: argument {} ({}) is {a}; an argument is a variable the body binds or a value",
+                        k + 1,
+                        params[k]
+                    ));
+                }
+                _ => {}
+            }
+        }
+        self.expect(":-")?;
+        let body = self.body()?;
+        self.expect(".")?;
+        Ok(Edit {
+            op,
+            args,
+            body,
+            line,
+            col,
+        })
     }
 
     /// `property name(scope: …) { … }`, checked: `start` and `error` named, at most

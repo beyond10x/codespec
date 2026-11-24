@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-cq-items
 kind: story
-status: active
+status: implemented
 title: cq edit items, and the source_name relation
 summary: edit <op>(args) :- body. in cq, rows per edit item, and a caller-given source_name relation
 relations:
@@ -25,10 +25,11 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-24T01:16:45Z", actor: "human:timo", revision: 7}
+- {from: "active", to: "implemented", at: "2026-11-24T02:54:34Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: cq edit items, and the source_name relation
 

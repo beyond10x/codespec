@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T02:54:33Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-cq-items",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-query --locked (query: 36 passed, 0 failed; all query binaries and b10x-codespec-edit green) and cargo test -p b10x-codespec-cli --locked --test query (9 passed); red before: E0425 edit_rows/load_in_with_names, E0609 no field edits, cli exit 2 without naming codespec edit. Tests: the_five_wave_1_examples_give_their_rows_per_edit_item_in_program_order, an_edit_row_resting_on_code_nothing_read_comes_back_possible_with_its_site, an_unknown_edit_operation_is_refused_at_its_position, an_edit_operation_with_the_wrong_number_of_arguments_is_refused_at_its_position, an_edit_argument_no_row_binds_is_refused_at_its_position, a_query_beside_an_edit_item_is_refused_at_its_position, run_refuses_a_program_with_an_edit_item_naming_it_and_codespec_edit, explain_prints_each_edit_item_under_its_stratum, source_name_given_for_two_nodes_is_queryable_and_empty_without_names, the_cache_covers_the_names_and_a_fact_base_without_names_is_cached_as_before, cli a_program_with_an_edit_item_exits_2_naming_it_and_codespec_edit",
+    "reference": "crates/query/tests/query.rs"
+  }
+}

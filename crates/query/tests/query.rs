@@ -541,6 +541,10 @@ fn no_negation_across_an_opaque_function_is_a_definite_absence() {
     let mut checked = 0;
     let mut definite_rows = Vec::new();
     for r in codespec_query::RELATIONS {
+        // source_name holds what the caller gives (the span documents), not what code holds.
+        if r.name == "source_name" {
+            continue;
+        }
         for (k, (field, ty)) in r.fields.iter().enumerate() {
             if ty.name() != "node" {
                 continue;
@@ -925,4 +929,252 @@ fn the_documents_are_validated_before_the_cache_is_read() {
         .err()
         .expect("an invalid document read from the cache");
     assert!(err.contains("bad.cir.json"), "{err}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Edit items (`docs/code-edit-language.md` § 3.1) and the source_name relation.
+
+/// The documents of the edit fixture: `orders`, and with `opaque` the module `plugin`, whose
+/// function `hook` has no body.
+fn orders(opaque: bool) -> Vec<Module> {
+    let mut set = vec![module(&fixture("edit/orders.cir.json"))];
+    if opaque {
+        set.push(module(&fixture("edit/plugin.cir.json")));
+    }
+    set
+}
+
+/// Each edit item as `edit <op> at <line>:<col>`, then its rows, indented: the arguments, then
+/// `possible: <site> at <pos> (<reason>)` for a possible row.
+fn edit_text(items: &[codespec_query::EditRows]) -> String {
+    let mut out = String::new();
+    for item in items {
+        out += &format!("edit {} at {}:{}\n", item.op, item.line, item.col);
+        for row in &item.rows {
+            let mut cells: Vec<String> = row.values.iter().map(Value::to_string).collect();
+            if row.certainty() == "possible" {
+                let sites: Vec<String> = row
+                    .unknown
+                    .iter()
+                    .map(|s| format!("{} at {} ({})", s.site, s.pos, s.reason))
+                    .collect();
+                cells.push(format!("possible: {}", sites.join("; ")));
+            }
+            out += &format!("  {}\n", cells.join(", "));
+        }
+    }
+    out
+}
+
+fn edits(src: &str, modules: &[Module]) -> Result<String, String> {
+    let program = parse(src)?;
+    let items = codespec_query::edit_rows(&program, &FactBase::build(modules))?;
+    Ok(edit_text(&items))
+}
+
+#[test]
+fn the_five_wave_1_examples_give_their_rows_per_edit_item_in_program_order() {
+    let src = std::fs::read_to_string(fixture("edit/wave1.cq")).unwrap();
+    let program = parse(&src).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        program
+            .edits
+            .iter()
+            .map(|e| e.op.as_str())
+            .collect::<Vec<_>>(),
+        ["rename", "rename", "rename_field", "retarget", "delete"]
+    );
+    assert_eq!(
+        edits(&src, &orders(false)).unwrap(),
+        expected("edit-wave1.txt")
+    );
+    // Printed back, the items parse to the same program.
+    let printed: Vec<String> = program.edits.iter().map(|e| e.to_string()).collect();
+    assert_eq!(
+        printed[3],
+        "edit retarget(Site, G) :- call{site: Site, callee: \"example.com/orders.Load\"}, func{id: G, module: \"example.com/orders\", name: \"LoadCached\"}."
+    );
+    let again = parse(&printed.join("\n")).unwrap();
+    assert_eq!(again.edits.len(), 5);
+    for (a, b) in again.edits.iter().zip(&program.edits) {
+        assert_eq!((&a.op, &a.args, &a.body), (&b.op, &b.args, &b.body));
+    }
+}
+
+#[test]
+fn an_edit_row_resting_on_code_nothing_read_comes_back_possible_with_its_site() {
+    let src = "edit delete(F) :- func{id: F, module: \"example.com/orders\", kind: \"func\", exported: false}, !calls(_, F).";
+    let program = parse(src).unwrap();
+    let items = codespec_query::edit_rows(&program, &FactBase::build(&orders(true))).unwrap();
+    assert_eq!(items.len(), 1);
+    let rows = &items[0].rows;
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    for row in rows {
+        assert_eq!(row.certainty(), "possible", "{row:?}");
+        assert_eq!(row.unknown.len(), 1, "{row:?}");
+        assert_eq!(row.unknown[0].site, "example.com/plugin.hook");
+        assert_eq!(row.unknown[0].pos, "example.com/plugin/plugin.go:5");
+    }
+    assert_eq!(
+        edits(src, &orders(true)).unwrap(),
+        "edit delete at 1:1\n  example.com/orders.stale, possible: example.com/plugin.hook at example.com/plugin/plugin.go:5 (opaque function: declared without a body)\n  example.com/orders.unused, possible: example.com/plugin.hook at example.com/plugin/plugin.go:5 (opaque function: declared without a body)\n"
+    );
+    // Without the opaque module the same rows are definite.
+    let definite = codespec_query::edit_rows(&program, &FactBase::build(&orders(false))).unwrap();
+    assert_eq!(definite[0].rows.len(), 2);
+    assert!(definite[0].rows.iter().all(|r| r.certainty() == "definite"));
+}
+
+#[test]
+fn an_unknown_edit_operation_is_refused_at_its_position() {
+    let err = parse("\n  edit rename_type(T, \"x\") :- type{id: T}.").unwrap_err();
+    assert!(err.starts_with("2:8: "), "{err}");
+    assert!(
+        err.contains("rename_type")
+            && err.contains("rename/2, rename_field/3, retarget/2, delete/1"),
+        "{err}"
+    );
+}
+
+#[test]
+fn an_edit_operation_with_the_wrong_number_of_arguments_is_refused_at_its_position() {
+    let err = parse("r(F) :- func{id: F}.\nedit delete(F, \"x\") :- r(F).").unwrap_err();
+    assert!(err.starts_with("2:1: "), "{err}");
+    assert!(
+        err.contains("delete takes 1 argument") && err.contains("given 2"),
+        "{err}"
+    );
+    let err = parse("edit rename(F) :- func{id: F}.").unwrap_err();
+    assert!(err.starts_with("1:1: "), "{err}");
+    assert!(err.contains("rename takes 2 arguments"), "{err}");
+}
+
+#[test]
+fn an_edit_argument_no_row_binds_is_refused_at_its_position() {
+    // A variable the body never binds.
+    let program = parse("r(F) :- func{id: F}.\n\nedit rename(F, New) :- r(F).").unwrap();
+    let err = codespec_query::edit_rows(&program, &FactBase::build(&orders(false))).unwrap_err();
+    assert!(err.starts_with("3:1: "), "{err}");
+    assert!(err.contains("New") && err.contains("not bound"), "{err}");
+    // A variable only a negation holds.
+    let program = parse("edit rename(F, New) :- func{id: F}, !func{id: F, name: New}.").unwrap();
+    let err = codespec_query::edit_rows(&program, &FactBase::build(&orders(false))).unwrap_err();
+    assert!(err.starts_with("1:1: "), "{err}");
+    assert!(err.contains("New"), "{err}");
+    // `_` binds nothing.
+    let err = parse("\nedit delete(_) :- func{id: F}.").unwrap_err();
+    assert!(err.starts_with("2:1: "), "{err}");
+    assert!(err.contains("argument 1") && err.contains('_'), "{err}");
+}
+
+#[test]
+fn a_query_beside_an_edit_item_is_refused_at_its_position() {
+    let err = parse("edit delete(F) :- func{id: F}.\n?- func{id: F}.").unwrap_err();
+    assert!(err.starts_with("2:1: "), "{err}");
+    assert!(err.contains("?-") && err.contains("edit"), "{err}");
+    let err = parse("?- func{id: F}.\n\n edit delete(F) :- func{id: F}.").unwrap_err();
+    assert!(err.starts_with("3:2: "), "{err}");
+    assert!(err.contains("?-") && err.contains("edit"), "{err}");
+}
+
+#[test]
+fn run_refuses_a_program_with_an_edit_item_naming_it_and_codespec_edit() {
+    let program = parse("edit delete(F) :- func{id: F, name: \"stale\"}.").unwrap();
+    let err = run(
+        &program,
+        &FactBase::build(&orders(false)),
+        &Names::default(),
+    )
+    .unwrap_err();
+    assert!(
+        err.contains("1:1") && err.contains("edit delete(F)") && err.contains("codespec edit"),
+        "{err}"
+    );
+    // edit_rows refuses a program without an edit item.
+    let program = parse("?- func{id: F}.").unwrap();
+    let err = codespec_query::edit_rows(&program, &FactBase::build(&orders(false))).unwrap_err();
+    assert!(err.contains("no edit item"), "{err}");
+}
+
+#[test]
+fn explain_prints_each_edit_item_under_its_stratum() {
+    let src = std::fs::read_to_string(fixture("edit/explain.cq")).unwrap();
+    let program = parse(&src).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        codespec_query::explain(&program).unwrap(),
+        expected("edit.explain.txt")
+    );
+}
+
+fn two_names() -> Vec<codespec_query::SourceName> {
+    vec![
+        codespec_query::SourceName {
+            node: "example.com/orders.Load".into(),
+            text: "load".into(),
+        },
+        codespec_query::SourceName {
+            node: "example.com/orders.line#qty".into(),
+            text: "qty".into(),
+        },
+    ]
+}
+
+#[test]
+fn source_name_given_for_two_nodes_is_queryable_and_empty_without_names() {
+    let facts = FactBase::build_with_names(&orders(false), &[], None, &two_names());
+    let q = parse("?- source_name{node: N, text: T}.").unwrap();
+    assert_eq!(
+        run(&q, &facts, &Names::default()).unwrap().to_text(),
+        "example.com/orders.Load\tload\nexample.com/orders.line#qty\tqty\n"
+    );
+    let q = parse("?- func{id: F, name: \"Load\"}, source_name(F, T).").unwrap();
+    assert_eq!(
+        run(&q, &facts, &Names::default()).unwrap().to_text(),
+        "example.com/orders.Load\tload\n"
+    );
+    let q = parse("?- source_name(N, T).").unwrap();
+    let without = FactBase::build(&orders(false));
+    assert_eq!(run(&q, &without, &Names::default()).unwrap().to_text(), "");
+    assert_eq!(
+        FactBase::build_with_names(&orders(false), &[], None, &[]),
+        without
+    );
+}
+
+#[test]
+fn the_cache_covers_the_names_and_a_fact_base_without_names_is_cached_as_before() {
+    let (doc, dir) = shop_and_cache("names");
+    let docs = std::slice::from_ref(&doc);
+    let names = two_names();
+    let with = |names: &[codespec_query::SourceName], sub: &str| {
+        codespec_query::load_in_with_names(docs, &[], None, names, Some(&dir.join(sub))).unwrap()
+    };
+    let plain = load_in(docs, &[], None, Some(&dir.join("plain"))).unwrap();
+    let none = with(&[], "none");
+    let named = with(&names, "named");
+    let bytes = |l: &codespec_query::Loaded| std::fs::read(l.cache.as_ref().unwrap()).unwrap();
+    assert_eq!(none.digest, plain.digest);
+    assert_eq!(
+        bytes(&none),
+        bytes(&plain),
+        "no names: the file load_with writes"
+    );
+    assert!(
+        !String::from_utf8(bytes(&plain))
+            .unwrap()
+            .contains("source_name"),
+        "a cache without names names no source_name"
+    );
+    assert_ne!(named.digest, plain.digest);
+    assert_ne!(bytes(&named), bytes(&plain));
+    // Read back from the cache, the names are there.
+    let again = with(&names, "named");
+    assert_eq!(again.source, Source::Cache);
+    assert_eq!(again.facts.rows("source_name").len(), 2);
+    // The same names in another order are the same cache.
+    let mut reversed = two_names();
+    reversed.reverse();
+    let other = with(&reversed, "named");
+    assert_eq!(other.digest, named.digest);
+    assert_eq!(other.source, Source::Cache);
 }

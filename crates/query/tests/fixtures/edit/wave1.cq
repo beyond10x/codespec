@@ -1,0 +1,19 @@
+// The five wave-1 examples of docs/code-edit-language.md § 3.2, in order.
+
+// 1. Rename a function and every reference to it, in every module of the set.
+edit rename(F, "LoadAll") :- func{id: F, module: "example.com/orders", name: "Load", recv: ""}.
+
+// 2. Rename many: every exported Get… of a module to Fetch….
+edit rename(F, New) :- func{id: F, module: "example.com/orders", name: N, exported: true},
+                       N ~ "^Get[A-Z]", replace(N, "Get", "Fetch", New).
+
+// 3. Rename a struct field: declaration, every access, every keyed literal.
+edit rename_field(T, "qty", "quantity") :- type{id: T, name: "line", path: "example.com/orders"}.
+
+// 4. Point every call of Load at LoadCached (same module, same signature).
+edit retarget(Site, G) :- call{site: Site, callee: "example.com/orders.Load"},
+                          func{id: G, module: "example.com/orders", name: "LoadCached"}.
+
+// 5. Delete unexported functions nothing calls.
+edit delete(F) :- func{id: F, module: "example.com/orders", kind: "func", exported: false},
+                  !calls(_, F).

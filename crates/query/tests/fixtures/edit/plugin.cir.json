@@ -1,0 +1,18 @@
+{
+  "format": "cir/1",
+  "name": "plugin",
+  "path": "example.com/plugin",
+  "reader": {"language": "go", "name": "hand-written", "version": "0"},
+  "types": [],
+  "funcs": [],
+  "opaque": [
+    {
+      "name": "hook",
+      "pos": "plugin.go:5",
+      "reason": "declared without a body",
+      "no_body": true,
+      "calls": []
+    }
+  ],
+  "layout": ["func:hook"]
+}

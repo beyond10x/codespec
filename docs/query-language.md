@@ -142,6 +142,12 @@ Relations from codespec's graph (`crates/effects`, today internal to `set.rs`):
 | `makes(f, t)` | RTA's type creation sites |
 | `method_set(t, name, sig, target)`, `implements(t, iface)` | method sets and the CHA test |
 
+Relations the caller gives beside the documents:
+
+| relation | meaning |
+|---|---|
+| `source_name(node, text)` | the name of a function, type or node as the source file spells it (a struct field's node is `<type id>#<field name>`); `codespec edit` gives it from the span documents (`docs/code-edit-language.md` § 6.2), `codespec query` gives none, so it is empty there |
+
 ### 4.3 Unknown
 
 Each read reports what it could not see: a `foreign` statement with no `calls`, an opaque function,
@@ -237,6 +243,27 @@ check lock-without-unlock {
 
 `codespec check` (`story:builtin-defect-checks`) becomes the runner of the checks in
 `checks/*.cq`, shipped in the release archive. A project adds its own with `--checks <dir>`.
+
+### 5.5 Edit items
+
+A module may hold edit items instead of a query. The design is `docs/code-edit-language.md` (§ 3
+the notation, § 4 the operations, § 7 the refusals); the grammar line is:
+
+```
+edit    = "edit" op "(" term ("," term)* ")" ":-" body "."
+```
+
+```
+edit rename(F, "LoadAll") :- func{id: F, module: "example.com/orders", name: "Load", recv: ""}.
+```
+
+The body is an ordinary body; each of its rows binds the operation's arguments. The operations
+and their arguments are a fixed table: `rename(F, New)`, `rename_field(T, Old, New)`,
+`retarget(Site, G)` and `delete(F)`. An unknown operation, a wrong number of arguments, an
+argument that is `_` or that the body does not bind, and a `?-` query beside an edit item are
+refused at their position. Each item's rows are sorted and `definite` or `possible`, as a query's
+are (§ 4.3). `--explain` prints each item under the stratum of its body. `codespec query` refuses
+a module with an edit item, naming it and `codespec edit`, which runs it.
 
 ## 6. Examples
 
