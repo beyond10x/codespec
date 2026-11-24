@@ -53,6 +53,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
 
+### Fixed
+
+- `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
+  length returned as `usize` has the result's type and its Go output builds; a named index of
+  `enumerate()` is refused at its line.
+
 ## 0.12.0
 
 ### Added

@@ -3473,3 +3473,169 @@ fn a_map_renamed_on_import_keeps_its_order() {
     let json = serde_json::to_string(&f.map(|f| &f.body)).unwrap();
     assert!(json.contains("sorted_keys"), "{json}");
 }
+
+// ----- platform-width integers ---------------------------------------------------------------
+
+/// A crate whose values are `usize` and `isize`: a length, an index and a sum.
+const WIDTHS: &str = "pub fn count(v: Vec<i64>) -> usize { v.len() }\n\
+pub fn at(v: Vec<i64>, i: usize) -> i64 { v[i] }\n\
+pub fn offset(base: isize, d: isize) -> isize { base + d }\n";
+
+/// Every `return` of `m`'s functions whose values do not have the function's result types, and
+/// every binary operator other than a shift whose operands differ in type, as
+/// `<function>: <what>`.
+fn mistyped(m: &Module) -> Vec<String> {
+    fn exprs<'a>(e: &'a Expr, out: &mut Vec<&'a Expr>) {
+        out.push(e);
+        match e {
+            Expr::Binop { x, y, .. } => {
+                exprs(x, out);
+                exprs(y, out);
+            }
+            Expr::Unop { x, .. } => exprs(x, out),
+            Expr::Index { x, index, .. } => {
+                exprs(x, out);
+                exprs(index, out);
+            }
+            Expr::Intrinsic { args, .. } | Expr::Call { args, .. } => {
+                args.iter().for_each(|a| exprs(a, out))
+            }
+            _ => {}
+        }
+    }
+    let mut bad = Vec::new();
+    for f in &m.funcs {
+        for s in all_stmts(&f.body) {
+            let mut roots: Vec<&Expr> = Vec::new();
+            match s {
+                Stmt::Return { results, .. } => {
+                    for (r, want) in results.iter().zip(&f.results) {
+                        if r.t() != want {
+                            bad.push(format!("{}: returns {:?} for {want:?}", f.name, r.t()));
+                        }
+                    }
+                    roots.extend(results);
+                }
+                Stmt::Let { rhs, .. } => roots.extend(rhs),
+                Stmt::If { cond, .. } => roots.push(cond),
+                _ => {}
+            }
+            let mut all = Vec::new();
+            roots.into_iter().for_each(|r| exprs(r, &mut all));
+            for e in all {
+                if let Expr::Binop { op, x, y, .. } = e
+                    && !matches!(op.as_str(), "<<" | ">>")
+                    && x.t() != y.t()
+                {
+                    bad.push(format!("{}: {op} of {:?} and {:?}", f.name, x.t(), y.t()));
+                }
+            }
+        }
+    }
+    bad
+}
+
+/// `usize` and `isize` keep their type: `v.len()` in a function returning `usize` is an
+/// unsigned platform `int`, so every returned value has the result's type.
+#[test]
+fn a_length_returned_as_usize_has_the_results_type() {
+    let m = read(WIDTHS);
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(mistyped(&m), Vec::<String>::new());
+    let usize = Type::Int {
+        width: IntWidth::Platform,
+        signed: false,
+    };
+    let count = m.funcs.iter().find(|f| f.name == "Count").expect("Count");
+    assert_eq!(count.results, [usize]);
+}
+
+/// `is_empty()` compares the length with a zero of the length's type, a literal index is a
+/// `usize` as Rust types it, and `len() as i64` stays a 64-bit length.
+#[test]
+fn a_length_compares_and_indexes_as_a_usize() {
+    let m = read(&lines(&[
+        "pub fn empty(v: Vec<i64>) -> bool { v.is_empty() }",
+        "pub fn first(v: Vec<i64>) -> i64 { v[0] }",
+        "pub fn last(v: Vec<i64>) -> usize { if v.len() > 0 { v.len() - 1 } else { 0 } }",
+        "pub fn size(s: String) -> i64 { s.len() as i64 }",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(mistyped(&m), Vec::<String>::new());
+    let first = m.funcs.iter().find(|f| f.name == "First").expect("First");
+    let json = serde_json::to_value(&first.body).unwrap();
+    assert_eq!(
+        json[0]["results"][0]["index"]["t"],
+        serde_json::json!({"k": "int", "width": "platform", "signed": false}),
+        "{json}"
+    );
+}
+
+/// The index `enumerate()` gives is a `usize`, and `cir/1`'s range over a slice binds a signed
+/// platform `int`, with no conversion between the two: a named index is refused at its line,
+/// `_` is read.
+#[test]
+fn an_enumerate_index_that_is_named_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub fn find(v: Vec<i64>, x: i64) -> usize {",
+        "    let mut at = v.len();",
+        "    for (i, y) in v.iter().enumerate() {",
+        "        if *y == x {",
+        "            at = i;",
+        "        }",
+        "    }",
+        "    at",
+        "}",
+        "pub fn sum(v: Vec<i64>) -> i64 {",
+        "    let mut t = 0i64;",
+        "    for (_, y) in v.iter().enumerate() {",
+        "        t += *y;",
+        "    }",
+        "    t",
+        "}",
+    ]));
+    assert!(refused_at(&m, "lib.rs:3"), "{:?}", m.refusals);
+    assert_eq!(m.refusals.len(), 1, "{:?}", m.refusals);
+    assert!(
+        m.refusals[0].reason.contains("enumerate"),
+        "{:?}",
+        m.refusals
+    );
+}
+
+/// The Go written from the crate of `usize` and `isize` values builds and vets.
+#[test]
+fn the_go_written_from_platform_width_values_builds_and_vets() {
+    let m = read(WIDTHS);
+    assert!(m.refusals.is_empty(), "refusals: {:?}", m.refusals);
+    let passed = codespec_passes::run(&m);
+    let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join("reader-go-widths");
+    if work.exists() {
+        std::fs::remove_dir_all(&work).unwrap();
+    }
+    std::fs::create_dir_all(&work).unwrap();
+    let doc = work.join("passed.cir.json");
+    let go = work.join("go");
+    std::fs::write(&doc, passed.to_json()).unwrap();
+    let w = std::process::Command::new(go_tools().join("codespec-write-go"))
+        .arg(&go)
+        .stdin(std::fs::File::open(&doc).unwrap())
+        .output()
+        .expect("the Go writer starts");
+    assert!(w.status.success(), "{}", String::from_utf8_lossy(&w.stderr));
+    std::fs::write(go.join("go.mod"), "module probe\n\ngo 1.23\n").unwrap();
+    for args in [&["build", "./..."][..], &["vet", "./..."]] {
+        let o = std::process::Command::new("go")
+            .args(args)
+            .env("GOWORK", "off")
+            .current_dir(&go)
+            .output()
+            .expect("go starts");
+        assert!(
+            o.status.success(),
+            "go {}: {}",
+            args[0],
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+}

@@ -48,7 +48,7 @@
 //!
 //! | Rust | cir/1 |
 //! |---|---|
-//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform) |
+//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform), signed and unsigned; a length and an index are `usize` |
 //! | `bool`, `String`, `&str` | `bool`, `string` |
 //! | `f32`, `f64` | `float` of that width |
 //! | `[T; N]`, `N` a literal | `array` |
@@ -90,7 +90,7 @@
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
 //! | `ch.0.try_send(x).expect(…)` / `.unwrap()`, `ch` a channel of both ends | `send` (a full channel panics, where Go would block) |
 //! | `if`, `else if`, `else` | `if` |
-//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
+//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms); `for (_, x) in v.iter().enumerate()` | `for_range` over the map or slice; a named index of `enumerate()` is refused, as it is a `usize` and the range gives a signed platform `int`. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
 //! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
 //! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
@@ -149,7 +149,7 @@
 //! | receiver | method | cir/1 |
 //! |---|---|---|
 //! | `String` | `clone`, `to_string`, `to_owned`, `as_str`, `into` | the value |
-//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len` (platform `int`) |
+//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len`: unsigned platform `int` (`usize`); `int 64` for `as i64` |
 //! | `String`, `Vec`, `HashMap`, `BTreeMap` | `is_empty()` | `len(x) == 0` |
 //! | `String` | `push_str(t)` (statement) | `s += t` |
 //! | `String::from(x)`, `String::new()` | | `x`, `""` |

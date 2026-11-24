@@ -20,6 +20,14 @@ fn platform_int() -> Type {
     }
 }
 
+/// `usize`: a length and an index as Rust types them.
+fn usize_int() -> Type {
+    Type::Int {
+        width: IntWidth::Platform,
+        signed: false,
+    }
+}
+
 /// A value as the reader holds it before it becomes a `cir/1` expression.
 enum V {
     E(Expr),
@@ -2049,8 +2057,16 @@ impl<'r> Fx<'r> {
             (Type::Map { key, elem }, "keys", false) => (name(&f.pat)?, "_".into(), *key, *elem),
             (Type::Map { key, elem }, "values", false) => ("_".into(), name(&f.pat)?, *key, *elem),
             (Type::Slice { elem }, "", false) => ("_".into(), name(&f.pat)?, platform_int(), *elem),
+            // The index `enumerate()` gives is a `usize`; a `for_range` key over a slice is a
+            // signed platform `int`, and `cir/1` has no conversion between the two.
             (Type::Slice { elem }, "", true) => {
                 let (k, v) = pair(&f.pat)?;
+                if k != "_" {
+                    return Err(
+                        "the index of `enumerate()`, a `usize`, where a range over a slice gives a signed platform `int`"
+                            .into(),
+                    );
+                }
                 (k, v, platform_int(), *elem)
             }
             _ => return Err("a `for` over something other than a map or a slice".into()),
@@ -3537,7 +3553,9 @@ impl<'r> Fx<'r> {
                 match x.t().clone() {
                     // An array indexes as a slice does: out of range panics in both.
                     Type::Slice { elem } | Type::Array { elem, .. } => {
-                        let i = self.val(index, Some(&platform_int()))?;
+                        // Rust indexes by `usize`; the cast's operand is the writer's signed one.
+                        let want = if cast { platform_int() } else { usize_int() };
+                        let i = self.val(index, Some(&want))?;
                         if cast && !matches!(i.t(), Type::Int { signed: true, .. }) {
                             return Err(
                                 "an index cast to `usize` from other than a signed integer".into(),
@@ -4117,7 +4135,7 @@ impl<'r> Fx<'r> {
         let len = |x: Expr| Expr::Intrinsic {
             name: "len".into(),
             args: vec![x],
-            t: platform_int(),
+            t: usize_int(),
         };
         // A method of a crate trait through its trait object, or on a value of a type parameter
         // the trait constrains: Go's call through the interface.
@@ -4241,7 +4259,7 @@ impl<'r> Fx<'r> {
                     x: Box::new(len(x)),
                     y: Box::new(Expr::Lit {
                         value: "0".into(),
-                        t: platform_int(),
+                        t: usize_int(),
                     }),
                     t: Type::Bool,
                 }))
