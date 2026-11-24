@@ -43,7 +43,7 @@ to land on some node; without these there is none.
 
 ## Decision
 
-Taken by Timo on 2026-11-24 about 03:05 CET (relayed by the operator): `cir/1` states a started
+Taken by the owner on 2026-11-24 about 03:05 CET (relayed by the operator): `cir/1` states a started
 task and a `select` over channel operations (option A). This reverses "Out: goroutines and
 `select`" of `docs/evaluator.md`, which now says so. The nodes are additive (`cir/1` minor), never
 a change of meaning, field names or encoding of an existing node. In `epic:async-network-service-translation`

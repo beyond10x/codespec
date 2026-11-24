@@ -78,7 +78,7 @@ nothing; the harness knows five compiled-in trace formats and no service trace.
 
 ## Order
 
-Timo's pick of 2026-11-24 about 03:05 CET (relayed by the operator), in the order the consumer
+The owner's pick of 2026-11-24 about 03:05 CET (relayed by the operator), in the order the consumer
 proposed. A step starts when the one before it is implemented, except where a story's own
 `depends_on` edges say otherwise.
 

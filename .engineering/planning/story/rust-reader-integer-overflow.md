@@ -7,7 +7,7 @@ title: The Rust reader does not read integer overflow as wrapping without saying
 summary: Integer + - * neg / % are read with the meaning the crate's build gives them, or refused; MIN / -1 no longer reads as MIN.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader does not read integer overflow as wrapping without saying so
 
@@ -44,13 +44,23 @@ Read with no refusal; `cir/1` of `Add` is `{"k":"binop","op":"+",…}`, of `Div`
   them (debug, or `[profile.release] overflow-checks = true`, common in services). The reader
   reads neither the manifest nor states which build it reads.
 
-## Decision (before implementation, the operator's)
+## Decision
 
-- A (default): an additive checked form in `cir/1` (an operator flag that panics on overflow),
-  honoured by the evaluator and every writer; the reader emits it for `/` and `%` always and for
-  `+ - *` and negation when the crate's release profile sets `overflow-checks = true`.
-- B: no model change; `/` and `%` on signed operands whose divisor is not a constant other than
-  -1 are refused, and a crate with `overflow-checks = true` is refused at each such operator.
+D1 = A: a checked integer operator in cir/1, additive (the operator session for the owner, 2026-11-24 10:19 CET).
+Reason: B turns most Rust arithmetic into refusals; A reads the code as Rust runs it.
+
+Conditions:
+
+- "As in a debug build" is not one fixed behaviour. The model says which of these a node is:
+  - `+ - *` overflow panics only with `overflow-checks` on (default in dev, off in release);
+  - `i32::MIN / -1` and `% -1` panic in every profile;
+  - `wrapping_*`, `checked_*`, `saturating_*`, `overflowing_*` are explicit.
+  The reader takes the `overflow-checks` setting from the Cargo manifest's profile, or refuses when it
+  cannot tell. No hard-coded "debug".
+- A design note in the planning store comes first, additive to cir/1, with an adversary pass on the
+  note before the implementor starts.
+- Every evaluator and writer that does not know the operator refuses it; none ignores it.
+- Red first: this story's reproducer fails on main f09c740f before the change.
 
 ## Done When
 
