@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-engine-delete-retarget
 kind: story
-status: proposed
+status: active
 title: 'crates/edit: retarget and delete'
 summary: retarget a call to a function of the same module and signature; delete an unreferenced function
 relations:
@@ -11,9 +11,10 @@ relations:
 scope:
 - confidence: inferred
   path: crates/edit
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:46Z", actor: "human:timo", revision: 5}
 ---
 # Story: crates/edit: retarget and delete
 

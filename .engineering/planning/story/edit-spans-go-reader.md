@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-spans-go-reader
 kind: story
-status: proposed
+status: active
 title: The Go reader gives spans
 summary: decl and name spans from the Go reader; held until wave/go-reader-refusals-1 is merged
 relations:
@@ -11,9 +11,10 @@ relations:
 scope:
 - confidence: inferred
   path: adapters/go/cmd/codespec-read-go
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:48Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:47Z", actor: "human:timo", revision: 6}
 ---
 # Story: The Go reader gives spans
 

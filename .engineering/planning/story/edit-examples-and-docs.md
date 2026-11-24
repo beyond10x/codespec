@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-examples-and-docs
 kind: story
-status: proposed
+status: active
 title: Checked-in edit examples in the gate, and the site page
 summary: examples/edit with one program per operation and refusal, task examples-edit, the site page
 relations:
@@ -29,9 +29,10 @@ scope:
   path: website/data/status.json
 - confidence: inferred
   path: website/docs
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:50Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:48Z", actor: "human:timo", revision: 7}
 ---
 # Story: Checked-in edit examples in the gate, and the site page
 

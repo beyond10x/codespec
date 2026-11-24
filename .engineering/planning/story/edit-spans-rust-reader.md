@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-spans-rust-reader
 kind: story
-status: proposed
+status: active
 title: The Rust reader gives spans
 summary: decl and name spans and use refs from the Rust reader, in source spelling, paths threaded through its builders
 relations:
@@ -13,9 +13,10 @@ scope:
   path: Cargo.lock
 - confidence: inferred
   path: adapters/rust-read
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:48Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:45Z", actor: "human:timo", revision: 8}
 ---
 # Story: The Rust reader gives spans
 

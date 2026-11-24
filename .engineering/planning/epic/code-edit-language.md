@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: epic:code-edit-language
 kind: epic
-status: proposed
+status: active
 title: 'Code edits in cq: a query selects, an operation changes the source'
 summary: 'codespec edit: cq edit items, operations defined once on cir/1, span edits of the original files, verified by a re-read'
 relations:
 - informed_by: epic:codebase-transformations
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:47Z", actor: "human:timo", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:41Z", actor: "human:timo", revision: 4}
 ---
 # Epic: Code edits in cq: a query selects, an operation changes the source
 

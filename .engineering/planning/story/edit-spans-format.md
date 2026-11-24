@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-spans-format
 kind: story
-status: proposed
+status: active
 title: codespec-spans/1, crates/edit and codespec read --spans
 summary: The span document beside cir/1 in a new crates/edit, its strict reading, the at/node-id mapping, read --spans
 relations:
@@ -37,9 +37,10 @@ scope:
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:47Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:45Z", actor: "human:timo", revision: 8}
 ---
 # Story: codespec-spans/1, crates/edit and `codespec read --spans`
 

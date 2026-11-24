@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-build-and-format
 kind: story
-status: proposed
+status: active
 title: codespec edit --build, and gofmt of edited Go files
 summary: gofmt a gofmt-clean Go file after the edit; --build compiles the verified change before writing
 relations:
@@ -25,9 +25,10 @@ scope:
   path: crates/edit/src/run.rs
 - confidence: inferred
   path: crates/edit/tests/main.rs
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:50Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:48Z", actor: "human:timo", revision: 8}
 ---
 # Story: codespec edit --build, and gofmt of edited Go files
 

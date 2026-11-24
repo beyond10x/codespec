@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-engine-rename
 kind: story
-status: proposed
+status: active
 title: 'crates/edit: change sets, rename and rename_field'
 summary: 'The edit crate: expected cir/1, text edits, refusals, comparison and diff; rename and rename_field'
 relations:
@@ -11,9 +11,10 @@ relations:
 scope:
 - confidence: inferred
   path: crates/edit
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-24T01:16:46Z", actor: "human:timo", revision: 7}
 ---
 # Story: crates/edit: change sets, rename and rename_field
 
