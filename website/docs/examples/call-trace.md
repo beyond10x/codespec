@@ -111,18 +111,20 @@ example.com/netcheck/cmd/client.main  main.go:11
                └─ net.Dialer.Dial  dial.go:475
                   └─ net.Dialer.DialContext  dial.go:508
                      └─ net.sysDialer.dialParallel  dial.go:560
-                        └─ net.sysDialer.dialSerial  dial.go:661
-                           └─ net.sysDialer.dialSingle  dial.go:760
-                              └─ net.sysDialer.dialUDP  dial.go:799
-                                 └─ net.internetSocket  udpsock_posix.go:220
-                                    └─ net.socket  ipsock_posix.go:173
-                                       └─ net.netFD.dial  sock_posix.go:67
-                                          └─ if raddr != nil  sock_posix.go:117
-                                             └─ net.netFD.connect  sock_posix.go:121
-                                                └─ dispatch func value func(int, syscall.Sockaddr) error  fd_unix.go:47  (1 candidates)
-                                                   └─ syscall.Connect  fd_unix.go:47
-                                                      └─ syscall.connect  syscall_unix.go:300
-                                                         └─ syscall connect [net]  zsyscall_linux_amd64.go:1422
+                        └─ if len(fallbacks) == 0  dial.go:660
+                           └─ net.sysDialer.dialSerial  dial.go:661
+                              └─ loop i, ra := range ras  dial.go:736
+                                 └─ net.sysDialer.dialSingle  dial.go:760
+                                    └─ net.sysDialer.dialUDP  dial.go:799
+                                       └─ net.internetSocket  udpsock_posix.go:220
+                                          └─ net.socket  ipsock_posix.go:173
+                                             └─ net.netFD.dial  sock_posix.go:67
+                                                └─ if raddr != nil  sock_posix.go:117
+                                                   └─ net.netFD.connect  sock_posix.go:121
+                                                      └─ dispatch func value func(int, syscall.Sockaddr) error  fd_unix.go:47  (1 candidates)
+                                                         └─ syscall.Connect  fd_unix.go:47
+                                                            └─ syscall.connect  syscall_unix.go:300
+                                                               └─ syscall connect [net]  zsyscall_linux_amd64.go:1422
 ```
 
 ### The server to `accept4`
