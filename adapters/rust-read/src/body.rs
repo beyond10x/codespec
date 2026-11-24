@@ -1464,7 +1464,7 @@ impl<'r> Fx<'r> {
         // built under a condition the reader cannot resolve.
         match crate::files::built(crate::files::stmt_attrs(s)) {
             crate::files::Built::Yes => {}
-            crate::files::Built::No => return Vec::new(),
+            crate::files::Built::No(_) => return Vec::new(),
             crate::files::Built::Unknown(c) => {
                 return vec![self.foreign(s, crate::files::unresolved(&c))];
             }

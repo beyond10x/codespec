@@ -144,6 +144,14 @@ defmodule Codespec.ElixirWriterTest do
     assert File.ls!(dir) == []
   end
 
+  test "ignores what a normal build left out", %{dir: dir} do
+    left = [%{"pos" => "lib.rs:2", "what" => "fn helper", "reason" => "test-only"}]
+    sample = %{kit("op-add") | "name" => "left_out_add"}
+    Writer.write(Map.put(sample, "left_out", left), dir)
+    [{module, _}] = Code.compile_file(output(dir))
+    assert apply(module, :add, [2, 3]) == 5
+  end
+
   test "refuses collisions after converting identifiers", %{dir: dir} do
     sample = kit("op-add")
     [f] = sample["funcs"]

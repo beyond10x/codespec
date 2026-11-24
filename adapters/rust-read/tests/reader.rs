@@ -3896,3 +3896,103 @@ fn a_comparison_through_a_derived_partial_eq_or_ord_reads_as_the_built_in_one() 
         );
     }
 }
+
+/// The consumer's shape: one function, a `#[cfg(test)]` helper and a `#[cfg(test)]` module of
+/// two tests.
+const TEST_ONLY_ITEMS: &[&str] = &[
+    "pub fn double(x: i64) -> i64 { x * 2 }",
+    "#[cfg(test)] fn helper() -> i64 { 21 }",
+    "#[cfg(test)]",
+    "mod tests {",
+    "    use super::*;",
+    "    #[test] fn doubles() { assert_eq!(double(helper()), 42); }",
+    "    #[test]",
+    "    fn doubles_zero() { assert_eq!(double(0), 0); }",
+    "}",
+];
+
+/// What a normal build leaves out as test-only is listed in `left_out` in source order, every
+/// function of a left-out module with it; nothing of it is refused or read. The document is the
+/// same bytes read twice.
+#[test]
+fn items_built_only_for_tests_are_listed_as_left_out() {
+    let src = lines(TEST_ONLY_ITEMS);
+    let m = read(&src);
+    assert_eq!(
+        m.funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        ["Double"]
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let got: Vec<(&str, &str)> = m
+        .left_out
+        .iter()
+        .map(|l| (l.pos.as_str(), l.what.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("lib.rs:2", "fn helper"),
+            ("lib.rs:3", "mod tests"),
+            ("lib.rs:6", "fn doubles"),
+            ("lib.rs:7", "fn doubles_zero"),
+        ]
+    );
+    assert!(
+        m.left_out[0].reason.contains("`cfg(test)`"),
+        "{:?}",
+        m.left_out
+    );
+    assert!(
+        m.left_out[2].reason.contains("mod tests"),
+        "{:?}",
+        m.left_out
+    );
+    assert_eq!(m.to_json(), read(&src).to_json());
+}
+
+/// A method left out of a built impl, every method of a left-out impl, and a left-out module
+/// file, whose file is not read: each listed with its line.
+#[test]
+fn test_only_methods_impls_and_module_files_are_listed_as_left_out() {
+    let m = read(&lines(&[
+        "pub struct Bag { pub n: i64 }",
+        "impl Bag {",
+        "    pub fn count(&self) -> i64 { self.n }",
+        "    #[cfg(test)]",
+        "    fn probe(&self) -> i64 { self.n + 1 }",
+        "}",
+        "#[cfg(all(test, unix))]",
+        "impl Bag {",
+        "    fn twice(&self) -> i64 { self.n * 2 }",
+        "}",
+        "#[cfg(test)]",
+        "mod more;",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let got: Vec<(&str, &str)> = m
+        .left_out
+        .iter()
+        .map(|l| (l.pos.as_str(), l.what.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("lib.rs:4", "fn Bag.probe"),
+            ("lib.rs:9", "fn Bag.twice"),
+            ("lib.rs:11", "mod more;"),
+        ]
+    );
+    assert!(
+        m.left_out[2].reason.contains("not read"),
+        "{:?}",
+        m.left_out
+    );
+}
+
+/// A module with nothing left out has no `left_out` key: its document is the bytes it was.
+#[test]
+fn a_module_with_nothing_left_out_has_no_left_out_key() {
+    let m = read(&lines(&["pub fn double(x: i64) -> i64 { x * 2 }"]));
+    assert!(m.left_out.is_empty());
+    assert!(!m.to_json().contains("left_out"), "{}", m.to_json());
+}

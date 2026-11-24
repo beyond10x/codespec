@@ -6,6 +6,10 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code. `codespec measure`
+  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
+  JSON shows it as `total.left_out`. A document without the field is unchanged.
 - `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
   functions, struct fields, calls, field accesses and struct literal fields are in the source
   files, by byte range and line. It is checked strictly against the module and the files; the

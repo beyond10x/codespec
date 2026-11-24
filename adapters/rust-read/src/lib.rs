@@ -335,6 +335,7 @@ fn read_tree_spans(
         apart,
         paths,
         offsets,
+        left_out,
     } = tree;
     let recorder = spans.then(|| {
         let order: BTreeMap<&String, usize> =
@@ -386,7 +387,8 @@ fn read_tree_spans(
     r.scan(&ast);
     let shared = r.spans.clone();
     let rust_names = spans.then(|| spans_names(&r));
-    let m = r.module(name, &ast);
+    let mut m = r.module(name, &ast);
+    m.left_out = left_out;
     let out = rust_names.map(|names| {
         let rec = std::mem::take(&mut *shared.borrow_mut());
         spans::output(&m, name, rec, &names)
@@ -3604,6 +3606,7 @@ impl Reader {
             injects: vec![],
             transactional: vec![],
             persistence: vec![],
+            left_out: vec![],
         }
     }
 

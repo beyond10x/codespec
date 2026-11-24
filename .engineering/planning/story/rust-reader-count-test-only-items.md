@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-count-test-only-items
 kind: story
-status: active
+status: implemented
 title: The Rust reader counts what it leaves out as test-only
 summary: codespec measure says how many functions cfg(test) left out, so a coverage figure names its denominator.
 relations:
@@ -22,10 +22,11 @@ scope:
   path: crates/model/src/lib.rs
 - confidence: cited
   path: schemas/cir-1.schema.json
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 8}
 - {from: "proposed", to: "active", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 9}
+- {from: "active", to: "implemented", at: "2026-11-24T16:32:31Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader counts what it leaves out as test-only
 
