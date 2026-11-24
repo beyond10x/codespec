@@ -590,7 +590,7 @@ tasks:
       - cmp target/examples-effects/effects.1.json examples/envcheck/envcheck.effects.json
 
   examples-edit:
-    desc: Run the self-test (a .diff with one byte changed must compare unequal), then every edit program of examples/edit as a dry run against its .diff or .refusal and exit code, the sources unchanged; then each on a copy under target/, an operation applied with --build and run again changing nothing, a refusal with --apply writing nothing.
+    desc: Run the self-test (the Go rename program run once must match its .diff and must not match a copy with one byte changed), then every edit program of examples/edit as a dry run against its .diff or .refusal and exit code, the sources unchanged; then each on a copy under target/, an operation applied with --build and run again changing nothing, a refusal with --apply writing nothing.
     cmds:
       - cargo build --locked -q -p b10x-codespec-cli -p codespec-read-rust
       - mkdir -p {{.ADAPTERS}}

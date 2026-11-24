@@ -91,6 +91,7 @@
 //! change set knows of a language, [`refs`] the walk that finds the names an operation renames.
 
 pub mod change;
+mod checks;
 pub mod compare;
 pub mod delete;
 pub mod diff;
@@ -101,4 +102,5 @@ pub mod refs;
 pub mod rename;
 pub mod retarget;
 pub mod run;
+pub mod source;
 pub mod spans;

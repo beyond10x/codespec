@@ -169,8 +169,7 @@ impl Cx<'_> {
                                     "a call list names {id}: the reader did not read the code making the call"
                                 ),
                             );
-                        } else if let CallRef::Named { form, name, .. } = c
-                            && form != "macro"
+                        } else if let CallRef::Named { name, .. } = c
                             && *name == spelling
                         {
                             block(
@@ -278,6 +277,17 @@ impl Cx<'_> {
                 None
             }
         };
+        self.refused_regions(
+            row,
+            &spelling,
+            decl.map(|s| (mi, s.file, s.start, s.end)),
+            out,
+        );
+        if t.recv.is_some()
+            && let Some(s) = decl
+        {
+            self.foreign_trait(row, mi, (s.file, s.start), id, out);
+        }
         if let Some(s) = decl {
             let path = self.file_path(mi, s.file);
             match source(&path) {

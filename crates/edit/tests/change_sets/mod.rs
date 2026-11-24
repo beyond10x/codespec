@@ -486,7 +486,14 @@ fn rename_field_edits_the_declaration_an_access_a_keyed_and_a_shorthand_literal(
         old: "qty".into(),
         new: "quantity".into(),
     };
-    let cs = planned(&inputs, &[op], &Options::default());
+    // With the bytes: the `reflect` rule reads the struct's attributes.
+    let cs = change::plan_with(&inputs, &[op], &Options::default(), &|p| {
+        p.strip_prefix("ledger/")
+            .and_then(|p| l.files.get(p))
+            .map(|t| t.as_bytes().to_vec())
+            .ok_or_else(|| format!("no file {p}"))
+    })
+    .unwrap_or_else(|r| panic!("refused: {r:?}"));
     let lib = "src/lib.rs";
     assert_eq!(
         cs.edits(),

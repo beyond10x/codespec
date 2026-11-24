@@ -40,6 +40,18 @@ Every change a user of `codespec` or of `cir/1` would notice.
   runs them in the gate, applies each operation to a copy with `--build` and checks that a
   refusal writes nothing. The site has a page on code edits: the notation, the operations, the
   refusals and the verification ([Code edits](https://beyond10x.github.io/codespec/docs/concepts/code-edits)).
+- `codespec edit` refuses what leaves the read set or the reader's view: rule `reflect` for a
+  name reflection may read (a field of a Go struct with a tag or whose values go to `fmt` or into
+  an interface, a field of a Rust struct deriving `Debug` or another trait that reads field
+  names, an exported Go method whose values go outside the inputs, `fmt.Stringer`), even with
+  `--closed-world`; rule `trait` for a Rust method of an `impl` of a trait no input declares
+  (`Default`); rule `unread` also for code the reader refused that holds the name (a
+  `macro_rules!` body, a `static`), for a call of a macro of that name, and for a rename of a
+  function the reader kept opaque; a `retarget` between Rust `&self` and `self` methods, or Go
+  `T` and `*T`, is a different signature. A Rust `delete` of a function with another one below it
+  in its file is verified (it failed on every such delete). `--apply` writes every temporary file
+  before the first rename and puts back what it renamed when a rename fails, so a failed write
+  leaves every file as read (exit 2).
 
 ## 0.12.0
 

@@ -829,3 +829,52 @@ fn delete_refused_in_a_generated_file() {
     let r = refusals_over(&[&s], &[delete(SPARE_ID)], &Options::default());
     refused_at(&r, "generated", "store/store.go");
 }
+
+// The rules that read the source text (`crates/edit/src/checks.rs`), on the Rust crate `ledger`
+// of the parent module.
+
+#[test]
+fn rename_field_refused_on_a_struct_deriving_debug() {
+    let mut l = ledger(false);
+    // The doc comment becomes a derive of the same length, so every span stays where it is.
+    let text = l.files.get_mut("src/lib.rs").unwrap();
+    *text = text.replace(
+        "/// One line of the ledger.\n",
+        "#[derive(Debug)] // a line.\n",
+    );
+    let op = Op::RenameField {
+        ty: "ledger.Line".into(),
+        old: "qty".into(),
+        new: "quantity".into(),
+    };
+    let r = refusals_over(&[&l], &[op], &Options::default());
+    refused_at(&r, "reflect", "ledger.Line#qty");
+}
+
+#[test]
+fn rename_refused_for_a_method_of_an_impl_of_a_trait_no_input_declares() {
+    let mut l = ledger(false);
+    l.files.get_mut("src/lib.rs").unwrap().push_str(
+        "\nimpl Default for Line {\n    fn default() -> Line {\n        keyed()\n    }\n}\n",
+    );
+    let mut f = l.module.funcs[2].clone();
+    f.name = "default".into();
+    f.recv = Some(Param {
+        name: "l".into(),
+        t: Type::Named {
+            name: "Line".into(),
+            targs: vec![],
+        },
+        variadic: false,
+    });
+    f.body = vec![];
+    f.pos = "src/lib.rs:31".into();
+    l.module.funcs.push(f);
+    let l = l.name("funcs.5", "src/lib.rs", "fn default()", "default");
+    let r = refusals_over(
+        &[&l],
+        &[rename("ledger.Line.default", "fresh")],
+        &Options::default(),
+    );
+    refused_at(&r, "trait", "ledger.Line.default");
+}

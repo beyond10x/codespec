@@ -1180,6 +1180,31 @@ fn adversary_go_rename_field_of_a_struct_printed_with_plus_v_is_refused() {
 }
 
 #[test]
+fn rust_rename_field_of_a_struct_deriving_debug_is_refused() {
+    // The Rust twin of the case above: `{:?}` of a `#[derive(Debug)]` struct prints its field
+    // names, so `shown()` returns `Line { qty: 1 }` before and `Line { quantity: 1 }` after.
+    let dir = adversary_crate(
+        "rust-derive-debug",
+        &[(
+            "lib.rs",
+            "#[derive(Debug, Clone)]\nstruct Line {\n    qty: u32,\n}\n\nfn shown() -> String {\n    format!(\"{:?}\", Line { qty: 1 })\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-derive-debug",
+        &dir,
+        &[],
+        r#"edit rename_field(T, "qty", "quantity") :- type{id: T, name: "Line"}."#,
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stdout(&o));
+    assert!(
+        stderr(&o).contains("reflect:") && stderr(&o).contains("derives Debug"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
 fn adversary_go_rename_of_a_string_method_passed_to_fmt_is_refused() {
     // Tag implements fmt.Stringer, and fmt.Sprint(t) in the read code calls String through it:
     // `Print` returns "tag" before and "{0}" after. The interface rule looks only at interfaces

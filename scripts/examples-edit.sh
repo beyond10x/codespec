@@ -10,9 +10,10 @@
 #                                             operation with --apply --build, then once more,
 #                                             which must change nothing; a refusal with --apply,
 #                                             every file of the copy unchanged
-#        scripts/examples-edit.sh --self-test the Go rename program compared with a copy of its
-#                                             .diff with one byte changed; fails unless the
-#                                             comparison fails
+#        scripts/examples-edit.sh --self-test the Go rename program run once, its output
+#                                             compared with its .diff (must match: the
+#                                             positive control) and with a copy of the .diff
+#                                             with one byte changed (must not match)
 #
 # CODESPEC and ADAPTERS name the codespec binary and the directory of codespec-read-go and
 # codespec-read-rust (default target/debug/codespec and target/adapters). CODESPEC_CACHE_DIR is
@@ -95,6 +96,13 @@ self_test() {
     exit 1
   fi
   run go "$ROOT/examples/edit/go" "$S" rename "$S/rename"
+  # The positive control: the same run matches the .diff as checked in, so a mismatch below
+  # comes from the comparison, not from a run that failed.
+  if ! check examples/edit/go rename "$S/rename" > "$S/control.txt"; then
+    echo "examples-edit: self-test: the Go rename program does not print its .diff unchanged:"
+    cat "$S/control.txt"
+    exit 1
+  fi
   if check "$S" rename "$S/rename" > "$S/check.txt"; then
     echo "examples-edit: self-test: a .diff with one byte changed compared equal"
     exit 1

@@ -165,7 +165,9 @@ codespec edit --lang rust --adapters target/adapters ./crates/ledger -f renames.
   `--format json` prints `codespec-edit-report/1` (rows with their status, files with their
   SHA-256 before and after, the diff). A dry run is verified too (§ 7.3).
 - `--apply` writes the files after verification, each by a write to a temporary file in its
-  directory and a rename, and only when every file still has the SHA-256 it had when read.
+  directory and a rename, and only when every file still has the SHA-256 it had when read. Every
+  temporary file is written before the first rename; when a write fails, none is renamed, and
+  when a rename fails, the files renamed before it get their bytes as read back (exit 2).
 - `--closed-world` says no code outside the inputs refers to their exported names (§ 7.1).
 - Exit 0: every row planned (dry run) or written (`--apply`), or no row. Exit 1: one or more rows
   refused or verification failed; nothing is written, every refusal is printed. Exit 2: an error
@@ -335,7 +337,21 @@ when:
   `foreign` statement's, an opaque function's or an initializer's call list), a `named` call ref
   whose name is the target's source spelling, a `foreign` statement whose `src` holds that
   spelling as a word, or a `foreign` statement or opaque function in a module whose reader does not
-  fill call lists; the reader could not see it, so the edit could not be complete;
+  fill call lists; the reader could not see it, so the edit could not be complete; a `named`
+  call ref of form `macro` counts as well;
+- `rename`, `rename_field`, `delete`: a region the reader refused (a module's `refusals` other
+  than a statement kept as `foreign`: a Rust `macro_rules!` body, a `static`'s initializer), read
+  from the file's bytes, holds the target's source spelling as an identifier token (`unread`); and
+  `rename` of a function the reader kept opaque (`unread`);
+- a Rust method in an `impl <Trait> for T` block whose trait no input declares (`trait`): the
+  impl needs the name;
+- a name reflection may read (`reflect`), which `--closed-world` does not lift: `rename_field` of
+  a Go struct with a field tag, or whose value or pointer is passed to a function outside the read
+  set or converted to an interface; of a Rust struct that derives anything but `Clone`, `Copy`,
+  `PartialEq`, `Eq`, `PartialOrd`, `Ord`, `Hash` and `Default`, or has an attribute other than a
+  built-in one; `rename` of an exported Go method whose receiver type's value or pointer is passed
+  to a function outside the read set or converted to an interface the inputs do not declare (Go
+  interfaces are implicit: `fmt.Stringer`);
 - a `name` span of a reference has a `text` other than the target's source spelling and no `refs`
   alias explains it (a Rust call through `use … as fetch` is spelled `fetch` and is left alone;
   its `use` path segment is edited);
@@ -347,7 +363,9 @@ when:
   `set_visibility`), or is the spelling of a declaration of the module or of a local or parameter
   of a body that references the target (it would capture the reference);
 - `delete`: anything in the set references the target, or it is `main`, `init` or an entry;
-- `retarget`: the new callee is in another module (wave 2) or its signature differs;
+- `retarget`: the new callee is in another module (wave 2) or its signature differs, its
+  receiver mode included (Rust `self`, `&self`, `&mut self`, `self: Box<Self>`, read from the
+  declaration; Go `T` or `*T`);
 - the edit lands in a `generated` file;
 - two edits overlap and differ (§ 5).
 
@@ -419,8 +437,10 @@ selected the old names are gone).
   naming the site.
 - Text search and replace, or edits of comments and strings.
 - Re-format code outside the edited spans (Go's `gofmt` of a file that was `gofmt`-clean aside).
-- Prove that a change keeps behaviour beyond the `cir/1` equality: a rename is behaviour-preserving
-  by construction; a template edit (wave 2) is proved local, and behaviour is the evaluator's
+- Prove that a change keeps behaviour beyond the `cir/1` equality: a rename keeps behaviour by
+  construction only within the read set; what leaves it (reflection on field and method names,
+  code the reader refused) is covered by the `reflect` and `unread` refusals (§ 7.1), not proved;
+  a template edit (wave 2) is proved local, and behaviour is the evaluator's
   differential run (`story:mcp-verify-change`).
 - Edit two languages in one run (wave 1: one `--lang`), or files outside the inputs.
 - Serve an editor (no LSP); the MCP server (`epic:agent-mcp-server`) calls the same crate.

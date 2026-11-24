@@ -55,6 +55,9 @@ the run still exits 1 with nothing written. A row is refused, naming the rule an
 |---|---|
 | `target` | the target names nothing of the set |
 | `listed`, `foreign`, `unread`, `named` | a reference to the target is in code the reader did not read: a call inside a Go `go` statement or a Rust macro, kept as a `foreign` statement, or an unresolved call with the target's spelling |
+| `unread` | code the reader refused (a Rust `macro_rules!` body, a `static`'s initializer) holds the target's name as a word, or a `rename` targets a function the reader kept opaque |
+| `trait` | the target is a Rust method in an `impl <Trait> for T` whose trait no input declares (`Default`, `Display`) |
+| `reflect` | the name is visible to reflection, even with `--closed-world`: a field of a Go struct with a tag, or whose values go to a function outside the inputs (`fmt.Sprintf("%+v", …)`) or become an interface; a field of a Rust struct that derives anything but `Clone`, `Copy`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`, `Hash` and `Default` (`Debug`, `Serialize`) or has an attribute macro; an exported Go method whose type's values go outside the inputs or become an interface the inputs do not declare (`fmt.Stringer`) |
 | `spelling` | a reference is spelled otherwise and no Rust `use … as` alias explains it |
 | `exported` | the target is exported and `--closed-world` is not given: callers outside the inputs are not read |
 | `interface` | the target is a method that implements an interface or trait of the set |
@@ -66,7 +69,7 @@ the run still exits 1 with nothing written. A row is refused, naming the rule an
 | `embedded` | `rename_field` of an embedded field, which is named after its type |
 | `referenced`, `main` | `delete`: something of the set references the target, or it is `main` or `init` |
 | `source`, `lines` | `delete`: the file's bytes differ from those read, or the declaration shares its first or last line with other text |
-| `signature`, `module`, `unexported` | `retarget`: the new callee's signature differs, it is in another module, or it is unexported and the call is in another module |
+| `signature`, `module`, `unexported` | `retarget`: the new callee's signature differs (its receiver too: Rust `&self` against `self`, Go `T` against `*T`), it is in another module, or it is unexported and the call is in another module |
 
 Comments, string literals and doc text that mention the old name are not changed. Test files the
 reader does not read (Go `_test.go`, Rust `#[cfg(test)]`) are not changed either; `--build`
@@ -83,7 +86,7 @@ the first differing path is printed and nothing is written. A dry run is checked
 | flag | what it adds |
 |---|---|
 | none | a dry run: the unified diff on standard output, paths relative to the current directory |
-| `--apply` | writes each file through a temporary file and a rename, only when every file read still has the SHA-256 it was read with |
+| `--apply` | writes each file through a temporary file and a rename, only when every file read still has the SHA-256 it was read with; every temporary file is written before the first rename, and a failed write leaves every file as read (exit 2) |
 | `--build` | compiles the checked copy first: Go with `go build ./...` and `go vet ./...` over the `go.mod` root (`GOWORK=off`), Rust with `cargo check --all-targets`; a failure is status `unverified` with the compiler's first 20 lines |
 | `--format json` | prints `codespec-edit-report/1`: each row's status and reasons, each edited file's SHA-256 before and after, the diff |
 
@@ -116,8 +119,8 @@ Rust. Each program has its flags (`<name>.args`) and its expected diff (`<name>.
 `task examples-edit`, a part of the gate, runs every program as a dry run and compares its output
 and exit code. It checks that no file of the sources changed, then applies each operation to a copy
 under `target/` with `--build` and runs it again, which must change nothing. Each refusal runs with
-`--apply` on a copy and must leave every file as it was. A self-test first compares the Go
-`rename` program with a copy of its diff that differs in one byte and fails unless the comparison
-does.
+`--apply` on a copy and must leave every file as it was. A self-test first runs the Go `rename`
+program once; its output must match the diff as checked in and must not match a copy that differs
+in one byte.
 
 The flags are in the [CLI reference](/docs/reference/cli).

@@ -404,6 +404,7 @@ fn the_design_s_languages_section_holds_the_spans_protocol() {
 
 /// Change sets, `rename` and `rename_field` (`story:edit-engine-rename`).
 mod change_sets;
+mod source_text;
 
 // The `go.mod` rewrite of the verification copy (`story:edit-cli-verified-apply`).
 

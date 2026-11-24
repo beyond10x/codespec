@@ -157,10 +157,33 @@ impl Cx<'_> {
                 Some(r) => format!("{r}.{}", callee.name),
                 None => callee.name.clone(),
             };
-            let old = gmod.funcs.iter().find(|f| f.key() == key);
+            let oi = gmod.funcs.iter().position(|f| f.key() == key);
+            let old = oi.map(|i| &gmod.funcs[i]);
             let new = (!gopaque).then(|| &gmod.funcs[gi]);
             match (old, new) {
-                (Some(a), Some(b)) if same_signature(a, b) => {}
+                (Some(a), Some(b)) if same_signature(a, b) => {
+                    let modes = oi.map(|i| (self.receiver_mode(gm, i), self.receiver_mode(gm, gi)));
+                    match modes {
+                        Some((Ok(x), Ok(y))) if x == y => {}
+                        Some((Ok(x), Ok(y))) => refuse(
+                            out,
+                            "signature",
+                            site,
+                            format!(
+                                "the receiver of {id} is {} and that of the callee {key} {}: the call would take its receiver otherwise",
+                                y.unwrap_or_default(),
+                                x.unwrap_or_default()
+                            ),
+                        ),
+                        Some((Err(e), _) | (_, Err(e))) => refuse(
+                            out,
+                            "signature",
+                            site,
+                            format!("the receiver mode is not read: {e}"),
+                        ),
+                        None => {}
+                    }
+                }
                 (Some(_), Some(_)) => refuse(
                     out,
                     "signature",

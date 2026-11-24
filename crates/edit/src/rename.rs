@@ -7,11 +7,14 @@
 //! is left alone when a Rust `use` of the target in the same file explains it (an `as` alias),
 //! and refused otherwise.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 
 use codespec_model::{CallRef, Module, TypeDecl};
 
-use crate::change::{Input, Options, Planned, Refusal, TextEdit};
+use crate::change::{Input, Options, Planned, Refusal, Source, TextEdit};
+use crate::checks::{Text, pos_names};
 use crate::ids::label;
 use crate::lang::{check_name, go_exported, has_word};
 use crate::refs::{Ctx, Item, Owner, walk};
@@ -155,6 +158,9 @@ pub(crate) enum Lookup<'s> {
     Missing,
 }
 
+/// The files read for the source-text rules, by module and file index, or why not.
+type Texts = BTreeMap<(usize, usize), Result<Rc<Text>, String>>;
+
 /// What one operation proposes: edits and refusals.
 #[derive(Default)]
 pub(crate) struct Out {
@@ -169,10 +175,17 @@ pub(crate) struct Cx<'a> {
     /// The languages whose readers fill call lists: a module of the set has a `foreign`
     /// statement with a call list or an opaque function with calls.
     pub(crate) call_lists: BTreeSet<String>,
+    /// The bytes of a file by its edit path.
+    pub(crate) source: Source<'a>,
+    /// Per module, the name each file of its span document has in its positions
+    /// ([`crate::checks::pos_names`]).
+    pub(crate) pos_names: Vec<Vec<String>>,
+    /// The files read through `source`, by module and file index.
+    pub(crate) texts: RefCell<Texts>,
 }
 
 impl<'a> Cx<'a> {
-    pub fn new(inputs: &'a [Input], opts: &'a Options) -> Cx<'a> {
+    pub fn new(inputs: &'a [Input], opts: &'a Options, source: Source<'a>) -> Cx<'a> {
         let mut call_lists = BTreeSet::new();
         for (k, inp) in inputs.iter().enumerate() {
             let mut m = inp.module.clone();
@@ -190,6 +203,12 @@ impl<'a> Cx<'a> {
             inputs,
             opts,
             call_lists,
+            source,
+            pos_names: inputs
+                .iter()
+                .map(|i| pos_names(&i.module, &i.spans))
+                .collect(),
+            texts: RefCell::default(),
         }
     }
 
@@ -254,7 +273,7 @@ impl<'a> Cx<'a> {
                 replacement,
             },
             module: k,
-            pos_file: f.path.clone(),
+            pos_file: self.pos_names[k][file].clone(),
             lines,
         });
     }
@@ -402,9 +421,23 @@ impl<'a> Cx<'a> {
                 "it is exported and --closed-world is not given: callers outside the inputs are not read".into(),
             );
         }
+        if opaque {
+            refuse(
+                out,
+                "unread",
+                id,
+                format!(
+                    "the reader kept it opaque ({}): what its declaration needs of the name is unknown",
+                    m.opaque[index].reason
+                ),
+            );
+        }
         if let Some(ty) = &t.recv {
             self.interfaces(row, mi, ty, &t.name, out);
+            self.foreign_trait(row, mi, (decl.file, decl.start), id, out);
+            self.reflect_method(row, mi, ty, &spelling, id, out);
         }
+        self.refused_regions(row, &spelling, None, out);
         self.func_collisions(row, &t, id, new, lang, out);
 
         // The references, and what the reader could not see.
@@ -435,8 +468,7 @@ impl<'a> Cx<'a> {
                                     "a call list names {id}: the reader did not read the code making the call"
                                 ),
                             );
-                        } else if let CallRef::Named { form, name, .. } = c
-                            && form != "macro"
+                        } else if let CallRef::Named { name, .. } = c
                             && *name == spelling
                         {
                             block(
@@ -786,6 +818,8 @@ impl<'a> Cx<'a> {
                 "an embedded field is named after its type".into(),
             );
         }
+        self.reflect_field(row, mi, ti, &site, out);
+        self.refused_regions(row, &spelling, None, out);
         for (j, f) in fields.iter().enumerate() {
             if j != fi
                 && (f.name == new || self.text(mi, &format!("types.{ti}.fields.{j}")) == Some(new))

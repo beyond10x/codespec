@@ -25,7 +25,8 @@
 //!    ([`crate::post::build_commands`]); the copy is removed;
 //! 6. with `apply`, after verification and only when every file read still has the SHA-256 it
 //!    was read with, each edited file is written through a temporary file in its directory and a
-//!    rename.
+//!    rename, every temporary file written before the first rename; a failed rename puts the
+//!    files renamed before it back as read.
 //!
 //! The outcome holds each row's status, each edited file's SHA-256 before and after, and the
 //! unified diff ([`crate::diff::unified`]), paths relative to the request's `cwd`;
@@ -503,9 +504,17 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
             .push(format!("not written: {file}: changed since it was read"));
         return Ok(out);
     }
-    for (file, (k, path, bytes)) in &sources {
-        write_through(&paths[*k].join(path), &cs.apply(file, bytes))?;
-    }
+    let writes: Vec<(PathBuf, &[u8], Vec<u8>)> = sources
+        .iter()
+        .map(|(file, (k, path, bytes))| {
+            (
+                paths[*k].join(path),
+                bytes.as_slice(),
+                cs.apply(file, bytes),
+            )
+        })
+        .collect();
+    write_all(&writes)?;
     out.status = Status::Applied;
     for row in &mut out.rows {
         row.status = "applied";
@@ -526,25 +535,56 @@ fn stale(inputs: &[Input], paths: &[PathBuf]) -> Option<String> {
     })
 }
 
-/// Write `bytes` to `to` through a temporary file in its directory, with `to`'s permissions, and
-/// a rename.
-fn write_through(to: &Path, bytes: &[u8]) -> Result<(), String> {
-    let err = |e: std::io::Error| format!("writing {}: {e}", to.display());
-    let name = to
-        .file_name()
-        .ok_or_else(|| format!("writing {}: no file name", to.display()))?;
-    let tmp = to.with_file_name(format!(
-        ".{}.codespec-edit-{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
-    let written = std::fs::write(&tmp, bytes)
-        .and_then(|()| std::fs::metadata(to))
-        .and_then(|m| std::fs::set_permissions(&tmp, m.permissions()))
-        .and_then(|()| std::fs::rename(&tmp, to));
-    if let Err(e) = written {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(err(e));
+/// Write each `(path, bytes as read, new bytes)` of `writes`, all or none: every new text to a
+/// temporary file in its file's directory with the file's permissions first, then each renamed
+/// over its file. When a temporary file cannot be written, none is renamed and all are removed;
+/// when a rename fails, the files already renamed get their bytes as read back. An error names
+/// the file that failed.
+fn write_all(writes: &[(PathBuf, &[u8], Vec<u8>)]) -> Result<(), String> {
+    let tmp_of = |to: &Path| {
+        let name = to.file_name().map(|n| n.to_string_lossy().into_owned());
+        name.map(|n| to.with_file_name(format!(".{n}.codespec-edit-{}", std::process::id())))
+            .ok_or_else(|| format!("writing {}: no file name", to.display()))
+    };
+    let mut tmps: Vec<PathBuf> = Vec::with_capacity(writes.len());
+    let clean = |tmps: &[PathBuf]| {
+        for t in tmps {
+            let _ = std::fs::remove_file(t);
+        }
+    };
+    for (to, _, bytes) in writes {
+        let tmp = match tmp_of(to) {
+            Ok(t) => t,
+            Err(e) => {
+                clean(&tmps);
+                return Err(e);
+            }
+        };
+        let written = std::fs::write(&tmp, bytes)
+            .and_then(|()| std::fs::metadata(to))
+            .and_then(|m| std::fs::set_permissions(&tmp, m.permissions()));
+        tmps.push(tmp);
+        if let Err(e) = written {
+            clean(&tmps);
+            return Err(format!("writing {}: {e}; no file written", to.display()));
+        }
+    }
+    for (i, ((to, _, _), tmp)) in writes.iter().zip(&tmps).enumerate() {
+        if let Err(e) = std::fs::rename(tmp, to) {
+            clean(&tmps[i..]);
+            let mut restored = Vec::new();
+            for (back, before, _) in &writes[..i] {
+                if let Err(e) = std::fs::write(back, before) {
+                    restored.push(format!("{} could not be put back: {e}", back.display()));
+                }
+            }
+            let rest = if restored.is_empty() {
+                "the files written before it are put back as read".to_string()
+            } else {
+                restored.join("; ")
+            };
+            return Err(format!("writing {}: {e}; {rest}", to.display()));
+        }
     }
     Ok(())
 }

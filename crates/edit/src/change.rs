@@ -138,7 +138,8 @@ pub const RULES: &[&str] = &[
     "generated",
     // two edits overlap and differ
     "overlap",
-    // `delete`: the bytes of the declaration's file were not given, or differ from those read
+    // the bytes of a file a rule reads (a `delete`'s declaration, a refused region, an impl, a
+    // receiver, a struct's attributes) were not given, or differ from those read
     "source",
     // `delete`: the declaration shares its first or last line with other text
     "lines",
@@ -154,6 +155,13 @@ pub const RULES: &[&str] = &[
     "signature",
     // `retarget`: the new callee is unexported and the call is in another module
     "unexported",
+    // a Rust method in an `impl <Trait> for T` whose trait no input declares
+    "trait",
+    // a name reflection may read: a field of a Go struct with a tag or whose values leave the
+    // read set or become interfaces, of a Rust struct with a derive that reads field names; an
+    // exported Go method whose type's values leave the read set or become interfaces the inputs
+    // do not declare
+    "reflect",
 ];
 
 /// What planning gives: the operations resolved, and the edits sorted and merged.
@@ -163,7 +171,7 @@ pub struct ChangeSet {
     ops: Vec<(Op, Resolved)>,
     edits: Vec<TextEdit>,
     shifts: Vec<Shift>,
-    /// Per edited file (its edit path): its module and its path in its span document.
+    /// Per edited file (its edit path): its module and the name the module's positions give it.
     places: BTreeMap<String, (usize, String)>,
 }
 
@@ -182,7 +190,7 @@ pub(crate) struct Planned {
     pub row: usize,
     pub edit: TextEdit,
     pub module: usize,
-    /// The file's path in its span document, as positions name it.
+    /// The name the module's positions give the file ([`crate::checks::pos_names`]).
     pub pos_file: String,
     /// The lines of `start` and of the last replaced byte.
     pub lines: (usize, usize),
@@ -208,7 +216,7 @@ pub fn plan_with(
     opts: &Options,
     source: Source<'_>,
 ) -> Result<ChangeSet, Vec<Refusal>> {
-    let cx = rename::Cx::new(inputs, opts);
+    let cx = rename::Cx::new(inputs, opts, source);
     let mut refusals = Vec::new();
     let mut planned = Vec::new();
     let mut resolved: Vec<(Op, Resolved)> = Vec::new();

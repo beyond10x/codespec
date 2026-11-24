@@ -71,6 +71,23 @@ fn runs(edited: &[u8], formatted: &[u8]) -> Result<Vec<Run>, String> {
     let (mut i, mut j) = (0, 0);
     loop {
         let (i2, j2) = (space(edited, i), space(formatted, j));
+        // A run removed or added between two identifier or number characters joins or splits
+        // tokens: not a whitespace change.
+        let word = |b: Option<&u8>| b.is_some_and(|c| crate::source::word_byte(*c));
+        if (i2 == i) != (j2 == j)
+            && i > 0
+            && j > 0
+            && word(edited.get(i - 1))
+            && word(formatted.get(j - 1))
+            && word(edited.get(i2))
+            && edited.get(i2) == formatted.get(j2)
+        {
+            let line = 1 + edited[..i].iter().filter(|b| **b == b'\n').count();
+            return Err(format!(
+                "gofmt changed more than whitespace: line {line} of the edited text {} two tokens",
+                if i2 == i { "splits" } else { "joins" }
+            ));
+        }
         if edited[i..i2] != formatted[j..j2] {
             out.push(Run {
                 t: (i, i2),
