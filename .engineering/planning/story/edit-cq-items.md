@@ -25,7 +25,7 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
 ---
@@ -44,9 +44,11 @@ item, naming it and `codespec edit`.
 
 The fact base takes an optional list of `source_name(node, text)` records given by the caller (a
 plain Rust input type of `crates/query`; this story does not read `codespec-spans/1`). The input
-is additive: new functions `FactBase::build_with_names` and `load_with_names`; `build`,
-`build_with`, `load`, `load_with` and `load_in` keep their signatures, so no existing caller or test
-changes. Without names the relation is empty; the cache digest covers the names when given.
+is additive: a new method `FactBase::build_with_names` beside `FactBase::build` and
+`FactBase::build_with` (`crates/query/src/facts.rs:2383-2389`), and a new free function
+`load_with_names` beside the free functions `load`, `load_with` and `load_in`
+(`crates/query/src/lib.rs:303-322`). None of the existing five changes its signature, so no
+existing caller or test changes. Without names the relation is empty; the cache digest covers the names when given.
 
 ## Done When
 
@@ -67,6 +69,8 @@ changes. Without names the relation is empty; the cache digest covers the names 
 - The `extent` relation serves only the unplanned assessor (scope): dropped.
 - Caller-given records change the builder signatures used by nine test files (parallel safety):
   additive functions; existing signatures unchanged.
+- Round 2, `load`, `load_with` and `load_in` named as `FactBase` methods: they are free functions of
+  `crates/query/src/lib.rs`; the outcome says so.
 
 ## Scope
 

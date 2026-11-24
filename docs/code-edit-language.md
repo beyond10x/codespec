@@ -207,7 +207,10 @@ Chosen because each is useful alone, each replaces identifier tokens or whole de
 
 An operation is a function from the read set `S` (the `cir/1` documents) to the expected set `S'`:
 the documents the edited source must read as. It is defined once, in Rust, in a new crate
-`crates/edit` (`b10x-codespec-edit`), for every language.
+`crates/edit` (`b10x-codespec-edit`), for every language. The crate's modules are pure (no process,
+no file) except `run`, which holds the pipeline of § 3.3 (readers, fact base, edit rows, cache copy,
+re-read, comparison, apply); `codespec edit` and the MCP server (`epic:agent-mcp-server`) both call
+`codespec_edit::run`, and `crates/cli` stays a thin wrapper.
 
 - `rename(F, New)`: let `o` be `F`'s `cir/1` name in module `M`. `S'` is `S` with `o` replaced by
   `o'` in `F`'s declaration, `M.layout`, every `call`, `method` and `func_ref` that resolves to `F`,
@@ -240,7 +243,9 @@ file to its start; bytes outside every edited span stay as they were. The per-la
 small: whether the new name is an identifier and not a keyword of the language, and Rust's field
 shorthand (wave 2: reading a template as a fragment). After the edits, a Go file that was
 `gofmt`-clean before is run through `gofmt`, which realigns the whitespace around a renamed field
-or argument and nothing else; other files are not reformatted.
+or argument and nothing else. Its changes become text edits too: the formatted and the span-edited
+text must have the same characters outside whitespace, and each whitespace run that differs is one
+edit, merged with the span edits. Other files are not reformatted.
 
 ### 6.2 `codespec-spans/1`, beside `cir/1`
 
@@ -355,7 +360,9 @@ not changed; `--build` (§ 7.4) is what catches a test that names a deleted or r
 ### 7.3 Verified, not trusted
 
 Before anything is written, `codespec edit` copies the module root of the inputs (Go: the
-directory of the `go.mod` above them; Rust: the crate directory), without `.git` and `target`,
+directory of the `go.mod` above them; Rust: the Cargo workspace root, the nearest directory above
+the crate whose `Cargo.toml` has `[workspace]`, else the crate directory), without `.git` and
+`target`,
 into its cache directory, writes the edited files there, and reads the copied input directories
 again with `--spans`. A relative `replace` path in the copy's `go.mod` is rewritten to the absolute
 path of the original. The re-read set must equal `S'` (§ 5) byte for byte in canonical encoding,
@@ -380,7 +387,7 @@ the compiler's first errors.
 ## 8. Determinism
 
 Rows are sorted (cq § 7); operations apply in row order; text edits are sorted by file path, then
-start; the diff is generated from the edits themselves (hunks around each edited span, three lines
+start; `gofmt`'s whitespace changes are edits too (§ 6.1); the diff is generated from the edits themselves (hunks around each edited span, three lines
 of context), not by a diff algorithm; the report has no time field. The same sources and program
 give the same bytes, and running a program again on its own output changes nothing (the rows that
 selected the old names are gone).
@@ -459,6 +466,13 @@ cache copy instead of an in-reader overlay (`go/build` drops module resolution u
 refusal is Rust in `crates/edit`; method renames include method sets; Rust `use` aliases; `node`
 spans and the `extent` relation left out of wave 1; a Rust slice before the full command; the Go
 reader hold; tests in existing test binaries. Each story names the findings it answers.
+
+Round 2 (17 warnings): the pipeline is `codespec_edit::run` so `crates/mcp` can call it (§ 5);
+`ids` maps functions, types and fields as well as body nodes; Rust copies and builds the workspace
+root (§ 7.3); `gofmt` changes are merged text edits (§ 6.1); checkable cases for the `go.mod`
+rewrite, the JSON report, possible rows and the "not yet" exits; a sh fixture reader stands in for
+a reader without spans; the refusal examples are counted per language; the later drafts and
+`epic:agent-mcp-server` are restated against the cache copy and `codespec edit`.
 
 ## 15. Open questions
 

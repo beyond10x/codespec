@@ -29,7 +29,7 @@ scope:
   path: website/data/status.json
 - confidence: inferred
   path: website/docs
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:50Z", actor: "human:timo", revision: 3}
 ---
@@ -39,10 +39,14 @@ transitions:
 
 `examples/edit/` holds a Go module (two packages) and a Rust crate. For each of the two languages
 it holds one `.cq` program per wave-1 operation (`rename`, `rename_field`, `retarget`, `delete`:
-eight programs) and one per refusal class that applies to the language (a `lowered` span, a
-reference in unread code, an exported target without `--closed-world`, an interface method, a name
-collision, a `generated` file for Go, overlapping edits), each with its expected `.diff` or expected
-refusal text, and a `<name>.args` file with its flags (`--closed-world` for every program whose
+eight programs) and one per refusal class the language's source can show: Go six (a reference in
+unread code: a call inside a `go` statement; an exported target without `--closed-world`; a method
+of an interface; a name collision with a local; a `generated` file; overlapping edits), Rust five (a
+reference in unread code: a call inside a macro the reader does not read; an exported target
+without `--closed-world`; a trait method; a name collision with a local; overlapping edits). The
+`lowered` refusal has no wave-1 source form in the examples (no wave-1 name kind is lowered there);
+it is tested on hand-written spans in `crates/edit/tests/main.rs` (`story:edit-engine-rename`).
+Each program has its expected `.diff` or expected refusal text, and a `<name>.args` file with its flags (`--closed-world` for every program whose
 target is exported).
 
 `scripts/examples-edit.sh` (POSIX sh) runs every program as a dry run and compares output and exit
@@ -58,7 +62,8 @@ reference is generated, and the capability list names `codespec edit` as shipped
 ## Done When
 
 - `task examples-edit` passes in `task check` and in CI (`scripts/check-parts.txt`), in under
-  120 s, with eight operation programs (four per language) and the refusal programs listed above.
+  120 s, with eight operation programs (four per language) and eleven refusal programs (six Go, five
+  Rust).
 - `task examples-edit` fails when its self-test does not detect the changed byte (the self-test is
   part of the task, not a manual step).
 - `website/docs/` has the page; `crates/docs/src/status.rs` names the capability with
@@ -73,6 +78,8 @@ reference is generated, and the capability list names `codespec edit` as shipped
 - Every operation on Go and Rust (scope, blocker): four programs per language.
 - No file changed on a refusal (scope): the hash comparison.
 - Programs targeting exported functions need `--closed-world` (design): `.args` files.
+- Round 2, the per-language refusal list is not stated: six Go and five Rust programs, named above,
+  and why `lowered` is not among them.
 
 ## Scope
 

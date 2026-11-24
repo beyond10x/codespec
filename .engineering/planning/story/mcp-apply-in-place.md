@@ -17,14 +17,14 @@ scope:
   path: crates/cli
 - confidence: inferred
   path: crates/mcp
-revision: 5
+revision: 6
 ---
 # Story: MCP apply: write a previewed change into the original files
 
 ## Outcome
 
 The tool `apply` takes the id of a preview (`story:mcp-rewrite-preview`) and writes it through
-`crates/edit`'s apply of `codespec edit --apply` (`story:edit-cli-verified-apply`): the change was
+`codespec_edit::run`, the apply of `codespec edit --apply` (`story:edit-cli-verified-apply`): the change was
 verified on a cache copy when it was previewed, every file must still have the SHA-256 it was read
 with, and each file is written through a temporary file and a rename. Only the edited spans and,
 for a template naming another module, the import range (`story:edit-imports`) change. `apply` is

@@ -10,8 +10,10 @@ relations:
 - depends_on: story:edit-spans-format
 scope:
 - confidence: inferred
+  path: Cargo.lock
+- confidence: inferred
   path: adapters/rust-read
-revision: 5
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:48Z", actor: "human:timo", revision: 3}
 ---
@@ -32,8 +34,9 @@ outside the span. Offsets come from `proc_macro2::Span::byte_range()` (`span-loc
 
 ## Done When
 
-- `adapters/rust-read/tests/reader.rs` (the existing target): for `examples/inventory` the spanned
-  read passes strict reading and its `cir/1` is byte-identical to the checked-in
+- `adapters/rust-read/tests/reader.rs` (the existing target), with `b10x-codespec-edit` added as a
+  dev-dependency for its strict reading: for `examples/inventory` the spanned read passes strict
+  reading and its `cir/1` is byte-identical to the checked-in
   `inventory.read.cir.json`; the output object carries `files`.
 - Named cases with expected span documents checked in: a `pub fn load` (`text` `load`, `cir/1`
   name `Load`); a method in an `impl`; a function with attributes and doc comments; a shorthand and
@@ -44,6 +47,10 @@ outside the span. Offsets come from `proc_macro2::Span::byte_range()` (`span-loc
 
 ## Critic findings answered
 
+- Round 2, strict reading needs `crates/edit` but the reader has no dev-dependency on it, and
+  `Cargo.lock` has two writers: the dev-dependency is named, and this story is the only wave-1
+  writer of `Cargo.lock` after `story:edit-spans-format`.
+
 - How spans attach to model types that refuse unknown fields (parallel safety): the reader computes
   `at` paths itself and prints spans beside the module, never inside it.
 - `--describe` spans mark untested (acceptance): no mark; the output object is tested.
@@ -53,5 +60,8 @@ outside the span. Offsets come from `proc_macro2::Span::byte_range()` (`span-loc
 
 - Own: `adapters/rust-read/src/` (`main.rs` flag, `lib.rs`, `body.rs`, `calls.rs`, `files.rs`, a
   new `spans.rs`), `adapters/rust-read/tests/reader.rs` and its fixtures.
+- `adapters/rust-read/Cargo.toml` (the dev-dependency) and `Cargo.lock`: the one `Cargo.lock` change
+  after `story:edit-spans-format`; `story:edit-engine-rename`, beside it, adds no dependency and does
+  not touch `Cargo.lock`.
 - Draft Rust reader stories (`story:rust-reader-casts-slices-unsafe`,
   `story:rust-reader-open-without-blocking`) land on the same files; none is active.

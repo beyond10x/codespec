@@ -18,8 +18,14 @@ scope:
 - confidence: inferred
   path: crates/cli/tests/fixtures/edit
 - confidence: inferred
+  path: crates/edit/src/change.rs
+- confidence: inferred
   path: crates/edit/src/post.rs
-revision: 5
+- confidence: inferred
+  path: crates/edit/src/run.rs
+- confidence: inferred
+  path: crates/edit/tests/main.rs
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:50Z", actor: "human:timo", revision: 3}
 ---
@@ -27,37 +33,52 @@ transitions:
 
 ## Outcome
 
-- After the edits and before verification, a Go file that was `gofmt`-clean when read is run
-  through `gofmt`; the result must differ from the span-edited text only in whitespace (checked),
-  and the diff shows the formatted text. A Go file that was not `gofmt`-clean and every Rust file
-  keep the span-edited text (`docs/code-edit-language.md` § 6.1).
+- gofmt as merged text edits: after the span edits, a Go file that was `gofmt`-clean when read is
+  run through `gofmt`. The formatted text and the span-edited text must have the same characters
+  outside whitespace (checked); walking both in step, each whitespace run that differs becomes one
+  text edit on the original file, merged into the change set with the span edits (a run touching a
+  span edit joins it). So the diff stays derived from edits (`docs/code-edit-language.md` § 8) and
+  `diff.rs` needs no text-diff mode. A Go file that was not `gofmt`-clean and every Rust file keep
+  the span-edited text. Chosen over a text-diff mode in `diff.rs` because it is simpler and keeps one
+  source of truth for the diff and the written bytes.
 - `--build` compiles the verified copy (§ 7.4) before anything is written: Go with `go build ./...`
-  and `go vet ./...` (test files included); Rust with `cargo check --all-targets`. `go` and `cargo`
-  run through the host's `slot` shims; each call is bounded at 10 minutes. A failure exits 1 with
-  the compiler's first 20 lines and writes nothing.
+  and `go vet ./...` (test files included) in the copy of the `go.mod` root; Rust with
+  `cargo check --all-targets` in the copy of the workspace root (`story:edit-slice-rust-rename`).
+  `go` and `cargo` run through the host's `slot` shims; each call is bounded at 10 minutes. A
+  failure exits 1 with the compiler's first 20 lines and writes nothing.
 
 ## Done When
+
+`crates/edit/tests/main.rs`: the whitespace alignment of a gofmt-realigned struct gives the expected
+merged edits; texts that differ outside whitespace are refused.
 
 `crates/cli/tests/edit/mod.rs`:
 
 - renaming a field of a gofmt-aligned struct gives a diff whose struct is realigned and `gofmt -l`
-  clean; a non-gofmt-clean file keeps its spacing;
+  clean, equal to the checked-in diff; a non-gofmt-clean file keeps its spacing;
 - `--build` on the Go fixture where a `_test.go` file calls the function being deleted: exit 1
   naming the test file, nothing written; without `--build` the same delete is planned (the reader
   does not read test files), as § 7.2 says;
 - `--build` on the Rust fixture where a `#[cfg(test)]` module calls the function being deleted:
-  exit 1 naming that file, nothing written; a Rust rename with `--build`: exit 0.
+  exit 1 naming that file, nothing written; a Rust rename with `--build`: exit 0;
+- `--build` of a rename in a Rust workspace member (`version.workspace = true`, a path dependency on
+  a sibling member): exit 0, the copy holding the workspace root.
 
-No test over 60 s (the build cases are the slowest; each is timed in the PR); the
+No test over 60 s (the build cases are the slowest; each one's time is printed by the test); the
 `test b10x-codespec-cli` part stays under 120 s.
 
 ## Critic findings answered
 
-- The only Rust `--build` case cannot fail (acceptance, blocker): the `#[cfg(test)]` delete case.
+- Round 1, the Rust `--build` case could not fail: the `#[cfg(test)]` delete case.
+- Round 2, `cargo check` in a crate copy fails for a workspace member: the copy holds the workspace
+  root; the workspace-member case.
+- Round 2, "the diff shows the formatted text" against a diff built from edits: gofmt's changes are
+  merged text edits, decided and tested above.
 
 ## Scope
 
-- Own: `crates/edit/src/post.rs` (new: formatting and build commands as data),
-  `crates/cli/src/edit.rs`, `crates/cli/tests/edit/mod.rs`, `crates/cli/tests/fixtures/edit/`,
-  `CHANGELOG.md`.
+- Own: `crates/edit/src/post.rs` (new: gofmt alignment and build commands), `crates/edit/src/change.rs`
+  (merging the whitespace edits), `crates/edit/src/run.rs`, `crates/edit/tests/main.rs`,
+  `crates/cli/src/edit.rs` (the `--build` flag), `crates/cli/tests/edit/mod.rs`,
+  `crates/cli/tests/fixtures/edit/`, `CHANGELOG.md`.
 - Runs after `story:edit-cli-verified-apply` (same files).

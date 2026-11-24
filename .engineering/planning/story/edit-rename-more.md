@@ -8,7 +8,8 @@ summary: rename for the remaining name kinds, an interface method with its imple
 relations:
 - decomposes: epic:code-edit-language
 - depends_on: story:edit-cli-verified-apply
-revision: 1
+- depends_on: story:edit-imports
+revision: 2
 ---
 # Story: Rename types, locals, parameters and interface methods
 
@@ -26,5 +27,6 @@ interface method together with the same method of every implementing type in the
 
 ## Scope
 
-- `crates/edit`, `crates/model/src/spans.rs`, `adapters/go/cmd/codespec-read-go`,
-  `adapters/rust-read`, `examples/edit`. Inferred.
+- `crates/edit`, `crates/edit/src/spans.rs`, `adapters/go/cmd/codespec-read-go`,
+  `adapters/rust-read`, `examples/edit`. Inferred. Runs after `story:edit-imports`, which lands on the same
+  readers, `crates/edit` and `examples/edit`; that shared surface is the only reason for the order.

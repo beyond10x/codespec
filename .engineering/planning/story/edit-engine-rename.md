@@ -11,7 +11,7 @@ relations:
 scope:
 - confidence: inferred
   path: crates/edit
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:49Z", actor: "human:timo", revision: 3}
 ---
@@ -80,5 +80,7 @@ No test over 5 s; no Python.
 
 - Own: `crates/edit/src/` (`change.rs`, `rename.rs`, `refs.rs`, `lang.rs`, `compare.rs`,
   `diff.rs`, `lib.rs`), `crates/edit/tests/main.rs`, `crates/edit/tests/fixtures/`.
-- Runs after `story:edit-spans-format` (the crate and its span types). `story:edit-engine-delete-retarget`
-  extends the crate after it.
+- Runs after `story:edit-spans-format` (the crate, its span types and its dependencies). Adds no
+  dependency and does not touch `Cargo.toml` or `Cargo.lock` (`story:edit-spans-rust-reader`, beside it,
+  writes `Cargo.lock`). Declares its modules in `crates/edit/src/lib.rs`; `story:edit-engine-delete-retarget`
+  extends the crate after it. Does not touch `src/run.rs`.
