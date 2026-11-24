@@ -32,7 +32,7 @@ scope:
   path: docs/query-language.md
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 5
+revision: 7
 ---
 # Story: annotations a framework acts on, recorded as facts cq can query
 
@@ -57,6 +57,10 @@ validation before the call) stays outside the body.
 - `@RegisterForReflection`: `story:java-reader-framework-marks` records it in `persistence`, the
   only list of type marks before this story; this story moves it to `marks`. `@Table` stays in
   `persistence`.
+- Parameter bindings of an entry: `@PathParam`, `@QueryParam`, `@HeaderParam`, `@CookieParam`,
+  `@FormParam` (`jakarta.ws.rs`) and `@Context` (`jakarta.ws.rs.core`) on a parameter `p` of
+  `T.m` are `marks` records at `T.m(p)` with their argument (the bound name) as written, so a
+  rule can tell which parameter carries a path, query or header value.
 - cq gets one relation `mark{module, at, kind, mark, args}` over every mark a document holds,
   the existing lists included, so a rule reads one shape. `kind` per source:
   - `security`: the `marks` records of `@RolesAllowed`, `@PermitAll`, `@DenyAll`, `@Authenticated`;
@@ -65,7 +69,8 @@ validation before the call) stays outside the body.
   - `reflection`: the `marks` records of `@RegisterForReflection`;
   - `persistence`: every `persistence` record (`@Entity`, `@Column`, `@Table` and the rest);
   - `scope`: `Module.beans` (`@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent`);
-  - `inject`: `Module.injects` (`@Inject`).
+  - `inject`: `Module.injects` (`@Inject`);
+  - `binding`: the `marks` records of the parameter bindings.
   `Module.transactional` gives no rows of its own: the `transaction` rows come from `marks`.
   `story:java-reader-persistence-facts` adds marks to `persistence`, so to the same relation.
 
@@ -119,6 +124,10 @@ not on the class path).
   `@Transactional` with an argument, `@RegisterForReflection`: the `marks` record is present, the
   module has no refusal for it, and the function reads as it does without the annotation (the
   evaluator gives the same result with and without it).
+- A true positive per binding mark on a resource method's parameter: `@PathParam("id")`,
+  `@QueryParam("q")`, `@HeaderParam("X-Tenant")`, `@CookieParam("c")`, `@FormParam("f")`,
+  `@Context`: a `marks` record at `T.m(p)` with its argument, and a `mark` row of kind `binding`;
+  near miss: an unannotated parameter of the same method gives no record.
 - `@Transactional(value = TxType.REQUIRES_NEW)` on a method: the method's key is in
   `transactional` as before, and a `marks` record holds the argument; `@RegisterForReflection`
   on a type: a `marks` record and no `persistence` record.
@@ -137,7 +146,7 @@ not on the class path).
   there is refused), so `marks` is the only home of the arguments. `schemas/cir-1.schema.json`
   regenerated.
 - `crates/query/tests/expected/schema.txt`, `docs/query-language.md` § 4.2 and the README
-  "Projects and Quarkus" name the marks and the seven kinds; `task adapters-check` and
+  "Projects and Quarkus" name the marks and the eight kinds; `task adapters-check` and
   `task check` green; each new test inside the 60 s bound.
 
 ## Scope
