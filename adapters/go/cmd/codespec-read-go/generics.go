@@ -85,7 +85,7 @@ func calleeIdent(fun ast.Expr) ast.Expr {
 func (f *front) paramCall(tp *types.TypeParam, name string, x Expr, args []Expr, t *Type) (Expr, bool) {
 	n, ok := types.Unalias(tp.Constraint()).(*types.Named)
 	if !ok {
-		return Expr{}, false
+		return f.no("method call on a type parameter with an unnamed constraint")
 	}
 	return f.ifaceCall(n, name, x, args, t)
 }

@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:11Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-empty-struct-as-unit",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): TestEmptyStructReadsAsUnit, TestAnAnonymousStructWithFieldsStaysOutside pass; red on 8b5108b6: unit_test.go:37: refusals [{p.go:5 Stopper field done of type chan struct{} has no cir/1 type} ...]"
+  }
+}

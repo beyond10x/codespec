@@ -54,11 +54,11 @@ func (f *front) receiver(e *ast.SelectorExpr, sel *types.Selection) (Expr, bool)
 		}
 		st, ok := t.Underlying().(*types.Struct)
 		if !ok {
-			return Expr{}, false
+			return f.no("field promoted through a non-struct")
 		}
 		fl := st.Field(i)
 		if fl.Pkg() != f.pkg {
-			return Expr{}, false
+			return f.no("field promoted through another package's struct")
 		}
 		ft := f.typ(fl.Type())
 		inner := x

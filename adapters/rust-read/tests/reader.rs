@@ -3068,3 +3068,408 @@ fn spans_of_every_example_crate_and_kit_case_read_strictly() {
         assert_eq!(s.cir_json(), plain.to_json(), "{}", dir.display());
     }
 }
+
+// ----- strict reading: serde wire attributes and full paths ------------------------------------
+
+/// Whether some refusal names `what` with a reason holding `has`.
+fn refused_naming(m: &Module, what: &str, has: &str) -> bool {
+    m.refusals
+        .iter()
+        .any(|r| r.what == what && r.reason.contains(has))
+}
+
+fn type_names(m: &Module) -> Vec<String> {
+    let mut out: Vec<String> = serde_json::to_value(&m.types)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t["name"].as_str().map(str::to_string))
+        .collect();
+    out.sort();
+    out
+}
+
+fn func_names(m: &Module) -> Vec<String> {
+    m.funcs.iter().map(|f| f.name.clone()).collect()
+}
+
+fn refused_at(m: &Module, pos: &str) -> bool {
+    m.refusals.iter().any(|r| r.pos == pos)
+}
+
+#[test]
+fn a_serde_attribute_that_sets_the_wire_form_refuses_the_type_that_carries_it_naming_it() {
+    let m = read(&lines(&[
+        "use serde::{Deserialize, Serialize};",
+        "#[derive(Serialize, Deserialize)]",
+        "#[serde(rename_all = \"camelCase\")]",
+        "pub struct Whole {",
+        "    pub first_id: i64,",
+        "}",
+        "#[derive(Serialize, Deserialize)]",
+        "pub struct Field {",
+        "    #[serde(rename = \"type\")]",
+        "    pub kind: String,",
+        "}",
+        "#[derive(Serialize, Deserialize)]",
+        "#[serde(tag = \"kind\")]",
+        "pub enum Tagged {",
+        "    A { x: i64 },",
+        "    B { y: i64 },",
+        "}",
+        "#[derive(Serialize, Deserialize)]",
+        "pub enum Variant {",
+        "    #[serde(rename = \"first\")]",
+        "    First,",
+        "    Second,",
+        "}",
+        "#[derive(Serialize, Deserialize)]",
+        "pub struct Plain {",
+        "    pub id: i64,",
+        "}",
+        "pub fn size(w: Whole) -> i64 {",
+        "    w.first_id",
+        "}",
+        "pub fn twice(id: i64) -> i64 {",
+        "    id * 2",
+        "}",
+    ]));
+    assert_eq!(type_names(&m), ["Plain"]);
+    for (what, attr) in [
+        ("Whole", "#[serde(rename_all = \"camelCase\")]"),
+        ("Field", "#[serde(rename = \"type\")]"),
+        ("Tagged", "#[serde(tag = \"kind\")]"),
+        ("Variant", "#[serde(rename = \"first\")]"),
+    ] {
+        assert!(refused_naming(&m, what, attr), "{what}: {:?}", m.refusals);
+    }
+    assert_eq!(func_names(&m), ["Twice"]);
+    assert_refused(&m, "lib.rs:28", "Whole");
+}
+
+#[test]
+fn each_serde_attribute_that_changes_the_wire_form_is_refused_naming_it() {
+    for (container, field, attr) in [
+        ("", "    #[serde(skip)]", "#[serde(skip)]"),
+        ("", "    #[serde(flatten)]", "#[serde(flatten)]"),
+        ("", "    #[serde(default)]", "#[serde(default)]"),
+        (
+            "",
+            "    #[serde(with = \"codec\")]",
+            "#[serde(with = \"codec\")]",
+        ),
+        (
+            "",
+            "    #[serde(skip_serializing_if = \"is_zero\")]",
+            "#[serde(skip_serializing_if = \"is_zero\")]",
+        ),
+        ("#[serde(untagged)]", "", "#[serde(untagged)]"),
+        ("#[serde(default)]", "", "#[serde(default)]"),
+        ("#[serde(transparent)]", "", "#[serde(transparent)]"),
+    ] {
+        let m = read(&lines(&[
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+            container,
+            "pub struct S {",
+            field,
+            "    pub n: i64,",
+            "}",
+        ]));
+        assert!(type_names(&m).is_empty(), "{attr}: {:?}", m.types);
+        assert!(refused_naming(&m, "S", attr), "{attr}: {:?}", m.refusals);
+    }
+}
+
+#[test]
+fn a_type_path_maps_by_its_full_path_so_a_broadcast_sender_is_no_channel() {
+    let m = read(&lines(&[
+        "use std::sync::mpsc::Sender;",
+        "use tokio::sync::broadcast;",
+        "pub struct Hub {",
+        "    pub events: broadcast::Sender<String>,",
+        "}",
+        "pub struct Local {",
+        "    pub out: Sender<String>,",
+        "}",
+        "pub fn send_on(tx: tokio::sync::mpsc::Sender<i64>) -> i64 {",
+        "    0i64",
+        "}",
+    ]));
+    assert_eq!(type_names(&m), ["Local"]);
+    assert_refused(&m, "lib.rs:3", "broadcast::Sender<String>");
+    assert_refused(&m, "lib.rs:9", "tokio::sync::mpsc::Sender<i64>");
+    assert!(func_names(&m).is_empty(), "{:?}", m.funcs);
+}
+
+/// Every entry of the reader's type table, written as a path outside std that ends in the same
+/// segment: each function is refused at its line, none read.
+#[test]
+fn every_type_table_entry_is_matched_by_its_full_path_not_its_last_segment() {
+    let header = [
+        "use std::cell::RefCell;",
+        "use std::fmt;",
+        "use std::rc::Rc;",
+        "pub struct Node {",
+        "    pub n: i64,",
+        "}",
+        "pub trait Shape {",
+        "    fn area(&self) -> i64;",
+        "}",
+        "pub enum Error {",
+        "    Gone,",
+        "}",
+        "impl fmt::Display for Error {",
+        "    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {",
+        "        write!(f, \"gone\")",
+        "    }",
+        "}",
+    ];
+    for sig in [
+        "pub fn f(x: other::String) -> i64 {",
+        "pub fn f(x: other::Vec<i64>) -> i64 {",
+        "pub fn f(x: other::HashMap<i64, i64>) -> i64 {",
+        "pub fn f(x: other::BTreeMap<i64, i64>) -> i64 {",
+        "pub fn f(x: other::Rc<RefCell<Node>>) -> i64 {",
+        "pub fn f(x: Rc<other::RefCell<Node>>) -> i64 {",
+        "pub fn f(x: Rc<dyn other::Any>) -> i64 {",
+        "pub fn f(x: other::Rc<dyn std::any::Any>) -> i64 {",
+        "pub fn f(x: Rc<(other::SyncSender<i64>, std::sync::mpsc::Receiver<i64>)>) -> i64 {",
+        "pub fn f(x: Rc<(std::sync::mpsc::SyncSender<i64>, other::Receiver<i64>)>) -> i64 {",
+        "pub fn f(x: other::Box<dyn Shape>) -> i64 {",
+        "pub fn f(x: Box<dyn other::Shape>) -> i64 {",
+        "pub fn f(x: other::Sender<i64>) -> i64 {",
+        "pub fn f(x: other::Node) -> i64 {",
+        "pub fn f(x: i64) -> other::Option<i64> {",
+        "pub fn f(x: i64) -> other::Result<i64, Error> {",
+        "pub fn f(x: i64) -> Result<i64, other::Error> {",
+    ] {
+        let mut src: Vec<&str> = header.to_vec();
+        src.extend([sig, "    todo!()", "}"]);
+        let m = read(&lines(&src));
+        let line = format!("lib.rs:{}", header.len() + 1);
+        assert!(
+            refused_at(&m, &line),
+            "{sig}: no refusal at {line}: {:?}",
+            m.refusals
+        );
+        assert!(
+            !func_names(&m).contains(&"F".to_string()),
+            "{sig}: read {:?}",
+            m.funcs
+        );
+    }
+}
+
+/// A `use` that brings in a name of the reader's tables from elsewhere shadows the std one.
+#[test]
+fn a_use_from_outside_std_shadows_a_name_of_the_type_table() {
+    for (import, sig) in [
+        ("use other::Vec;", "pub fn f(x: Vec<i64>) -> i64 {"),
+        ("use other::String;", "pub fn f(x: String) -> i64 {"),
+        ("use other::Sender;", "pub fn f(x: Sender<i64>) -> i64 {"),
+        ("use other::Option;", "pub fn f(x: i64) -> Option<i64> {"),
+    ] {
+        let m = read(&lines(&[import, sig, "    todo!()", "}"]));
+        assert!(
+            refused_at(&m, "lib.rs:2"),
+            "{import}: no refusal at lib.rs:2: {:?}",
+            m.refusals
+        );
+        assert!(func_names(&m).is_empty(), "{import}: read {:?}", m.funcs);
+    }
+}
+
+/// Every entry of the reader's call table, its type part brought in from outside std or the
+/// crate: the call is not read as the table's entry.
+#[test]
+fn every_call_table_entry_is_matched_by_its_full_path_not_its_last_segment() {
+    for (import, ret, body) in [
+        (
+            "use other::HashMap;",
+            "i64",
+            "    let m: std::collections::HashMap<i64, i64> = HashMap::new();\n    m.len() as i64",
+        ),
+        (
+            "use other::BTreeMap;",
+            "i64",
+            "    let m: std::collections::BTreeMap<i64, i64> = BTreeMap::new();\n    m.len() as i64",
+        ),
+        (
+            "use other::Vec;",
+            "i64",
+            "    let v: std::vec::Vec<i64> = Vec::new();\n    v.len() as i64",
+        ),
+        (
+            "use other::String;",
+            "std::string::String",
+            "    String::from(\"a\")",
+        ),
+        (
+            "use other::String;",
+            "std::string::String",
+            "    String::new()",
+        ),
+        (
+            "use other::Rc;",
+            "std::rc::Rc<std::cell::RefCell<Node>>",
+            "    Rc::new(std::cell::RefCell::new(Node { n: 1 }))",
+        ),
+        (
+            "use std::rc::Rc;\nuse other::RefCell;",
+            "Rc<std::cell::RefCell<Node>>",
+            "    Rc::new(RefCell::new(Node { n: 1 }))",
+        ),
+        (
+            "use other::Rc;",
+            "std::rc::Rc<dyn std::any::Any>",
+            "    Rc::new(1i64)",
+        ),
+        (
+            "use other::Box;",
+            "std::boxed::Box<dyn Shape>",
+            "    Box::new(Node { n: 1 })",
+        ),
+    ] {
+        let src = format!(
+            "{import}\n\
+             #[derive(Default)]\n\
+             pub struct Node {{\n    pub n: i64,\n}}\n\
+             pub trait Shape {{\n    fn area(&self) -> i64;\n}}\n\
+             impl Shape for Node {{\n    fn area(&self) -> i64 {{\n        self.n\n    }}\n}}\n\
+             pub fn f() -> {ret} {{\n{body}\n}}\n"
+        );
+        let m = read(&src);
+        let f = m.funcs.iter().find(|f| f.name == "F");
+        let foreign = f.is_some_and(|f| {
+            all_stmts(&f.body)
+                .iter()
+                .any(|s| matches!(s, Stmt::Foreign { .. }))
+        });
+        assert!(
+            f.is_none() || foreign,
+            "{import} / {body}: read as {:?}",
+            f.map(|f| &f.body)
+        );
+    }
+}
+
+/// A name a `use` brings in from outside the crate is not the crate's item of that name.
+#[test]
+fn a_name_imported_from_outside_the_crate_is_not_the_crates_item_of_that_name() {
+    let m = read(&lines(&[
+        "pub mod a {",
+        "    #[derive(Default)]",
+        "    pub struct Bag {",
+        "        pub n: i64,",
+        "    }",
+        "    pub fn helper() -> i64 {",
+        "        1i64",
+        "    }",
+        "}",
+        "pub mod b {",
+        "    use other::{helper, Bag};",
+        "    pub fn g() -> i64 {",
+        "        helper()",
+        "    }",
+        "    pub fn h() -> i64 {",
+        "        let b = Bag::default();",
+        "        b.n",
+        "    }",
+        "    pub fn k(b: Bag) -> i64 {",
+        "        0i64",
+        "    }",
+        "}",
+    ]));
+    for pos in ["lib.rs:13", "lib.rs:16", "lib.rs:19"] {
+        assert!(refused_at(&m, pos), "{pos}: {:?}", m.refusals);
+    }
+}
+
+/// `use crate::m::f as g;` makes `g(…)` a call of `f`, even where another module of the crate
+/// declares a `g`; `use other::f as g;` names nothing of the crate.
+#[test]
+fn an_alias_of_a_crate_function_is_that_function_and_one_from_outside_is_refused() {
+    let m = read(&lines(&[
+        "pub mod a {",
+        "    pub fn load() -> i64 {",
+        "        1i64",
+        "    }",
+        "}",
+        "pub mod c {",
+        "    pub fn fetch() -> i64 {",
+        "        2i64",
+        "    }",
+        "}",
+        "pub mod b {",
+        "    use crate::a::load as fetch;",
+        "    use other::load as pull;",
+        "    pub fn g() -> i64 {",
+        "        fetch()",
+        "    }",
+        "    pub fn h() -> i64 {",
+        "        pull()",
+        "    }",
+        "}",
+    ]));
+    let g = m.funcs.iter().find(|f| f.name == "G").expect("G read");
+    let json = serde_json::to_string(&g.body).unwrap();
+    assert!(
+        json.contains("\"Load\"") && !json.contains("\"Fetch\""),
+        "{json}"
+    );
+    assert!(refused_at(&m, "lib.rs:18"), "{:?}", m.refusals);
+}
+
+/// A trait impl or derive is the std one only by its full path.
+#[test]
+fn display_and_default_are_the_std_ones_only_by_their_full_path() {
+    let m = read(&lines(&[
+        "pub struct Label {",
+        "    pub n: i64,",
+        "}",
+        "impl other::Display for Label {",
+        "    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {",
+        "        write!(f, \"L\")",
+        "    }",
+        "}",
+        "#[derive(other::Default)]",
+        "pub struct Bag {",
+        "    pub n: i64,",
+        "}",
+        "pub fn label(l: Label) -> std::string::String {",
+        "    format!(\"{}\", l)",
+        "}",
+        "pub fn bag() -> i64 {",
+        "    let b = Bag::default();",
+        "    b.n",
+        "}",
+    ]));
+    let methods: Vec<String> = m
+        .funcs
+        .iter()
+        .filter(|f| f.recv.is_some())
+        .map(|f| f.name.clone())
+        .collect();
+    assert!(methods.is_empty(), "{methods:?}");
+    assert!(refused_at(&m, "lib.rs:14"), "{:?}", m.refusals);
+    assert!(refused_at(&m, "lib.rs:17"), "{:?}", m.refusals);
+}
+
+/// The kind of a map, ordered or not, follows its full path through `use`.
+#[test]
+fn a_map_renamed_on_import_keeps_its_order() {
+    let m = read(&lines(&[
+        "use std::collections::BTreeMap as Table;",
+        "pub fn total(m: Table<i64, i64>) -> i64 {",
+        "    let mut t = 0i64;",
+        "    for (_, v) in m {",
+        "        t += v;",
+        "    }",
+        "    t",
+        "}",
+    ]));
+    let f = m.funcs.iter().find(|f| f.name == "Total");
+    let json = serde_json::to_string(&f.map(|f| &f.body)).unwrap();
+    assert!(json.contains("sorted_keys"), "{json}");
+}

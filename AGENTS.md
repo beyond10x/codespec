@@ -276,11 +276,17 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
 
 The Elixir and Gleam adapters share a BEAM command host. Elixir parses source through `Code.string_to_quoted`. Gleam uses the locked Glance parser in `adapters/gleam/parser`. Its runner compiles the source with the Gleam Erlang backend. The Odin reader uses `core:odin/parser`, and the `codespec-odin` crate owns its writer and runner. `task language-adapters-check` reads each native input twice and compares all nine translations with their originals. Source cases live below `conformance/cases/<case>/{elixir,gleam,odin}`. The generated corpora, reports and matrix follow the existing `task docs-generate` rule.
 
+A host without `gleam`, `elixir` and `odin` cannot run `task build`, `task language-adapters-check`
+or the six Elixir, Gleam and Odin reports of `docs-check` (`reader-` and `writer-` of each). On such
+a host, run every other part, including `cargo test -p codespec-docs --locked`, and write in the gate
+report that `docs-check` was partial and which reports were not built; CI decides those six (the
+operator, 2026-11-24, until the toolchains are installed on the shared workstation).
+
 ## Builds and worktrees
 
 Work in a managed worktree (`worktree` CLI); never in the primary checkout. Rust builds use
-`CARGO_PROFILE_DEV_DEBUG=line-tables-only CARGO_INCREMENTAL=0` (the Taskfile sets both) and the
-worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
+`CARGO_INCREMENTAL=0` (the Taskfile sets it), the host's debug setting (never a
+`CARGO_PROFILE_DEV_DEBUG` of this repository's own) and the worktree's own `target/`; never a `CARGO_TARGET_DIR` shared with another tree. Scratch output goes
 under `target/`. End a merged tree with `worktree finish --discard-cache --archive <tree>`.
 
 No disk checks around builds (operator's rule, 2026-11-10): no `df`, `du` or `find` over a tree or

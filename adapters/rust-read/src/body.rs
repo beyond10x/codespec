@@ -199,16 +199,19 @@ fn is_type(t: &syn::Type, name: &str) -> bool {
 
 /// `Vec::new()`, `HashMap::new()`, `BTreeMap::new()` or `vec![]`: a collection whose element types
 /// only a later use fixes.
-fn empty_collection(e: &syn::Expr) -> bool {
+fn empty_collection(r: &Reader, e: &syn::Expr) -> bool {
     match e {
-        syn::Expr::Call(c) if c.args.is_empty() => matches!(
-            &*c.func,
-            syn::Expr::Path(p) if matches!(
-                path_idents(&p.path).as_slice(),
-                [t, n] if n == "new" && (t == "Vec" || t == "HashMap" || t == "BTreeMap")
-            )
-        ),
-        syn::Expr::Macro(m) => macro_name(&m.mac) == "vec" && m.mac.tokens.is_empty(),
+        syn::Expr::Call(c) if c.args.is_empty() => match &*c.func {
+            syn::Expr::Path(p) if p.qself.is_none() => matches!(
+                r.std_call(&p.path),
+                Some((
+                    "std::vec::Vec" | "std::collections::HashMap" | "std::collections::BTreeMap",
+                    n
+                )) if n == "new"
+            ),
+            _ => false,
+        },
+        syn::Expr::Macro(m) => macro_name(r, &m.mac) == "vec" && m.mac.tokens.is_empty(),
         _ => false,
     }
 }
@@ -565,17 +568,15 @@ fn effects(r: &Reader, e: &syn::Expr) -> bool {
 
 /// Which Rust map the type `t` is, seen through references: `Some(true)` a `BTreeMap`,
 /// `Some(false)` a `HashMap`, `None` another type.
-pub(crate) fn map_kind(t: &syn::Type) -> Option<bool> {
+pub(crate) fn map_kind(r: &Reader, t: &syn::Type) -> Option<bool> {
     match t {
-        syn::Type::Reference(r) => map_kind(&r.elem),
-        syn::Type::Paren(p) => map_kind(&p.elem),
-        syn::Type::Path(p) if p.qself.is_none() => {
-            match p.path.segments.last()?.ident.to_string().as_str() {
-                "BTreeMap" => Some(true),
-                "HashMap" => Some(false),
-                _ => None,
-            }
-        }
+        syn::Type::Reference(rf) => map_kind(r, &rf.elem),
+        syn::Type::Paren(p) => map_kind(r, &p.elem),
+        syn::Type::Path(p) if p.qself.is_none() => match r.std_type(t)?.0 {
+            "std::collections::BTreeMap" => Some(true),
+            "std::collections::HashMap" => Some(false),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -584,14 +585,14 @@ pub(crate) fn map_kind(t: &syn::Type) -> Option<bool> {
 /// or a `let`'s written type or a `let`'s `BTreeMap::new()` or `HashMap::new()`: `true` for a
 /// `BTreeMap`, `false` for a `HashMap`. A binding whose type neither shows (another pattern, a
 /// `let` of another value, a closure's or `for`'s pattern) leaves its name out.
-fn map_kinds(sig: &syn::Signature, block: &syn::Block) -> BTreeMap<String, bool> {
+fn map_kinds(r: &Reader, sig: &syn::Signature, block: &syn::Block) -> BTreeMap<String, bool> {
     #[derive(Clone, Copy, PartialEq)]
     enum K {
         Map(bool),
         Other,
         Unknown,
     }
-    let of_type = |t: &syn::Type| map_kind(t).map_or(K::Other, K::Map);
+    let of_type = |t: &syn::Type| map_kind(r, t).map_or(K::Other, K::Map);
     let mut seen: BTreeMap<String, Vec<K>> = BTreeMap::new();
     for a in &sig.inputs {
         if let syn::FnArg::Typed(pt) = a {
@@ -622,11 +623,10 @@ fn map_kinds(sig: &syn::Signature, block: &syn::Block) -> BTreeMap<String, bool>
                     Some(t) => of_type(t),
                     None => match local_init(l) {
                         Some(syn::Expr::Call(c)) => match &*c.func {
-                            syn::Expr::Path(p) if p.path.segments.len() >= 2 => {
-                                let s = &p.path.segments[p.path.segments.len() - 2];
-                                match s.ident.to_string().as_str() {
-                                    "BTreeMap" => K::Map(true),
-                                    "HashMap" => K::Map(false),
+                            syn::Expr::Path(p) if p.qself.is_none() => {
+                                match r.std_call(&p.path).map(|(s, _)| s) {
+                                    Some("std::collections::BTreeMap") => K::Map(true),
+                                    Some("std::collections::HashMap") => K::Map(false),
                                     _ => K::Unknown,
                                 }
                             }
@@ -996,12 +996,21 @@ fn macro_args(m: &syn::Macro) -> R<Vec<syn::Expr>> {
     Ok(p.into_iter().collect())
 }
 
-fn macro_name(m: &syn::Macro) -> String {
-    m.path
-        .segments
-        .last()
-        .map(|s| s.ident.to_string())
-        .unwrap_or_default()
+/// The name of the std macro `m` calls: `format`, `println`, `vec`, `write`. A macro of the
+/// crate, one a `use` brings in or one of a path other than `std::`, `core::` or `alloc::` has
+/// none (the empty name), so it is read as no std macro.
+fn macro_name(r: &Reader, m: &syn::Macro) -> String {
+    let segs = path_idents(&m.path);
+    let std = match segs.as_slice() {
+        [one] => !r.tables.macros.contains(one) && r.resolve(&segs) == segs,
+        [root, _] => matches!(root.as_str(), "std" | "core" | "alloc"),
+        _ => false,
+    };
+    if std {
+        segs.last().cloned().unwrap_or_default()
+    } else {
+        String::new()
+    }
 }
 
 /// A format string's literal text when it has no placeholder, `{{` and `}}` unescaped.
@@ -1356,7 +1365,7 @@ impl<'r> Fx<'r> {
     /// tail, `return x`, `Ok(x)`) or the place it is assigned to. `None` when no such statement
     /// comes before the name is bound again.
     fn empty_hint(&mut self, l: &syn::Local, rest: &[syn::Stmt], tail: bool) -> Option<Type> {
-        if !matches!(l.pat, syn::Pat::Ident(_)) || !empty_collection(local_init(l)?) {
+        if !matches!(l.pat, syn::Pat::Ident(_)) || !empty_collection(self.r, local_init(l)?) {
             return None;
         }
         let name = local_name(l)?;
@@ -3080,7 +3089,7 @@ impl<'r> Fx<'r> {
     }
 
     fn macro_stmt(&mut self, m: &syn::Macro, pos: &str) -> R<Vec<Stmt>> {
-        let name = macro_name(m);
+        let name = macro_name(self.r, m);
         if name != "println" {
             return Err(format!("the macro {name}! is outside cir/1"));
         }
@@ -3274,6 +3283,9 @@ impl<'r> Fx<'r> {
                 if let Some((name, t)) = self.lookup(x) {
                     return Ok(Expr::Var { name, t });
                 }
+                if let Some(full) = self.r.imported_from_outside(x) {
+                    return Err(format!("`{x}`, which names `{full}`, outside the crate"));
+                }
                 if let Some((name, t)) = self.r.consts.get(x) {
                     return Ok(Expr::Const {
                         name: name.clone(),
@@ -3325,6 +3337,11 @@ impl<'r> Fx<'r> {
                 ))
             }
             [t, v] => {
+                if let Some(full) = self.r.imported_from_outside(t) {
+                    return Err(format!(
+                        "`{t}::{v}`, where `{t}` names `{full}`, outside the crate"
+                    ));
+                }
                 let t = if t == "Self" {
                     self.impl_ty.clone().ok_or("`Self` outside an impl")?
                 } else {
@@ -3692,6 +3709,87 @@ impl<'r> Fx<'r> {
         }))
     }
 
+    /// A call of the std function `f` of `std`, an item of the reader's std table named by its
+    /// full path.
+    fn std_call(&mut self, std: &str, f: &str, c: &syn::ExprCall, want: Option<&Type>) -> R<V> {
+        match (std, f, c.args.len()) {
+            ("std::string::String", "from", 1) => {
+                return Ok(V::E(self.val(&c.args[0], Some(&Type::String))?));
+            }
+            ("std::string::String", "new", 0) => {
+                return Ok(V::E(Expr::Lit {
+                    value: "\"\"".into(),
+                    t: Type::String,
+                }));
+            }
+            (
+                "std::vec::Vec" | "std::collections::HashMap" | "std::collections::BTreeMap",
+                "new",
+                0,
+            ) => {
+                return match want {
+                    Some(t @ (Type::Slice { .. } | Type::Map { .. })) => {
+                        Ok(V::E(Expr::Make { t: t.clone() }))
+                    }
+                    _ => Err(format!(
+                        "`{}()` whose element types no annotation, field or parameter fixes",
+                        src_of(&c.func)
+                    )),
+                };
+            }
+            // `Rc::new(x)` where `Rc<dyn Any>` is expected: `x` itself, which Go makes an `any`
+            // where one is expected.
+            ("std::rc::Rc", "new", 1) if matches!(want, Some(Type::Any)) => {
+                let x = self.val(&c.args[0], None)?;
+                if matches!(x.t(), Type::Unit | Type::Tuple { .. }) {
+                    return Err("`Rc::new` of a value Go cannot hold in an `any`".into());
+                }
+                return Ok(V::E(x));
+            }
+            // `Box::new(x)` where `Box<dyn Trait>` is expected: Go's conversion to the
+            // interface, which `val` makes.
+            ("std::boxed::Box", "new", 1) if want.is_some_and(|w| self.r.is_iface(w).is_some()) => {
+                return Ok(V::E(self.val(&c.args[0], want)?));
+            }
+            ("std::rc::Rc", "new", 1) => {
+                let syn::Expr::Call(inner) = &c.args[0] else {
+                    return Err("`Rc::new` of something other than `RefCell::new(…)`".into());
+                };
+                let ref_cell = match &*inner.func {
+                    syn::Expr::Path(ip) if ip.qself.is_none() => self.r.std_call(&ip.path),
+                    _ => None,
+                };
+                if ref_cell.as_ref().map(|(s, f)| (*s, f.as_str()))
+                    != Some(("std::cell::RefCell", "new"))
+                    || inner.args.len() != 1
+                {
+                    return Err("`Rc::new` of something other than `RefCell::new(…)`".into());
+                }
+                let elem = match want {
+                    Some(Type::Ptr { elem }) => Some((**elem).clone()),
+                    _ => None,
+                };
+                let x = self.val(&inner.args[0], elem.as_ref())?;
+                let t = Type::Ptr {
+                    elem: Box::new(x.t().clone()),
+                };
+                return Ok(V::E(Expr::Unop {
+                    op: "&".into(),
+                    x: Box::new(x),
+                    t,
+                }));
+            }
+            ("std::rc::Rc", "clone", 1) => {
+                return Ok(V::E(self.val(strip_ref(&c.args[0]), want)?));
+            }
+            _ => {}
+        }
+        Err(format!(
+            "a call of `{}` (`{std}::{f}`), which is not in the reader's table of std functions",
+            src_of(&c.func)
+        ))
+    }
+
     fn call(&mut self, c: &syn::ExprCall, want: Option<&Type>) -> R<V> {
         let p = match &*c.func {
             syn::Expr::Path(p)
@@ -3710,7 +3808,19 @@ impl<'r> Fx<'r> {
             }
             _ => return Err("a call of something other than a path".into()),
         };
-        let segs = self.crate_relative(path_idents(&p.path));
+        if let Some((std, f)) = self.r.std_call(&p.path) {
+            return self.std_call(std, &f, c, want);
+        }
+        let written = path_idents(&p.path);
+        let full = self.r.full_path(&p.path);
+        if full.first().map(String::as_str) != Some("crate") && full != written {
+            return Err(format!(
+                "a call of `{}`, which names `{}`: the reader maps a call by the full path it names, and this one is neither the crate's nor in its std table",
+                written.join("::"),
+                full.join("::")
+            ));
+        }
+        let segs = self.crate_relative(written);
         // The segments of the written path `segs` starts at: a module path of the crate is
         // left out.
         let base = p.path.segments.len() - segs.len();
@@ -3720,12 +3830,11 @@ impl<'r> Fx<'r> {
                 Err(format!("`{n}(…)` outside a return"))
             }
             [n] => {
+                // The module's alias first: `use crate::a::f as g;` makes `g` name `f` even
+                // where another module declares a `g`.
                 if let Some(sig) = self
-                    .r
-                    .sigs
-                    .get(&(None, n.clone()))
-                    .cloned()
-                    .or_else(|| self.aliased_fn(n))
+                    .aliased_fn(n)
+                    .or_else(|| self.r.sigs.get(&(None, n.clone())).cloned())
                 {
                     let written = self.seg_targs(&p.path.segments[base])?;
                     let v = self.call_fn(&sig, written, &c.args, want)?;
@@ -3757,39 +3866,6 @@ impl<'r> Fx<'r> {
                     t.clone()
                 };
                 match (t.as_str(), f.as_str(), c.args.len()) {
-                    ("String", "from", 1) => {
-                        return Ok(V::E(self.val(&c.args[0], Some(&Type::String))?));
-                    }
-                    ("String", "new", 0) => {
-                        return Ok(V::E(Expr::Lit {
-                            value: "\"\"".into(),
-                            t: Type::String,
-                        }));
-                    }
-                    ("Vec" | "HashMap" | "BTreeMap", "new", 0) => {
-                        return match want {
-                            Some(t @ (Type::Slice { .. } | Type::Map { .. })) => {
-                                Ok(V::E(Expr::Make { t: t.clone() }))
-                            }
-                            _ => Err(format!(
-                                "`{t}::new()` whose element types no annotation, field or parameter fixes"
-                            )),
-                        };
-                    }
-                    // `Rc::new(x)` where `Rc<dyn Any>` is expected: `x` itself, which Go makes an
-                    // `any` where one is expected.
-                    ("Rc", "new", 1) if matches!(want, Some(Type::Any)) => {
-                        let x = self.val(&c.args[0], None)?;
-                        if matches!(x.t(), Type::Unit | Type::Tuple { .. }) {
-                            return Err("`Rc::new` of a value Go cannot hold in an `any`".into());
-                        }
-                        return Ok(V::E(x));
-                    }
-                    // `Box::new(x)` where `Box<dyn Trait>` is expected: Go's conversion to the
-                    // interface, which `val` makes.
-                    ("Box", "new", 1) if want.is_some_and(|w| self.r.is_iface(w).is_some()) => {
-                        return Ok(V::E(self.val(&c.args[0], want)?));
-                    }
                     // `T::default()` of a derived `Default` that is Go's zero value, unless an
                     // inherent `T::default` comes first.
                     (t, "default", 0)
@@ -3805,36 +3881,6 @@ impl<'r> Fx<'r> {
                                 name: t.to_string(),
                             },
                         }));
-                    }
-                    ("Rc", "new", 1) => {
-                        let syn::Expr::Call(inner) = &c.args[0] else {
-                            return Err(
-                                "`Rc::new` of something other than `RefCell::new(…)`".into()
-                            );
-                        };
-                        if !matches!(&*inner.func, syn::Expr::Path(ip) if path_idents(&ip.path) == ["RefCell", "new"])
-                            || inner.args.len() != 1
-                        {
-                            return Err(
-                                "`Rc::new` of something other than `RefCell::new(…)`".into()
-                            );
-                        }
-                        let elem = match want {
-                            Some(Type::Ptr { elem }) => Some((**elem).clone()),
-                            _ => None,
-                        };
-                        let x = self.val(&inner.args[0], elem.as_ref())?;
-                        let t = Type::Ptr {
-                            elem: Box::new(x.t().clone()),
-                        };
-                        return Ok(V::E(Expr::Unop {
-                            op: "&".into(),
-                            x: Box::new(x),
-                            t,
-                        }));
-                    }
-                    ("Rc", "clone", 1) => {
-                        return Ok(V::E(self.val(strip_ref(&c.args[0]), want)?));
                     }
                     _ => {}
                 }
@@ -3858,7 +3904,7 @@ impl<'r> Fx<'r> {
                         (Some(ErrVariant::Msg), 1) => {
                             let a = &c.args[0];
                             let args = match a {
-                                syn::Expr::Macro(m) if macro_name(&m.mac) == "format" => {
+                                syn::Expr::Macro(m) if macro_name(self.r, &m.mac) == "format" => {
                                     self.format_args(&macro_args(&m.mac)?)?
                                 }
                                 a => vec![
@@ -4283,6 +4329,11 @@ impl<'r> Fx<'r> {
         let [name] = segs.as_slice() else {
             return Err("a struct literal of an enum variant".into());
         };
+        if let Some(full) = self.r.imported_from_outside(name) {
+            return Err(format!(
+                "a struct literal of {name}, which names `{full}`, outside the crate"
+            ));
+        }
         let name = if name == "Self" {
             self.impl_ty.clone().ok_or("`Self` outside an impl")?
         } else {
@@ -4547,7 +4598,7 @@ impl<'r> Fx<'r> {
     }
 
     fn macro_expr(&mut self, m: &syn::Macro, want: Option<&Type>) -> R<Expr> {
-        match macro_name(m).as_str() {
+        match macro_name(self.r, m).as_str() {
             "format" => {
                 let args = self.format_args(&macro_args(m)?)?;
                 Ok(Expr::Intrinsic {
@@ -4719,7 +4770,7 @@ impl<'r> Fx<'r> {
                 syn::Stmt::Expr(e, None) => self.render(e, f),
                 _ => Err("a Display arm other than one expression".into()),
             },
-            syn::Expr::Macro(m) if macro_name(&m.mac) == "write" => {
+            syn::Expr::Macro(m) if macro_name(self.r, &m.mac) == "write" => {
                 let args = macro_args(&m.mac)?;
                 let Some((first, rest)) = args.split_first() else {
                     return Err("write! without a formatter".into());
@@ -4797,7 +4848,7 @@ pub(crate) fn func(
         }
         _ => None,
     };
-    fx.map_kinds = map_kinds(ssig, block);
+    fx.map_kinds = map_kinds(r, ssig, block);
     let body = fx.stmts(&block.stmts, true);
     (
         Func {
@@ -4889,7 +4940,9 @@ pub(crate) fn display(r: &Reader, t: &str, im: &syn::ItemImpl) -> R<Option<(Func
             }
         }
         Decl::Newtype(Type::String) => {
-            if text == format!("fmt::Display::fmt(&self.0,{fname})")
+            let std_fmt = r.std_item(&r.resolve(&["fmt".into(), "Display".into()]))
+                == Some("std::fmt::Display");
+            if (std_fmt && text == format!("fmt::Display::fmt(&self.0,{fname})"))
                 || text == format!("write!({fname},\"{{}}\",self.0)")
                 || text == format!("{fname}.pad(&self.0)")
                 || text == format!("{fname}.write_str(&self.0)")
@@ -4956,7 +5009,6 @@ pub(crate) fn error_messages(
     let syn::Expr::Match(m) = single_expr(f)? else {
         return Err("enum Error's Display is not a match on self".into());
     };
-    let _ = r;
     let mut out = BTreeMap::new();
     let mut seen = BTreeSet::new();
     for arm in &m.arms {
@@ -4990,7 +5042,7 @@ pub(crate) fn error_messages(
                     {
                         lit_str(&mc.args[0])
                     }
-                    syn::Expr::Macro(mm) if macro_name(&mm.mac) == "write" => {
+                    syn::Expr::Macro(mm) if macro_name(r, &mm.mac) == "write" => {
                         let args = macro_args(&mm.mac)?;
                         match args.as_slice() {
                             [w, s] if is_ident(w, &fname) => {

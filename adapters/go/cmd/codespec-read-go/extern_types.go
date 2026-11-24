@@ -14,7 +14,7 @@ func (f *front) externMethod(fn *types.Func, x Expr, args []Expr, t *Type) (Expr
 	fn = fn.Origin()
 	sig := fn.Type().(*types.Signature)
 	if t == nil || sig.Recv() == nil || sig.TypeParams().Len() > 0 {
-		return Expr{}, false
+		return f.no("call of another package's method with a type outside cir/1")
 	}
 	recv := f.typ(sig.Recv().Type())
 	base := recv
@@ -22,25 +22,25 @@ func (f *front) externMethod(fn *types.Func, x Expr, args []Expr, t *Type) (Expr
 		base = *base.Elem
 	}
 	if base.K != "extern" || base.Path != fn.Pkg().Path() {
-		return Expr{}, false
+		return f.no("call of another package's method on a type outside cir/1")
 	}
 	d := Extern{Path: base.Path, Name: fn.Name(), Recv: &recv, Variadic: sig.Variadic()}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := f.typ(sig.Params().At(i).Type())
 		if hasForeign(p) {
-			return Expr{}, false
+			return f.no("call of another package's method with a type outside cir/1")
 		}
 		d.Params = append(d.Params, p)
 	}
 	for i := 0; i < sig.Results().Len(); i++ {
 		r := f.typ(sig.Results().At(i).Type())
 		if hasForeign(r) {
-			return Expr{}, false
+			return f.no("call of another package's method with a type outside cir/1")
 		}
 		d.Results = append(d.Results, r)
 	}
 	if hasForeign(*t) {
-		return Expr{}, false
+		return f.no("call of another package's method with a type outside cir/1")
 	}
 	f.extern(d)
 	return Expr{K: "extern_method", Path: d.Path, TypeName: base.Name, Name: d.Name, X: &x, Args: args, T: t}, true
