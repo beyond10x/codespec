@@ -3,20 +3,32 @@ format: aep.planning-md/3
 id: story:rust-reader-hand-written-comparisons
 kind: story
 status: draft
-title: The Rust reader reads a comparison through a hand-written PartialEq or Ord
-summary: == and < on a type whose PartialEq, PartialOrd or Ord the crate writes by hand call that impl or are refused, never read as the built-in comparison.
+title: The Rust reader refuses a comparison through a hand-written PartialEq or Ord
+summary: == != < <= > >= on a type whose PartialEq, PartialOrd or Ord the crate writes by hand is refused at its line, never read as the built-in comparison; reading it as a call is story:rust-reader-iterators-and-std-impls.
 relations:
 - decomposes: epic:async-network-service-translation
 - informed_by: story:rust-reader-no-silent-misread
-revision: 3
+- depends_on: story:rust-reader-shift-count
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: adapters/rust-read/src/body.rs
+- confidence: cited
+  path: adapters/rust-read/src/lib.rs
+- confidence: cited
+  path: adapters/rust-read/tests/reader.rs
+revision: 9
 ---
-# Story: The Rust reader reads a comparison through a hand-written PartialEq or Ord
+# Story: The Rust reader refuses a comparison through a hand-written PartialEq or Ord
 
 ## Outcome
 
-`a == b`, `a != b`, `a < b` (and `<=`, `>`, `>=`) on a type whose `PartialEq`, `PartialOrd` or
-`Ord` the crate writes by hand is read as a call of that impl (or refused at the comparison),
-never as `cir/1`'s built-in comparison. A derived impl keeps today's reading.
+`a == b`, `a != b`, `a < b`, `a <= b`, `a > b` and `a >= b` on a type whose `PartialEq`,
+`PartialOrd` or `Ord` the crate writes by hand is refused at the comparison's line, never read as
+`cir/1`'s built-in comparison. A derived impl keeps today's reading. Reading such a comparison as
+a call of the impl is `story:rust-reader-iterators-and-std-impls`, which depends on this story
+and lifts the refusal.
 
 ## Why
 
@@ -64,13 +76,14 @@ Rust and `false` in `cir/1`; `same_approx(Approx{v:11}, Approx{v:15})` is `true`
 
 ## Done When
 
-- A failing test first in `adapters/rust-read/tests/reader.rs`: the three functions above read
-  with no refusal give Rust's answers, or each is refused at its comparison; red on main.
+- A failing test first in `adapters/rust-read/tests/reader.rs`: each of the three functions above
+  is refused at its comparison's line, red on main.
 - A derived `PartialEq`/`PartialOrd`/`Ord` reads as today (a test keeps it).
 - The crate doc's comparison row states the rule.
 
 ## Scope
 
-- `adapters/rust-read/src/body.rs`, `adapters/rust-read/src/lib.rs`,
-  `adapters/rust-read/tests/reader.rs`, `CHANGELOG.md`. Inferred. Reproducer: `repro/ord/`
-  (not committed).
+- `adapters/rust-read/src/body.rs` (`fn binary`, the comparison arms),
+  `adapters/rust-read/src/lib.rs` (impl handling, crate doc), `adapters/rust-read/tests/reader.rs`,
+  `CHANGELOG.md`. After `story:rust-reader-shift-count`: both change `fn binary` in
+  `adapters/rust-read/src/body.rs`. Reproducer: `repro/ord/` (not committed).

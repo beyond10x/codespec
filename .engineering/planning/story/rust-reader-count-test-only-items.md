@@ -7,7 +7,22 @@ title: The Rust reader counts what it leaves out as test-only
 summary: codespec measure says how many functions cfg(test) left out, so a coverage figure names its denominator.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: adapters/rust-read/src/files.rs
+- confidence: cited
+  path: adapters/rust-read/tests/reader.rs
+- confidence: cited
+  path: crates/cli/src/measure.rs
+- confidence: cited
+  path: crates/cli/tests/measure.rs
+- confidence: cited
+  path: crates/model/src/lib.rs
+- confidence: cited
+  path: schemas/cir-1.schema.json
+revision: 6
 ---
 # Story: The Rust reader counts what it leaves out as test-only
 
@@ -35,12 +50,32 @@ functions, 100.0%`. Nothing records the three functions and the module left out.
 
 ## Done When
 
-- A failing test first in `adapters/rust-read/tests/reader.rs` (and the measure test in
-  `crates/cli/tests/`): the crate above reports 3 functions left out as test-only, red on main.
-- The count is additive to what the reader prints (a field `cir/1` already has, or a line on
-  stderr; a model change is the operator's decision), and the output stays deterministic.
+- A failing test first in `crates/cli/tests/measure.rs` (and the reader's in
+  `adapters/rust-read/tests/reader.rs`): the crate above, read and measured, prints `read 1 of 1
+  functions, 100.0%` and says 3 functions (`helper`, `doubles`, `doubles_zero`) and 1 module were
+  left out as test-only; red on main.
+- The count travels in the `cir/1` document the reader writes (see Model change); the reader
+  writes it twice byte-equal, and a module with nothing left out is unchanged.
 
 ## Scope
 
-- `adapters/rust-read/src/files.rs`, `crates/cli/src/` (measure), their tests, `CHANGELOG.md`.
-  Reproducer: `target/repro/cfgtest/`.
+- `adapters/rust-read/src/files.rs`, `crates/model/src/lib.rs`, `schemas/cir-1.schema.json`,
+  `crates/cli/src/measure.rs`, `adapters/rust-read/tests/reader.rs`, `crates/cli/tests/measure.rs`,
+  `CHANGELOG.md`. Reproducer: `target/repro/cfgtest/`.
+
+## Model change
+
+`codespec measure` reads only the `cir/1` module (`crates/cli/src/measure.rs`, `fn measure`), so
+the count must be in it. No field of `Module` in `crates/model/src/lib.rs` holds it without
+changing what that field means:
+
+- `doc` is the source's module comment, which writers emit;
+- `facts` is whole-module analysis written by passes and read by writers, a closed struct
+  (`deny_unknown_fields`);
+- `refusals` and `opaque` list what the module declares and the reader could not read, and
+  `measure` counts them as refused, while a test-only item is not declared in a normal build.
+
+The count needs an additive `cir/1` field, for example `left_out: [{pos, what, reason}]` on
+`Module`, omitted when empty, with `schemas/cir-1.schema.json` regenerated. That is a model
+change: the story is blocked on `decision-blocker:cir1-test-only-count-field` until the owner
+decides it.

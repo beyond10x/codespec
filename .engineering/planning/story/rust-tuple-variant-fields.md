@@ -4,16 +4,35 @@ id: story:rust-tuple-variant-fields
 kind: story
 status: draft
 title: A tuple variant reads and writes back as a tuple variant
-summary: 'Circle(i64) read and written as Rust is Circle(i64) again, not Circle { _0: i64 }; a real _0 field is not confused with it.'
-revision: 2
+summary: 'Circle(i64) read and written as Rust is Circle(i64) again, not Circle { _0: i64 }; a struct variant whose field is named _<digits> is refused.'
+relations:
+- decomposes: epic:async-network-service-translation
+- depends_on: story:rust-reader-platform-int-width
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: adapters/rust-read/src/lib.rs
+- confidence: cited
+  path: adapters/rust-read/tests/reader.rs
+- confidence: cited
+  path: adapters/rust/src/write.rs
+- confidence: cited
+  path: adapters/rust/tests/writer.rs
+- confidence: inferred
+  path: examples/series/out/rust
+- confidence: inferred
+  path: examples/series/series.rust-read.cir.json
+revision: 8
 ---
 # Story: A tuple variant reads and writes back as a tuple variant
 
 ## Outcome
 
 An enum variant with positional fields (`Circle(i64)`) read by `codespec-read-rust` and written
-by `codespec-write-rust` is a tuple variant again, and a variant whose named field is literally
-`_0` is not confused with it.
+by `codespec-write-rust` is a tuple variant again. One rule: in `cir/1` a field named
+`_<digits>` marks a tuple field (the rule `story:rust-reader-tuple-types` cites for tuple types);
+a struct variant whose source field is named `_<digits>` is refused by the reader at its line.
 
 ## Why
 
@@ -38,10 +57,15 @@ variant or `_`" for `Shape::Circle(r) =>`.
 
 - A failing test first in `adapters/rust/tests/writer.rs`: `Shape` read and written back is
   `Circle(i64)`, red on main.
-- A struct variant with a field named `_<digits>` is refused at its line by the reader (or
-  carried apart), tested in `adapters/rust-read/tests/reader.rs`.
+- A struct variant whose source field is named `_<digits>` (`enum E { V { _0: i64 } }`) is
+  refused by the reader at that field's line, tested in `adapters/rust-read/tests/reader.rs`.
+- The crate docs of the reader and the Rust writer state the `_<digits>` rule.
 
 ## Scope
 
-- `adapters/rust-read/src/lib.rs`, `adapters/rust/src/write.rs`, their tests, `CHANGELOG.md`.
-  Reproducer: `target/repro/tuple/`.
+- `adapters/rust-read/src/lib.rs` (the `_{i}` field name), `adapters/rust/src/write.rs` (union
+  variants), `adapters/rust/tests/writer.rs`, `adapters/rust-read/tests/reader.rs`,
+  `CHANGELOG.md`. After `story:rust-reader-platform-int-width`: both change
+  `adapters/rust-read/tests/reader.rs` and `CHANGELOG.md` and regenerate the checked-in examples
+  through their tasks (the Rust writer edit that also landed on `adapters/rust/src/write.rs` moved
+  to `story:rust-writer-platform-int-width`). Reproducer: `target/repro/tuple/`.
