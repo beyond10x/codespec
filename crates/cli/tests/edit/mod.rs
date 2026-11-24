@@ -968,3 +968,316 @@ fn build_of_a_rename_in_a_workspace_member_exits_0_the_copy_holding_the_workspac
     );
     assert!(outcome.timing.build > std::time::Duration::ZERO);
 }
+
+// Adversary pass on the code edit wave (branch edit/adversary): each case writes its own small
+// source tree under the target directory and runs `codespec edit` on it. Each asserts what the
+// design (`docs/code-edit-language.md`) promises and fails on the code as it is.
+
+/// A fresh tree for `case` under the target directory holding `files` (path, text).
+fn adversary_tree(case: &str, files: &[(&str, &str)]) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("cli-edit-adversary")
+        .join(case);
+    if dir.exists() {
+        let _ = Command::new("chmod")
+            .arg("-R")
+            .arg("u+w")
+            .arg(&dir)
+            .output();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    for (path, text) in files {
+        let p = dir.join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, text).unwrap();
+    }
+    dir
+}
+
+/// A Rust crate `adv` in `<tree>/adv`, its own Cargo workspace, holding `files` under `src/`.
+fn adversary_crate(case: &str, files: &[(&str, &str)]) -> PathBuf {
+    let mut all: Vec<(String, &str)> = vec![(
+        "adv/Cargo.toml".into(),
+        "[package]\nname = \"adv\"\nversion = \"0.1.0\"\nedition = \"2024\"\npublish = false\n\n[workspace]\n",
+    )];
+    all.extend(files.iter().map(|(p, t)| (format!("adv/src/{p}"), *t)));
+    let refs: Vec<(&str, &str)> = all.iter().map(|(p, t)| (p.as_str(), *t)).collect();
+    adversary_tree(case, &refs)
+}
+
+/// `codespec edit --lang rust <flags> adv -e <program>` in the tree of `case`.
+fn adversary_rust(case: &str, dir: &Path, flags: &[&str], program: &str) -> Output {
+    let mut args = flags.to_vec();
+    args.extend(["adv", "-e", program]);
+    edit_in(case, dir, "rust", rust_adapters(), &[], &args)
+}
+
+/// A Go module `example.com/adv` in the tree of `case`, holding `files`.
+fn adversary_go_module(case: &str, files: &[(&str, &str)]) -> PathBuf {
+    let mut all = vec![("go.mod", "module example.com/adv\n\ngo 1.22\n")];
+    all.extend_from_slice(files);
+    adversary_tree(case, &all)
+}
+
+#[test]
+fn adversary_rust_delete_of_a_function_with_a_function_after_it_in_its_file_is_planned() {
+    // Every Rust delete with a read declaration below it in the same file fails verification:
+    // the expected line shift is keyed by the span document's path (`src/lib.rs`), the Rust
+    // reader's positions by `lib.rs`, so `S'` keeps the old lines.
+    let dir = adversary_crate(
+        "rust-delete-shift",
+        &[(
+            "lib.rs",
+            "fn unused() -> u32 {\n    1\n}\n\npub fn check(n: u32) -> u32 {\n    n + 1\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-delete-shift",
+        &dir,
+        &[],
+        r#"edit delete(F) :- func{id: F, name: "unused"}."#,
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert!(
+        stdout(&o).contains("-fn unused() -> u32 {\n-    1\n-}\n-\n"),
+        "{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_rust_rename_of_the_method_of_an_impl_of_a_std_trait_is_refused() {
+    // `impl Default for Config { fn default() }` renamed to `fresh` no longer implements
+    // Default (E0407, E0046); the reader keeps the impl's method as an opaque function and the
+    // re-read equals S', so the rename is planned, without --closed-world, as verified.
+    let dir = adversary_crate(
+        "rust-trait-impl-rename",
+        &[(
+            "lib.rs",
+            "pub struct Config {\n    pub size: u32,\n}\n\nimpl Default for Config {\n    fn default() -> Config {\n        Config { size: 4 }\n    }\n}\n\npub fn size(c: Config) -> u32 {\n    c.size\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-trait-impl-rename",
+        &dir,
+        &[],
+        r#"edit rename(F, "fresh") :- func{id: F, name: "default_Config"}."#,
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a rename that breaks `impl Default` was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_rust_retarget_from_a_ref_self_method_to_a_self_method_is_refused() {
+    // `p.peek()` twice, retargeted to `take(self)`: the second call uses a moved value (E0382).
+    // The reader writes `&self` and `self` as the same receiver, so the signatures compare equal.
+    let dir = adversary_crate(
+        "rust-retarget-move",
+        &[(
+            "lib.rs",
+            "pub struct Pack {\n    pub n: u32,\n}\n\nimpl Pack {\n    fn peek(&self) -> u32 {\n        self.n\n    }\n\n    fn take(self) -> u32 {\n        self.n\n    }\n}\n\nfn twice(p: Pack) -> u32 {\n    let a = p.peek();\n    let b = p.peek();\n    a + b\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-retarget-move",
+        &dir,
+        &[],
+        r#"edit retarget(S, G) :- call{site: S, callee: "Pack.peek"}, func{id: G, name: "take"}."#,
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a retarget that moves `p` twice was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_rust_rename_of_a_function_a_macro_rules_body_calls_is_refused() {
+    // The reader keeps `macro_rules!` out of cir/1 (a module refusal) and lists `twice!()` as a
+    // named call of form macro, which the `named` rule skips: `load` in the macro body is left
+    // and `twice!()` no longer compiles, or calls another `load` in scope where it expands.
+    let dir = adversary_crate(
+        "rust-macro-rules",
+        &[(
+            "lib.rs",
+            "macro_rules! twice {\n    () => {\n        load() + load()\n    };\n}\n\nfn load() -> u32 {\n    4\n}\n\nfn total() -> u32 {\n    twice!()\n}\n\nfn other() -> u32 {\n    load()\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-macro-rules",
+        &dir,
+        &[],
+        r#"edit rename(F, "fetch") :- func{id: F, name: "load"}."#,
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a rename that leaves the macro body's call was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_rust_rename_of_a_function_a_static_names_is_refused() {
+    // `static PICK: fn() -> u32 = load;` is an item the reader refuses; the engine never reads
+    // the module's refusals, so the reference stays and the crate no longer compiles.
+    let dir = adversary_crate(
+        "rust-static",
+        &[(
+            "lib.rs",
+            "static PICK: fn() -> u32 = load;\n\nfn load() -> u32 {\n    4\n}\n\nfn total() -> u32 {\n    1\n}\n",
+        )],
+    );
+    let o = adversary_rust(
+        "rust-static",
+        &dir,
+        &[],
+        r#"edit rename(F, "fetch") :- func{id: F, name: "load"}."#,
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a rename that leaves `static PICK = load` was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_go_rename_field_of_a_struct_printed_with_plus_v_is_refused() {
+    // `fmt.Sprintf("%+v", l)` prints field names: `shown()` returns `{qty:1}` before and
+    // `{quantity:1}` after. Unexported, no flag needed; the design says a rename is
+    // behaviour-preserving by construction (§ 10).
+    let dir = adversary_go_module(
+        "go-plus-v",
+        &[(
+            "g/g.go",
+            "package g\n\nimport \"fmt\"\n\ntype line struct {\n\tqty int\n}\n\nfunc show(l line) string {\n\treturn fmt.Sprintf(\"%+v\", l)\n}\n\nfunc shown() string {\n\treturn show(line{qty: 1})\n}\n",
+        )],
+    );
+    let o = edit_in(
+        "go-plus-v",
+        &dir,
+        "go",
+        go_adapters(),
+        &[],
+        &[
+            "g",
+            "-e",
+            r#"edit rename_field(T, "qty", "quantity") :- type{id: T, name: "line"}."#,
+        ],
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a field rename that changes what fmt prints was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_go_rename_of_a_string_method_passed_to_fmt_is_refused() {
+    // Tag implements fmt.Stringer, and fmt.Sprint(t) in the read code calls String through it:
+    // `Print` returns "tag" before and "{0}" after. The interface rule looks only at interfaces
+    // declared in the set.
+    let dir = adversary_go_module(
+        "go-stringer",
+        &[(
+            "g/g.go",
+            "package g\n\nimport \"fmt\"\n\ntype Tag struct{ n int }\n\nfunc (t Tag) String() string {\n\treturn \"tag\"\n}\n\nfunc Print(t Tag) string {\n\treturn fmt.Sprint(t)\n}\n",
+        )],
+    );
+    let o = edit_in(
+        "go-stringer",
+        &dir,
+        "go",
+        go_adapters(),
+        &[],
+        &[
+            "--closed-world",
+            "g",
+            "-e",
+            r#"edit rename(F, "Text") :- func{id: F, name: "String"}."#,
+        ],
+    );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a rename that drops fmt.Stringer was planned:\n{}",
+        stdout(&o)
+    );
+}
+
+#[test]
+fn adversary_an_apply_that_fails_on_its_second_file_writes_neither() {
+    // `--apply` writes file by file; when the second write fails, the first stays written and
+    // the crate no longer compiles (`use crate::store::fetch` with `store::load`).
+    let dir = adversary_crate(
+        "rust-partial-write",
+        &[
+            (
+                "lib.rs",
+                "mod store;\n\nuse crate::store::load;\n\nfn total() -> u32 {\n    load() + load()\n}\n",
+            ),
+            ("store/mod.rs", "pub fn load() -> u32 {\n    4\n}\n"),
+        ],
+    );
+    let lib = dir.join("adv/src/lib.rs");
+    let before = std::fs::read(&lib).unwrap();
+    let store = dir.join("adv/src/store");
+    std::fs::set_permissions(&store, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let o = adversary_rust(
+        "rust-partial-write",
+        &dir,
+        &["--closed-world", "--apply"],
+        r#"edit rename(F, "fetch") :- func{id: F, name: "Load"}."#,
+    );
+    std::fs::set_permissions(&store, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_ne!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(
+        String::from_utf8(std::fs::read(&lib).unwrap()).unwrap(),
+        String::from_utf8(before).unwrap(),
+        "the first file was written though the set was not: {}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn adversary_examples_edit_self_test_fails_when_codespec_does_not_run() {
+    // The self-test passes when the comparison fails for any reason, so a codespec that prints
+    // nothing at all (here `false`) passes it too.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = adversary_tree("self-test", &[]);
+    std::fs::create_dir_all(dir.join("scripts")).unwrap();
+    std::fs::create_dir_all(dir.join("examples/edit/go")).unwrap();
+    std::fs::copy(
+        root.join("scripts/examples-edit.sh"),
+        dir.join("scripts/examples-edit.sh"),
+    )
+    .unwrap();
+    for f in ["rename.cq", "rename.args", "rename.diff"] {
+        std::fs::copy(
+            root.join("examples/edit/go").join(f),
+            dir.join("examples/edit/go").join(f),
+        )
+        .unwrap();
+    }
+    let o = Command::new("sh")
+        .arg(dir.join("scripts/examples-edit.sh"))
+        .arg("--self-test")
+        .env("CODESPEC", "false")
+        .env("ADAPTERS", dir.join("none"))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert_ne!(
+        o.status.code(),
+        Some(0),
+        "the self-test passed with a codespec that does not run:\n{}",
+        stdout(&o)
+    );
+}

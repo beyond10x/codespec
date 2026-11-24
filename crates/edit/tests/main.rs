@@ -506,6 +506,20 @@ fn the_whitespace_alignment_of_a_gofmt_realigned_struct_gives_the_expected_merge
 }
 
 #[test]
+fn adversary_a_formatted_text_that_joins_two_tokens_is_refused() {
+    // Adversary pass: the walk skips whitespace on both sides and compares what is left, so a
+    // text where `ID int` became `IDint` (an embedded field of type IDint) counts as a
+    // whitespace change. Real gofmt never does this; the merge's contract (§ 6.1, "the same
+    // characters outside whitespace") does not hold for token boundaries.
+    let edits = rename_count();
+    let joined = REALIGNED.replace("\tID int\n", "\tIDint\n");
+    assert!(
+        post::merge_whitespace(ALIGNED.as_bytes(), &edits, joined.as_bytes()).is_err(),
+        "a text that joins `ID` and `int` was merged as a whitespace change"
+    );
+}
+
+#[test]
 fn texts_that_differ_outside_whitespace_are_refused() {
     let edits = rename_count();
     let other = REALIGNED.replace("\tN  int", "\tN  int64");
