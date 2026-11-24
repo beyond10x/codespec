@@ -7,7 +7,7 @@ title: Built-in checks carry Java name lists and say when a set has no name for 
 summary: 'Defect: 17 of 18 checks give 0 rows on Java documents silently; the logic works with Java names via --names.'
 relations:
 - decomposes: epic:codebase-transformations
-revision: 1
+revision: 2
 ---
 # Story: built-in checks carry Java name lists and say when a set has no name for its language
 
@@ -19,8 +19,8 @@ locks (`ReentrantLock`, `ReentrantReadWriteLock` read and write locks, `StampedL
 `insecure-random`; JDBC (`Connection`, `Statement`, `ResultSet`) and `EntityManager` as resources
 for `conn-leak`; and a check that `MessageDigest.isEqual` and not `equals` compares a value whose
 name marks it a secret (`token`, `secret`, `password`, `mac`, `digest`). A check run over documents
-of a language its lists name nothing of prints one line on standard error naming the check and the
-language, instead of a silent 0 rows.
+of a language its lists name nothing of prints `<check>: not applicable to <language>` on standard error and reports the check as not applicable, never as 0 rows; the line names the check and the
+language.
 
 ## Why
 

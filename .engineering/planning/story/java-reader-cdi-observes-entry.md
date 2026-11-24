@@ -7,7 +7,7 @@ title: A CDI observer method is an entry of kind observes
 summary: 'Refused 15 times: @Observes as an annotation; an observes entry kind for reach.'
 relations:
 - decomposes: epic:java-quarkus-reader
-revision: 1
+revision: 2
 ---
 # Story: a CDI observer method is an entry of kind observes
 
@@ -50,7 +50,8 @@ The second line is a separate refusal of `String.length()` on a parameter in a p
 
 ## Done When
 
-- A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: `onEvent` is an
+- A failing `ReaderTest` case first, on `adapters/java/testdata/project-forms`: every method
+  with an `@Observes` or `@ObservesAsync` parameter is an entry; `onEvent` is an
   `observes` entry `on` `java.lang.String.String`, a `StartupEvent` observer one `on` its type, and
   neither annotation is refused.
 - `crates/model` test: a document with an `observes` entry validates; an unknown kind is still refused.
