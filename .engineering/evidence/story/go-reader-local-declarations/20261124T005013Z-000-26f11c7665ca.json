@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:13Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-local-declarations",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): the local_decl_test.go tests pass; red on 8b5108b6: local_decl_test.go:21: init form refused: [{p.go:10 var x = 1 declaration other than `var x T`} ...]"
+  }
+}

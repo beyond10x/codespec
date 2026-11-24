@@ -81,13 +81,16 @@ func (f *front) ifaceDecl(ts *ast.TypeSpec, it *types.Interface, doc string) {
 func (f *front) ifaceCall(rt types.Type, name string, x Expr, args []Expr, t *Type) (Expr, bool) {
 	n, ok := types.Unalias(rt).(*types.Named)
 	if !ok || n.Obj().Pkg() == nil || declaredInFunc(n.Obj()) || n.TypeArgs().Len() > 0 || t == nil || hasForeign(*t) {
-		return Expr{}, false
+		if ok && n.TypeArgs().Len() > 0 {
+			return f.no("call through a generic interface")
+		}
+		return f.no("call through an interface cir/1 cannot declare")
 	}
 	it := n.Underlying().(*types.Interface)
 	path := ""
 	if n.Obj().Pkg() != f.pkg {
 		if f.ifaceOutside(it) != "" {
-			return Expr{}, false
+			return f.no("call through an interface cir/1 cannot declare")
 		}
 		path = n.Obj().Pkg().Path()
 		d := Interface{Path: path, Name: n.Obj().Name(), Exported: true, Methods: f.ifaceMethods(it)}
@@ -99,7 +102,7 @@ func (f *front) ifaceCall(rt types.Type, name string, x Expr, args []Expr, t *Ty
 			f.mod.Interfaces = append(f.mod.Interfaces, d)
 		}
 	} else if _, out := f.outside[n.Obj().Name()]; out {
-		return Expr{}, false
+		return f.no("call through an interface cir/1 cannot declare")
 	}
 	return Expr{K: "iface_call", Path: path, Iface: n.Obj().Name(), Name: name, X: &x, Args: args, T: t}, true
 }

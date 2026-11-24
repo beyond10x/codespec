@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,6 +48,277 @@ type front struct {
 	globals, sentinels map[*types.Var]bool
 	// sig is the signature of the function or literal being read: the types its returns convert to.
 	sig *types.Signature
+	// why is the shape of the first sub-expression of the statement being read that has no cir/1
+	// form, in reading order (no); "" while every expression read so far has one.
+	why string
+	// spelled maps every identifier spelling of the package-level declaration being read to the
+	// objects it names there (nil for none); fresh holds the names freshName gave in it; rename
+	// holds the local variables read under a fresh name (name).
+	spelled map[string]map[types.Object]bool
+	fresh   map[string]bool
+	rename  map[types.Object]string
+	// gotoBody is the body gotoHas says holds a goto or not (canHoist).
+	gotoBody *ast.BlockStmt
+	gotoHas  bool
+	// named holds the named results of the function or literal being read, as the locals a bare
+	// return returns (resultVars); nil when it has none.
+	named []Expr
+}
+
+// beginDecl starts reading the package-level declaration n: no fresh name given, none renamed.
+func (f *front) beginDecl(n ast.Node) {
+	f.spelled, f.fresh, f.rename = map[string]map[types.Object]bool{}, map[string]bool{}, map[types.Object]string{}
+	ast.Inspect(n, func(c ast.Node) bool {
+		if id, ok := c.(*ast.Ident); ok {
+			o := f.info.Defs[id]
+			if o == nil {
+				o = f.info.Uses[id]
+			}
+			if f.spelled[id.Name] == nil {
+				f.spelled[id.Name] = map[types.Object]bool{}
+			}
+			f.spelled[id.Name][o] = true
+		}
+		return true
+	})
+}
+
+// freshName is `<base>_<n>` for the smallest n ≥ 1 that is spelled nowhere in the declaration
+// being read and not given before in it: a name of a local the reader introduces, which can
+// neither shadow nor be shadowed by a name the source uses.
+func (f *front) freshName(base string) string {
+	for n := 1; ; n++ {
+		c := base + "_" + strconv.Itoa(n)
+		if len(f.spelled[c]) == 0 && !f.fresh[c] {
+			f.fresh[c] = true
+			return c
+		}
+	}
+}
+
+// collides reports whether the name of the local obj is spelled anywhere in the declaration being
+// read for something other than obj.
+func (f *front) collides(name string, obj types.Object) bool {
+	for o := range f.spelled[name] {
+		if o != obj {
+			return true
+		}
+	}
+	return false
+}
+
+// name is the cir/1 name of the identifier id: the fresh name its variable is read under, or its
+// own.
+func (f *front) name(id *ast.Ident) string {
+	o := f.info.Defs[id]
+	if o == nil {
+		o = f.info.Uses[id]
+	}
+	if r, ok := f.rename[o]; ok && o != nil {
+		return r
+	}
+	return id.Name
+}
+
+// whole reads the statements the Go statement s lowers to; when any of them is outside cir/1,
+// s is kept foreign whole for that one's reason, and what reading the others declared or refused
+// is taken back.
+func (f *front) whole(s ast.Stmt, read func() []Stmt) []Stmt {
+	refused, externs, ifaces := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces)
+	outer := f.why
+	f.why = ""
+	defer func() { f.why = outer }()
+	parts := read()
+	for _, p := range parts {
+		reason := ""
+		if p.K == "foreign" {
+			reason = p.Reason
+		} else if n := stmtForeignType(p); n != "" {
+			reason = "type outside cir/1: " + n
+		}
+		if reason != "" {
+			f.mod.Refusals = f.mod.Refusals[:refused]
+			f.mod.Externs = f.mod.Externs[:externs]
+			f.mod.Interfaces = f.mod.Interfaces[:ifaces]
+			return []Stmt{f.foreign(s, reason)}
+		}
+	}
+	return parts
+}
+
+// constLit is the constant expression e as the literal of the value go/types computed for it.
+func (f *front) constLit(e ast.Expr, t *Type) (Expr, bool) {
+	val := f.info.Types[e].Value
+	if val == nil {
+		return f.no("constant without a value")
+	}
+	if bits := floatBits(f.info.TypeOf(e)); bits != 0 {
+		v, ok := floatSpelling(val, bits)
+		if !ok {
+			return f.no("constant that is not a finite float")
+		}
+		return Expr{K: "float", Value: v, T: t}, true
+	}
+	return Expr{K: "lit", Value: val.ExactString(), T: t}, true
+}
+
+// declStmt reads a declaration inside a function. A `var` spec without values is one `var` per
+// name; one with values a `let` of its names, which is what `:=` reads as, each value converted to
+// the declared type as an assignment converts it and kept only when it then has that type. A
+// `const` is no statement: each use reads as the literal of its value (expr). A `type` is outside
+// cir/1.
+func (f *front) declStmt(s *ast.DeclStmt, results []Type) []Stmt {
+	gd, ok := s.Decl.(*ast.GenDecl)
+	if !ok {
+		return []Stmt{f.stmt(s, results)}
+	}
+	switch gd.Tok {
+	case token.CONST:
+		return nil
+	case token.TYPE:
+		return []Stmt{f.foreign(s, "type declaration inside a function: outside cir/1")}
+	}
+	pos := f.pos(s.Pos())
+	return f.whole(s, func() []Stmt {
+		var out []Stmt
+		for _, sp := range gd.Specs {
+			vs := sp.(*ast.ValueSpec)
+			names := make([]string, len(vs.Names))
+			for i, n := range vs.Names {
+				names[i] = f.name(n)
+			}
+			if len(vs.Values) == 0 {
+				for i, n := range vs.Names {
+					t := f.typ(f.info.TypeOf(n))
+					out = append(out, Stmt{K: "var", Names: []string{names[i]}, T: &t, Pos: pos})
+				}
+				continue
+			}
+			rhs, ok := f.exprs(vs.Values)
+			if !ok {
+				return []Stmt{f.foreign(s, f.exprReason())}
+			}
+			if vs.Type != nil {
+				other := func() []Stmt {
+					return []Stmt{f.foreign(s, "declaration whose value has another type than the declared one")}
+				}
+				if len(rhs) == len(vs.Names) {
+					for i := range rhs {
+						want := f.info.TypeOf(vs.Names[i])
+						if rhs[i].K == "nil" && rhs[i].T != nil && rhs[i].T.K == "nil" {
+							rhs[i].T = ptrT(f.typ(want))
+						}
+						rhs[i] = f.coerce(rhs[i], want)
+						if rhs[i].T == nil || !reflect.DeepEqual(*rhs[i].T, f.typ(want)) {
+							return other()
+						}
+					}
+				} else {
+					tup, _ := f.info.TypeOf(vs.Values[0]).(*types.Tuple)
+					for i, n := range vs.Names {
+						if tup == nil || i >= tup.Len() || !types.Identical(tup.At(i).Type(), f.info.TypeOf(n)) {
+							return other()
+						}
+					}
+				}
+			}
+			out = append(out, Stmt{K: "let", Names: names, Rhs: rhs, Pos: pos})
+		}
+		return out
+	})
+}
+
+func isBlank(e ast.Expr) bool {
+	id, ok := ast.Unparen(e).(*ast.Ident)
+	return ok && id.Name == "_"
+}
+
+// blankAssign reads an assignment with a blank target: `_ = e` as `let _ = e`, and `a, _ = f()`
+// as `let a_1, _ = f()` followed by `a = a_1`, each named target from its fresh name. Every named
+// target must be an identifier: the operands of an index or field target would be evaluated after
+// the right side. It reports false for any other statement.
+func (f *front) blankAssign(s ast.Stmt, results []Type) ([]Stmt, bool) {
+	as, ok := s.(*ast.AssignStmt)
+	if !ok || as.Tok != token.ASSIGN {
+		return nil, false
+	}
+	blanks := 0
+	for _, l := range as.Lhs {
+		if isBlank(l) {
+			blanks++
+		} else if _, ok := ast.Unparen(l).(*ast.Ident); !ok {
+			return nil, false
+		}
+	}
+	if blanks == 0 {
+		return nil, false
+	}
+	pos := f.pos(as.Pos())
+	return f.whole(as, func() []Stmt {
+		rhs, ok := f.exprs(as.Rhs)
+		if !ok {
+			return []Stmt{f.foreign(as, f.exprReason())}
+		}
+		names := make([]string, len(as.Lhs))
+		var assigns []Stmt
+		for i, l := range as.Lhs {
+			if isBlank(l) {
+				names[i] = "_"
+				continue
+			}
+			id := ast.Unparen(l).(*ast.Ident)
+			target, ok := f.expr(id)
+			if !ok {
+				return []Stmt{f.foreign(as, f.exprReason())}
+			}
+			names[i] = f.freshName(id.Name)
+			var vt types.Type
+			if len(as.Rhs) == len(as.Lhs) {
+				vt = f.info.TypeOf(as.Rhs[i])
+				if rhs[i].K == "nil" && rhs[i].T != nil && rhs[i].T.K == "nil" {
+					rhs[i].T, vt = target.T, f.info.TypeOf(l)
+				}
+			} else if tup, ok := f.info.TypeOf(as.Rhs[0]).(*types.Tuple); ok && i < tup.Len() {
+				vt = tup.At(i).Type()
+			}
+			if vt == nil {
+				return []Stmt{f.foreign(as, "assignment with a blank target outside cir/1")}
+			}
+			v := Expr{K: "var", Name: names[i], T: ptrT(f.typ(vt))}
+			assigns = append(assigns, Stmt{K: "assign", Lhs: []Expr{target}, Rhs: []Expr{f.coerce(v, f.info.TypeOf(l))}, Pos: pos})
+		}
+		return append([]Stmt{{K: "let", Names: names, Rhs: rhs, Pos: pos}}, assigns...)
+	}), true
+}
+
+// no fails the read of an expression whose shape has no cir/1 form, and keeps shape as the reason
+// unless an earlier sub-expression of the same statement already failed.
+func (f *front) no(shape string) (Expr, bool) {
+	if f.why == "" {
+		f.why = shape
+	}
+	return Expr{}, false
+}
+
+// exprReason is the reason of a statement or initializer kept foreign for an expression: the shape
+// no recorded, once.
+func (f *front) exprReason() string {
+	why := f.why
+	f.why = ""
+	if why == "" {
+		return "expression outside cir/1"
+	}
+	return "expression outside cir/1: " + why
+}
+
+// goType spells t as the reader's messages do, a type of another package by its package name.
+func (f *front) goType(t types.Type) string {
+	return types.TypeString(t, func(p *types.Package) string {
+		if p == f.pkg {
+			return ""
+		}
+		return p.Name()
+	})
 }
 
 func load(dir string) (*Module, error) {
@@ -255,6 +527,11 @@ func (f *front) typ(t types.Type) Type {
 		if types.Identical(t, types.Universe.Lookup("error").Type().Underlying()) {
 			return T("error")
 		}
+	case *types.Struct:
+		// struct{} holds no value but itself: cir/1 unit.
+		if t.NumFields() == 0 {
+			return T("unit")
+		}
 	case *types.Tuple:
 		tt := Type{K: "tuple"}
 		for i := 0; i < t.Len(); i++ {
@@ -316,6 +593,11 @@ func (f *front) decl(d ast.Decl) {
 }
 
 func (f *front) typeDecl(ts *ast.TypeSpec, doc *ast.CommentGroup) {
+	if ts.Assign.IsValid() {
+		// A type alias declares no type: every use of it reads as the type it names (typ). It is
+		// omitted without a refusal (README.md § Omitted).
+		return
+	}
 	if why, out := f.outside[ts.Name.Name]; out {
 		f.refuse(ts, ts.Name.Name, why)
 		return
@@ -456,9 +738,70 @@ func (f *front) scanVars(files []*ast.File) {
 	}
 }
 
+// compileTimeOnly reports whether the i-th variable of the package-level vs is the blank variable
+// with no initializer or one that has no run-time effect: `var _ I = (*T)(nil)`, `var _ I = T{}`,
+// an assertion the compiler checks. It declares nothing a body can name and does nothing when
+// the package is initialized, so it is omitted without a refusal (README.md § Omitted).
+func (f *front) compileTimeOnly(vs *ast.ValueSpec, i int) bool {
+	if vs.Names[i].Name != "_" {
+		return false
+	}
+	if len(vs.Values) == 0 {
+		return true
+	}
+	return len(vs.Values) == len(vs.Names) && f.effectFree(vs.Values[i])
+}
+
+// effectFree reports whether evaluating e can have no effect and cannot fail: a constant, nil, a
+// function literal, a conversion of such a value, and a composite literal of such values or its
+// address. Any call, receive, index or field read is not.
+func (f *front) effectFree(e ast.Expr) bool {
+	if tv, ok := f.info.Types[e]; ok && tv.Value != nil {
+		return true
+	}
+	switch e := ast.Unparen(e).(type) {
+	case *ast.Ident:
+		_, isNil := f.info.Uses[e].(*types.Nil)
+		return isNil
+	case *ast.BasicLit, *ast.FuncLit:
+		return true
+	case *ast.UnaryExpr:
+		return e.Op == token.AND && f.effectFree(e.X)
+	case *ast.CompositeLit:
+		for _, el := range e.Elts {
+			if kv, ok := el.(*ast.KeyValueExpr); ok {
+				if id, ok := kv.Key.(*ast.Ident); !ok || !isField(f.info.Uses[id]) {
+					if !f.effectFree(kv.Key) {
+						return false
+					}
+				}
+				el = kv.Value
+			}
+			if !f.effectFree(el) {
+				return false
+			}
+		}
+		return true
+	case *ast.CallExpr:
+		if tv, ok := f.info.Types[e.Fun]; ok && tv.IsType() && len(e.Args) == 1 {
+			return f.effectFree(e.Args[0])
+		}
+	}
+	return false
+}
+
+func isField(o types.Object) bool {
+	v, ok := o.(*types.Var)
+	return ok && v.IsField()
+}
+
 func (f *front) varDecl(vs *ast.ValueSpec) {
+	f.beginDecl(vs)
 	for i, n := range vs.Names {
 		v := f.info.Defs[n].(*types.Var)
+		if f.compileTimeOnly(vs, i) {
+			continue
+		}
 		if f.sentinels[v] {
 			msg, _ := f.sentinelMessage(vs.Values[i])
 			f.mod.Errors = append(f.mod.Errors, ErrorVar{Name: n.Name, Message: msg, Pos: f.pos(n.Pos())})
@@ -471,15 +814,20 @@ func (f *front) varDecl(vs *ast.ValueSpec) {
 		}
 		d := VarDecl{Name: n.Name, T: f.typ(v.Type()), Pos: f.pos(n.Pos())}
 		if i < len(vs.Values) {
+			f.why = ""
 			x, ok := f.expr(vs.Values[i])
 			if ok && x.K == "nil" {
 				x.T = ptrT(d.T)
 			}
 			if ok && exprForeignType(x) == "" {
+				f.why = ""
 				x = f.coerce(x, v.Type())
 				d.Init = &x
 			} else {
 				reason := "initializer outside cir/1"
+				if !ok {
+					reason = "initializer " + strings.TrimPrefix(f.exprReason(), "expression ")
+				}
 				d.Foreign = &Stmt{K: "foreign", Lang: "go", Src: f.src(vs.Values[i]), Reason: reason}
 				f.refuse(vs.Values[i], n.Name, reason)
 			}
@@ -503,6 +851,7 @@ func (f *front) isPkgFunc(e ast.Expr, pkg, name string) bool {
 }
 
 func (f *front) funcDecl(d *ast.FuncDecl) {
+	f.beginDecl(d)
 	fn := Func{Name: d.Name.Name, Exported: d.Name.IsExported(), Pos: f.pos(d.Pos()), Doc: docText(d.Doc)}
 	sig := f.info.Defs[d.Name].Type().(*types.Signature)
 	if d.Body == nil {
@@ -537,7 +886,7 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 	for i := 0; i < sig.Results().Len(); i++ {
 		fn.Results = append(fn.Results, f.typ(sig.Results().At(i).Type()))
 	}
-	if hasNamedResults(d.Type) {
+	if hasNamedResults(d.Type) && hasDefer(d.Body) {
 		fn.Body = []Stmt{f.namedResultsBody(d)}
 	} else {
 		f.fnBody, f.sig = d.Body, sig
@@ -548,8 +897,14 @@ func (f *front) funcDecl(d *ast.FuncDecl) {
 		for _, p := range fn.Params {
 			params[p.Name] = true
 		}
+		var decls []Stmt
+		f.named = nil
+		if hasNamedResults(d.Type) {
+			decls, f.named = f.resultVars(sig.Results(), params)
+		}
 		f.hoist = f.planHoists(d.Body, params)
-		fn.Body = f.stmts(d.Body.List, fn.Results)
+		fn.Body = append(decls, f.stmts(d.Body.List, fn.Results)...)
+		f.named = nil
 	}
 	f.mod.Funcs = append(f.mod.Funcs, fn)
 	key := "func:" + fn.Name
@@ -604,6 +959,43 @@ func hasNamedResults(ft *ast.FuncType) bool {
 	return false
 }
 
+// hasDefer reports whether body holds a defer outside any function literal in it: only then does
+// code run between a return and the caller, and read the named results there.
+func hasDefer(body *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.DeferStmt:
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// resultVars declares the named results res as locals with their zero values, `var n T` each, a
+// blank result under a fresh name `r_<n>`, and returns the declarations and the values a bare
+// return returns. Each name is added to params.
+func (f *front) resultVars(res *types.Tuple, params map[string]bool) ([]Stmt, []Expr) {
+	var decls []Stmt
+	var vals []Expr
+	for i := 0; i < res.Len(); i++ {
+		r := res.At(i)
+		name := r.Name()
+		if name == "" || name == "_" {
+			name = f.freshName("r")
+		} else {
+			params[name] = true
+		}
+		t := f.typ(r.Type())
+		decls = append(decls, Stmt{K: "var", Names: []string{name}, T: &t, Pos: f.pos(r.Pos())})
+		vals = append(vals, Expr{K: "var", Name: name, T: ptrT(t)})
+	}
+	return decls, vals
+}
+
 // namedResultsBody keeps a function with named results as one foreign statement: its body,
 // unchanged, inside a closure that declares the same named results and is returned at once, so
 // bare returns and writes to the results keep their meaning under an unnamed signature.
@@ -630,6 +1022,22 @@ func (f *front) stmts(list []ast.Stmt, results []Type) []Stmt {
 				out = append(out, f.hoisted(is.Init.(*ast.AssignStmt), assign, results), f.ifStmt(is, results))
 				continue
 			}
+		}
+		if parts, ok := f.blankAssign(s, results); ok {
+			out = append(out, parts...)
+			continue
+		}
+		if ds, ok := s.(*ast.DeclStmt); ok {
+			out = append(out, f.declStmt(ds, results)...)
+			continue
+		}
+		if is, ok := s.(*ast.IfStmt); ok && is.Init != nil && f.canHoist() {
+			out = append(out, f.hoistInit(is, is.Init, results)...)
+			continue
+		}
+		if ss, ok := s.(*ast.SwitchStmt); ok && ss.Init != nil && f.canHoist() {
+			out = append(out, f.hoistInit(ss, ss.Init, results)...)
+			continue
 		}
 		out = append(out, f.stmt(s, results))
 	}
@@ -769,6 +1177,10 @@ func (f *front) labeled(s *ast.LabeledStmt, results []Type) Stmt {
 // stmt reads s; a statement holding an expression of a type cir/1 has no form for is kept foreign.
 func (f *front) stmt(s ast.Stmt, results []Type) Stmt {
 	refused := len(f.mod.Refusals)
+	// A statement read inside an expression (a function literal's body) keeps its own shape.
+	outer := f.why
+	f.why = ""
+	defer func() { f.why = outer }()
 	st := f.stmtRaw(s, results)
 	if n := stmtForeignType(st); n != "" {
 		st = f.foreign(s, "type outside cir/1: "+n)
@@ -799,16 +1211,16 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.AssignStmt:
 		lhs, ok := f.exprs(s.Lhs)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		rhs, ok := f.exprs(s.Rhs)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		if s.Tok == token.DEFINE {
 			var names []string
 			for _, l := range s.Lhs {
-				names = append(names, l.(*ast.Ident).Name)
+				names = append(names, f.name(l.(*ast.Ident)))
 			}
 			return Stmt{K: "let", Names: names, Rhs: rhs, Pos: pos}
 		}
@@ -829,7 +1241,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.IncDecStmt:
 		x, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		k := "incr"
 		if s.Tok == token.DEC {
@@ -854,7 +1266,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.RangeStmt:
 		over, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		key, val := rangeName(s.Key), rangeName(s.Value)
 		// for_range declares its key and value; `=` assigns variables declared before the loop
@@ -876,7 +1288,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Cond != nil {
 			c, ok := f.expr(s.Cond)
 			if !ok {
-				return f.foreign(s, "expression outside cir/1")
+				return f.foreign(s, f.exprReason())
 			}
 			st.Cond = &c
 		}
@@ -915,27 +1327,14 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 		if s.Init != nil {
 			return f.foreign(s, "switch with an init statement")
 		}
-		st := Stmt{K: "switch", Pos: pos}
-		if s.Tag != nil {
-			tag, ok := f.expr(s.Tag)
-			if !ok {
-				return f.foreign(s, "expression outside cir/1")
-			}
-			st.Tag = &tag
-		}
-		for _, cl := range s.Body.List {
-			cc := cl.(*ast.CaseClause)
-			vs, ok := f.exprs(cc.List)
-			if !ok {
-				return f.foreign(s, "expression outside cir/1")
-			}
-			st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
-		}
-		return st
+		return f.switchStmt(s, results)
 	case *ast.ReturnStmt:
 		rs, ok := f.exprs(s.Results)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
+		}
+		if len(s.Results) == 0 && f.named != nil {
+			rs = append([]Expr{}, f.named...) // a bare return returns the named results
 		}
 		for i := range rs {
 			if i < len(results) && rs[i].K == "nil" {
@@ -954,14 +1353,14 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.ExprStmt:
 		x, ok := f.expr(s.X)
 		if !ok {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		return Stmt{K: "expr", X: &x, Pos: pos}
 	case *ast.SendStmt:
 		ch, ok1 := f.expr(s.Chan)
 		x, ok2 := f.expr(s.Value)
 		if !ok1 || !ok2 {
-			return f.foreign(s, "expression outside cir/1")
+			return f.foreign(s, f.exprReason())
 		}
 		return Stmt{K: "send", Chan: &ch, X: &x, Pos: pos}
 	case *ast.LabeledStmt:
@@ -974,18 +1373,93 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	return f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))
 }
 
+// switchStmt reads s but for its init statement, which the caller has read or refused.
+func (f *front) switchStmt(s *ast.SwitchStmt, results []Type) Stmt {
+	st := Stmt{K: "switch", Pos: f.pos(s.Pos())}
+	if s.Tag != nil {
+		tag, ok := f.expr(s.Tag)
+		if !ok {
+			return f.foreign(s, f.exprReason())
+		}
+		st.Tag = &tag
+	}
+	for _, cl := range s.Body.List {
+		cc := cl.(*ast.CaseClause)
+		vs, ok := f.exprs(cc.List)
+		if !ok {
+			return f.foreign(s, f.exprReason())
+		}
+		st.Cases = append(st.Cases, Case{Values: vs, Body: f.inside("switch", cc.Body, results)})
+	}
+	return st
+}
+
+// canHoist reports whether the function or literal body being read has no goto: a goto could
+// jump over a hoisted declaration to a use of it.
+func (f *front) canHoist() bool {
+	if f.gotoBody != f.fnBody {
+		f.gotoBody, f.gotoHas = f.fnBody, f.fnBody != nil && hasGoto(f.fnBody)
+	}
+	return f.fnBody != nil && !f.gotoHas
+}
+
+// hoistInit reads the `if` or `switch` s with the init statement init as the init in front of
+// it, for every init the planned 0.12.0 hoist (planHoists) left: cir/1 has no block statement to
+// keep the init's names scoped to s. A name the init declares keeps its spelling unless it
+// collides, spelled elsewhere in the declaration being read for something else; it is then read
+// under a fresh name, in the init and in every use inside s, so it neither shadows an outer
+// variable nor is shadowed. When the init or s is outside cir/1, s is kept foreign whole.
+func (f *front) hoistInit(s, init ast.Stmt, results []Type) []Stmt {
+	var renamed []types.Object
+	if as, ok := init.(*ast.AssignStmt); ok && as.Tok == token.DEFINE {
+		for _, l := range as.Lhs {
+			id, ok := l.(*ast.Ident)
+			if !ok || id.Name == "_" {
+				continue
+			}
+			if o := f.info.Defs[id]; o != nil && f.collides(id.Name, o) {
+				f.rename[o] = f.freshName(id.Name)
+				renamed = append(renamed, o)
+			}
+		}
+	}
+	parts := f.whole(s, func() []Stmt {
+		first := f.stmt(init, results)
+		if first.K == "foreign" {
+			return []Stmt{first}
+		}
+		switch s := s.(type) {
+		case *ast.IfStmt:
+			return []Stmt{first, f.ifStmt(s, results)}
+		case *ast.SwitchStmt:
+			return []Stmt{first, f.switchStmt(s, results)}
+		}
+		return []Stmt{first, f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))}
+	})
+	if len(parts) == 1 && parts[0].K == "foreign" {
+		for _, o := range renamed {
+			delete(f.rename, o)
+		}
+	}
+	return parts
+}
+
 // ifStmt reads s but for its init statement, which the caller has read or refused.
 func (f *front) ifStmt(s *ast.IfStmt, results []Type) Stmt {
 	c, ok := f.expr(s.Cond)
 	if !ok {
-		return f.foreign(s, "expression outside cir/1")
+		return f.foreign(s, f.exprReason())
 	}
 	st := Stmt{K: "if", Cond: &c, Then: f.stmts(s.Body.List, results), Pos: f.pos(s.Pos())}
 	switch e := s.Else.(type) {
 	case *ast.BlockStmt:
 		st.Else = f.stmts(e.List, results)
 	case *ast.IfStmt:
-		st.Else = []Stmt{f.stmt(e, results)}
+		if e.Init != nil && f.canHoist() {
+			st.Else = f.hoistInit(e, e.Init, results) // else if init; c: the else list is the init and the if
+		} else {
+			st.Else = []Stmt{f.stmt(e, results)}
+		}
 	}
 	return st
 }
@@ -1036,6 +1510,9 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 			if o.Pkg() == nil {
 				return Expr{K: "lit", Value: e.Name, T: t}, true
 			}
+			if o.Parent() != o.Pkg().Scope() {
+				return f.constLit(e, t) // a constant declared inside a function
+			}
 			return Expr{K: "const", Name: e.Name, T: t}, true
 		case *types.Var:
 			if o.Parent() == f.pkg.Scope() {
@@ -1048,31 +1525,48 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 					// refused for its type: the statement holding it is foreign for that type
 					return Expr{K: "global", Name: e.Name, T: t}, true
 				}
-				return Expr{}, false
+				return f.no("use of a refused package variable")
 			}
-			return Expr{K: "var", Name: e.Name, T: t}, true
+			return Expr{K: "var", Name: f.name(e), T: t}, true
 		case *types.Func:
 			// A function of the package used as a value; an instance of a generic one has no
 			// cir/1 form (func_ref carries no type arguments).
-			if _, generic := f.info.Instances[e]; o.Pkg() != f.pkg || t == nil || t.K != "func" || generic {
-				return Expr{}, false
+			if _, generic := f.info.Instances[e]; generic {
+				return f.no("generic function used as a value")
+			}
+			if o.Pkg() != f.pkg || t == nil || t.K != "func" {
+				return f.no("function value of " + f.funcTypeShape(o.Type()))
 			}
 			return Expr{K: "func_ref", Name: e.Name, T: t}, true
+		case *types.TypeName:
+			return f.no("type as an operand")
+		case *types.Builtin:
+			return f.no("builtin " + e.Name + " used as a value")
 		}
 		if f.info.Defs[e] != nil {
-			return Expr{K: "var", Name: e.Name, T: t}, true
+			return Expr{K: "var", Name: f.name(e), T: t}, true
 		}
-		return Expr{}, false
+		if e.Name == "_" {
+			return f.no("`_` as an operand")
+		}
+		return f.no("name " + e.Name)
 	case *ast.SelectorExpr:
 		if sel := f.info.Selections[e]; sel != nil && sel.Kind() == types.FieldVal && sel.Obj().Pkg() != f.pkg {
-			return Expr{}, false // a field of a struct of another package: the extern type is opaque
+			return f.no("field of a struct of another package") // the extern type is opaque
 		}
 		if sel := f.info.Selections[e]; sel != nil && sel.Kind() != types.FieldVal {
 			// A method value x.M of a method the package declares, through the embedded fields it
 			// is promoted from; a method expression T.M is outside cir/1.
 			// A method value of an interface dispatches when called: no function to name.
-			if sel.Kind() != types.MethodVal || sel.Obj().Pkg() != f.pkg || t == nil || t.K != "func" || types.IsInterface(holder(sel)) {
-				return Expr{}, false
+			switch {
+			case sel.Kind() != types.MethodVal:
+				return f.no("method expression")
+			case types.IsInterface(holder(sel)):
+				return f.no("method value of an interface")
+			case sel.Obj().Pkg() != f.pkg:
+				return f.no("method value of another package's type")
+			case t == nil || t.K != "func":
+				return f.no("method value of " + f.funcTypeShape(f.info.TypeOf(e)))
 			}
 			x, ok := f.receiver(e, sel)
 			if !ok {
@@ -1086,6 +1580,23 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 				return Expr{}, false
 			}
 			return Expr{K: "field", X: &x, Name: e.Sel.Name, T: t}, true
+		}
+		if id, ok := e.X.(*ast.Ident); ok {
+			if _, ok := f.info.Uses[id].(*types.PkgName); ok {
+				// a qualified name of another package, not called
+				switch f.info.Uses[e.Sel].(type) {
+				case *types.Const:
+					if t != nil && (t.K == "int" || t.K == "float" || t.K == "string" || t.K == "bool") {
+						return f.constLit(e, t) // math.MaxInt32
+					}
+					return f.no("constant of another package")
+				case *types.Var:
+					return f.no("variable of another package")
+				case *types.Func:
+					return f.no("function of another package used as a value")
+				}
+				return f.no("name of another package")
+			}
 		}
 		x, ok := f.expr(e.X)
 		if !ok {
@@ -1129,38 +1640,235 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 		}
 		return Expr{K: "binop", Op: e.Op.String(), X: &x, Y: &y, T: t}, true
 	case *ast.CompositeLit:
-		if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {
-			return Expr{K: "make", T: t}, true
-		}
-		if t == nil || t.K != "named" {
-			return Expr{}, false
-		}
-		if _, ok := f.info.TypeOf(e).Underlying().(*types.Struct); !ok {
-			return Expr{}, false // a literal of a named map or slice type
-		}
-		out := Expr{K: "struct", Name: t.Name, T: t}
-		for _, el := range e.Elts {
-			kv, ok := el.(*ast.KeyValueExpr)
-			if !ok {
-				return Expr{}, false
-			}
-			v, ok := f.expr(kv.Value)
-			if !ok {
-				return Expr{}, false
-			}
-			if fv, ok := f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var); ok {
-				if wt, ok := f.ifaceTarget(fv.Type()); ok {
-					v = toIface(v, wt)
-				}
-			}
-			out.FieldNames = append(out.FieldNames, kv.Key.(*ast.Ident).Name)
-			out.Args = append(out.Args, v)
-		}
-		return out, true
+		return f.compositeLit(e, t)
 	case *ast.CallExpr:
 		return f.call(e, t)
+	case *ast.SliceExpr:
+		return f.no("slice expression")
+	case *ast.TypeAssertExpr:
+		return f.no("type assertion")
+	case *ast.IndexListExpr:
+		return f.no("generic function used as a value")
+	case *ast.ArrayType, *ast.MapType, *ast.ChanType, *ast.FuncType, *ast.InterfaceType, *ast.StructType:
+		return f.no("type as an operand")
 	}
-	return Expr{}, false
+	return f.no(fmt.Sprintf("%T", e))
+}
+
+// compositeLit reads a composite literal. An element `{…}` of a literal whose elements are
+// pointers, `[]*T{{…}}`, is `&T{…}`.
+func (f *front) compositeLit(e *ast.CompositeLit, t *Type) (Expr, bool) {
+	gt := f.info.TypeOf(e)
+	if p, ok := gt.(*types.Pointer); ok && e.Type == nil && t != nil && t.K == "ptr" {
+		x, ok := f.literalOf(e, t.Elem, p.Elem())
+		if !ok {
+			return Expr{}, false
+		}
+		return Expr{K: "unop", Op: "&", X: &x, T: t}, true
+	}
+	return f.literalOf(e, t, gt)
+}
+
+// literalOf reads the composite literal e of the type gt, t in cir/1. An empty one of a map or
+// slice is `make`, of another package's struct its zero value. A slice literal with elements is
+// `append` of them to the empty slice. A struct literal names its fields, a positional one in
+// declaration order. An untyped nil takes the type of its field or element.
+func (f *front) literalOf(e *ast.CompositeLit, t *Type, gt types.Type) (Expr, bool) {
+	if t != nil && t.K == "unit" && len(e.Elts) == 0 {
+		return Expr{K: "zero", T: t}, true // struct{}{}
+	}
+	if t != nil && (t.K == "map" || t.K == "slice") && len(e.Elts) == 0 {
+		return Expr{K: "make", T: t}, true
+	}
+	if _, ok := gt.Underlying().(*types.Struct); ok && t != nil && t.K == "extern" && len(e.Elts) == 0 {
+		return Expr{K: "zero", T: t}, true // sync.WaitGroup{}
+	}
+	if st, ok := gt.Underlying().(*types.Slice); ok && t != nil && t.K == "slice" {
+		args := []Expr{{K: "make", T: t}}
+		for _, el := range e.Elts {
+			if _, ok := el.(*ast.KeyValueExpr); ok {
+				return f.no("slice literal with keyed elements")
+			}
+			v, ok := f.expr(el)
+			if !ok {
+				return Expr{}, false
+			}
+			args = append(args, f.given(v, st.Elem()))
+		}
+		return Expr{K: "intrinsic", Name: "append", Args: args, T: t}, true
+	}
+	if t == nil || t.K != "named" {
+		return f.no(f.literalShape(e))
+	}
+	st, ok := gt.Underlying().(*types.Struct)
+	if !ok {
+		return f.no("literal of a named map, slice or array type")
+	}
+	out := Expr{K: "struct", Name: t.Name, T: t}
+	for i, el := range e.Elts {
+		val, fv := el, (*types.Var)(nil)
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			val = kv.Value
+			fv, _ = f.info.Uses[kv.Key.(*ast.Ident)].(*types.Var)
+		} else if i < st.NumFields() {
+			fv = st.Field(i)
+		}
+		if fv == nil {
+			return f.no("struct literal of an unknown field")
+		}
+		v, ok := f.expr(val)
+		if !ok {
+			return Expr{}, false
+		}
+		out.FieldNames = append(out.FieldNames, fv.Name())
+		out.Args = append(out.Args, f.given(v, fv.Type()))
+	}
+	return out, true
+}
+
+// given is the value v given where a value of the type want is expected: an untyped nil takes
+// that type, and a value given to a named interface is converted to it.
+func (f *front) given(v Expr, want types.Type) Expr {
+	f.typeNil(&v, want)
+	if wt, ok := f.ifaceTarget(want); ok {
+		v = toIface(v, wt)
+	}
+	return v
+}
+
+// typeNil gives the untyped nil x the type want.
+func (f *front) typeNil(x *Expr, want types.Type) {
+	if x.K == "nil" && x.T != nil && x.T.K == "nil" {
+		t := f.typ(want)
+		x.T = &t
+	}
+}
+
+// typeNilArgs gives each untyped nil among the arguments of a call of sig the type of its
+// parameter, of the variadic parameter's element past its last fixed one.
+func (f *front) typeNilArgs(args []Expr, sig *types.Signature, spread bool) {
+	ps := sig.Params()
+	for i := range args {
+		switch {
+		case sig.Variadic() && !spread && i >= ps.Len()-1:
+			if s, ok := ps.At(ps.Len() - 1).Type().Underlying().(*types.Slice); ok {
+				f.typeNil(&args[i], s.Elem())
+			}
+		case i < ps.Len():
+			f.typeNil(&args[i], ps.At(i).Type())
+		}
+	}
+}
+
+// makeLit reads `make(map[K]V)`, `make(map[K]V, n)`, `make([]T, 0)` and `make([]T, 0, n)` as
+// `make`, the empty map or slice, when n is a size hint that can be dropped: a constant, or `len`
+// of a variable or of a field of one that is not reached through a pointer. Any other make is not
+// this form.
+func (f *front) makeLit(e *ast.CallExpr, t *Type) (Expr, bool) {
+	if t == nil || (t.K != "map" && t.K != "slice") || len(e.Args) == 0 {
+		return Expr{}, false
+	}
+	hints := e.Args[1:]
+	if t.K == "slice" {
+		if len(hints) == 0 {
+			return Expr{}, false
+		}
+		if v := f.info.Types[hints[0]].Value; v == nil || v.ExactString() != "0" {
+			return Expr{}, false
+		}
+		hints = hints[1:]
+	}
+	for _, n := range hints {
+		if !f.sizeHint(n) {
+			return Expr{}, false
+		}
+	}
+	return Expr{K: "make", T: t}, true
+}
+
+// sizeHint reports whether n is a constant or `len` of a variable or of a field of one not reached
+// through a pointer: a value whose evaluation neither panics nor has an effect.
+func (f *front) sizeHint(n ast.Expr) bool {
+	if f.info.Types[n].Value != nil {
+		return true
+	}
+	c, ok := ast.Unparen(n).(*ast.CallExpr)
+	if !ok || len(c.Args) != 1 || c.Ellipsis.IsValid() {
+		return false
+	}
+	if id, ok := ast.Unparen(c.Fun).(*ast.Ident); !ok || f.info.Uses[id] != types.Universe.Lookup("len") {
+		return false
+	}
+	switch a := ast.Unparen(c.Args[0]).(type) {
+	case *ast.Ident:
+		_, ok := f.info.Uses[a].(*types.Var)
+		return ok
+	case *ast.SelectorExpr:
+		sel := f.info.Selections[a]
+		x, ok := ast.Unparen(a.X).(*ast.Ident)
+		if !ok || sel == nil || sel.Kind() != types.FieldVal || sel.Indirect() {
+			return false
+		}
+		_, isVar := f.info.Uses[x].(*types.Var)
+		_, isPtr := f.info.TypeOf(x).Underlying().(*types.Pointer)
+		return isVar && !isPtr
+	}
+	return false
+}
+
+// newLit reads `new(T)` of a struct T as `&T{}`, of another package's struct as the address of its
+// zero value. Of any other type it is not this form: cir/1 has no address of a zero int.
+func (f *front) newLit(e *ast.CallExpr, t *Type) (Expr, bool) {
+	p, ok := f.info.TypeOf(e).(*types.Pointer)
+	if !ok || t == nil || t.K != "ptr" || t.Elem == nil {
+		return Expr{}, false
+	}
+	if _, ok := p.Elem().Underlying().(*types.Struct); !ok {
+		return Expr{}, false
+	}
+	var x Expr
+	switch t.Elem.K {
+	case "named":
+		x = Expr{K: "struct", Name: t.Elem.Name, T: t.Elem}
+	case "extern":
+		x = Expr{K: "zero", T: t.Elem}
+	default:
+		return Expr{}, false
+	}
+	return Expr{K: "unop", Op: "&", X: &x, T: t}, true
+}
+
+// literalShape names what a composite literal that is not a struct literal of the package is.
+func (f *front) literalShape(e *ast.CompositeLit) string {
+	t := f.info.TypeOf(e)
+	if t == nil {
+		return "composite literal"
+	}
+	switch t.Underlying().(type) {
+	case *types.Slice:
+		return "slice literal with elements"
+	case *types.Map:
+		return "map literal with elements"
+	case *types.Array:
+		return "array literal"
+	case *types.Struct:
+		if n, ok := types.Unalias(t).(*types.Named); ok && n.Obj().Pkg() != f.pkg {
+			return "literal of another package's struct"
+		}
+		if _, ok := types.Unalias(t).(*types.Named); !ok {
+			return "literal of an anonymous struct type"
+		}
+		return "literal of a struct type outside cir/1"
+	}
+	return "composite literal of type " + f.goType(t)
+}
+
+// funcTypeShape names what makes the function type t have no cir/1 type.
+func (f *front) funcTypeShape(t types.Type) string {
+	if sig, ok := t.Underlying().(*types.Signature); ok && sig.Variadic() {
+		return "a variadic type"
+	}
+	return "a type outside cir/1"
 }
 
 // externCall reads pkg.Name(args), a call of a function of another package, as an extern call,
@@ -1169,33 +1877,39 @@ func (f *front) expr(e ast.Expr) (Expr, bool) {
 // parameter or result type, or a constraint, cir/1 has no type for is outside cir/1.
 func (f *front) externCall(pn *types.PkgName, sel *ast.Ident, args []Expr, t *Type) (Expr, bool) {
 	fn, ok := f.info.Uses[sel].(*types.Func)
-	if !ok || t == nil {
-		return Expr{}, false
+	if !ok {
+		return f.no("call of a function value of another package")
+	}
+	if t == nil {
+		return f.no("call of another package's function with a type outside cir/1")
 	}
 	fn = fn.Origin()
 	sig := fn.Type().(*types.Signature)
 	tps, why := f.tparams(sig.TypeParams())
+	if why != "" {
+		return f.no("call of a generic function whose constraint cir/1 lacks")
+	}
 	targs, _, ok := f.instance(sel)
-	if why != "" || !ok {
-		return Expr{}, false
+	if !ok {
+		return f.no("call of a generic function with a type argument outside cir/1")
 	}
 	x := Extern{Path: pn.Imported().Path(), Name: fn.Name(), Variadic: sig.Variadic(), Tparams: tps}
 	for i := 0; i < sig.Params().Len(); i++ {
 		p := f.typ(sig.Params().At(i).Type())
 		if hasForeign(p) {
-			return Expr{}, false
+			return f.no("call of another package's function with a type outside cir/1")
 		}
 		x.Params = append(x.Params, p)
 	}
 	for i := 0; i < sig.Results().Len(); i++ {
 		r := f.typ(sig.Results().At(i).Type())
 		if hasForeign(r) {
-			return Expr{}, false
+			return f.no("call of another package's function with a type outside cir/1")
 		}
 		x.Results = append(x.Results, r)
 	}
 	if hasForeign(*t) {
-		return Expr{}, false
+		return f.no("call of another package's function with a type outside cir/1")
 	}
 	f.extern(x)
 	return Expr{K: "extern", Path: x.Path, Name: x.Name, Targs: targs, Args: args, T: t}, true
@@ -1240,7 +1954,22 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	// that spreads a tuple over parameters, so the call is outside it.
 	if len(e.Args) == 1 {
 		if _, multi := f.info.TypeOf(e.Args[0]).(*types.Tuple); multi {
-			return Expr{}, false
+			return f.no("call passed a multi-valued call")
+		}
+	}
+	if id, ok := ast.Unparen(e.Fun).(*ast.Ident); ok {
+		if _, ok := f.info.Uses[id].(*types.Builtin); ok && id.Name != "append" && id.Name != "len" {
+			if id.Name == "make" {
+				if x, ok := f.makeLit(e, t); ok {
+					return x, true
+				}
+			}
+			if id.Name == "new" {
+				if x, ok := f.newLit(e, t); ok {
+					return x, true
+				}
+			}
+			return f.no("builtin " + id.Name)
 		}
 	}
 	if sk, ok := f.sortedKeys(e, t); ok {
@@ -1255,7 +1984,7 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 	if spread {
 		last := e.Args[len(e.Args)-1]
 		if _, ok := f.info.TypeOf(last).Underlying().(*types.Slice); !ok {
-			return Expr{}, false // append(b, s...) of a string: no slice to pass
+			return f.no("spread of a string") // append(b, s...) of a string: no slice to pass
 		}
 		x := args[len(args)-1]
 		args[len(args)-1] = Expr{K: "spread", X: &x, T: x.T}
@@ -1265,9 +1994,14 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return toIface(args[0], wt), true
 		}
 		if len(args) != 1 || t == nil || t.K != "named" {
-			return Expr{}, false
+			return f.no("conversion to " + f.goType(tv.Type))
 		}
 		return Expr{K: "conv", Name: t.Name, X: &args[0], T: t}, true
+	}
+	if ft := f.info.TypeOf(e.Fun); ft != nil {
+		if sig, ok := ft.Underlying().(*types.Signature); ok {
+			f.typeNilArgs(args, sig, spread)
+		}
 	}
 	// The fmt intrinsics take their arguments one by one; called with a spread, each is the
 	// extern call it is in Go.
@@ -1301,11 +2035,11 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			if fun.Name == "append" || (fun.Name == "len" && !spread) {
 				return Expr{K: "intrinsic", Name: fun.Name, Args: args, T: t}, true
 			}
-			return Expr{}, false
+			return f.no("builtin " + fun.Name + " with a spread")
 		case *types.Func:
 			targs, _, ok := f.instance(fun)
 			if !ok {
-				return Expr{}, false
+				return f.no("call of a generic function with a type argument outside cir/1")
 			}
 			return Expr{K: "call", Name: fun.Name, Targs: targs, Args: args, T: t}, true
 		}
@@ -1343,7 +2077,10 @@ func (f *front) call(e *ast.CallExpr, t *Type) (Expr, bool) {
 			return Expr{K: "call_value", X: &fn, Args: args, T: t}, true
 		}
 	}
-	return Expr{}, false
+	if spread {
+		return f.no("spread call of a function value")
+	}
+	return f.no(fmt.Sprintf("call of %T", e.Fun))
 }
 
 // sortedKeys reads `slices.Sorted(maps.Keys(m))`, the keys of m in ascending order, as cir/1's
@@ -1530,7 +2267,7 @@ func (f *front) ifInitShape(s *ast.IfStmt, params map[string]bool) *ifInit {
 // marks the read adds (a function literal's body is read with it) are taken back, so the read of
 // the body that follows adds each once, and only for what it keeps.
 func (f *front) probe(es []ast.Expr) bool {
-	refusals, externs, ifaces := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces)
+	refusals, externs, ifaces, why := len(f.mod.Refusals), len(f.mod.Externs), len(f.mod.Interfaces), f.why
 	unlabeled := make(map[*ast.BranchStmt]bool, len(f.unlabeled))
 	for b, v := range f.unlabeled {
 		unlabeled[b] = v
@@ -1540,6 +2277,7 @@ func (f *front) probe(es []ast.Expr) bool {
 		f.mod.Externs = f.mod.Externs[:externs]
 		f.mod.Interfaces = f.mod.Interfaces[:ifaces]
 		f.unlabeled = unlabeled
+		f.why = why
 	}()
 	for _, e := range es {
 		x, ok := f.expr(e)
@@ -1720,11 +2458,14 @@ func assignOrDeclare(body *ast.BlockStmt, live map[*ast.IfStmt]*ifInit) (hoists,
 }
 
 // lambda reads a function literal: its parameters and results, the outer locals it uses, and its
-// body, in which no enclosing loop or label is visible. A literal with named results is outside
-// cir/1.
+// body, in which no enclosing loop or label is visible. A literal with named results and a defer
+// is outside cir/1.
 func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
-	if t == nil || t.K != "func" || hasForeign(*t) || hasNamedResults(e.Type) {
-		return Expr{}, false
+	if hasNamedResults(e.Type) && hasDefer(e.Body) {
+		return f.no("function literal with named results and a defer")
+	}
+	if t == nil || t.K != "func" || hasForeign(*t) {
+		return f.no("function literal of " + f.funcTypeShape(f.info.TypeOf(e)))
 	}
 	sig := f.info.TypeOf(e).(*types.Signature)
 	x := Expr{K: "lambda", T: t, Params: []Param{}, Results: t.Results, Captures: f.captures(e)}
@@ -1735,17 +2476,21 @@ func (f *front) lambda(e *ast.FuncLit, t *Type) (Expr, bool) {
 		}
 		x.Params = append(x.Params, Param{Name: name, T: t.Params[i]})
 	}
-	breaks, loops, label, fnBody, outer, hoist := f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist
-	f.breaks, f.loops, f.label, f.fnBody, f.sig = nil, nil, "", e.Body, sig
+	breaks, loops, label, fnBody, outer, hoist, named := f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist, f.named
+	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.named = nil, nil, "", e.Body, sig, nil
 	// The literal's body is a function body of its own: its `if` inits are planned over it, with
 	// its parameters, and the names they declare are scoped to it.
 	params := map[string]bool{}
 	for _, p := range x.Params {
 		params[p.Name] = true
 	}
+	var decls []Stmt
+	if hasNamedResults(e.Type) {
+		decls, f.named = f.resultVars(sig.Results(), params)
+	}
 	f.hoist = f.planHoists(e.Body, params)
-	x.Body = f.stmts(e.Body.List, t.Results)
-	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist = breaks, loops, label, fnBody, outer, hoist
+	x.Body = append(decls, f.stmts(e.Body.List, t.Results)...)
+	f.breaks, f.loops, f.label, f.fnBody, f.sig, f.hoist, f.named = breaks, loops, label, fnBody, outer, hoist, named
 	return x, true
 }
 
@@ -1763,7 +2508,11 @@ func (f *front) captures(lit *ast.FuncLit) []string {
 			return true
 		}
 		if v.Pos() < lit.Pos() || v.Pos() >= lit.End() {
-			seen[v.Name()] = true
+			name := v.Name()
+			if r, ok := f.rename[v]; ok {
+				name = r
+			}
+			seen[name] = true
 		}
 		return true
 	})

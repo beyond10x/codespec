@@ -127,12 +127,10 @@ func Run() (int, error) {
 	}
 }
 
-// Each function keeps its if foreign, with the refusal at the if's line.
-func TestAnIfInitWhoseHoistWouldChangeTheMeaningStaysForeign(t *testing.T) {
-	for _, c := range []struct {
-		name, src string
-		line      int // the line of the if in src, counted from the first line of the function
-	}{
+// An if whose init the 0.12.0 rule left foreign is hoisted too, each declared name renamed to a
+// fresh one where its spelling occurs elsewhere in the function: the hand-written hoisted form.
+func TestAnIfInitTheEarlierRuleLeftForeignIsHoistedWithFreshNames(t *testing.T) {
+	for _, c := range []struct{ name, init, hoisted string }{
 		{"used outside", `
 func Run() error {
 	err := F()
@@ -141,7 +139,16 @@ func Run() error {
 	}
 	return err
 }
-`, 3},
+`, `
+func Run() error {
+	err := F()
+	err_1 := G()
+	if err_1 != nil {
+		return err_1
+	}
+	return err
+}
+`},
 		{"a parameter", `
 func Run(err error) (int, error) {
 	if err := F(); err != nil {
@@ -149,7 +156,15 @@ func Run(err error) (int, error) {
 	}
 	return 1, err
 }
-`, 2},
+`, `
+func Run(err error) (int, error) {
+	err_1 := F()
+	if err_1 != nil {
+		return 0, err_1
+	}
+	return 1, err
+}
+`},
 		{"not a call, with an else", `
 func Run() int {
 	if x := 1; x > 0 {
@@ -158,7 +173,16 @@ func Run() int {
 		return 0
 	}
 }
-`, 2},
+`, `
+func Run() int {
+	x := 1
+	if x > 0 {
+		return x
+	} else {
+		return 0
+	}
+}
+`},
 		{"an else if", `
 func Run(n int) (int, error) {
 	if n < 0 {
@@ -168,8 +192,19 @@ func Run(n int) (int, error) {
 	}
 	return 2, nil
 }
-`, 4},
-		// the outer if is hoisted; the inner one would overwrite the err the outer body returns
+`, `
+func Run(n int) (int, error) {
+	if n < 0 {
+		return 0, ErrNegative
+	} else {
+		err := G()
+		if err != nil {
+			return 1, err
+		}
+	}
+	return 2, nil
+}
+`},
 		{"nested in an if declaring the same name", `
 func Run() error {
 	if err := F(); err != nil {
@@ -180,8 +215,19 @@ func Run() error {
 	}
 	return nil
 }
-`, 3},
-		// the call reads the package-level ErrNegative that the init then shadows
+`, `
+func Run() error {
+	err := F()
+	if err != nil {
+		err_1 := G()
+		if err_1 != nil {
+			return err_1
+		}
+		return err
+	}
+	return nil
+}
+`},
 		{"the init's call reads the name", `
 func Run() error {
 	if ErrNegative := Check(ErrNegative); ErrNegative != nil {
@@ -193,28 +239,226 @@ func Run() error {
 func Check(e error) error {
 	return e
 }
-`, 2},
+`, `
+func Run() error {
+	ErrNegative_1 := Check(ErrNegative)
+	if ErrNegative_1 != nil {
+		return ErrNegative_1
+	}
+	return nil
+}
+
+func Check(e error) error {
+	return e
+}
+`},
+		{"a comma-ok index", `
+func Run(m map[string]int, k string) int {
+	if v, ok := m[k]; ok {
+		return v
+	}
+	return 0
+}
+`, `
+func Run(m map[string]int, k string) int {
+	v, ok := m[k]
+	if ok {
+		return v
+	}
+	return 0
+}
+`},
+		{"an else and two names", `
+func Run() int {
+	if n, err := Two(); err != nil {
+		return 0
+	} else {
+		return n
+	}
+}
+
+func Two() (int, error) {
+	return 1, nil
+}
+`, `
+func Run() int {
+	n, err := Two()
+	if err != nil {
+		return 0
+	} else {
+		return n
+	}
+}
+
+func Two() (int, error) {
+	return 1, nil
+}
+`},
+		{"an assignment init", `
+func Run() error {
+	var err error
+	if err = F(); err != nil {
+		return err
+	}
+	return nil
+}
+`, `
+func Run() error {
+	var err error
+	err = F()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+`},
+		{"a blank and a name reused with another type", `
+func Run() int {
+	if _, x := Pair(); x != nil {
+		return 0
+	}
+	if x := Count(); x > 0 {
+		return x
+	}
+	return 2
+}
+
+func Pair() (int, error) {
+	return 1, nil
+}
+
+func Count() int {
+	return 1
+}
+`, `
+func Run() int {
+	_, x_1 := Pair()
+	if x_1 != nil {
+		return 0
+	}
+	x_2 := Count()
+	if x_2 > 0 {
+		return x_2
+	}
+	return 2
+}
+
+func Pair() (int, error) {
+	return 1, nil
+}
+
+func Count() int {
+	return 1
+}
+`},
+		{"a send init", `
+func Run(c chan int) int {
+	if c <- 1; len(c) > 0 {
+		return 1
+	}
+	return 0
+}
+`, `
+func Run(c chan int) int {
+	c <- 1
+	if len(c) > 0 {
+		return 1
+	}
+	return 0
+}
+`},
+		{"a switch init", `
+func Run(n int) int {
+	switch m := n * 2; {
+	case m > 4:
+		return m
+	}
+	return 0
+}
+`, `
+func Run(n int) int {
+	m := n * 2
+	switch {
+	case m > 4:
+		return m
+	}
+	return 0
+}
+`},
+		{"a closure capturing a shared name", `
+func Run() error {
+	var get func() error
+	if err := F(); err != nil {
+		get = func() error { return err }
+	}
+	if err := G(); err != nil {
+		return err
+	}
+	return get()
+}
+`, `
+func Run() error {
+	var get func() error
+	err_1 := F()
+	if err_1 != nil {
+		get = func() error { return err_1 }
+	}
+	err_2 := G()
+	if err_2 != nil {
+		return err_2
+	}
+	return get()
+}
+`},
+		{"inside a literal whose name is used outside", `
+func Run() error {
+	check := func() error {
+		err := F()
+		if err := G(); err != nil {
+			return err
+		}
+		return err
+	}
+	return check()
+}
+`, `
+func Run() error {
+	check := func() error {
+		err := F()
+		err_1 := G()
+		if err_1 != nil {
+			return err_1
+		}
+		return err
+	}
+	return check()
+}
+`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			src := ifInitPrelude + c.src
-			m := loadSource(t, src)
-			// the function starts on the line after the prelude's last line
-			ifLine := strings.Count(ifInitPrelude, "\n") + 1 + c.line
-			want := "p.go:" + strconv.Itoa(ifLine)
-			if len(m.Refusals) != 1 || m.Refusals[0].Pos != want || m.Refusals[0].Reason != "if with an init statement" {
-				t.Fatalf("refusals %v, want one at %s for the if with an init statement", m.Refusals, want)
-			}
-			var run *Func
-			for i := range m.Funcs {
-				if m.Funcs[i].Name == "Run" {
-					run = &m.Funcs[i]
-				}
-			}
-			if run == nil || count(kinds(run.Body), "foreign") != 1 {
-				t.Fatalf("body %+v", run)
-			}
+			sameButPos(t, ifInitPrelude+c.init, ifInitPrelude+c.hoisted)
 		})
 	}
+}
+
+// A goto keeps every if with an init of its function foreign, as before.
+func TestIfInitAGotoKeepsEveryIfWithAnInitForeign(t *testing.T) {
+	m := loadSource(t, ifInitPrelude+`
+func Run(m map[string]int) int {
+	if v, ok := m["a"]; ok {
+		return v
+	}
+	goto L
+L:
+	return 0
+}
+`)
+	for _, r := range m.Refusals {
+		if r.Pos == ifInitLine(2) && r.Reason == "if with an init statement" {
+			return
+		}
+	}
+	t.Fatalf("refusals %v, want one at %s for the if with an init statement", m.Refusals, ifInitLine(2))
 }
 
 // A wrapped error is not the propagation form, but the hoist does not depend on the body: the if
@@ -344,12 +588,11 @@ func Run(ps []*error) error {
 
 // The condition is outside cir/1. The init is read in front as `let err = F()`, and then the
 // whole if, init included, is kept foreign: the read now calls F twice and declares err twice,
-// and the refusal names the condition, not the init. (A literal with named results: a plain
-// literal now reads as a lambda.)
+// and the refusal names the condition, not the init (a slice expression).
 func TestIfInitAnIfWhoseConditionIsOutsideCir1DoesNotAlsoHoistItsInit(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
-func Run() error {
-	if err := F(); func() (b bool) { return err != nil }() {
+func Run(xs []error) error {
+	if err := F(); xs[1:] != nil {
 		return err
 	}
 	return nil
@@ -357,8 +600,8 @@ func Run() error {
 `)
 	run := ifInitRun(t, m)
 	want := ifInitLine(2)
-	if len(m.Refusals) != 1 || m.Refusals[0].Pos != want || m.Refusals[0].Reason != "if with an init statement" {
-		t.Errorf("refusals %v, want one at %s for the if with an init statement", m.Refusals, want)
+	if len(m.Refusals) != 1 || m.Refusals[0].Pos != want || m.Refusals[0].Reason != "expression outside cir/1: slice expression" {
+		t.Errorf("refusals %v, want one at %s for the slice expression", m.Refusals, want)
 	}
 	if len(run.Body) != 2 || run.Body[0].K != "foreign" {
 		b, _ := json.MarshalIndent(run.Body, "", " ")
@@ -492,9 +735,10 @@ func AfterLoop(n int) error {
 `)
 }
 
-// One name declared by two inits with different types is not one variable: both ifs stay foreign.
-func TestIfInitANameReusedWithAnotherTypeStaysForeign(t *testing.T) {
-	m := loadSource(t, ifInitPrelude+`
+// One name declared by two inits with different types is not one variable: each if is hoisted
+// with a fresh name of its own (the table above reads the same shape with a blank).
+func TestIfInitANameReusedWithAnotherTypeGetsAFreshNamePerIf(t *testing.T) {
+	sameButPos(t, ifInitPrelude+`
 func N() int {
 	return 1
 }
@@ -508,17 +752,28 @@ func Run() int {
 	}
 	return 2
 }
-`)
-	want := []string{ifInitLine(6), ifInitLine(9)}
-	if len(m.Refusals) != 2 || m.Refusals[0].Pos != want[0] || m.Refusals[1].Pos != want[1] ||
-		m.Refusals[0].Reason != "if with an init statement" || m.Refusals[1].Reason != "if with an init statement" {
-		t.Fatalf("refusals %v, want one at each of %v for the if with an init statement", m.Refusals, want)
+`, ifInitPrelude+`
+func N() int {
+	return 1
+}
+
+func Run() int {
+	x_1 := F()
+	if x_1 != nil {
+		return 0
 	}
+	x_2 := N()
+	if x_2 > 0 {
+		return x_2
+	}
+	return 2
+}
+`)
 }
 
 // A closure that captures the first init's err would see the second init's value were the
-// second read as an assignment to it: neither is hoisted.
-func TestIfInitAClosureCapturingASharedNameKeepsBothForeign(t *testing.T) {
+// second read as an assignment to it: each if gets its own fresh name, so there is none.
+func TestIfInitAClosureCapturingASharedNameIsNotReassigned(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
 func Run() error {
 	var get func() error
@@ -528,8 +783,7 @@ func Run() error {
 	if err := G(); err != nil {
 		return err
 	}
-	_ = get
-	return nil
+	return get()
 }
 `)
 	run := ifInitRun(t, m)
@@ -537,14 +791,8 @@ func Run() error {
 		b, _ := json.MarshalIndent(got, "", " ")
 		t.Fatalf("the second init writes the variable the closure captured (refusals %v):\n%s", m.Refusals, b)
 	}
-	for _, want := range []string{ifInitLine(3), ifInitLine(6)} {
-		found := false
-		for _, r := range m.Refusals {
-			found = found || (r.Pos == want && r.Reason == "if with an init statement")
-		}
-		if !found {
-			t.Errorf("refusals %v, want one at %s for the if with an init statement", m.Refusals, want)
-		}
+	if len(m.Refusals) != 0 {
+		t.Fatalf("refusals %v", m.Refusals)
 	}
 }
 
@@ -569,25 +817,27 @@ func Run() *error {
 `)
 }
 
-// The second init's call is outside cir/1 (a call of a literal with named results; errors.Join,
-// the call this case first used, now reads as an extern), so that if stays foreign with its
-// init in its text; err then occurs outside the first if too, which stays foreign as well.
-func TestIfInitAnInitOutsideCir1KeepsEveryIfSharingItsNameForeign(t *testing.T) {
+// The second init is outside cir/1 (a slice expression), so that if stays foreign with its init in
+// its text; err then occurs outside the first if too, whose err is read under a fresh name.
+func TestIfInitAnInitOutsideCir1KeepsItsIfForeignAndRenamesTheOther(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
-func Run() error {
+func Run(errs []error) error {
 	if err := F(); err != nil {
 		return err
 	}
-	if err := func() (e error) { return F() }(); err != nil {
+	if err := errs[1:][0]; err != nil {
 		return err
 	}
 	return nil
 }
 `)
-	want := []string{ifInitLine(2), ifInitLine(5)}
-	if len(m.Refusals) != 2 || m.Refusals[0].Pos != want[0] || m.Refusals[1].Pos != want[1] ||
-		m.Refusals[0].Reason != "if with an init statement" || m.Refusals[1].Reason != "if with an init statement" {
-		t.Fatalf("refusals %v, want one at each of %v for the if with an init statement", m.Refusals, want)
+	if len(m.Refusals) != 1 || m.Refusals[0].Pos != ifInitLine(5) || m.Refusals[0].Reason != "expression outside cir/1: slice expression" {
+		t.Fatalf("refusals %v, want one at %s for the slice expression", m.Refusals, ifInitLine(5))
+	}
+	run := ifInitRun(t, m)
+	if run.Body[0].K != "let" || run.Body[0].Names[0] != "err_1" || run.Body[2].K != "foreign" {
+		b, _ := json.MarshalIndent(run.Body, "", " ")
+		t.Fatalf("body:\n%s", b)
 	}
 }
 
@@ -713,26 +963,6 @@ func Run() error {
 	}
 }
 
-// Inside a literal, an init name used elsewhere in the literal keeps that if foreign, as in a
-// function body.
-func TestIfInitInsideAFunctionLiteralWhoseNameIsUsedOutsideStaysForeign(t *testing.T) {
-	m := loadSource(t, ifInitPrelude+`
-func Run() error {
-	check := func() error {
-		err := F()
-		if err := G(); err != nil {
-			return err
-		}
-		return err
-	}
-	return check()
-}
-`)
-	if len(m.Refusals) != 1 || m.Refusals[0].Pos != ifInitLine(4) || m.Refusals[0].Reason != "if with an init statement" {
-		t.Fatalf("refusals %v, want one at %s for the if with an init statement", m.Refusals, ifInitLine(4))
-	}
-}
-
 // A literal inside a hoisted if captures the hoisted name: one variable, as Go has, read as the
 // two-statement form reads.
 func TestIfInitALiteralCapturingAHoistedNameCapturesIt(t *testing.T) {
@@ -783,12 +1013,14 @@ func Run() error {
 }
 
 // Planning declares no extern: an extern call only in the text of a foreign if is not declared.
+// The init reads, the condition (a slice expression) does not: the if is foreign, and the extern its
+// init declared is taken back.
 func TestIfInitPlanningDeclaresNoExtern(t *testing.T) {
 	prelude := strings.Replace(ifInitPrelude, `import "errors"`, "import (\n\t\"errors\"\n\t\"os\"\n)", 1)
 	m := loadSource(t, prelude+`
-func Run() error {
+func Run(xs []int) error {
 	err := F()
-	if err := os.Remove("x"); err != nil {
+	if err := os.Remove("x"); xs[1:] != nil {
 		return err
 	}
 	return err

@@ -5,7 +5,7 @@ kind: story
 status: draft
 title: The Go reader folds constant expressions
 summary: A Go constant expression is read as the literal Go computed, not operator by operator.
-revision: 1
+revision: 2
 ---
 # Story: The Go reader folds constant expressions
 
@@ -37,3 +37,10 @@ on the writing side is `story:go-writer-float-constants`.
 ## Scope
 
 - Own: `adapters/go/cmd/codespec-read-go`. Inferred.
+
+## Split
+
+`story:go-reader-small-forms` (wave 1 of `epic:go-reader-refusals`, 2026-11-24) takes the
+qualified-constant part: a constant of another package of a basic type (`http.StatusOK`) reads as
+the literal of the value go/types computed. Folding constant expressions in general, the rest of
+this story, stays here.

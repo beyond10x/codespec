@@ -411,7 +411,7 @@
           "k": "foreign",
           "lang": "go",
           "src": "return os.WriteFile(path, []byte(Banner(name, port)), 0o644)",
-          "reason": "expression outside cir/1",
+          "reason": "expression outside cir/1: conversion to []byte",
           "pos": "envcheck.go:37",
           "calls": [
             {
@@ -523,7 +523,7 @@
     {
       "pos": "envcheck.go:37",
       "what": "return os.WriteFile(path, []byte(Banner(name, port)), 0o644)",
-      "reason": "expression outside cir/1"
+      "reason": "expression outside cir/1: conversion to []byte"
     }
   ]
 }

@@ -24,7 +24,7 @@ var (
 	hits     int
 	greeting = "hello"
 	limit    int64 = 3
-	names    = []string{"a"}
+	names    = map[string]int{"a": 1}
 	mu       sync.Mutex
 	addr     uintptr
 )
@@ -52,7 +52,7 @@ func Fail() error {
 		`"vars":[{"name":"hits","pos":"p.go:11","t":{"k":"int","signed":true,"width":"platform"}}`,
 		`{"init":{"k":"lit","t":{"k":"string"},"value":"\"hello\""},"name":"greeting"`,
 		`{"init":{"k":"lit","t":{"k":"int","signed":true,"width":"64"},"value":"3"},"name":"limit"`,
-		`{"foreign":{"lang":"go","reason":"initializer outside cir/1","src":"[]string{\"a\"}"},"name":"names"`,
+		`{"foreign":{"lang":"go","reason":"initializer outside cir/1: map literal with elements","src":"map[string]int{\"a\": 1}"},"name":"names"`,
 		`"lhs":[{"k":"global","name":"hits"`,
 		`{"k":"global","name":"greeting","t":{"k":"string"}}`,
 		`{"k":"errvar","name":"ErrGone"`,
@@ -76,7 +76,7 @@ func Fail() error {
 	}
 	got := strings.Join(reasons, "\n")
 	for _, want := range []string{
-		"names: initializer outside cir/1",
+		"names: initializer outside cir/1: map literal with elements",
 		"addr: variable of type uintptr has no cir/1 type",
 	} {
 		if !strings.Contains(got, want) {

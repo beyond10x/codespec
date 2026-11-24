@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:12Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-blank-assignments",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): the blank_test.go tests pass; red on 8b5108b6: blank_test.go:39: init form refused: [{p.go:14 n, _ = pair() expression outside cir/1: `_` as an operand} ...]"
+  }
+}

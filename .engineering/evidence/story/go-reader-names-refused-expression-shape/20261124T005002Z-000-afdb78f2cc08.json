@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:02Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-names-refused-expression-shape",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): TestARefusedExpressionNamesItsShape passes; red on 8b5108b6^: p.go:33: reason \"expression outside cir/1\", want \"expression outside cir/1: conversion to []byte\""
+  }
+}
