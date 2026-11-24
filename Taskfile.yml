@@ -589,6 +589,16 @@ tasks:
       - cmp target/examples-effects/effects.1.json target/examples-effects/effects.2.json
       - cmp target/examples-effects/effects.1.json examples/envcheck/envcheck.effects.json
 
+  examples-edit:
+    desc: Run the self-test (a .diff with one byte changed must compare unequal), then every edit program of examples/edit as a dry run against its .diff or .refusal and exit code, the sources unchanged; then each on a copy under target/, an operation applied with --build and run again changing nothing, a refusal with --apply writing nothing.
+    cmds:
+      - cargo build --locked -q -p b10x-codespec-cli -p codespec-read-rust
+      - mkdir -p {{.ADAPTERS}}
+      - cp target/debug/codespec-read-rust {{.ADAPTERS}}/
+      - cd adapters/go && go build -o {{.ADAPTERS}}/codespec-read-go ./cmd/codespec-read-go
+      - CODESPEC={{.CODESPEC}} ADAPTERS={{.ADAPTERS}} sh scripts/examples-edit.sh --self-test
+      - CODESPEC={{.CODESPEC}} ADAPTERS={{.ADAPTERS}} sh scripts/examples-edit.sh
+
   examples-netcheck:
     desc: Read the Go module examples/netcheck/source with every package it imports (scripts/read-repo.sh --deps, Go 1.27.1, linux/amd64, CGO_ENABLED=0, no network) twice and require both sets equal; run codespec effects (rta from the server and client entries, and cha), codespec reach (rta and cha) and codespec trace from the client (2 calls deep, and 16 deep) and the server (8 deep) over the set twice and require every output byte-equal; then write the checked-in read.txt, the reduced reports and the trees, the deep ones pruned to the path that ends in connect and accept4 (codespec-docs netcheck). Not in the gate; task check checks the checked-in files.
     deps: [build]

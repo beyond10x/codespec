@@ -18,7 +18,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Concepts',
-      items: ['concepts/cir-1', 'concepts/pipeline', 'concepts/harness', 'concepts/static-analysis'],
+      items: ['concepts/cir-1', 'concepts/pipeline', 'concepts/harness', 'concepts/static-analysis', 'concepts/code-edits'],
     },
     {
       type: 'category',

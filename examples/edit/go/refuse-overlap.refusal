@@ -1,0 +1,1 @@
+codespec edit: refused: row 2: overlap: source/stock/stock.go:854..859: replacing it with "extra" overlaps the edit 854..859 to "backup" of row 1

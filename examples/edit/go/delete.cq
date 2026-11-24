@@ -1,0 +1,2 @@
+// Delete spare, which nothing calls, with its doc comment.
+edit delete(F) :- func{id: F, module: "example.com/depot/stock", name: "spare"}, !calls(_, F).

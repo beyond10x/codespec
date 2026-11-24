@@ -1,0 +1,31 @@
+--- a/source/front/front.go
++++ b/source/front/front.go
+@@ -5,7 +5,7 @@
+ 
+ // Count gives the number of goods to show.
+ func Count() int {
+-	return stock.Load() * 2
++	return stock.LoadCached() * 2
+ }
+ 
+ // Refresh counts again in the background.
+--- a/source/stock/stock.go
++++ b/source/stock/stock.go
+@@ -19,7 +19,7 @@
+ 
+ // Total adds two counts.
+ func Total() int {
+-	return Load() + Load()
++	return LoadCached() + LoadCached()
+ }
+ 
+ // Fill gives n goods of the named kind.
+@@ -42,7 +42,7 @@
+ 
+ // Heavy gives the weight of the goods on the shelves.
+ func Heavy() int {
+-	heft := Load()
++	heft := LoadCached()
+ 	return weigh(heft)
+ }
+ 

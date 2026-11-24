@@ -1,0 +1,2 @@
+// Refused: Shelf.Size implements the interface Sized.
+edit rename(F, "Capacity") :- func{id: F, name: "Size"}.

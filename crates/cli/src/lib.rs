@@ -324,11 +324,17 @@ pub enum Cmd {
     /// ($CODESPEC_CACHE_DIR/edit, else $XDG_CACHE_HOME/codespec/edit, else
     /// ~/.cache/codespec/edit), the edited files are written there, the copied directories are
     /// read again, and the set read must equal the expected cir/1 byte for byte; the first
-    /// differing path is printed otherwise. With --apply each file is then written through a
-    /// temporary file in its directory and a rename, only when every file read still has the
-    /// SHA-256 it was read with. The report holds each row's status (planned, applied, refused)
-    /// and reasons, each edited file's SHA-256 before and after, and the diff; no time. A reader
-    /// that gives no spans is refused, naming it.
+    /// differing path is printed otherwise. An edited Go file that was gofmt-clean when read is
+    /// run through gofmt and its whitespace changes join the diff; a gofmt change outside
+    /// whitespace refuses the set. With --build the checked copy is then compiled (Go: go build
+    /// ./... and go vet ./... over the go.mod root with GOWORK=off; Rust: cargo check
+    /// --all-targets with the target directory inside the copy); a failure is status unverified
+    /// with the first 20 lines of the compiler's output. With --apply each file is then written
+    /// through a temporary file in its directory and a rename, only when every file read still
+    /// has the SHA-256 it was read with. The report holds the set's status (no-row, planned,
+    /// applied, refused, unverified, stale), each row's status and reasons, each edited file's
+    /// SHA-256 before and after, and the diff; no time. A reader that gives no spans is refused,
+    /// naming it.
     Edit(edit::Args),
     /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
     /// print one line per call, as the conformance kit's runners print them. Exit 0 when every

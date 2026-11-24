@@ -1,7 +1,13 @@
-//! Code edits in `cir/1` terms (`docs/code-edit-language.md`). This crate holds the side document
-//! that ties a module's nodes to its source bytes, `codespec-spans/1` ([`spans`]), the mapping
-//! between its paths and cq's ids ([`ids`]), and reading a source directory with spans ([`run`],
-//! the one module that starts processes and touches files).
+//! Code edits in `cir/1` terms (`docs/code-edit-language.md`), the library behind `codespec
+//! edit`. The rows of a cq edit program (`rename`, `rename_field`, `retarget`, `delete`) become
+//! byte-span edits of the Go or Rust source; the edited source is read again in a copy and must
+//! equal the expected `cir/1` before anything is printed or written. This crate holds the side
+//! document that ties a module's nodes to its source bytes, `codespec-spans/1` ([`spans`]), the
+//! mapping between its paths and cq's ids ([`ids`]), the change sets ([`change`]), what follows
+//! the span edits ([`post`]: `gofmt`'s whitespace changes merged into the edits, the commands of
+//! `--build`), and the pipeline ([`run`], the one module that starts processes and touches files:
+//! readers with spans, the verified copy under `$CODESPEC_CACHE_DIR/edit`, `--build`, `--apply`
+//! only when no file read has changed).
 //!
 //! # `codespec-spans/1`
 //!

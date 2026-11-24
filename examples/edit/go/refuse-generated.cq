@@ -1,0 +1,2 @@
+// Refused: code is declared in a generated file.
+edit rename(F, "tag") :- func{id: F, name: "code"}.

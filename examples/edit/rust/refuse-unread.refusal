@@ -1,0 +1,2 @@
+codespec edit: refused: row 1: foreign: yard.Doubled#0: foreign source holds "checked" as a word
+codespec edit: refused: row 1: listed: yard.Doubled#0.calls.1: a call list names yard.checked: the reader did not read the code making the call

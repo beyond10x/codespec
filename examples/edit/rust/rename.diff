@@ -1,0 +1,39 @@
+--- a/source/src/lib.rs
++++ b/source/src/lib.rs
+@@ -2,7 +2,7 @@
+ 
+ mod store;
+ 
+-use crate::store::load;
++use crate::store::fetch;
+ 
+ /// One kind of good in the yard.
+ pub struct Item {
+@@ -40,7 +40,7 @@
+ 
+ /// The sum of two loads.
+ pub fn total() -> u32 {
+-    load() + load()
++    fetch() + fetch()
+ }
+ 
+ /// The doubled load, counted inside a macro.
+@@ -68,7 +68,7 @@
+ 
+ /// The weight of the goods in the yard.
+ pub fn heavy() -> u32 {
+-    let heft = load();
++    let heft = fetch();
+     weigh(heft)
+ }
+ 
+--- a/source/src/store.rs
++++ b/source/src/store.rs
+@@ -1,6 +1,6 @@
+ //! Where the goods are counted.
+ 
+ /// The number of goods in the yard.
+-pub fn load() -> u32 {
++pub fn fetch() -> u32 {
+     3
+ }

@@ -1,0 +1,2 @@
+// Rename Load and every call of it, in both packages.
+edit rename(F, "Fetch") :- func{id: F, module: "example.com/depot/stock", name: "Load"}.

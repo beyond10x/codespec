@@ -1,0 +1,20 @@
+--- a/source/src/lib.rs
++++ b/source/src/lib.rs
+@@ -40,7 +40,7 @@
+ 
+ /// The sum of two loads.
+ pub fn total() -> u32 {
+-    load() + load()
++    load_cached() + load_cached()
+ }
+ 
+ /// The doubled load, counted inside a macro.
+@@ -68,7 +68,7 @@
+ 
+ /// The weight of the goods in the yard.
+ pub fn heavy() -> u32 {
+-    let heft = load();
++    let heft = load_cached();
+     weigh(heft)
+ }
+ 

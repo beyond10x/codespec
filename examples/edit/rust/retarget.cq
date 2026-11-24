@@ -1,0 +1,2 @@
+// Point every call of load at load_cached, which has the same signature.
+edit retarget(S, G) :- calls{site: S, target: F}, func{id: F, name: "Load"}, func{id: G, name: "LoadCached"}.

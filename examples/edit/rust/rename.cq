@@ -1,0 +1,2 @@
+// Rename load and every reference to it: the calls and the use path.
+edit rename(F, "fetch") :- func{id: F, name: "Load"}.

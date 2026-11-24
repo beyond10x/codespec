@@ -1,0 +1,1 @@
+codespec edit: refused: row 1: interface: yard.Measure: Bin implements yard.Measure, which has a method Size: renaming or deleting it breaks the interface

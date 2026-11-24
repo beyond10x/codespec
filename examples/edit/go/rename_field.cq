@@ -1,0 +1,2 @@
+// Rename the field Count of Item: its declaration, the keyed literal and the access; gofmt realigns the struct.
+edit rename_field(T, "Count", "Quantity") :- type{id: T, name: "Item"}, type_field{type: T, name: "Count"}.

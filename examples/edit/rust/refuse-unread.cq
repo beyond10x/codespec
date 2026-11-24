@@ -1,0 +1,2 @@
+// Refused: checked is called inside a macro, code the reader keeps as foreign.
+edit rename(F, "verified") :- func{id: F, name: "checked"}.

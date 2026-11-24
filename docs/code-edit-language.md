@@ -379,10 +379,15 @@ reported by `story:edit-slice-rust-rename`.
 
 ### 7.4 Build check
 
-`--build` also compiles the copy: Go with `go build ./...` and `go vet ./...` over the input
-packages (test files included); Rust with `cargo check --all-targets`. Both run through the host's
-build pool where one exists (`cargo` and `go` shims). A failure refuses the change set and prints
-the compiler's first errors.
+`--build` also compiles the copy, after the re-read matched (§ 7.3). The copy lives under
+`$CODESPEC_CACHE_DIR/edit` (else `$XDG_CACHE_HOME/codespec/edit`, else `~/.cache/codespec/edit`)
+and is removed after the run. Go runs `go build ./...` and `go vet ./...` over the whole copied
+`go.mod` root, not only the input packages (test files included), with `GOWORK=off`; Rust runs
+`cargo check --all-targets --quiet --message-format short` in the copied workspace root, its target
+directory inside the copy. Each command is bounded at 10 minutes. Both run through the host's
+build pool where one exists (`cargo` and `go` shims). A failure gives the status `unverified`: the
+reason `build failed: <root>: <command> exited with …` and the first 20 lines of the compiler's
+output, exit 1, nothing written.
 
 ## 8. Determinism
 

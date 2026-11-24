@@ -1,0 +1,2 @@
+codespec edit: refused: row 1: foreign: example.com/depot/front.Refresh#0: foreign source holds "Total" as a word
+codespec edit: refused: row 1: listed: example.com/depot/front.Refresh#0.calls.0: a call list names example.com/depot/stock.Total: the reader did not read the code making the call

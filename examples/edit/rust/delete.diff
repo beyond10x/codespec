@@ -1,0 +1,10 @@
+--- a/source/src/lib.rs
++++ b/source/src/lib.rs
+@@ -71,7 +71,3 @@
+     let heft = load();
+     weigh(heft)
+ }
+-
+-fn spare() -> u32 {
+-    5
+-}

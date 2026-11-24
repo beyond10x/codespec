@@ -10,8 +10,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
   functions, struct fields, calls, field accesses and struct literal fields are in the source
   files, by byte range and line. It is checked strictly against the module and the files; the
   `cir/1` module written beside it is the same as without `--spans`. A reader gives spans when it
-  takes `--spans` (`docs/design.md` § 2); one that does not is refused by name. No reader gives
-  spans yet. The format and its rules are the crate doc of the new crate `b10x-codespec-edit`.
+  takes `--spans` (`docs/design.md` § 2); one that does not is refused by name. The Go and Rust
+  readers give spans. The format and its rules are the crate doc of the new crate `b10x-codespec-edit`.
 - `codespec edit --lang rust [--closed-world] <crate dir>… -e <program>` renames Rust functions
   and struct fields with a cq edit program (`edit rename(F, "fetch_all") :- func{id: F, name:
   "Load"}.`, `edit rename_field(T, "count", "amount") :- …`) and prints the change as a unified
@@ -35,6 +35,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
   still calls a deleted function is caught; a failure exits 1 with the compiler's first 20 lines.
   An edited Go file that was `gofmt`-clean is realigned by `gofmt` (as part of the diff); other
   files keep their spacing.
+- `examples/edit` holds a Go module and a Rust crate with one edit program per operation and per
+  refusal their source can show, each with its expected diff or refusal; `task examples-edit`
+  runs them in the gate, applies each operation to a copy with `--build` and checks that a
+  refusal writes nothing. The site has a page on code edits: the notation, the operations, the
+  refusals and the verification ([Code edits](https://beyond10x.github.io/codespec/docs/concepts/code-edits)).
 
 ## 0.12.0
 
