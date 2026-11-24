@@ -1,0 +1,63 @@
+{
+  "format": "cir/1",
+  "name": "orders",
+  "path": "example.com/orders",
+  "reader": {"language": "go", "name": "codespec-read-go", "version": "0.12.0"},
+  "doc": "Package orders keeps orders.",
+  "types": [
+    {"k": "struct", "name": "Cart", "exported": true,
+     "fields": [{"name": "Lines", "t": {"k": "int", "width": "platform", "signed": true}}],
+     "doc": "Cart holds lines.", "pos": "orders.go:5"}
+  ],
+  "funcs": [
+    {"name": "Load", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "3", "t": {"k": "int", "width": "platform", "signed": true}}], "pos": "orders.go:11"}
+     ],
+     "doc": "Load gives the number of lines.", "pos": "orders.go:10"},
+    {"name": "Reload", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "binop", "op": "+",
+          "x": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "platform", "signed": true}},
+          "y": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "platform", "signed": true}},
+          "t": {"k": "int", "width": "platform", "signed": true}}
+       ], "pos": "orders.go:16"}
+     ],
+     "doc": "Reload loads again.", "pos": "orders.go:15"},
+    {"name": "count", "exported": false,
+     "recv": {"name": "c", "t": {"k": "named", "name": "Cart"}},
+     "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "field", "x": {"k": "var", "name": "c", "t": {"k": "named", "name": "Cart"}},
+          "name": "Lines", "t": {"k": "int", "width": "platform", "signed": true}}
+       ], "pos": "orders.go:20"}
+     ],
+     "pos": "orders.go:19"},
+    {"name": "total", "exported": false,
+     "recv": {"name": "c", "t": {"k": "named", "name": "Cart"}},
+     "params": [],
+     "results": [{"k": "int", "width": "platform", "signed": true}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "binop", "op": "+",
+          "x": {"k": "method", "x": {"k": "var", "name": "c", "t": {"k": "named", "name": "Cart"}},
+                "name": "count", "args": [], "t": {"k": "int", "width": "platform", "signed": true}},
+          "y": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "platform", "signed": true}},
+          "t": {"k": "int", "width": "platform", "signed": true}}
+       ], "pos": "orders.go:24"}
+     ],
+     "pos": "orders.go:23"}
+  ],
+  "layout": ["type:Cart", "func:Load", "func:Reload", "func:Cart.count", "func:Cart.total"],
+  "methods": [
+    {"t": "Cart", "methods": [
+      {"name": "count", "sig": "func() int", "target": {"k": "method", "recv": "Cart", "name": "count", "pos": "orders.go:19"}},
+      {"name": "total", "sig": "func() int", "target": {"k": "method", "recv": "Cart", "name": "total", "pos": "orders.go:23"}}
+    ]}
+  ]
+}

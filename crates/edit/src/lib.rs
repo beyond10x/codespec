@@ -73,7 +73,22 @@
 //! `cir/1` module, adds `format`, `module` and `cir_sha256`, and strictly reads the span document;
 //! the `cir/1` module is the one a read without `--spans` gives. A reader that fails on `--spans`
 //! or prints a bare module is refused: "the <lang> reader gives no spans".
+//!
+//! # Change sets
+//!
+//! Between the rows of an edit program and the files, with no process, file system or adapter
+//! call: [`change::plan`] turns the operations of the rows (`rename`, `rename_field`; [`rename`])
+//! into the expected set `S'` on `cir/1` and text edits from the span documents, refusing what
+//! the reader could not see ([`change::RULES`]); [`compare::compare`] compares a re-read set
+//! with `S'`; [`diff::unified`] prints the edits as a unified diff. [`lang`] holds the little a
+//! change set knows of a language, [`refs`] the walk that finds the names an operation renames.
 
+pub mod change;
+pub mod compare;
+pub mod diff;
 pub mod ids;
+pub mod lang;
+pub mod refs;
+pub mod rename;
 pub mod run;
 pub mod spans;

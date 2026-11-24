@@ -1,0 +1,67 @@
+{
+  "format": "cir/1",
+  "name": "ledger",
+  "reader": {"language": "rust", "name": "codespec-read-rust", "version": "0.12.0"},
+  "doc": "Ledger keeps lines.",
+  "types": [
+    {"k": "struct", "name": "Line", "exported": true,
+     "fields": [
+       {"name": "qty", "t": {"k": "int", "width": "32", "signed": false}},
+       {"name": "price", "t": {"k": "int", "width": "32", "signed": false}}
+     ],
+     "doc": "One line of the ledger.", "pos": "src/lib.rs:8"}
+  ],
+  "funcs": [
+    {"name": "Run", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "32", "signed": false}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "binop", "op": "+",
+          "x": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "32", "signed": false}},
+          "y": {"k": "call", "name": "Load", "args": [], "t": {"k": "int", "width": "32", "signed": false}},
+          "t": {"k": "int", "width": "32", "signed": false}}
+       ], "pos": "src/lib.rs:15"}
+     ],
+     "doc": "The total of the loaded lines.", "pos": "src/lib.rs:14"},
+    {"name": "make", "exported": false,
+     "params": [{"name": "qty", "t": {"k": "int", "width": "32", "signed": false}}],
+     "results": [{"k": "named", "name": "Line"}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "struct", "name": "Line", "fields": [
+           {"name": "qty", "value": {"k": "var", "name": "qty", "t": {"k": "int", "width": "32", "signed": false}}},
+           {"name": "price", "value": {"k": "lit", "value": "1", "t": {"k": "int", "width": "32", "signed": false}}}
+         ], "t": {"k": "named", "name": "Line"}}
+       ], "pos": "src/lib.rs:19"}
+     ],
+     "pos": "src/lib.rs:18"},
+    {"name": "keyed", "exported": false, "params": [],
+     "results": [{"k": "named", "name": "Line"}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "struct", "name": "Line", "fields": [
+           {"name": "qty", "value": {"k": "lit", "value": "2", "t": {"k": "int", "width": "32", "signed": false}}},
+           {"name": "price", "value": {"k": "lit", "value": "3", "t": {"k": "int", "width": "32", "signed": false}}}
+         ], "t": {"k": "named", "name": "Line"}}
+       ], "pos": "src/lib.rs:23"}
+     ],
+     "pos": "src/lib.rs:22"},
+    {"name": "units", "exported": false,
+     "params": [{"name": "l", "t": {"k": "named", "name": "Line"}}],
+     "results": [{"k": "int", "width": "32", "signed": false}],
+     "body": [
+       {"k": "return", "results": [
+         {"k": "field", "x": {"k": "var", "name": "l", "t": {"k": "named", "name": "Line"}},
+          "name": "qty", "t": {"k": "int", "width": "32", "signed": false}}
+       ], "pos": "src/lib.rs:27"}
+     ],
+     "pos": "src/lib.rs:26"},
+    {"name": "Load", "exported": true, "params": [],
+     "results": [{"k": "int", "width": "32", "signed": false}],
+     "body": [
+       {"k": "return", "results": [{"k": "lit", "value": "4", "t": {"k": "int", "width": "32", "signed": false}}], "pos": "src/m.rs:3"}
+     ],
+     "doc": "Load gives the number of lines.", "pos": "src/m.rs:2"}
+  ],
+  "layout": ["type:Line", "func:Run", "func:make", "func:keyed", "func:units", "func:Load"]
+}
