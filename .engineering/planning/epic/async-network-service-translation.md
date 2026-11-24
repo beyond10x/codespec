@@ -21,7 +21,7 @@ relations:
 - depends_on: story:cir1-defer-receiver-root
 - depends_on: story:listed-macro-format-string
 - depends_on: story:reader-indirect-sites-rust
-revision: 3
+revision: 4
 ---
 # Epic: An async network service read from Rust and written as Go
 
@@ -88,29 +88,55 @@ written from scratch. The operator's rule: a misread without a refusal is a corr
 and ranks before any refusal. Refusals are ranked by how many functions of an async service
 each likely blocks.
 
-1. Silent misreads first: `story:rust-reader-no-silent-misread` (implemented: serde wire
-   attributes and last-segment type paths are refused instead of read wrongly), then
-   `story:rust-reader-shift-count` (wrong in every Rust build), `story:rust-reader-integer-overflow`
-   (`MIN / -1` wrong in every build; `+ - *` wrong with overflow checks),
-   `story:rust-reader-platform-int-width` (a `usize` function reads to Go and Rust that do not
-   build), then `story:rust-reader-std-types-by-path` for the parts that story does not take.
-2. Reader coverage: `story:rust-reader-externs`, `story:rust-reader-async` (async functions and
-   `.await`; spawn and `select!` wait for step 3), `story:rust-reader-shared-state`,
-   `story:rust-reader-module-paths`, `story:rust-reader-mut-refs`, `story:rust-reader-json-values`,
-   `story:rust-reader-duration`, `story:rust-reader-option-values`,
-   `story:rust-reader-iterators-and-std-impls`, `story:rust-reader-impls-on-undeclared-types`,
-   `story:rust-reader-lifetimes`, `story:wire-names-from-serde`,
-   `story:rust-reader-log-and-metric-macros`, `story:rust-reader-http-entries`, then
-   `story:rust-reader-count-test-only-items` (a count, no function blocked).
-3. `story:cir1-tasks-and-select` (decided: `cir/1` states tasks and `select`), then
-   `story:eval-deterministic-tasks`.
-4. Go writer: `story:go-writer-partial-module`, `story:go-writer-extern-map`.
-5. Equivalence: `story:harness-service-traces`, `story:example-async-service`,
+Revised again 2026-11-24 as waves, from a measurement on main `08e7fde13`: the Rust reader reads
+7 of 427 functions of the async network service (357 refusals; the consumer counted 10 of 552 on
+0.12.0, on its own tree and count). After each wave stands the number of functions expected to
+read: an upper bound, counting a function once every construct it uses, and every construct of
+the types it names, is covered by a story of that wave or an earlier one. The reader names only
+the first refusal of a function it leaves `opaque`, so the constructs were taken from the source.
+Most functions need many stories (about half need six or more), so the count moves late. Every
+Rust reader story lands on `adapters/rust-read/src/`, so `aep plan artifact waves` puts a wave's
+stories one after another; a wave is what is delivered before the next starts, in the order
+listed. The consumer's order (async, shared state, externs, option values, iterators, std types
+by path, wire names, tasks and `select`) is kept where the counts and `depends_on` edges allow:
+`story:rust-reader-async` depends on `story:cir1-tasks-and-select` and
+`story:rust-reader-externs`, and almost every async function also needs tasks, shared state and
+`Duration`, so it moves to wave 4; wire names gain few functions alone and move to wave 5.
+
+1. Silent misreads, about 7 of 427 (none gained): `story:rust-reader-shift-count`,
+   `story:rust-reader-platform-int-width`, `story:rust-tuple-variant-fields` (a misread on the
+   round trip), `story:rust-reader-std-types-by-path` for the parts
+   `story:rust-reader-no-silent-misread` did not take, `story:rust-reader-count-test-only-items`
+   (the denominator), and the design note of `story:rust-reader-integer-overflow` (D1 = A, a
+   checked operator in `cir/1`) with its adversary pass. Its implementation waits for the note.
+2. About 37 of 427: `story:rust-reader-integer-overflow` (implementation),
+   `story:rust-reader-shared-state`, `story:rust-reader-externs`,
+   `story:rust-reader-option-values`, `story:rust-reader-string-and-integer-methods`,
+   `story:rust-reader-casts-slices-unsafe`, `story:rust-reader-refused-let-cascade` (no function
+   gained; refusal counts name their own cause from here on).
+3. About 100 of 427: `story:rust-reader-json-values`, `story:rust-reader-iterators-and-std-impls`,
+   `story:rust-reader-tuple-types`, `story:rust-reader-type-aliases`,
+   `story:rust-reader-trait-and-macro-items`, `story:rust-reader-duration`,
+   `story:rust-reader-ordered-map-results` and `story:rust-reader-borrow-kinds` (both a loss of
+   information, not a misread; no function gained).
+4. About 238 of 427: `story:cir1-tasks-and-select`, then `story:rust-reader-async`;
+   `story:rust-reader-sets-and-deques`, `story:rust-reader-lifetimes`,
+   `story:rust-reader-mut-refs`.
+5. About 419 of 427: `story:rust-reader-match-patterns`, `story:rust-reader-value-blocks`,
+   `story:wire-names-from-serde`, `story:rust-reader-const-expressions`,
+   `story:rust-reader-std-macros`, `story:rust-reader-workspace-crates`.
+6. About 427 of 427: `story:rust-reader-impls-on-undeclared-types`,
+   `story:rust-reader-module-paths`, `story:rust-reader-cfg-features` (none in this service),
+   `story:rust-reader-log-and-metric-macros`, `story:rust-reader-http-entries`.
+7. `story:eval-deterministic-tasks`.
+8. Go writer: `story:go-writer-partial-module`, `story:go-writer-extern-map`.
+9. Equivalence: `story:harness-service-traces`, `story:example-async-service`,
    `story:sealed-translation-run`.
 
+After each wave the reader is run on the service again and the count replaces the estimate here.
+
 Outside this epic (Rust writer, Rust to Rust), from the same report, in this order:
-`story:rust-tuple-variant-fields` (a misread on the round trip), `story:writer-rust-floats`,
-`story:rust-writer-interfaces-and-generics`.
+`story:writer-rust-floats`, `story:rust-writer-interfaces-and-generics`.
 
 ## Acceptance
 
