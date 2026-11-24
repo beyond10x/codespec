@@ -2,6 +2,17 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
+  functions, struct fields, calls, field accesses and struct literal fields are in the source
+  files, by byte range and line. It is checked strictly against the module and the files; the
+  `cir/1` module written beside it is the same as without `--spans`. A reader gives spans when it
+  takes `--spans` (`docs/design.md` § 2); one that does not is refused by name. No reader gives
+  spans yet. The format and its rules are the crate doc of the new crate `b10x-codespec-edit`.
+
 ## 0.12.0
 
 ### Added

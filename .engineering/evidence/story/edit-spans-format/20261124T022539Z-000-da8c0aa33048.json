@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T02:25:39Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-spans-format",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-edit --locked (25 passed) and cargo test -p b10x-codespec-cli --locked --test query (8 passed, 4 of them edit::)",
+    "reference": "crates/edit/tests/main.rs"
+  }
+}

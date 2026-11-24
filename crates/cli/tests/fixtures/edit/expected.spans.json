@@ -1,0 +1,65 @@
+{
+  "format": "codespec-spans/1",
+  "module": "pair",
+  "cir_sha256": "f713b8f0a5b956a24049f850f6603d330a0b75268bc54f2f8d00dec401e89608",
+  "files": [
+    {
+      "path": "pair.go",
+      "sha256": "2606677ad70a7df1f8bd4dd61cec10a8611433e9b05f1ef3ea68e48946aaaecb",
+      "len": 220,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 56,
+      "end": 142,
+      "line": 4,
+      "end_line": 7
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 94,
+      "end": 99,
+      "line": 5,
+      "end_line": 5,
+      "text": "First"
+    },
+    {
+      "at": "funcs.0.body.0.results.0",
+      "role": "name",
+      "file": 0,
+      "start": 124,
+      "end": 128,
+      "line": 6,
+      "end_line": 6,
+      "text": "pick"
+    },
+    {
+      "at": "funcs.1",
+      "role": "decl",
+      "file": 0,
+      "start": 144,
+      "end": 219,
+      "line": 9,
+      "end_line": 14
+    },
+    {
+      "at": "funcs.1",
+      "role": "name",
+      "file": 0,
+      "start": 149,
+      "end": 153,
+      "line": 9,
+      "end_line": 9,
+      "text": "pick"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

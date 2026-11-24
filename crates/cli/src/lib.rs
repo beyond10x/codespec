@@ -48,6 +48,11 @@ pub enum Cmd {
         /// Where the validated cir/1 module is written, in canonical encoding.
         #[arg(long)]
         out: PathBuf,
+        /// Run the adapter with --spans and also write the module's codespec-spans/1 document
+        /// here, strictly read against the module and the source files; the cir/1 module written
+        /// to OUT is the one a read without --spans gives. A reader without spans is refused.
+        #[arg(long)]
+        spans: Option<PathBuf>,
         /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
         #[arg(long, env = "CODESPEC_ADAPTERS")]
         adapters: PathBuf,

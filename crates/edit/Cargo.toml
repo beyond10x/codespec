@@ -1,0 +1,18 @@
+[package]
+name = "b10x-codespec-edit"
+description = "Code edits in cir/1 terms: the codespec-spans/1 document that ties cir/1 nodes to source bytes, its strict reading, the mapping between span paths and cq ids, and the reading of a source directory with spans"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_edit"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-query = { path = "../query" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+sha2.workspace = true

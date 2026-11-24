@@ -35,6 +35,14 @@ first seed. `cir/1` is `cir/0` with the changes in § 3.
   and type resolution for the subset of Rust that `cir/1` covers.
 - An adapter is a program. A reader prints one module on stdout; a writer reads one on stdin.
   `codespec read` and `codespec write` validate each document against the model on the way through.
+- A reader that gives spans (for `codespec edit`, `docs/code-edit-language.md` § 6) takes
+  `--spans <dir>` and prints one JSON object `{"cir": …, "files": […], "spans": […],
+  "unspanned": […], "refs": […]}`: `cir` the module it prints without `--spans`, the lists those
+  of the `codespec-spans/1` document (crate doc of `crates/edit`), each `at` computed by the
+  reader. `codespec read --spans <out>` strictly reads the module, adds `format`, `module` and
+  `cir_sha256`, strictly reads the span document against the module and the source files, and
+  writes both. A reader without spans fails on `--spans` or prints a bare module, and is refused
+  by name; no manifest field says which readers give spans.
 
 Two questions decide each adapter, and the harness answers both:
 

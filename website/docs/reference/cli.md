@@ -69,7 +69,7 @@ Usage: codespec features
 Run the reader adapter for LANG over SOURCE and write the validated cir/1 module to OUT
 
 ```text
-Usage: codespec read --lang <LANG> --out <OUT> --adapters <ADAPTERS> <SOURCE>
+Usage: codespec read [OPTIONS] --lang <LANG> --out <OUT> --adapters <ADAPTERS> <SOURCE>
 ```
 
 | Argument | Required | Default | Environment | Meaning |
@@ -77,6 +77,7 @@ Usage: codespec read --lang <LANG> --out <OUT> --adapters <ADAPTERS> <SOURCE>
 | `--lang <LANG>` | yes | none | none | The source language; selects the adapter `codespec-read-<lang>`. |
 | `<SOURCE>` | yes | none | none | The source the adapter reads: for Go, one package directory. |
 | `--out <OUT>` | yes | none | none | Where the validated cir/1 module is written, in canonical encoding. |
+| `--spans <SPANS>` | no | none | none | Run the adapter with --spans and also write the module's codespec-spans/1 document here, strictly read against the module and the source files; the cir/1 module written to OUT is the one a read without --spans gives. A reader without spans is refused. |
 | `--adapters <ADAPTERS>` | yes | none | `CODESPEC_ADAPTERS` | Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`. |
 
 ## `codespec pass`

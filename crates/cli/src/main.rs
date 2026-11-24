@@ -207,9 +207,18 @@ fn run(cmd: Cmd) -> Result<(), String> {
             lang,
             source,
             out,
+            spans,
             adapters,
         } => {
             let prog = adapter(&adapters, "read", &lang)?;
+            if let Some(spans) = spans {
+                let read = codespec_edit::run::read_spanned(&prog, &source)?;
+                std::fs::write(&out, read.cir_json())
+                    .map_err(|e| format!("{}: {e}", out.display()))?;
+                std::fs::write(&spans, read.spans_json())
+                    .map_err(|e| format!("{}: {e}", spans.display()))?;
+                return Ok(());
+            }
             let output = Command::new(&prog)
                 .arg(&source)
                 .stderr(Stdio::inherit())

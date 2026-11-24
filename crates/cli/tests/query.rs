@@ -1,5 +1,8 @@
 //! `codespec query`: the schema, a query from a file and the same query inline, `--explain`, and
-//! the exit status (0 no rows, 1 rows, 2 an error), on the fixtures of `crates/query`.
+//! the exit status (0 no rows, 1 rows, 2 an error), on the fixtures of `crates/query`. The module
+//! `edit` tests `codespec read --spans`.
+
+mod edit;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
