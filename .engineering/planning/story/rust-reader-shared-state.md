@@ -6,7 +6,8 @@ status: draft
 title: The Rust reader reads shared state behind Arc and a mutex
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+- informed_by: story:rust-reader-borrow-kinds
+revision: 3
 ---
 # Story: The Rust reader reads shared state behind Arc and a mutex
 
@@ -55,3 +56,13 @@ cir/1: the reader maps a path by the full path it names", then "an impl for a ty
 declared one" for the whole `impl Counter`. One field takes every method of the state struct
 with it. A failing test first in `adapters/rust-read/tests/reader.rs`: `hit` called twice on one
 `Counter` evaluates to 2.
+
+## Receivers of types with interior mutability
+
+Found 2026-11-24 while reproducing "references dropped" (`story:rust-reader-borrow-kinds`): the
+reader reads `&self` as a value receiver unless a method of the type takes `&mut self`. Today
+that is safe, as a field of `Mutex`, `RwLock`, an atomic, `Cell` or `RefCell` refuses its struct.
+Once this story reads such a field, a `&self` method that locks or stores through it changes the
+shared value in Rust, while Go with a value receiver would lock and change a copy. A failing test
+first: a type with a mutex field and only `&self` methods reads with pointer receivers, and a
+call that changes the value through one method is seen by the next.
