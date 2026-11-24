@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T15:30:41Z",
+  "actor": "human:timo",
+  "artifact": "story:rust-reader-shift-count",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust --locked (all green: reader 115, cases 2); tests a_shift_whose_count_is_not_proven_below_the_width_is_refused_at_its_line, a_shift_whose_count_is_proven_below_the_width_reads_and_evaluates_equal_to_rust, a_shift_whose_count_is_the_first_outside_its_rule_is_refused_at_its_line",
+    "reference": "adapters/rust-read/tests/reader.rs"
+  }
+}

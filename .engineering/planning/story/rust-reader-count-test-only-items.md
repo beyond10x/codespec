@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:rust-reader-count-test-only-items
 kind: story
-status: draft
+status: active
 title: The Rust reader counts what it leaves out as test-only
 summary: codespec measure says how many functions cfg(test) left out, so a coverage figure names its denominator.
 relations:
@@ -22,7 +22,10 @@ scope:
   path: crates/model/src/lib.rs
 - confidence: cited
   path: schemas/cir-1.schema.json
-revision: 6
+revision: 9
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 8}
+- {from: "proposed", to: "active", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 9}
 ---
 # Story: The Rust reader counts what it leaves out as test-only
 
@@ -77,5 +80,5 @@ changing what that field means:
 
 The count needs an additive `cir/1` field, for example `left_out: [{pos, what, reason}]` on
 `Module`, omitted when empty, with `schemas/cir-1.schema.json` regenerated. That is a model
-change: the story is blocked on `decision-blocker:cir1-test-only-count-field` until the owner
-decides it.
+change, decided A in `decision-blocker:cir1-test-only-count-field` (cleared 2026-11-24): the field is
+`left_out`, omitted when empty, every existing document byte-equal.

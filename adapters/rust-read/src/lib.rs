@@ -22,7 +22,7 @@
 //! | `struct T(pub U)`, `U` an integer, `bool` or `String` | `newtype` |
 //! | `enum T { A, B }` (unit variants) | `enum` over `int` (platform), values the discriminants (`A = 1`) or 0, 1, … |
 //! | the same with `fn value(&self) -> &'static str` (or an integer) matching every variant to a literal | `enum` over `string` (or that integer), the method absorbed |
-//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, … |
+//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, …: the `_<digits>` rule, such a name marks a positional field, so the Rust writer writes `B(U)` back; a struct variant whose field is named `_<digits>` (`V { _0: U }`) would read the same and is refused at that field |
 //! | `enum Error` of unit variants, `V(S)` (`S` a struct) and `Msg(String)`, with a `Display` impl | sentinel errors `Err<V>` (message from its `Display` arm); `S` an error struct whose `Display` is its `Error()`; `Msg` `errorf` |
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
 //! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
@@ -48,7 +48,7 @@
 //!
 //! | Rust | cir/1 |
 //! |---|---|
-//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform) |
+//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform), signed and unsigned; a length and an index are `usize` |
 //! | `bool`, `String`, `&str` | `bool`, `string` |
 //! | `f32`, `f64` | `float` of that width |
 //! | `[T; N]`, `N` a literal | `array` |
@@ -90,7 +90,7 @@
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
 //! | `ch.0.try_send(x).expect(…)` / `.unwrap()`, `ch` a channel of both ends | `send` (a full channel panics, where Go would block) |
 //! | `if`, `else if`, `else` | `if` |
-//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
+//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms); `for (_, x) in v.iter().enumerate()` | `for_range` over the map or slice; a named index of `enumerate()` is refused, as it is a `usize` and the range gives a signed platform `int`. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
 //! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
 //! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
@@ -132,7 +132,9 @@
 //! | `T { f: x, .. }` | `struct`; a field whose value is the zero literal (`0`, `false`, `""`, `String::new()`) is left out, as Go does |
 //! | `Rc::new(RefCell::new(x))` | `&x` |
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
-//! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `+ - * / % & | ^`, `<< >>` (next row), comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `x << n`, `x >> n`, `x <<= n`, `x >>= n` on integers | `binop`, `assign`, only where the count `n` is proven below the width W of `x`'s type (8, 16, 32, 64): an integer literal below W (unsuffixed, Rust's `i32`), a `const` whose literal is below W, `e & m` with a literal `m` at most W - 1, or `e % k` with a literal `k` at most W and `e` unsigned; on a `usize` or `isize` (`platform`, 32 or 64 bits) only an integer literal below 32. Any other shift is refused at its line: Rust panics on a count at or past W with `overflow-checks` and masks it without, where Go gives 0 or the sign |
+//! | `==`, `!=` (and a match guard `v if v == e`) on a type whose `PartialEq` the crate writes by hand; `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does; either on a type that holds such a type (a field, the type a newtype wraps, a type argument, an element) | refused at its line: Rust calls the impl, where `cir/1`'s comparison is Go's built-in one. A derived `PartialEq`, `PartialOrd` or `Ord` reads as the built-in comparison |
 //! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
 //! | `x.clone()` of a value without a slice or map inside, an array's elements and a generic struct's type arguments included | `x` (Go copies) |
 //! | `*p`, `p` bound to `&mut x` | `*p` |
@@ -149,7 +151,7 @@
 //! | receiver | method | cir/1 |
 //! |---|---|---|
 //! | `String` | `clone`, `to_string`, `to_owned`, `as_str`, `into` | the value |
-//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len` (platform `int`) |
+//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len`: unsigned platform `int` (`usize`); `int 64` for `as i64` |
 //! | `String`, `Vec`, `HashMap`, `BTreeMap` | `is_empty()` | `len(x) == 0` |
 //! | `String` | `push_str(t)` (statement) | `s += t` |
 //! | `String::from(x)`, `String::new()` | | `x`, `""` |
@@ -940,6 +942,12 @@ pub(crate) struct Reader {
     pub sigs: BTreeMap<(Option<String>, String), Sig>,
     pub ptr_types: BTreeSet<String>,
     pub consts: BTreeMap<String, (String, Type)>,
+    /// The literal value of each read `const`, by Go name: what proves a shift's count.
+    pub const_values: BTreeMap<String, String>,
+    /// Types whose `PartialEq` the crate writes by hand, by Rust name.
+    pub hand_eq: BTreeSet<String>,
+    /// Types whose `PartialOrd` or `Ord` the crate writes by hand, by Rust name.
+    pub hand_ord: BTreeSet<String>,
     /// Types `enum Error` wraps: their `Display` is their `Error()`.
     pub error_structs: BTreeSet<String>,
     /// Unit enums whose `value()` method was absorbed.
@@ -1285,6 +1293,9 @@ impl Reader {
             sigs: BTreeMap::new(),
             ptr_types: BTreeSet::new(),
             consts: BTreeMap::new(),
+            const_values: BTreeMap::new(),
+            hand_eq: BTreeSet::new(),
+            hand_ord: BTreeSet::new(),
             error_structs: BTreeSet::new(),
             value_enums: BTreeSet::new(),
             displays: BTreeSet::new(),
@@ -2897,6 +2908,36 @@ impl Reader {
                 }
             }
         }
+        // Comparison impls written by hand: `==`, `<` and the rest on the type call them, which
+        // `cir/1`'s built-in comparison is not. A trait of that name the crate declares is not
+        // std's, unless named by a std path.
+        for item in &f.items {
+            self.enter(item);
+            if let syn::Item::Impl(im) = item
+                && let Some((p, _)) = &im.trait_
+                && let Some(tr) = p.segments.last().map(|s| s.ident.to_string())
+                && (!self.traits.contains_key(&tr)
+                    || matches!(
+                        self.full_path(p).first().map(String::as_str),
+                        Some("std" | "core")
+                    ))
+                && let Some((t, _)) = last_seg(match &*im.self_ty {
+                    syn::Type::Reference(r) => &r.elem,
+                    t => t,
+                })
+            {
+                let t = t.to_string();
+                match tr.as_str() {
+                    "PartialEq" => {
+                        self.hand_eq.insert(t);
+                    }
+                    "PartialOrd" | "Ord" => {
+                        self.hand_ord.insert(t);
+                    }
+                    _ => {}
+                }
+            }
+        }
         // Constants.
         for item in &f.items {
             self.enter(item);
@@ -2911,9 +2952,12 @@ impl Reader {
                 // is refused naming it.
                 let read = self
                     .ty(&c.ty, None)
-                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|_| t));
+                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|v| (t, v)));
                 match read {
-                    Ok(t) => {
+                    Ok((t, v)) => {
+                        if let Expr::Lit { value, .. } = v {
+                            self.const_values.insert(go.clone(), value);
+                        }
                         self.consts.insert(rust, (go, t));
                     }
                     Err(e) => {
@@ -3168,7 +3212,19 @@ impl Reader {
                             for v in &e.variants {
                                 let mut fields = Vec::new();
                                 for (i, fl) in v.fields.iter().enumerate() {
+                                    // `_<digits>` marks a tuple field in cir/1: a struct
+                                    // variant's field of that name would read as one.
                                     let fname = match &fl.ident {
+                                        Some(id) if tuple_field_name(&id.to_string()) => {
+                                            bad = Some((
+                                                self.pos(fl.span()),
+                                                format!(
+                                                    "the field `{id}` of the struct variant {}: a name `_<digits>` marks a tuple field in cir/1, so the variant would read as the tuple variant `{}(…)`",
+                                                    v.ident, v.ident
+                                                ),
+                                            ));
+                                            continue;
+                                        }
                                         Some(id) => names::exported(&id.to_string()),
                                         None => format!("_{i}"),
                                     };
@@ -3178,7 +3234,7 @@ impl Reader {
                                             t,
                                             embedded: false,
                                         }),
-                                        Err(r) => bad = Some(r),
+                                        Err(r) => bad = Some((pos.clone(), r)),
                                     }
                                 }
                                 variants.push(UnionVariant {
@@ -3186,7 +3242,7 @@ impl Reader {
                                     fields,
                                 });
                             }
-                            if let Some(r) = bad {
+                            if let Some((pos, r)) = bad {
                                 late_refusals.push(Refusal {
                                     pos,
                                     what: n,
@@ -3772,6 +3828,12 @@ fn screaming(s: &str) -> String {
     } else {
         s.to_lowercase()
     }
+}
+
+/// Whether `name` is `_<digits>`, the name `cir/1` gives a tuple variant's positional field.
+fn tuple_field_name(name: &str) -> bool {
+    name.strip_prefix('_')
+        .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// A unit enum's discriminants: explicit integer literals, or one more than the previous, from 0.

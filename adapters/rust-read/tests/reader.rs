@@ -3473,3 +3473,426 @@ fn a_map_renamed_on_import_keeps_its_order() {
     let json = serde_json::to_string(&f.map(|f| &f.body)).unwrap();
     assert!(json.contains("sorted_keys"), "{json}");
 }
+
+// ----- platform-width integers ---------------------------------------------------------------
+
+/// A crate whose values are `usize` and `isize`: a length, an index and a sum.
+const WIDTHS: &str = "pub fn count(v: Vec<i64>) -> usize { v.len() }\n\
+pub fn at(v: Vec<i64>, i: usize) -> i64 { v[i] }\n\
+pub fn offset(base: isize, d: isize) -> isize { base + d }\n";
+
+/// Every `return` of `m`'s functions whose values do not have the function's result types, and
+/// every binary operator other than a shift whose operands differ in type, as
+/// `<function>: <what>`.
+fn mistyped(m: &Module) -> Vec<String> {
+    fn exprs<'a>(e: &'a Expr, out: &mut Vec<&'a Expr>) {
+        out.push(e);
+        match e {
+            Expr::Binop { x, y, .. } => {
+                exprs(x, out);
+                exprs(y, out);
+            }
+            Expr::Unop { x, .. } => exprs(x, out),
+            Expr::Index { x, index, .. } => {
+                exprs(x, out);
+                exprs(index, out);
+            }
+            Expr::Intrinsic { args, .. } | Expr::Call { args, .. } => {
+                args.iter().for_each(|a| exprs(a, out))
+            }
+            _ => {}
+        }
+    }
+    let mut bad = Vec::new();
+    for f in &m.funcs {
+        for s in all_stmts(&f.body) {
+            let mut roots: Vec<&Expr> = Vec::new();
+            match s {
+                Stmt::Return { results, .. } => {
+                    for (r, want) in results.iter().zip(&f.results) {
+                        if r.t() != want {
+                            bad.push(format!("{}: returns {:?} for {want:?}", f.name, r.t()));
+                        }
+                    }
+                    roots.extend(results);
+                }
+                Stmt::Let { rhs, .. } => roots.extend(rhs),
+                Stmt::If { cond, .. } => roots.push(cond),
+                _ => {}
+            }
+            let mut all = Vec::new();
+            roots.into_iter().for_each(|r| exprs(r, &mut all));
+            for e in all {
+                if let Expr::Binop { op, x, y, .. } = e
+                    && !matches!(op.as_str(), "<<" | ">>")
+                    && x.t() != y.t()
+                {
+                    bad.push(format!("{}: {op} of {:?} and {:?}", f.name, x.t(), y.t()));
+                }
+            }
+        }
+    }
+    bad
+}
+
+/// `usize` and `isize` keep their type: `v.len()` in a function returning `usize` is an
+/// unsigned platform `int`, so every returned value has the result's type.
+#[test]
+fn a_length_returned_as_usize_has_the_results_type() {
+    let m = read(WIDTHS);
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(mistyped(&m), Vec::<String>::new());
+    let usize = Type::Int {
+        width: IntWidth::Platform,
+        signed: false,
+    };
+    let count = m.funcs.iter().find(|f| f.name == "Count").expect("Count");
+    assert_eq!(count.results, [usize]);
+}
+
+/// `is_empty()` compares the length with a zero of the length's type, a literal index is a
+/// `usize` as Rust types it, and `len() as i64` stays a 64-bit length.
+#[test]
+fn a_length_compares_and_indexes_as_a_usize() {
+    let m = read(&lines(&[
+        "pub fn empty(v: Vec<i64>) -> bool { v.is_empty() }",
+        "pub fn first(v: Vec<i64>) -> i64 { v[0] }",
+        "pub fn last(v: Vec<i64>) -> usize { if v.len() > 0 { v.len() - 1 } else { 0 } }",
+        "pub fn size(s: String) -> i64 { s.len() as i64 }",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert_eq!(mistyped(&m), Vec::<String>::new());
+    let first = m.funcs.iter().find(|f| f.name == "First").expect("First");
+    let json = serde_json::to_value(&first.body).unwrap();
+    assert_eq!(
+        json[0]["results"][0]["index"]["t"],
+        serde_json::json!({"k": "int", "width": "platform", "signed": false}),
+        "{json}"
+    );
+}
+
+/// The index `enumerate()` gives is a `usize`, and `cir/1`'s range over a slice binds a signed
+/// platform `int`, with no conversion between the two: a named index is refused at its line,
+/// `_` is read.
+#[test]
+fn an_enumerate_index_that_is_named_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub fn find(v: Vec<i64>, x: i64) -> usize {",
+        "    let mut at = v.len();",
+        "    for (i, y) in v.iter().enumerate() {",
+        "        if *y == x {",
+        "            at = i;",
+        "        }",
+        "    }",
+        "    at",
+        "}",
+        "pub fn sum(v: Vec<i64>) -> i64 {",
+        "    let mut t = 0i64;",
+        "    for (_, y) in v.iter().enumerate() {",
+        "        t += *y;",
+        "    }",
+        "    t",
+        "}",
+    ]));
+    assert!(refused_at(&m, "lib.rs:3"), "{:?}", m.refusals);
+    assert_eq!(m.refusals.len(), 1, "{:?}", m.refusals);
+    assert!(
+        m.refusals[0].reason.contains("enumerate"),
+        "{:?}",
+        m.refusals
+    );
+}
+
+/// The Go written from the crate of `usize` and `isize` values builds and vets.
+#[test]
+fn the_go_written_from_platform_width_values_builds_and_vets() {
+    let m = read(WIDTHS);
+    assert!(m.refusals.is_empty(), "refusals: {:?}", m.refusals);
+    let passed = codespec_passes::run(&m);
+    let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join("reader-go-widths");
+    if work.exists() {
+        std::fs::remove_dir_all(&work).unwrap();
+    }
+    std::fs::create_dir_all(&work).unwrap();
+    let doc = work.join("passed.cir.json");
+    let go = work.join("go");
+    std::fs::write(&doc, passed.to_json()).unwrap();
+    let w = std::process::Command::new(go_tools().join("codespec-write-go"))
+        .arg(&go)
+        .stdin(std::fs::File::open(&doc).unwrap())
+        .output()
+        .expect("the Go writer starts");
+    assert!(w.status.success(), "{}", String::from_utf8_lossy(&w.stderr));
+    std::fs::write(go.join("go.mod"), "module probe\n\ngo 1.23\n").unwrap();
+    for args in [&["build", "./..."][..], &["vet", "./..."]] {
+        let o = std::process::Command::new("go")
+            .args(args)
+            .env("GOWORK", "off")
+            .current_dir(&go)
+            .output()
+            .expect("go starts");
+        assert!(
+            o.status.success(),
+            "go {}: {}",
+            args[0],
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+}
+
+// ----- tuple variants --------------------------------------------------------------------------
+
+/// A tuple variant's fields are named `_0`, `_1`, … in `cir/1`: that name marks a positional
+/// field. A struct variant whose field is named `_<digits>` would read to the same `cir/1`, so it
+/// is refused at that field's line, and its enum with it.
+#[test]
+fn a_struct_variant_field_named_like_a_tuple_field_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub enum Shape {",
+        "    Circle(i64),",
+        "    Rect { w: i64, h: i64 },",
+        "}",
+        "pub enum E {",
+        "    V {",
+        "        _0: i64,",
+        "    },",
+        "}",
+        "pub enum F {",
+        "    W { _x: i64, _12: i64 },",
+        "}",
+    ]));
+    let doc: Value = serde_json::from_str(&m.to_json()).unwrap();
+    let shape = doc["types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "Shape")
+        .expect("Shape is read");
+    assert_eq!(shape["variants"][0]["name"], "Circle");
+    assert_eq!(shape["variants"][0]["fields"][0]["name"], "_0");
+    assert!(refused_at(&m, "lib.rs:7"), "{:?}", m.refusals);
+    assert!(refused_at(&m, "lib.rs:11"), "{:?}", m.refusals);
+    assert_eq!(m.refusals.len(), 2, "{:?}", m.refusals);
+    assert!(
+        m.refusals
+            .iter()
+            .all(|r| r.reason.contains("_0") || r.reason.contains("_12")),
+        "{:?}",
+        m.refusals
+    );
+    let names: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(names, ["Shape"]);
+}
+
+/// What the `cir/1` evaluator prints for `calls` against `m` after the passes; a stop fails.
+fn evaluate(m: &Module, calls: &[(&str, &[&str])]) -> String {
+    let passed = codespec_passes::run(m);
+    let calls = codespec_conformance::Calls {
+        format: "codespec-calls/1".into(),
+        calls: calls
+            .iter()
+            .map(|(f, args)| codespec_conformance::Call {
+                func: (*f).into(),
+                args: args.iter().map(|a| (*a).into()).collect(),
+            })
+            .collect(),
+    };
+    let run = codespec_eval::run_calls(&passed, &calls, &codespec_eval::Options::default())
+        .expect("the evaluator takes the calls");
+    assert!(run.stop.is_none(), "{:?}\n{}", run.stop, run.stdout);
+    run.stdout
+}
+
+/// A shift whose count is not proven below the left operand's width, the consumer's three: Rust
+/// panics (with overflow checks) or masks the count, where `cir/1`'s Go shift gives 0.
+#[test]
+fn a_shift_whose_count_is_not_proven_below_the_width_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub fn shl(x: u32, n: u32) -> u32 {",
+        "    x << n",
+        "}",
+        "pub fn mask(bits: u8) -> u64 {",
+        "    (1u64 << bits) - 1",
+        "}",
+        "pub fn shl_signed(x: i64, n: u32) -> i64 {",
+        "    x << n",
+        "}",
+    ]));
+    assert_foreign(&m, "Shl", "lib.rs:2", "count");
+    assert_foreign(&m, "Mask", "lib.rs:5", "count");
+    assert_foreign(&m, "ShlSigned", "lib.rs:8", "count");
+}
+
+/// Each count the rule proves below the width reads, and evaluates to what Rust prints.
+#[test]
+fn a_shift_whose_count_is_proven_below_the_width_reads_and_evaluates_equal_to_rust() {
+    let m = read(&lines(&[
+        "const STEP: u32 = 7;",
+        "pub fn lit(x: i32) -> i32 {",
+        "    x << 31",
+        "}",
+        "pub fn by_const(x: i64) -> i64 {",
+        "    x >> STEP",
+        "}",
+        "pub fn masked(x: i64, n: u32) -> i64 {",
+        "    x << (n & 63)",
+        "}",
+        "pub fn modulo(x: i8, n: u64) -> i8 {",
+        "    x >> (n % 8)",
+        "}",
+        "pub fn word(x: isize) -> isize {",
+        "    x << 31",
+        "}",
+        "pub fn in_place(mut x: i16, n: i16) -> i16 {",
+        "    x <<= n & 15;",
+        "    x",
+        "}",
+    ]));
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    let out = evaluate(
+        &m,
+        &[
+            ("Lit", &["3"]),
+            ("ByConst", &["1000"]),
+            ("Masked", &["1", "64"]),
+            ("Masked", &["-3", "65"]),
+            ("Modulo", &["-100", "9"]),
+            ("Word", &["3"]),
+            ("InPlace", &["1", "17"]),
+        ],
+    );
+    // What the Rust source returns for the same calls.
+    let rust = ["-2147483648", "7", "1", "-6", "-50", "6442450944", "2"];
+    let got: Vec<&str> = out.lines().collect();
+    assert_eq!(got.len(), rust.len(), "{out}");
+    for (g, r) in got.iter().zip(rust) {
+        assert!(g.ends_with(r), "printed {g:?}, Rust gives {r}\n{out}");
+    }
+}
+
+/// The first count outside each rule is refused at its line: a literal of the width, a mask of
+/// the width, a remainder by the width plus one, a remainder of a signed value, a constant of
+/// the width, and a `usize` shifted by 32 (its width is 32 or 64 bits).
+#[test]
+fn a_shift_whose_count_is_the_first_outside_its_rule_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "const WIDE: u32 = 32;",
+        "pub fn lit(x: u32) -> u32 {",
+        "    x << 32",
+        "}",
+        "pub fn masked(x: u32, n: u32) -> u32 {",
+        "    x << (n & 32)",
+        "}",
+        "pub fn modulo(x: u32, n: u32) -> u32 {",
+        "    x >> (n % 33)",
+        "}",
+        "pub fn signed_modulo(x: u32, n: i32) -> u32 {",
+        "    x >> (n % 32)",
+        "}",
+        "pub fn by_const(x: u32) -> u32 {",
+        "    x << WIDE",
+        "}",
+        "pub fn word(x: usize) -> usize {",
+        "    x << 32",
+        "}",
+        "pub fn in_place(mut x: u8, n: u8) -> u8 {",
+        "    x >>= n;",
+        "    x",
+        "}",
+    ]));
+    assert_foreign(&m, "Lit", "lib.rs:3", "count");
+    assert_foreign(&m, "Masked", "lib.rs:6", "count");
+    assert_foreign(&m, "Modulo", "lib.rs:9", "count");
+    assert_foreign(&m, "SignedModulo", "lib.rs:12", "count");
+    assert_foreign(&m, "ByConst", "lib.rs:15", "count");
+    assert_foreign(&m, "Word", "lib.rs:18", "count");
+    assert_foreign(&m, "InPlace", "lib.rs:21", "count");
+}
+
+/// A comparison through a `PartialEq`, `PartialOrd` or `Ord` the crate writes by hand: Rust calls
+/// the impl, where `cir/1`'s comparison is Go's built-in one (the order of the declaration, every
+/// field equal).
+#[test]
+fn a_comparison_through_a_hand_written_partial_eq_or_ord_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "use std::cmp::Ordering;",
+        "#[derive(Clone, Copy, PartialEq, Eq)]",
+        "pub enum Rank { Low, High }",
+        "impl PartialOrd for Rank { fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(self.cmp(o)) } }",
+        "impl Ord for Rank {",
+        "    fn cmp(&self, o: &Self) -> Ordering {",
+        "        match (self, o) {",
+        "            (Rank::Low, Rank::High) => Ordering::Greater,",
+        "            (Rank::High, Rank::Low) => Ordering::Less,",
+        "            _ => Ordering::Equal,",
+        "        }",
+        "    }",
+        "}",
+        "pub fn ranks_first(a: Rank, b: Rank) -> bool {",
+        "    a < b",
+        "}",
+        "#[derive(Clone, Copy)]",
+        "pub enum Mode { On, Off }",
+        "impl PartialEq for Mode { fn eq(&self, _o: &Self) -> bool { true } }",
+        "pub fn same_mode(a: Mode, b: Mode) -> bool {",
+        "    a == b",
+        "}",
+        "pub struct Approx { pub v: i64 }",
+        "impl PartialEq for Approx { fn eq(&self, o: &Self) -> bool { self.v / 10 == o.v / 10 } }",
+        "pub fn same_approx(a: Approx, b: Approx) -> bool {",
+        "    a == b",
+        "}",
+        "#[derive(PartialEq)]",
+        "pub struct Holder { pub m: Mode }",
+        "pub fn same_holder(a: Holder, b: Holder) -> bool {",
+        "    a != b",
+        "}",
+        "pub fn pick(a: Mode, b: Mode) -> i64 {",
+        "    match a {",
+        "        v if v == b => 1,",
+        "        _ => 0,",
+        "    }",
+        "}",
+    ]));
+    assert_foreign(&m, "RanksFirst", "lib.rs:15", "by hand");
+    assert_foreign(&m, "SameMode", "lib.rs:21", "by hand");
+    assert_foreign(&m, "SameApprox", "lib.rs:26", "by hand");
+    // A derived `PartialEq` of a struct holding `Mode` calls `Mode`'s impl for the field.
+    assert_foreign(&m, "SameHolder", "lib.rs:31", "by hand");
+    // A match guard `v if v == e` compares through the same impl.
+    assert_foreign(&m, "Pick", "lib.rs:34", "by hand");
+}
+
+/// A derived `PartialEq`, `PartialOrd` and `Ord` keep the built-in comparison; so does `==` on a
+/// type whose `PartialEq` is derived and whose order alone is written by hand.
+#[test]
+fn a_comparison_through_a_derived_partial_eq_or_ord_reads_as_the_built_in_one() {
+    let m = read(&lines(&[
+        "use std::cmp::Ordering;",
+        "#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]",
+        "pub enum Level { Low, High }",
+        "#[derive(PartialEq)]",
+        "pub struct Point { pub x: i64 }",
+        "#[derive(Clone, Copy, PartialEq, Eq)]",
+        "pub enum Rank { Low, High }",
+        "impl PartialOrd for Rank { fn partial_cmp(&self, o: &Self) -> Option<Ordering> { Some(Ordering::Equal) } }",
+        "pub fn below(a: Level, b: Level) -> bool {",
+        "    a < b",
+        "}",
+        "pub fn same(a: Point, b: Point) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn same_rank(a: Rank, b: Rank) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    let refused: Vec<_> = m.refusals.iter().filter(|r| r.pos != "lib.rs:8").collect();
+    assert!(refused.is_empty(), "{refused:?}");
+    for (f, op) in [("Below", "<"), ("Same", "=="), ("SameRank", "==")] {
+        let body = &m.funcs.iter().find(|x| x.name == f).expect(f).body;
+        assert!(
+            matches!(&body[..], [Stmt::Return { results, .. }] if matches!(&results[..], [Expr::Binop { op: o, .. }] if o == op)),
+            "{f}: {body:?}"
+        );
+    }
+}

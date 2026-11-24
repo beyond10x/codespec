@@ -25,6 +25,7 @@
 //! | `for … range` over a map at a position in `unordered_iteration` | `BTreeMap`, iterated in key order over a snapshot of the map; where the body writes an entry, over a snapshot of the keys, each value read when its iteration starts (as Go reads an entry updated by an earlier iteration) and a key no longer held skipped; a body that also rebinds the map refused | `unordered_iteration` |
 //! | `for … range` over a map not listed | refused | `unordered_iteration` |
 //! | `int` (`platform`) | `i64` (`uint` → `u64`): Go's `int` on every 64-bit target | — |
+//! | `union` | `enum` with one variant per union variant; a variant whose fields are named `_0`, `_1`, … in order (the `_<digits>` rule: such a name marks a positional field) is a tuple variant `V(T0, T1)`, one with other names a struct variant `V { f: T }`; a variant that mixes the two or whose `_<digits>` names are not `_0`, `_1`, … in order refuses the module | — |
 //! | `x := make(…)` or an empty literal, `x` never mutated or bound more than once in the function | `let x: T = T::new();`: nothing after it need fix the element types; a mutated one bound once stays `let mut x = T::new();` | — |
 //! | `+`, `-`, `*`, `/`, `%`, `++`, `--` on integers | `wrapping_*`: Go integers wrap | — |
 //! | `for … range` over a slice | the length read once, each element read when its iteration starts; where the body rebinds the slice (`append` among the ways), read from a copy made when the loop starts, the storage Go ranges over; a body that also writes an element, or calls what can reach the slice, refused | — |
@@ -585,6 +586,12 @@ fn value_ident(name: &str) -> Ident {
         return Ident::new("_", Span::call_site());
     }
     ident(&snake(name))
+}
+
+/// Whether a union variant's field name is `_<digits>`, which marks a positional (tuple) field.
+fn tuple_field(name: &str) -> bool {
+    name.strip_prefix('_')
+        .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn type_ident(name: &str) -> Ident {
@@ -1361,6 +1368,30 @@ impl<'a> Writer<'a> {
                     .iter()
                     .map(|uv| {
                         let vn = type_ident(&uv.name);
+                        // A field named `_<digits>` is positional: a variant of `_0`, `_1`, …
+                        // in order is a tuple variant; any other use of such a name has no
+                        // Rust form.
+                        let positional = uv.fields.iter().filter(|f| tuple_field(&f.name)).count();
+                        if positional > 0 {
+                            let in_order = positional == uv.fields.len()
+                                && uv
+                                    .fields
+                                    .iter()
+                                    .enumerate()
+                                    .all(|(i, f)| f.name == format!("_{i}"));
+                            if !in_order {
+                                return Err(format!(
+                                    "variant {}: fields named `_<digits>` are positional and must be exactly `_0`, `_1`, … in order, with no named field beside them",
+                                    uv.name
+                                ));
+                            }
+                            let ts = uv
+                                .fields
+                                .iter()
+                                .map(|f| self.ty(&f.t))
+                                .collect::<R<Vec<_>>>()?;
+                            return Ok(quote! { #vn(#(#ts),*) });
+                        }
                         let fs = uv
                             .fields
                             .iter()
