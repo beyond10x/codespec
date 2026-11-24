@@ -23,7 +23,7 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 11
+revision: 13
 ---
 # Story: JPA marks recorded as facts cq can query
 
@@ -36,7 +36,8 @@ read meaning does not change.
   from `story:java-reader-framework-marks`) also records `@ManyToOne`, `@OneToOne`, `@OneToMany`
   on an instance field and `@NamedQuery` on an entity, each with its arguments as written:
   `@Table` with `indexes = @Index(...)`, `@OneToMany` with `cascade` and `orphanRemoval`,
-  `@NamedQuery` with `name` and `query`. Each was a refusal.
+  `@NamedQuery` with `name` and `query`; and `@TenantId` (`org.hibernate.annotations`) on an
+  instance field, so a rule can name the column a tenant predicate must test. Each was a refusal.
 - The `mark` relation of `story:java-reader-annotation-facts` gives one row of `kind`
   `persistence` per record; it already reads the whole `persistence` list, so cq gains no relation.
 
@@ -84,7 +85,8 @@ Order.java:21 annotation jakarta.persistence.OneToMany: annotations with behavio
 - Failing `ReaderTest` cases first, on the reproducer added to
   `adapters/java/testdata/project-forms` (with a `@OneToOne` field). A true positive for each
   listed mark: `@Table` with `indexes`, `@ManyToOne`, `@OneToOne`, `@OneToMany` with `cascade`
-  and `orphanRemoval`, `@NamedQuery` with `name` and `query`: the `persistence` record with its
+  and `orphanRemoval`, `@NamedQuery` with `name` and `query`, `@TenantId` on a field: the
+  `persistence` record with its
   `args` is present and the module has no refusal for it.
 - A near miss for each listed mark: an annotation of the same simple name declared in the
   project's own package is not recorded (today's refusal); a relation mark on a `static` field
