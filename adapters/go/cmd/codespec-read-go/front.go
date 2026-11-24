@@ -199,7 +199,9 @@ func (f *front) declStmt(s *ast.DeclStmt, results []Type) []Stmt {
 				return []Stmt{f.foreign(s, f.exprReason())}
 			}
 			if vs.Type != nil {
-				other := []Stmt{f.foreign(s, "declaration whose value has another type than the declared one")}
+				other := func() []Stmt {
+					return []Stmt{f.foreign(s, "declaration whose value has another type than the declared one")}
+				}
 				if len(rhs) == len(vs.Names) {
 					for i := range rhs {
 						want := f.info.TypeOf(vs.Names[i])
@@ -208,14 +210,14 @@ func (f *front) declStmt(s *ast.DeclStmt, results []Type) []Stmt {
 						}
 						rhs[i] = f.coerce(rhs[i], want)
 						if rhs[i].T == nil || !reflect.DeepEqual(*rhs[i].T, f.typ(want)) {
-							return other
+							return other()
 						}
 					}
 				} else {
 					tup, _ := f.info.TypeOf(vs.Values[0]).(*types.Tuple)
 					for i, n := range vs.Names {
 						if tup == nil || i >= tup.Len() || !types.Identical(tup.At(i).Type(), f.info.TypeOf(n)) {
-							return other
+							return other()
 						}
 					}
 				}
