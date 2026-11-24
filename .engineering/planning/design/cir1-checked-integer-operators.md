@@ -2,15 +2,16 @@
 format: aep.planning-md/3
 id: design:cir1-checked-integer-operators
 kind: design
-status: in_review
+status: approved
 title: 'Checked integer operators in cir/1: the design note'
 summary: How cir/1 states a Rust integer operator (+ - * neg / % << >>) whose overflow depends on the build, written and adversary-reviewed before story:rust-reader-integer-overflow is implemented.
 relations:
 - designs: story:rust-reader-integer-overflow
 - decomposes: epic:async-network-service-translation
-revision: 5
+revision: 7
 transitions:
 - {from: "draft", to: "in_review", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 2}
+- {from: "in_review", to: "approved", at: "2026-11-24T17:30:20Z", actor: "human:timo", revision: 7}
 ---
 # Design: Checked integer operators in cir/1
 
@@ -59,7 +60,7 @@ width and tuple-variant fields merged), which branches from main `f09c740f`. Dec
 Revision 2 answers the adversary's round 1, `review-result:cir1-checked-integer-operators-r1`
 (needs-revision, nine findings F1 to F9). Revision 3 answers round 2,
 `review-result:cir1-checked-integer-operators-r2` (needs-revision, six findings R2-B1, R2-B2,
-R2-W1, R2-W2, R2-N1, R2-N2). Each change is tagged with the finding it answers; § 12 maps them.
+R2-W1, R2-W2, R2-N1, R2-N2). Round 3 approved revision 3 with one note, R3-N1, taken in revision 4. Each change is tagged with the finding it answers; § 12 maps them.
 
 ### 1. In one line
 
@@ -269,13 +270,23 @@ any directory under the root. So the reader reads every `.cargo/config.toml` and
 under the root's directory (R2-W1), and those in the crate's directory and its ancestors up to
 the root's directory, or, when the root is not an ancestor, up to their nearest common ancestor.
 The walk does not follow symbolic links and skips the root's `target` and `.git` directories; a
-walk past a fixed bound of directories makes the setting unknown. Any such file that sets a
-`profile` key or any rustflags (`build.rustflags`, `target.<triple>.rustflags`,
-`target.<cfg>.rustflags`) makes `overflow-checks` and `debug-assertions` unknown, with or without
-`--profile`: no rule independent of the working directory places it. So do
-`rustflags` in a `[profile.*]` table of the root manifest (the unstable `profile-rustflags`), and
-`-C overflow-checks` or `-C debug-assertions` in any rustflags source the reader reads (rustc's
-`overflow-checks` follows `debug-assertions` where it is not set itself). Unknown means the
+walk past a fixed bound of directories makes the setting unknown.
+
+Only these make `overflow-checks` and `debug-assertions` unknown, with or without `--profile`,
+since no rule independent of the working directory places them (R3-N1):
+
+- in such a file, a profile key `overflow-checks`, `debug-assertions` or `opt-level` (in any
+  `[profile.<p>]` or `[profile.<p>.package.<spec>]` table): the defaults chain them, as
+  `overflow-checks` follows `debug-assertions` and `debug-assertions` follows "not optimized";
+- `rustflags` in a `[profile.*]` table, of such a file or of the root manifest (the unstable
+  `profile-rustflags`);
+- rustflags from any source the reader reads (`build.rustflags`, `target.<triple>.rustflags`,
+  `target.<cfg>.rustflags`, a profile's `rustflags`) that contain `-C overflow-checks`,
+  `-C debug-assertions`, `-C opt-level` or `-O`.
+
+Any other key or flag is ignored for this setting: `[build] rustflags = ["-C",
+"target-cpu=native"]` or `[profile.release] lto = true` leaves it known. A vendored crate's
+configuration counts only if it sets one of the above. Unknown means the
 profile-dependent operators are refused (§ 2) and `build.overflow_checks` is absent. Not read at
 all, and named in the crate doc as outside the reading: `$CARGO_HOME/config.toml`, configuration
 above the root, and the environment (`CARGO_PROFILE_*`, `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`,
@@ -456,9 +467,11 @@ a tree under `~/.cache`. Red first on main `f09c740f`:
    (F4); package keys `<crate>`, `<crate>@0.1`, `<crate>:0.1.0` applied, `<crate>@0.2` skipped,
    `registry+https://…#<crate>@0.1.0` unknown (F3); `package."*"` applied only under a `--root`
    that does not hold the crate (F6); a `.cargo/config.toml` in the crate's or the root's
-   directory, or in a sibling member's directory under the root, with a `profile` key or
-   `build.rustflags`, and `rustflags` in the root's `[profile.release]`, each unknown (F5,
-   R2-W1); a pinned profile not defined (error). Root and membership (R2-B1, R2-B2): a crate
+   directory, or in a sibling member's directory under the root, with `[profile.release]
+   overflow-checks`, `debug-assertions` or `opt-level`, or `build.rustflags` holding `-C
+   overflow-checks` or `-O`, and `rustflags` in the root's `[profile.release]`, each unknown (F5,
+   R2-W1, R3-N1); `[build] rustflags = ["-C", "target-cpu=native"]` and `[profile.release] lto =
+   true` there leave the setting known (R3-N1); a pinned profile not defined (error). Root and membership (R2-B1, R2-B2): a crate
    without `[workspace]` under a workspace that does not list it reads, with only the dependent
    operators refused, the refusal and the standard-error line naming `--root` and `--profile`; a
    crate reached only as a path dependency of a member under the root is a member (`"*"` does not
@@ -525,3 +538,8 @@ Revision 3, round 2 (`review-result:cir1-checked-integer-operators-r2`):
 - R2-N1, two keys for one crate: § 5.4, test 4.
 - R2-N2, `version.workspace`: § 5.4, test 4.
 - Usability, the summary line on standard error: § 5.6, § 9.
+
+Round 3 (`review-result:cir1-checked-integer-operators-r3`, approve):
+
+- R3-N1, R2-W1 made a repository with an unrelated profile key or rustflags unreadable: § 5.5
+  names the only keys and flags that make the setting unknown; test 4.
