@@ -7,7 +7,9 @@ Every change a user of `codespec` or of `cir/1` would notice.
 ### Added
 
 - `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
-  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code. `codespec measure`
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
+  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
+  `cfg(test)` was around it. `codespec measure`
   prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
   JSON shows it as `total.left_out`. A document without the field is unchanged.
 - `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
@@ -66,8 +68,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   mask their count (`b & 63`).
 - The Rust reader refuses `==`, `!=` and a match guard `v if v == e` on a type whose `PartialEq`
   the crate writes by hand, and `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does
-  (or on a type that holds one), at the comparison's line; it read them as the built-in
-  comparison before. A derived impl reads as before.
+  (or on a type that holds one at any depth: a field, an enum variant's field, an `Option` or
+  `Box` inside one), at the comparison's line; it read them as the built-in comparison before.
+  An impl counts through a type alias and a renamed trait import. A derived impl reads as before.
+- The Rust reader refuses a `HashMap` or `BTreeMap` whose key type is, or holds, a type whose
+  `PartialEq`, `PartialOrd`, `Ord` or `Hash` the crate writes by hand, at its line (a local, a
+  parameter, a struct field); it read such a map with Go's built-in key comparison before.
 ### Fixed
 
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a

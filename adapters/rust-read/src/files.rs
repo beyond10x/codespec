@@ -15,8 +15,9 @@
 //! The reader reads a normal build of the crate, not its tests (`built`): a module, a module file
 //! whose inner attributes say `#![cfg(test)]`, an item, and inside an item a statement, a match
 //! arm, a struct literal's field, an impl's or trait's item, a field or a variant marked
-//! `#[cfg(test)]` (or `all(test, …)`, `not(not(test))`) is left out before anything is read;
-//! what `not(test)` marks is read. An item left out is listed in the module's `left_out` with
+//! `#[cfg(test)]` (or `all(test, …)`, `not(not(test))`) is left out before anything is read, and
+//! so is one marked `#[test]`, `#[bench]` or `#[<path>::test]`, which only the test harness
+//! builds, with or without a `cfg(test)` around it; what `not(test)` marks is read. An item left out is listed in the module's `left_out` with
 //! its line: a function, type, trait, constant or static by name, an impl's function as
 //! `fn <type>.<name>`, an inline module with every item it holds, a module file whose
 //! `#![cfg(test)]` is read with its items, and a module file under an outer `#[cfg(test)]` alone
@@ -733,6 +734,9 @@ pub(crate) enum Built {
 /// `debug_assertions`) the reader cannot resolve, and does not guess. Several `cfg`s hold
 /// together. A `cfg_attr` that adds a `cfg` is a condition the reader cannot resolve.
 pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
+    if let Some(a) = attrs.iter().find(|a| harness_only(a)) {
+        return Built::No(format!("#[{}]", src_of(&a.meta)));
+    }
     let mut unknown = None;
     for a in attrs.iter().filter(|a| is_cfg(a)) {
         let holds = if a.path().is_ident("cfg") {
@@ -749,6 +753,16 @@ pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
         }
     }
     unknown.map_or(Built::Yes, Built::Unknown)
+}
+
+/// Whether `a` makes its item one only the test harness builds: `#[test]`, `#[bench]`, or an
+/// attribute of a test framework named by a path ending in `test` (`#[tokio::test]`), each of
+/// which a normal build leaves out as it does `cfg(test)`.
+fn harness_only(a: &syn::Attribute) -> bool {
+    let p = a.path();
+    p.is_ident("test")
+        || p.is_ident("bench")
+        || (p.segments.len() > 1 && p.segments.last().is_some_and(|s| s.ident == "test"))
 }
 
 /// Why what is built only under the condition `c` (a `cfg`'s source), which a normal build
