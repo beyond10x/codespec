@@ -1,0 +1,77 @@
+{
+  "format": "codespec-spans/1",
+  "module": "probe",
+  "cir_sha256": "<cir_sha256>",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "sha256": "4b568f18af46a6a3d72c8fa528af243afb7eab0c84fc65d356334f85b7dc43f1",
+      "len": 112,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 54,
+      "end": 111,
+      "line": 6,
+      "end_line": 8
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 61,
+      "end": 65,
+      "line": 6,
+      "end_line": 6,
+      "text": "make"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.0.name",
+      "role": "name",
+      "file": 0,
+      "start": 97,
+      "end": 98,
+      "line": 7,
+      "end_line": 7,
+      "text": "x",
+      "form": "shorthand"
+    },
+    {
+      "at": "funcs.0.body.0.results.0.fields.1.name",
+      "role": "name",
+      "file": 0,
+      "start": 100,
+      "end": 101,
+      "line": 7,
+      "end_line": 7,
+      "text": "y"
+    },
+    {
+      "at": "types.0.fields.0",
+      "role": "name",
+      "file": 0,
+      "start": 27,
+      "end": 28,
+      "line": 2,
+      "end_line": 2,
+      "text": "x"
+    },
+    {
+      "at": "types.0.fields.1",
+      "role": "name",
+      "file": 0,
+      "start": 43,
+      "end": 44,
+      "line": 3,
+      "end_line": 3,
+      "text": "y"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

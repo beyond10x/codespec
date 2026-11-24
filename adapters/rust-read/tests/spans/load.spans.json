@@ -1,0 +1,75 @@
+{
+  "format": "codespec-spans/1",
+  "module": "probe",
+  "cir_sha256": "<cir_sha256>",
+  "files": [
+    {
+      "path": "src/lib.rs",
+      "sha256": "8f3b41a57e394395818e3a25b352986df340c35afbdafab6c341d2dbc6885f13",
+      "len": 92,
+      "generated": false
+    }
+  ],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "role": "decl",
+      "file": 0,
+      "start": 0,
+      "end": 36,
+      "line": 1,
+      "end_line": 3
+    },
+    {
+      "at": "funcs.0",
+      "role": "name",
+      "file": 0,
+      "start": 7,
+      "end": 11,
+      "line": 1,
+      "end_line": 1,
+      "text": "load"
+    },
+    {
+      "at": "funcs.1",
+      "role": "decl",
+      "file": 0,
+      "start": 38,
+      "end": 91,
+      "line": 5,
+      "end_line": 7
+    },
+    {
+      "at": "funcs.1",
+      "role": "name",
+      "file": 0,
+      "start": 45,
+      "end": 50,
+      "line": 5,
+      "end_line": 5,
+      "text": "twice"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.x",
+      "role": "name",
+      "file": 0,
+      "start": 72,
+      "end": 76,
+      "line": 6,
+      "end_line": 6,
+      "text": "load"
+    },
+    {
+      "at": "funcs.1.body.0.results.0.y",
+      "role": "name",
+      "file": 0,
+      "start": 82,
+      "end": 86,
+      "line": 6,
+      "end_line": 6,
+      "text": "load"
+    }
+  ],
+  "unspanned": [],
+  "refs": []
+}

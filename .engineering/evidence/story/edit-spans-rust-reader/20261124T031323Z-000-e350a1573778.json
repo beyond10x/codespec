@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T03:13:23Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-spans-rust-reader",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust --locked --no-fail-fast (all targets green; reader.rs 102 passed, 12 of them spans_: inventory strict and byte-identical cir, load, method, attributes, literal shorthand/keyed, use refs and as-alias, question mark, display, crlf, bom, raw identifier, every example crate and kit case strict; spans_ tests 1.1 s together)",
+    "reference": "adapters/rust-read/tests/reader.rs"
+  }
+}
