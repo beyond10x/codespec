@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:java-reader-jaxrs-inherited-entries
 kind: story
-status: draft
+status: active
 title: A resource method gets its http entry from JAX-RS annotations on the interface it implements
 summary: 'Misread: an implementing class of an annotated interface (generated sources or class path) gets no http entry and no refusal.'
 relations:
@@ -16,7 +16,10 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-inherited-entries
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T22:16:33Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-11-24T22:16:33Z", actor: "human:timo", revision: 6}
 ---
 # Story: a resource method gets its http entry from JAX-RS annotations on the interface it implements
 

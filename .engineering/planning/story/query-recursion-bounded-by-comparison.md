@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:query-recursion-bounded-by-comparison
 kind: story
-status: draft
+status: active
 title: cq accepts a recursion whose counter is bounded by a comparison with a finite value
 summary: 'Defect since 0.11.0: a depth-limited recursion (D < M, D2 = D + 1) is refused at compile time on any documents.'
 relations:
@@ -14,7 +14,10 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 3
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-24T22:16:38Z", actor: "human:timo", revision: 4}
+- {from: "proposed", to: "active", at: "2026-11-24T22:16:38Z", actor: "human:timo", revision: 5}
 ---
 # Story: cq accepts a recursion whose counter is bounded by a comparison with a finite value
 
