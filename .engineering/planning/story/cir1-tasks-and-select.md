@@ -6,7 +6,7 @@ status: draft
 title: cir/1 states a started task, a select over channel operations and a channel close
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 1
+revision: 2
 ---
 # Story: cir/1 states a started task, a select over channel operations and a channel close
 
@@ -41,10 +41,13 @@ to land on some node; without these there is none.
 
 - The Rust reader (`story:rust-reader-async`). Evaluation (`story:eval-deterministic-tasks`).
 
-## Decision needed
+## Decision
 
-This reverses "Out: goroutines and `select`" of `docs/evaluator.md`: a change of the model's
-scope, which waits for the operator's word before the story leaves draft.
+Taken by Timo on 2026-11-24 about 03:05 CET (relayed by the operator): `cir/1` states a started
+task and a `select` over channel operations (option A). This reverses "Out: goroutines and
+`select`" of `docs/evaluator.md`, which now says so. The nodes are additive (`cir/1` minor), never
+a change of meaning, field names or encoding of an existing node. In `epic:async-network-service-translation`
+this story is step 3 of the order, after the Rust reader's silent misreads and its coverage.
 
 ## Scope
 

@@ -21,7 +21,7 @@ relations:
 - depends_on: story:cir1-defer-receiver-root
 - depends_on: story:listed-macro-format-string
 - depends_on: story:reader-indirect-sites-rust
-revision: 1
+revision: 2
 ---
 # Epic: An async network service read from Rust and written as Go
 
@@ -75,6 +75,26 @@ Two constructs are read wrongly without a refusal: serde attributes (`#[serde(re
 `cir/1` has no node for a started task or a `select` (`docs/evaluator.md`: "Out: goroutines and
 `select`"); the Go writer refuses a whole module at its first `foreign` Rust statement and writes
 nothing; the harness knows five compiled-in trace formats and no service trace.
+
+## Order
+
+Timo's pick of 2026-11-24 about 03:05 CET (relayed by the operator), in the order the consumer
+proposed. A step starts when the one before it is implemented, except where a story's own
+`depends_on` edges say otherwise.
+
+1. Silent misreads first: `story:rust-reader-no-silent-misread` (serde wire attributes and
+   last-segment type paths are refused instead of read wrongly), then
+   `story:rust-reader-std-types-by-path` for the parts that story does not take.
+2. Reader coverage: `story:rust-reader-externs`, `story:rust-reader-option-values`,
+   `story:rust-reader-shared-state`, `story:rust-reader-iterators-and-std-impls`,
+   `story:rust-reader-async` (async functions and `.await`; spawn and `select!` wait for step 3),
+   `story:wire-names-from-serde`, `story:rust-reader-log-and-metric-macros`,
+   `story:rust-reader-http-entries`.
+3. `story:cir1-tasks-and-select` (decided: `cir/1` states tasks and `select`), then
+   `story:eval-deterministic-tasks`.
+4. Go writer: `story:go-writer-partial-module`, `story:go-writer-extern-map`.
+5. Equivalence: `story:harness-service-traces`, `story:example-async-service`,
+   `story:sealed-translation-run`.
 
 ## Acceptance
 
