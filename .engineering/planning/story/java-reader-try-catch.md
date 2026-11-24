@@ -18,7 +18,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 2
+revision: 5
 ---
 # Story: try/catch of an exception a call in the block raises
 
@@ -30,7 +30,8 @@ error result; a `raise` of `story:java-reader-unchecked-exceptions`; a jar metho
 table says throws it, such as `Integer.parseInt` and `NumberFormatException`) as the error check
 after each such call that jumps to the catch block. A `finally`, a catch of `Exception` or
 `RuntimeException`, try-with-resources and a catch around code that may throw what the module
-cannot see stay refused.
+cannot see stay refused here. `story:java-reader-finally-and-resources`, next in the chain, reads
+the `finally`, the broad catch and try-with-resources.
 
 ## Why
 

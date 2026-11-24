@@ -7,7 +7,7 @@ title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 8
+revision: 11
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
@@ -43,10 +43,12 @@ application. `epic:groovy-grails-reader` is the precedent for a framework-aware 
   `story:java-reader-switch-arrows`, `story:java-reader-generic-instance-methods`,
   `story:java-reader-static-field-initializers`, `story:java-reader-enum-constant-arguments`,
   `story:java-reader-cross-package-interface-calls`, `story:java-reader-try-catch`,
+  `story:java-reader-finally-and-resources`, `story:java-reader-synchronized`,
+  `story:java-reader-annotation-facts`, `story:java-reader-persistence-facts`,
   `story:java-reader-cdi-observes-entry`, `story:java-reader-scheduled-startup-entries`,
   `story:release-jvm-readers`, `story:java-read-dependencies`, `story:java-reader-public-corpus`,
   and of other epics `story:query-recursion-bounded-by-comparison`, `story:reach-entry-file`,
-  `story:check-not-applicable` and `story:check-java-name-lists`.
+  `story:cq-entry-relation`, `story:check-not-applicable` and `story:check-java-name-lists`.
 - The consumer's re-read: the consumer's reviewing session reads the same private Java service
   with a release binary and reports counts only, no name of the service: function bodies read
   against the 0.12.0 baseline of 133 of 418, the refusals by reason, the entries found (every
@@ -93,11 +95,26 @@ Lane A, one implementer, serial. Each story depends on the one before it: they s
     `story:reach-entry-file` (Lane B): both edit `crates/cli/tests/reach.rs`, and
     `story:reach-entry-file` goes first.
 13. `story:java-reader-try-catch`: 5; also depends on 3.
-14. `story:java-reader-cdi-observes-entry`: 15. Near the end because it changes `crates/model`
+14. `story:java-reader-finally-and-resources`: `finally`, try-with-resources, a broad catch;
+    asked by codesec's Java rules (no count from the consumer).
+15. `story:java-reader-synchronized`: a misread (a `synchronized` method reads with no record of
+    its lock) and refused blocks; asked by codesec's lock rules. Also depends on
+    `story:cq-entry-relation` (Lane B): both add a cq relation to `crates/query/src/facts.rs`,
+    `crates/query/tests/query.rs`, the expected schema and `docs/query-language.md`, and
+    `story:cq-entry-relation` goes first. Changes `crates/model` and the schema: after the Rust
+    wave merges, rebased.
+16. `story:java-reader-annotation-facts`: security, validation, transaction, scope and inject
+    marks as facts with one cq relation `mark`. Also depends on 4. After the Rust wave, as 15.
+17. `story:java-reader-persistence-facts`: JPA relation marks, `@NamedQuery` and query strings
+    as cq facts; adds to 16's `mark` relation. After the Rust wave, as 15.
+18. `story:java-reader-cdi-observes-entry`: 15. Near the end because it changes `crates/model`
     and the schema, which the Rust wave changes too: it starts after that wave merges, rebased.
     Also depends on `story:reach-entry-file` (its reach case runs with no entry flag).
-15. `story:java-reader-scheduled-startup-entries`: kind `startup` (`scheduled` exists). After 14
+19. `story:java-reader-scheduled-startup-entries`: kind `startup` (`scheduled` exists). After 18
     (`ENTRY_KINDS`, schema) and `story:reach-entry-file`, for the same reasons.
+
+Items 14 to 17 come from the gaps codesec's Java rules name; they share Lane A's three files, so
+each depends on the one before it (14 on 13), and 18 depends on 17.
 
 Lane B, one implementer. Its stories carry a `depends_on` edge only where two of them edit the
 same file, and the edge names that file:
@@ -107,8 +124,9 @@ same file, and the edge names that file:
 - `story:reach-entry-file`, then `story:check-not-applicable`, then `story:check-java-name-lists`:
   they edit `crates/check/src/checks.rs` and `crates/cli/tests/check.rs` (the first two also
   `crates/cli/src/main.rs`).
-- `story:query-recursion-bounded-by-comparison` (`crates/query`) shares no file with the others
-  and has no edge.
+- `story:query-recursion-bounded-by-comparison`, then `story:cq-entry-relation`: both edit
+  `crates/query/tests/query.rs` and `docs/query-language.md`. `story:java-reader-synchronized`
+  (Lane A) depends on `story:cq-entry-relation` for `crates/query/src/facts.rs`.
 
 The order in which the one implementer takes them is a priority, not an edge, and `waves` does not
 enforce it:
@@ -121,11 +139,13 @@ enforce it:
    measured.
 4. `story:reach-entry-file` (`epic:sound-reach`): after `story:reach-three-valued`; gives `reach`
    and `check unreached` the recorded entries as their default.
-5. `story:check-not-applicable` (`epic:codebase-transformations`): defect, checks give 0 rows on
+5. `story:cq-entry-relation` (`epic:codebase-transformations`): the entries as a cq relation,
+   asked by codesec's rules; before Lane A reaches `story:java-reader-synchronized`.
+6. `story:check-not-applicable` (`epic:codebase-transformations`): defect, checks give 0 rows on
    a language they have no names for, silently.
-6. `story:check-java-name-lists` (`epic:codebase-transformations`): the Java lists and
+7. `story:check-java-name-lists` (`epic:codebase-transformations`): the Java lists and
    `secret-compare`.
-7. `story:java-read-dependencies`: the dependencies one layer down.
+8. `story:java-read-dependencies`: the dependencies one layer down.
 
 The Groovy reader and the JVM runners in the archive are
 `story:release-groovy-reader-and-jvm-runners` (`epic:groovy-grails-reader`), outside this epic.

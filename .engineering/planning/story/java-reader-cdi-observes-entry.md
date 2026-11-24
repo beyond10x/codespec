@@ -7,8 +7,8 @@ title: A CDI observer method is an entry of kind observes
 summary: 'Refused 15 times: @Observes as an annotation; an observes entry kind for reach.'
 relations:
 - decomposes: epic:java-quarkus-reader
-- depends_on: story:java-reader-try-catch
 - depends_on: story:reach-entry-file
+- depends_on: story:java-reader-persistence-facts
 scope:
 - confidence: inferred
   path: adapters/java/README.md
@@ -26,7 +26,7 @@ scope:
   path: crates/model/tests/model.rs
 - confidence: inferred
   path: schemas/cir-1.schema.json
-revision: 5
+revision: 6
 ---
 # Story: a CDI observer method is an entry of kind observes
 
@@ -87,7 +87,7 @@ The second line is a separate refusal of `String.length()` on a parameter in a p
   `schemas/cir-1.schema.json`, `adapters/java/src/codespec/read/Reader.java`,
   `adapters/java/test/codespec/read/ReaderTest.java`, `adapters/java/testdata/project-forms`,
   `adapters/java/README.md`, `crates/cli/tests/reach.rs`. Inferred.
-- In the Reader.java chain after `story:java-reader-try-catch`; after `story:reach-entry-file`
+- In the Reader.java chain after `story:java-reader-persistence-facts`; after `story:reach-entry-file`
   (its reach case needs the default entries).
 - `crates/model/src/lib.rs`, `crates/model/tests/model.rs` and the schema are changed by the Rust
   wave `wave/rust-misreads-1` too: this story starts after that wave merges, rebased on it.

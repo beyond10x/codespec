@@ -19,7 +19,7 @@ scope:
   path: crates/check/tests/fixtures
 - confidence: inferred
   path: crates/cli/tests/check.rs
-revision: 9
+revision: 10
 ---
 # Story: built-in checks carry Java name lists and say when a set has no name for its language
 
@@ -48,8 +48,8 @@ constant-time comparison of secrets". Transactions are not in this first set: a 
 with no commit or rollback on a path is a check of its own, recorded as Later.
 
 Later: a check for a transaction (`EntityTransaction.begin`, `Connection.setAutoCommit(false)`)
-with a path to a return that passes neither commit nor rollback; drafted when this story is
-implemented, not part of it.
+with a path to a return that passes neither commit nor rollback. Not drafted here: codesec's Java
+rules own the transaction rules.
 
 ## Reproducer
 

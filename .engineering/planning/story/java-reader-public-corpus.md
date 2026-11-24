@@ -4,7 +4,7 @@ id: story:java-reader-public-corpus
 kind: story
 status: draft
 title: A pinned corpus of public Java repositories, read after each wave
-summary: 5 to 8 public Java repositories pinned by commit, read after each wave; bodies read and refusals by reason committed under docs/.
+summary: Six public Java repositories pinned by commit (the codesec rule corpus), read after each wave; bodies read and refusals by reason committed under docs/.
 relations:
 - decomposes: epic:java-quarkus-reader
 - depends_on: story:release-jvm-readers
@@ -19,22 +19,29 @@ scope:
   path: scripts/java-corpus.txt
 - confidence: inferred
   path: scripts/read-corpus-java.sh
-revision: 5
+revision: 8
 ---
 # Story: a pinned corpus of public Java repositories, read after each wave
 
 ## Outcome
 
-`scripts/java-corpus.txt` pins 5 to 8 popular public Java repositories, each by URL, commit and
-shape, at least one of each shape a Java service has: `quarkus-app`, `spring-app`,
-`jaxrs-service`, `jdbc-library`, `identity-server` and `utility-library` (candidates, to be chosen
-and pinned by the implementer: a Quarkus sample application, `spring-projects/spring-petclinic`, a
-Jersey or Dropwizard example service, `brettwooldridge/HikariCP`, `keycloak/keycloak` (a subset of
-its modules), `apache/commons-lang`). `scripts/read-corpus-java.sh` clones each at its commit,
-reads it with `codespec-read-java` and writes `docs/java-corpus.md`: per repository the commit,
-function bodies read of total, and refusals by reason with their counts, plus one table of every
-refusal reason summed over the corpus. The table is committed; names and commits of these public
-repositories may appear in it, nothing of a private one does.
+`scripts/java-corpus.txt` pins six popular public Java repositories, each by URL, commit and
+shape, one of each shape a Java service has:
+
+| shape | repository | commit |
+|---|---|---|
+| `quarkus-app` | `quarkusio/quarkus-super-heroes` | `ae00455c01a7a50d89ae8f1db99483abd27abe25` |
+| `spring-app` | `spring-projects/spring-petclinic` | `500158f732419217507c7656904b8e6aa1bcc0d6` |
+| `jaxrs-service` | `eclipse-ee4j/cargotracker` | `4d26b8fd59a7f0bac6e42d5d19a8cd1b379353b5` |
+| `jdbc-library` | `brettwooldridge/HikariCP` | `a4d93f4f85517f90e632b795486d7102e933d7ff` |
+| `identity-server` | `keycloak/keycloak` (its server modules) | `317dc60618ab8077e0a07278a4023c0bb06cc398` |
+| `utility-library` | `apache/commons-lang` | `1880038ce9bf866663d602870d59eb98ed15dab9` |
+
+`scripts/read-corpus-java.sh` clones each at its commit, reads it with `codespec-read-java` and
+writes `docs/java-corpus.md`: per repository the commit, function bodies read of total, and
+refusals by reason with their counts, plus one table of every refusal reason summed over the
+corpus. The table is committed; names and commits of these public repositories may appear in it,
+nothing of a private one does.
 
 The corpus measures what the reader reads; a Spring application and an identity server are
 measured, not built for (Spring stays out of scope). Their framework refusals are counted, not
@@ -42,8 +49,9 @@ turned into stories; their language-form refusals feed the rule below like any o
 
 It is the public stand-in for the private service the epic targets: its refusal reasons feed the
 same rule as the consumer's re-read (the epic's Order: a reason with 5 or more occurrences gets a
-draft story with a synthetic reproducer before the next wave). The same repository list is the
-corpus of the codesec rule library (`beyond10x/codesec`, private, `story:java-rule-corpus` there).
+draft story with a synthetic reproducer before the next wave). The same six repositories at the
+same commits are the corpus of the codesec rule library (`beyond10x/codesec`, private,
+`story:java-rule-corpus` there).
 
 ## Why
 
@@ -55,7 +63,7 @@ reader from fitting one code base.
 
 ## Done When
 
-- `scripts/java-corpus.txt` lists 5 to 8 repositories with URL, commit and shape; a fast check in
+- `scripts/java-corpus.txt` lists the six repositories of the Outcome with URL, commit and shape; a fast check in
   the gate (no network) parses it and fails on a line without a 40-hex commit, on a shape outside
   the six named, and on a list missing one of the six shapes. A test feeds the check one list per
   failure (a bad commit, an unknown shape, a missing shape) and one good list.
