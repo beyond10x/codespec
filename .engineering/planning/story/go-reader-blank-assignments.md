@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-blank-assignments
 kind: story
-status: active
+status: implemented
 title: The Go reader reads blank assignments and omits compile-time-only declarations
 summary: _ = e and a, _ = f() read; var _ I = (*T)(nil) and type aliases are omitted without a refusal.
 relations:
@@ -18,10 +18,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/outside.go
 - confidence: cited
   path: website/docs/concepts/cir-1.md
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:51Z", actor: "human:timo", revision: 7}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:51Z", actor: "human:timo", revision: 8}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:13Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader reads blank assignments and omits compile-time-only declarations
 

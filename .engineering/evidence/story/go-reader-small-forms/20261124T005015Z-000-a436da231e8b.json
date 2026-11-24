@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:15Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-small-forms",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): the small_forms_test.go tests pass; red on 7afbe061: small_forms_test.go:37: init form refused: [{p.go:26 return Point{1, 2, \"a\"} expression outside cir/1: positional struct literal} ...]"
+  }
+}

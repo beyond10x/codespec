@@ -1,0 +1,12 @@
+{
+  "at": "2026-11-24T00:50:14Z",
+  "actor": "human:timo",
+  "artifact": "story:go-reader-hoists-every-init",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "go test -count=1 -v ./adapters/go/cmd/codespec-read-go at f4447cf1 (target/snap-fin.log.v: every test but TestStandardLibraryCallsReadAsExternsUnlessForeignTyped passed) and that test at 8ef1c333 (ok, 2.9 s): the if_init_test.go tests pass (the 14-case hoist table 16.7 s); red on 8b5108b6: if_init_hoist_test.go:314: init form refused: [{p.go:16 if v, ok := m[k]; ok { … if with an init statement}]"
+  }
+}

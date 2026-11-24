@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-hoists-every-init
 kind: story
-status: active
+status: implemented
 title: The Go reader hoists every if and switch init with fresh names
 summary: Every readable if or switch init is hoisted, a colliding name renamed; widens the 0.12.0 hoist.
 relations:
@@ -15,10 +15,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/if_init_test.go
 - confidence: cited
   path: website/docs/concepts/cir-1.md
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:52Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:52Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:15Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader hoists every if and switch init with fresh names
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-empty-struct-as-unit
 kind: story
-status: active
+status: implemented
 title: The Go reader reads struct{} as unit
 summary: chan struct{}, map[K]struct{}, struct{}{} and context.Context calls read with unit.
 relations:
@@ -15,10 +15,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/front.go
 - confidence: cited
   path: adapters/go/cmd/codespec-read-go/unit_test.go
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:50Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:50Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:12Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader reads struct{} as unit
 

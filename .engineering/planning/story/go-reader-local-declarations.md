@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-local-declarations
 kind: story
-status: active
+status: implemented
 title: The Go reader reads every local var and const declaration
 summary: var x = e, var x T = e, var a, b T, var ( ... ), var a, b = f() and local const read.
 relations:
@@ -12,10 +12,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/front.go
 - confidence: cited
   path: adapters/go/cmd/codespec-read-go/local_decl_test.go
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:51Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:51Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:14Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader reads every local var and const declaration
 

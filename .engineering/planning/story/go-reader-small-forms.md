@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-small-forms
 kind: story
-status: active
+status: implemented
 title: The Go reader lowers small literal and builtin forms
 summary: Positional and slice literals, make of a map, new, empty extern literals, nil arguments, extern constants.
 relations:
@@ -16,10 +16,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/front.go
 - confidence: cited
   path: adapters/go/cmd/codespec-read-go/small_forms_test.go
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:53Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:53Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:16Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader lowers small literal and builtin forms
 

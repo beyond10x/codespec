@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-reader-names-refused-expression-shape
 kind: story
-status: active
+status: implemented
 title: The Go reader names the sub-shape of an expression it refuses
 summary: expression outside cir/1 carries the shape of the first sub-expression with no cir/1 form.
 relations:
@@ -16,10 +16,11 @@ scope:
   path: adapters/go/cmd/codespec-read-go/generics.go
 - confidence: cited
   path: adapters/go/cmd/codespec-read-go/interfaces.go
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-23T23:00:49Z", actor: "human:timo", revision: 6}
 - {from: "proposed", to: "active", at: "2026-11-23T23:00:49Z", actor: "human:timo", revision: 7}
+- {from: "active", to: "implemented", at: "2026-11-24T00:50:02Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Go reader names the sub-shape of an expression it refuses
 
