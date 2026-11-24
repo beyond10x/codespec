@@ -53,6 +53,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
 
+### Fixed
+
+- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
+  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
+  refuses differing annotations at their line instead of reading no entry.
+
 ## 0.12.0
 
 ### Added
