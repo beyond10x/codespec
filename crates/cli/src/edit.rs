@@ -24,6 +24,12 @@ pub struct Args {
     /// directory and a rename, only when every file read still has the SHA-256 it was read with.
     #[arg(long)]
     pub apply: bool,
+    /// Compile the verified copy before anything is written: Go with go build ./... and go vet
+    /// ./... (test files included) in the copy of the go.mod root, Rust with cargo check
+    /// --all-targets in the copy of the workspace root; each command bounded at 10 minutes. A
+    /// failure exits 1 with the first 20 lines of the compiler's output, nothing written.
+    #[arg(long)]
+    pub build: bool,
     /// text, the unified diff; or json, codespec-edit-report/1 (each row's status and reasons,
     /// each edited file's SHA-256 before and after, the diff).
     #[arg(long, value_parser = ["text", "json"], default_value = "text")]
@@ -87,6 +93,7 @@ fn outcome(a: &Args) -> Result<Outcome, String> {
         program,
         closed_world: a.closed_world,
         apply: a.apply,
+        build: a.build,
         cache,
     })
 }

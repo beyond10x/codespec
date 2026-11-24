@@ -15,7 +15,7 @@
 //!   the name as written, the Rust reader writes it in Go spelling. [`crate::compare`] takes
 //!   `o'` from the re-read declaration.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use codespec_model::Module;
 use serde_json::Value;
@@ -163,6 +163,8 @@ pub struct ChangeSet {
     ops: Vec<(Op, Resolved)>,
     edits: Vec<TextEdit>,
     shifts: Vec<Shift>,
+    /// Per edited file (its edit path): its module and its path in its span document.
+    places: BTreeMap<String, (usize, String)>,
 }
 
 /// A change in line count at `line` of `pos_file` (a position's file in module `module`).
@@ -228,6 +230,10 @@ pub fn plan_with(
             resolved.push((op.clone(), r));
         }
     }
+    let places = planned
+        .iter()
+        .map(|p| (p.edit.file.clone(), (p.module, p.pos_file.clone())))
+        .collect();
     let (edits, shifts) = merge(planned, &mut refusals);
     if !refusals.is_empty() {
         return Err(refusals);
@@ -237,6 +243,7 @@ pub fn plan_with(
         ops: resolved,
         edits,
         shifts,
+        places,
     })
 }
 
@@ -368,6 +375,59 @@ impl ChangeSet {
     pub fn apply(&self, file: &str, bytes: &[u8]) -> Vec<u8> {
         let edits: Vec<&TextEdit> = self.edits.iter().filter(|e| e.file == file).collect();
         apply(bytes, &edits)
+    }
+
+    /// Merge `gofmt`'s changes into the edits of `file` ([`crate::post::merge_whitespace`]):
+    /// `original` its bytes as read, `formatted` `gofmt`'s output for them with the edits
+    /// applied. When a merged edit changes the number of lines otherwise than before, the file's
+    /// line shifts of `S'` are made again from its edits: a position on the line of an edit's end,
+    /// or later, moves by the line breaks it adds less those it removes. An error when the texts
+    /// differ outside whitespace; the change set is then as it was.
+    pub fn format(&mut self, file: &str, original: &[u8], formatted: &[u8]) -> Result<(), String> {
+        let mine: Vec<TextEdit> = self
+            .edits
+            .iter()
+            .filter(|e| e.file == file)
+            .cloned()
+            .collect();
+        let merged = crate::post::merge_whitespace(original, &mine, formatted)?;
+        if merged == mine {
+            return Ok(());
+        }
+        let breaks = |b: &[u8]| b.iter().filter(|c| **c == b'\n').count();
+        let delta = |e: &TextEdit| {
+            breaks(e.replacement.as_bytes()) as i64 - breaks(&original[e.start..e.end]) as i64
+        };
+        let moves = |es: &[TextEdit]| -> Vec<(usize, i64)> {
+            es.iter()
+                .map(|e| (e.end, delta(e)))
+                .filter(|(_, d)| *d != 0)
+                .collect()
+        };
+        if moves(&mine) != moves(&merged)
+            && let Some((module, pos_file)) = self.places.get(file).cloned()
+        {
+            self.shifts
+                .retain(|s| !(s.module == module && s.pos_file == pos_file));
+            for e in &merged {
+                let d = delta(e);
+                if d != 0 {
+                    self.shifts.push(Shift {
+                        module,
+                        pos_file: pos_file.clone(),
+                        line: breaks(&original[..e.end]),
+                        delta: d,
+                    });
+                }
+            }
+            self.shifts.sort_by(|a, b| {
+                (a.module, &a.pos_file, a.line).cmp(&(b.module, &b.pos_file, b.line))
+            });
+        }
+        self.edits.retain(|e| e.file != file);
+        self.edits.extend(merged);
+        self.edits.sort();
+        Ok(())
     }
 }
 

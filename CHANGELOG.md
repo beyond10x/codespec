@@ -30,6 +30,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
   reasons, each edited file's SHA-256 before and after, and the diff. Diff and report name files
   relative to the current directory, also for an absolute input directory. A reader that gives no
   spans (`--lang java`) is refused by name (exit 1).
+- `codespec edit --build` compiles the checked copy before anything is written (Go: `go build` and
+  `go vet` over `./...`, test files included; Rust: `cargo check --all-targets`), so a test that
+  still calls a deleted function is caught; a failure exits 1 with the compiler's first 20 lines.
+  An edited Go file that was `gofmt`-clean is realigned by `gofmt` (as part of the diff); other
+  files keep their spacing.
 
 ## 0.12.0
 

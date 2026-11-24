@@ -1,4 +1,5 @@
-//! The one module of the crate that starts processes and touches files; the others are pure.
+//! The one module of the crate that starts processes (readers, `gofmt`, the build commands) and
+//! touches files; the others are pure.
 //!
 //! [`read_spanned`] runs a reader with `--spans` and checks both documents it gives. [`edit`] is
 //! the pipeline of `codespec edit` (`docs/code-edit-language.md` § 3.3, § 7.3), for every caller
@@ -12,13 +13,17 @@
 //! 3. the definite rows' operations are planned into a change set ([`crate::change::plan_with`]);
 //!    a refused row is dropped and the others planned again, so the outcome shows what they
 //!    would change, but a refusal of any row refuses the set: nothing is written;
-//! 4. the root the readers resolve against ([`module_root`]: Rust's Cargo workspace root, Go's
+//! 4. each edited Go file that `gofmt` leaves as it was read is run through `gofmt` with the
+//!    edits applied, and its whitespace changes are merged into the edits
+//!    ([`crate::change::ChangeSet::format`]); a change outside whitespace refuses the set;
+//! 5. the root the readers resolve against ([`module_root`]: Rust's Cargo workspace root, Go's
 //!    `go.mod` directory) is copied without `.git` and `target` into a fresh directory under the
 //!    cache directory (a relative `replace` path in a copied `go.mod` made absolute,
 //!    [`rewrite_go_mod`]), the edited files are written there, the copied input directories are
 //!    read again with `--spans`, and the set read is compared with `S'`
-//!    ([`crate::compare::compare`]); the copy is removed;
-//! 5. with `apply`, after verification and only when every file read still has the SHA-256 it
+//!    ([`crate::compare::compare`]); with `build`, the copy of each root is then compiled
+//!    ([`crate::post::build_commands`]); the copy is removed;
+//! 6. with `apply`, after verification and only when every file read still has the SHA-256 it
 //!    was read with, each edited file is written through a temporary file in its directory and a
 //!    rename.
 //!
@@ -32,7 +37,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
@@ -44,6 +49,7 @@ use crate::change::{self, ChangeSet, Input, Op, Options};
 use crate::compare::{Comparison, compare};
 use crate::diff;
 use crate::ids::{Ids, label, source_names};
+use crate::post;
 use crate::spans::{self, FORMAT, SpanDoc, sha256_hex};
 
 /// The fields of a reader's `--spans` output.
@@ -78,13 +84,16 @@ pub struct Request {
     pub apply: bool,
     /// The cache directory the copy is made under; never inside a root that is copied.
     pub cache: PathBuf,
+    /// Compile the verified copy before anything is written ([`post::build_commands`]).
+    pub build: bool,
 }
 
-/// How long the copy (with the edited files written into it) and the re-read took.
+/// How long the copy (with the edited files written into it), the re-read and the build took.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Timing {
     pub copy: Duration,
     pub reread: Duration,
+    pub build: Duration,
 }
 
 /// What a run came to.
@@ -98,7 +107,8 @@ pub enum Status {
     Applied,
     /// One or more rows refused, or the reader gives no spans; nothing written.
     Refused,
-    /// The copy with the edits read otherwise than `S'`, or not at all; nothing written.
+    /// The copy with the edits read otherwise than `S'`, or not at all, or with `build` did not
+    /// compile; nothing written.
     Unverified,
     /// A file changed between its read and the write; nothing written.
     Stale,
@@ -149,7 +159,8 @@ pub struct Outcome {
     pub diff: String,
     /// Every reason the set is not planned or not written, each starting with what happened:
     /// `refused: row <n>: <rule>: <site>: <message>`, `refused: the <lang> reader gives no spans:
-    /// …`, `verification failed: …`, `not written: <file>: changed since it was read`.
+    /// …`, `refused: gofmt: <file>: …`, `verification failed: …`, `build failed: <root>: <command>
+    /// …` (then the first lines of its output), `not written: <file>: changed since it was read`.
     pub reasons: Vec<String>,
     /// The roots copied (canonical paths, in the order of the inputs); not in the report.
     pub roots: Vec<PathBuf>,
@@ -399,7 +410,7 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     if refused {
         out.status = Status::Refused;
     }
-    let Some(cs) = cs else {
+    let Some(mut cs) = cs else {
         return Ok(out);
     };
 
@@ -407,6 +418,23 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     let mut sources: BTreeMap<String, (usize, String, Vec<u8>)> = BTreeMap::new();
     for file in cs.files() {
         sources.insert(file.to_string(), source_at(&inputs, &paths, file)?);
+    }
+
+    // gofmt of each edited Go file that was gofmt-clean when read, as merged edits.
+    if r.lang == "go" {
+        for (file, (_, _, bytes)) in sources.iter().filter(|(f, _)| f.ends_with(".go")) {
+            if gofmt(bytes)?.as_deref() != Some(bytes.as_slice()) {
+                continue;
+            }
+            let Some(formatted) = gofmt(&cs.apply(file, bytes))? else {
+                continue;
+            };
+            if let Err(e) = cs.format(file, bytes, &formatted) {
+                out.status = Status::Refused;
+                out.reasons.push(format!("refused: gofmt: {file}: {e}"));
+                return Ok(out);
+            }
+        }
     }
     for (file, (_, _, bytes)) in &sources {
         out.files.push(FileOutcome {
@@ -433,9 +461,9 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     out.timing = Timing {
         copy: copied,
         reread: start.elapsed(),
+        build: Duration::ZERO,
     };
     out.roots = copy.roots.clone();
-    drop(copy);
     let failed = match reread {
         Ok(set) => match compare(&cs, &set) {
             c @ Comparison::Differs { .. } => Some(c.to_string()),
@@ -450,7 +478,21 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
         }
         return Ok(out);
     }
-    if refused || !r.apply {
+    if refused {
+        return Ok(out);
+    }
+    if r.build {
+        let start = Instant::now();
+        let built = copy.build(&r.lang, &cwd);
+        out.timing.build = start.elapsed();
+        if let Err(reason) = built? {
+            out.reasons.push(format!("build failed: {reason}"));
+            out.status = Status::Unverified;
+            return Ok(out);
+        }
+    }
+    drop(copy);
+    if !r.apply {
         return Ok(out);
     }
 
@@ -852,6 +894,92 @@ impl Copy {
         }
         Ok(())
     }
+
+    /// Run the build commands of `lang` ([`post::build_commands`]) in the copy of each root, in
+    /// order, each bounded by [`post::BUILD_TIMEOUT`]: `Ok(Err(why))` at the first that fails,
+    /// `why` naming the root (relative to `cwd`) and the command, then the first
+    /// [`post::BUILD_LINES`] lines of its output, the copy's path in it replaced by the root's.
+    /// Go runs with `GOWORK=off` (the copy holds no `go.work`), Cargo with its target directory
+    /// inside the copy. An error when a command cannot start.
+    fn build(&self, lang: &str, cwd: &Path) -> Result<Result<(), String>, String> {
+        for (k, root) in self.roots.iter().enumerate() {
+            let at = self.dir.join(k.to_string());
+            let shown = relative(cwd, root);
+            let shown = if shown.as_os_str().is_empty() {
+                ".".to_string()
+            } else {
+                shown.display().to_string()
+            };
+            for argv in post::build_commands(lang) {
+                let log = self.dir.join("build.log");
+                let file =
+                    std::fs::File::create(&log).map_err(|e| format!("{}: {e}", log.display()))?;
+                let err = file
+                    .try_clone()
+                    .map_err(|e| format!("{}: {e}", log.display()))?;
+                let mut c = Command::new(argv[0]);
+                c.args(&argv[1..])
+                    .current_dir(&at)
+                    .stdin(Stdio::null())
+                    .stdout(file)
+                    .stderr(err)
+                    .env("GOWORK", "off")
+                    .env("CARGO_TARGET_DIR", self.dir.join("target"));
+                let command = argv.join(" ");
+                let mut child = c.spawn().map_err(|e| format!("{command}: {e}"))?;
+                let started = Instant::now();
+                let status = loop {
+                    if let Some(s) = child.try_wait().map_err(|e| format!("{command}: {e}"))? {
+                        break Some(s);
+                    }
+                    if started.elapsed() > post::BUILD_TIMEOUT {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break None;
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                };
+                if status.is_some_and(|s| s.success()) {
+                    continue;
+                }
+                let text = String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default())
+                    .replace(&at.display().to_string(), &root.display().to_string());
+                let how = match status {
+                    Some(s) => format!("exited with {s}"),
+                    None => format!(
+                        "ran past {} s and was stopped",
+                        post::BUILD_TIMEOUT.as_secs()
+                    ),
+                };
+                return Ok(Err(format!(
+                    "{shown}: {command} {how}:\n{}",
+                    post::first_lines(&text, post::BUILD_LINES).trim_end_matches('\n')
+                )));
+            }
+        }
+        Ok(Ok(()))
+    }
+}
+
+/// `bytes` through `gofmt` (the one on `PATH`): its output, or none when it refuses them. An error
+/// when it cannot start.
+fn gofmt(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    use std::io::Write;
+    let mut child = Command::new("gofmt")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("gofmt: {e}"))?;
+    let mut stdin = child.stdin.take().expect("a piped standard input");
+    let output = std::thread::scope(|s| {
+        s.spawn(move || {
+            let _ = stdin.write_all(bytes);
+        });
+        child.wait_with_output()
+    })
+    .map_err(|e| format!("gofmt: {e}"))?;
+    Ok(output.status.success().then_some(output.stdout))
 }
 
 impl Drop for Copy {

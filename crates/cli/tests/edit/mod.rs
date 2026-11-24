@@ -334,6 +334,7 @@ fn request(case: &str, adapters: &Path, dirs: &[&str], program: &str) -> Request
         program: program.into(),
         closed_world: true,
         apply: false,
+        build: false,
         cache: cache(case),
     }
 }
@@ -813,4 +814,157 @@ fn an_absolute_input_directory_gives_paths_relative_to_the_current_directory() {
     );
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     assert_eq!(stdout(&o), go_expected("rename.diff"));
+}
+
+// gofmt and `--build` (`story:edit-build-and-format`) on a copy of `fixtures/edit/go/shelf`
+// (package `store`: `item.go` gofmt-clean with an aligned struct and keyed literal, `loose.go` not
+// gofmt-clean, `store_test.go` calling the unexported `spare`) and of `fixtures/edit/rust/shed`
+// (`spare` called only by a `#[cfg(test)]` module). Each `--build` case prints its time.
+
+const RENAME_COUNT: &str =
+    r#"edit rename_field(T, "Count", "Quantity") :- type{id: T, name: "Item"}."#;
+
+const DELETE_SPARE: &str = r#"edit delete(F) :- func{id: F, name: "spare"}."#;
+
+#[test]
+fn renaming_a_field_of_a_gofmt_aligned_struct_realigns_it_and_a_loose_file_keeps_its_spacing() {
+    let shelf = go_copy("go-gofmt").join("shelf");
+    let o = edit_in(
+        "go-gofmt",
+        &shelf,
+        "go",
+        go_adapters(),
+        &[],
+        &["--closed-world", "--apply", "store", "-e", RENAME_COUNT],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), go_expected("field.diff"));
+    let listed = Command::new("gofmt")
+        .args(["-l", "store"])
+        .current_dir(&shelf)
+        .output()
+        .unwrap();
+    assert!(listed.status.success(), "{}", stderr(&listed));
+    assert_eq!(stdout(&listed), "store/loose.go\n", "gofmt -l");
+    let item = std::fs::read_to_string(shelf.join("store/item.go")).unwrap();
+    assert!(
+        item.contains("\tName     string\n\tQuantity int\n"),
+        "{item}"
+    );
+    let loose = std::fs::read_to_string(shelf.join("store/loose.go")).unwrap();
+    assert!(
+        loose.contains("\t\tName:   name,\n\t\tQuantity:  1,\n"),
+        "{loose}"
+    );
+}
+
+/// `codespec edit` timed, the time printed under `case`.
+fn timed(case: &str, run: impl FnOnce() -> Output) -> Output {
+    let start = Instant::now();
+    let o = run();
+    eprintln!("{case}: {:?}", start.elapsed());
+    o
+}
+
+#[test]
+fn go_build_of_a_delete_a_test_file_calls_exits_1_naming_it_and_without_build_is_planned() {
+    let shelf = go_copy("go-build").join("shelf");
+    let before = digests(&shelf);
+    let o = timed("go --build delete", || {
+        edit_in(
+            "go-build",
+            &shelf,
+            "go",
+            go_adapters(),
+            &[],
+            &["--build", "--apply", "store", "-e", DELETE_SPARE],
+        )
+    });
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("build failed: .: go vet ./... exited with") && e.contains("store_test.go:"),
+        "{e}"
+    );
+    assert_eq!(stdout(&o), "", "a diff was printed");
+    assert_eq!(digests(&shelf), before, "an input file changed");
+
+    let o = edit_in(
+        "go-build",
+        &shelf,
+        "go",
+        go_adapters(),
+        &[],
+        &["store", "-e", DELETE_SPARE],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert!(stdout(&o).contains("-func spare() int {"), "{}", stdout(&o));
+}
+
+/// A fresh copy of the Rust fixture crate `name` for one case: the directory holding it.
+fn rust_copy(case: &str, name: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("cli-edit-rust")
+        .join(case);
+    let _ = std::fs::remove_dir_all(&dir);
+    copy_dir(&rust_fixtures().join(name), &dir.join(name));
+    dir
+}
+
+#[test]
+fn rust_build_of_a_delete_a_cfg_test_module_calls_exits_1_naming_the_file() {
+    let dir = rust_copy("rust-build", "shed");
+    let before = digests(&dir);
+    let o = timed("rust --build delete", || {
+        edit_in(
+            "rust-build",
+            &dir,
+            "rust",
+            rust_adapters(),
+            &[],
+            &["--build", "--apply", "shed", "-e", DELETE_SPARE],
+        )
+    });
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("build failed: shed: cargo check --all-targets")
+            && e.contains("src/lib.rs:")
+            && e.contains("spare"),
+        "{e}"
+    );
+    assert_eq!(stdout(&o), "", "a diff was printed");
+    assert_eq!(digests(&dir), before, "an input file changed");
+}
+
+#[test]
+fn rust_rename_with_build_exits_0() {
+    let o = timed("rust --build rename", || {
+        edit(
+            "rust-build-rename",
+            &["--build", "--closed-world", "stock", "-e", RENAME_LOAD],
+        )
+    });
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), expected_diff("load.diff"));
+}
+
+#[test]
+fn build_of_a_rename_in_a_workspace_member_exits_0_the_copy_holding_the_workspace_root() {
+    let mut r = request("works-build", rust_adapters(), &["works/app"], RENAME_LOAD);
+    r.build = true;
+    let start = Instant::now();
+    let outcome = codespec_edit::run::edit(&r).unwrap();
+    eprintln!(
+        "rust --build workspace member: {:?} (build {:?})",
+        start.elapsed(),
+        outcome.timing.build
+    );
+    assert_eq!(outcome.status, Status::Planned, "{outcome:?}");
+    assert_eq!(outcome.exit_code(), 0);
+    assert_eq!(
+        &outcome.roots,
+        &[rust_fixtures().join("works").canonicalize().unwrap()]
+    );
+    assert!(outcome.timing.build > std::time::Duration::ZERO);
 }

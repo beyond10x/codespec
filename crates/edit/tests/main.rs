@@ -4,7 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
+use codespec_edit::change::{TextEdit, apply};
 use codespec_edit::ids::{Id, Ids, SourceName, source_names};
+use codespec_edit::post;
 use codespec_edit::spans::{self, SpanDoc, SpanError, sha256_hex};
 use codespec_model::Module;
 use codespec_query::{FactBase, Value as Q};
@@ -444,5 +446,72 @@ fn a_path_into_a_copied_root_is_mapped_to_the_copy() {
     assert_eq!(
         mapped,
         "module example.com/app\n\nreplace example.com/lib => /cache/copy/1\n"
+    );
+}
+
+// gofmt's output as merged text edits (`story:edit-build-and-format`, § 6.1).
+
+/// A gofmt-clean Go file with an aligned struct and an aligned keyed literal.
+const ALIGNED: &str = "package shelf\n\ntype Item struct {\n\tID    int\n\tCount int\n}\n\nfunc Make() Item {\n\treturn Item{\n\t\tID:    1,\n\t\tCount: 2,\n\t}\n}\n";
+
+/// `ALIGNED` with `Count` renamed `N`, as gofmt writes it.
+const REALIGNED: &str = "package shelf\n\ntype Item struct {\n\tID int\n\tN  int\n}\n\nfunc Make() Item {\n\treturn Item{\n\t\tID: 1,\n\t\tN:  2,\n\t}\n}\n";
+
+fn edit_at(start: usize, end: usize, replacement: &str) -> TextEdit {
+    TextEdit {
+        file: "shelf/item.go".into(),
+        start,
+        end,
+        replacement: replacement.into(),
+    }
+}
+
+/// The span edits renaming both `Count`s of `ALIGNED` to `N`.
+fn rename_count() -> Vec<TextEdit> {
+    ALIGNED
+        .match_indices("Count")
+        .map(|(i, _)| edit_at(i, i + 5, "N"))
+        .collect()
+}
+
+#[test]
+fn the_whitespace_alignment_of_a_gofmt_realigned_struct_gives_the_expected_merged_edits() {
+    let edits = rename_count();
+    let merged = post::merge_whitespace(ALIGNED.as_bytes(), &edits, REALIGNED.as_bytes()).unwrap();
+    let field_id = ALIGNED.find("ID    int").unwrap() + 2;
+    let field_count = edits[0].start;
+    let literal_id = ALIGNED.find("ID:    1").unwrap() + 3;
+    let literal_count = edits[1].start;
+    assert_eq!(
+        merged,
+        vec![
+            // A run apart from any span edit: an edit of its own.
+            edit_at(field_id, field_id + 4, " "),
+            // The run right after the renamed field joins its span edit.
+            edit_at(field_count, field_count + 6, "N  "),
+            edit_at(literal_id, literal_id + 4, " "),
+            // `:` lies between the name and the run: two edits.
+            edit_at(literal_count, literal_count + 5, "N"),
+            edit_at(literal_count + 6, literal_count + 7, "  "),
+        ]
+    );
+    let refs: Vec<&TextEdit> = merged.iter().collect();
+    assert_eq!(apply(ALIGNED.as_bytes(), &refs), REALIGNED.as_bytes());
+    // No whitespace changed: the span edits as they are.
+    let same = apply(ALIGNED.as_bytes(), &edits.iter().collect::<Vec<_>>());
+    assert_eq!(
+        post::merge_whitespace(ALIGNED.as_bytes(), &edits, &same).unwrap(),
+        edits
+    );
+}
+
+#[test]
+fn texts_that_differ_outside_whitespace_are_refused() {
+    let edits = rename_count();
+    let other = REALIGNED.replace("\tN  int", "\tN  int64");
+    let e = post::merge_whitespace(ALIGNED.as_bytes(), &edits, other.as_bytes()).unwrap_err();
+    assert!(
+        e.contains("gofmt changed more than whitespace: line 5 ") && e.contains("int64"),
+        "{e}"
     );
 }

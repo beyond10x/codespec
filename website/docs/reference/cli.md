@@ -247,6 +247,7 @@ Usage: codespec edit [OPTIONS] --lang <LANG> --adapters <ADAPTERS> <DIRS>...
 | `--adapters <ADAPTERS>` | yes | none | `CODESPEC_ADAPTERS` | Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`. |
 | `--closed-world` | no | none | none | No code outside the inputs refers to their exported names; without it, a row whose target is exported is refused. |
 | `--apply` | no | none | none | Write the edited files after verification, each through a temporary file in its directory and a rename, only when every file read still has the SHA-256 it was read with. |
+| `--build` | no | none | none | Compile the verified copy before anything is written: Go with go build ./... and go vet ./... (test files included) in the copy of the go.mod root, Rust with cargo check --all-targets in the copy of the workspace root; each command bounded at 10 minutes. A failure exits 1 with the first 20 lines of the compiler's output, nothing written. |
 | `--format <FORMAT>` | no | `text` | none | text, the unified diff; or json, codespec-edit-report/1 (each row's status and reasons, each edited file's SHA-256 before and after, the diff). |
 | `--program <PROGRAM>` | no | none | none | The edit program: cq rules and `edit` items. |
 | `--file <FILE>` | no | none | none | A file holding the edit program. |

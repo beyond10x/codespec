@@ -90,6 +90,7 @@ pub mod delete;
 pub mod diff;
 pub mod ids;
 pub mod lang;
+pub mod post;
 pub mod refs;
 pub mod rename;
 pub mod retarget;
