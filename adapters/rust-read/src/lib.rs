@@ -22,7 +22,7 @@
 //! | `struct T(pub U)`, `U` an integer, `bool` or `String` | `newtype` |
 //! | `enum T { A, B }` (unit variants) | `enum` over `int` (platform), values the discriminants (`A = 1`) or 0, 1, … |
 //! | the same with `fn value(&self) -> &'static str` (or an integer) matching every variant to a literal | `enum` over `string` (or that integer), the method absorbed |
-//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, … |
+//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, …: the `_<digits>` rule, such a name marks a positional field, so the Rust writer writes `B(U)` back; a struct variant whose field is named `_<digits>` (`V { _0: U }`) would read the same and is refused at that field |
 //! | `enum Error` of unit variants, `V(S)` (`S` a struct) and `Msg(String)`, with a `Display` impl | sentinel errors `Err<V>` (message from its `Display` arm); `S` an error struct whose `Display` is its `Error()`; `Msg` `errorf` |
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
 //! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
@@ -3168,7 +3168,19 @@ impl Reader {
                             for v in &e.variants {
                                 let mut fields = Vec::new();
                                 for (i, fl) in v.fields.iter().enumerate() {
+                                    // `_<digits>` marks a tuple field in cir/1: a struct
+                                    // variant's field of that name would read as one.
                                     let fname = match &fl.ident {
+                                        Some(id) if tuple_field_name(&id.to_string()) => {
+                                            bad = Some((
+                                                self.pos(fl.span()),
+                                                format!(
+                                                    "the field `{id}` of the struct variant {}: a name `_<digits>` marks a tuple field in cir/1, so the variant would read as the tuple variant `{}(…)`",
+                                                    v.ident, v.ident
+                                                ),
+                                            ));
+                                            continue;
+                                        }
                                         Some(id) => names::exported(&id.to_string()),
                                         None => format!("_{i}"),
                                     };
@@ -3178,7 +3190,7 @@ impl Reader {
                                             t,
                                             embedded: false,
                                         }),
-                                        Err(r) => bad = Some(r),
+                                        Err(r) => bad = Some((pos.clone(), r)),
                                     }
                                 }
                                 variants.push(UnionVariant {
@@ -3186,7 +3198,7 @@ impl Reader {
                                     fields,
                                 });
                             }
-                            if let Some(r) = bad {
+                            if let Some((pos, r)) = bad {
                                 late_refusals.push(Refusal {
                                     pos,
                                     what: n,
@@ -3772,6 +3784,12 @@ fn screaming(s: &str) -> String {
     } else {
         s.to_lowercase()
     }
+}
+
+/// Whether `name` is `_<digits>`, the name `cir/1` gives a tuple variant's positional field.
+fn tuple_field_name(name: &str) -> bool {
+    name.strip_prefix('_')
+        .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// A unit enum's discriminants: explicit integer literals, or one more than the previous, from 0.

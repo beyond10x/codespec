@@ -58,6 +58,11 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.
+- A Rust tuple variant (`Circle(i64)`) read by `codespec-read-rust` and written by
+  `codespec-write-rust` is a tuple variant again, not `Circle { _0: i64 }`: in `cir/1` a union
+  field named `_<digits>` marks a positional field. The reader refuses a struct variant whose
+  field is named `_<digits>` at that field's line; the writer refuses a variant whose such fields
+  are not `_0`, `_1`, … in order or sit beside a named one.
 
 ## 0.12.0
 

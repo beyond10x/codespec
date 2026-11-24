@@ -3639,3 +3639,47 @@ fn the_go_written_from_platform_width_values_builds_and_vets() {
         );
     }
 }
+
+// ----- tuple variants --------------------------------------------------------------------------
+
+/// A tuple variant's fields are named `_0`, `_1`, … in `cir/1`: that name marks a positional
+/// field. A struct variant whose field is named `_<digits>` would read to the same `cir/1`, so it
+/// is refused at that field's line, and its enum with it.
+#[test]
+fn a_struct_variant_field_named_like_a_tuple_field_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub enum Shape {",
+        "    Circle(i64),",
+        "    Rect { w: i64, h: i64 },",
+        "}",
+        "pub enum E {",
+        "    V {",
+        "        _0: i64,",
+        "    },",
+        "}",
+        "pub enum F {",
+        "    W { _x: i64, _12: i64 },",
+        "}",
+    ]));
+    let doc: Value = serde_json::from_str(&m.to_json()).unwrap();
+    let shape = doc["types"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "Shape")
+        .expect("Shape is read");
+    assert_eq!(shape["variants"][0]["name"], "Circle");
+    assert_eq!(shape["variants"][0]["fields"][0]["name"], "_0");
+    assert!(refused_at(&m, "lib.rs:7"), "{:?}", m.refusals);
+    assert!(refused_at(&m, "lib.rs:11"), "{:?}", m.refusals);
+    assert_eq!(m.refusals.len(), 2, "{:?}", m.refusals);
+    assert!(
+        m.refusals
+            .iter()
+            .all(|r| r.reason.contains("_0") || r.reason.contains("_12")),
+        "{:?}",
+        m.refusals
+    );
+    let names: Vec<&str> = m.types.iter().map(|t| t.name()).collect();
+    assert_eq!(names, ["Shape"]);
+}
