@@ -8,7 +8,7 @@ summary: How cir/1 states a Rust integer operator (+ - * neg / % << >>) whose ov
 relations:
 - designs: story:rust-reader-integer-overflow
 - decomposes: epic:async-network-service-translation
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "in_review", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 2}
 ---
@@ -52,8 +52,12 @@ section of this artifact.
 
 ## Note
 
-Read on `wave/rust-misreads-1` (`efd4d802`), which branches from main `f09c740f`. Decision D1 = A
-of `story:rust-reader-integer-overflow`, with its conditions.
+Read on `wave/rust-misreads-1` (`65a79bc3`: shift-count, hand-written comparisons, platform-int
+width and tuple-variant fields merged), which branches from main `f09c740f`. Decision D1 = A of
+`story:rust-reader-integer-overflow`, with its conditions.
+
+Revision 2 answers the adversary's round 1, `review-result:cir1-checked-integer-operators-r1`
+(needs-revision, nine findings F1 to F9). Each change is tagged with the finding it answers.
 
 ### 1. In one line
 
@@ -98,9 +102,18 @@ Which node carries each, by what the reader knows of `overflow-checks` (§ 5):
 | `checked_*`, `saturating_*`, `overflowing_*`, `pow`, `abs` | refused at its line, as today (a result of `Option` or a tuple, or outside the std table); a later story | same | same |
 | an operator in a `const` or `static` initializer, an array length or an enum discriminant | today's operator: overflow there is a compile error in every build | same | same |
 
-"Cannot tell" means no `--profile` was given, or the profile's setting cannot be resolved (§ 5).
-The refusal names the operator, the type and why: "`+` on `i32` panics or wraps by the build's
-`overflow-checks`, and the reader was told no profile (`--profile`)".
+"Cannot tell" means the setting is unknown by § 5: without `--profile`, the root's profiles
+disagree; with it, the pinned profile's setting cannot be resolved. (F8, F9) The refusal names the
+operator, the type and why: "`+` on `i32` panics or wraps by the build's `overflow-checks`, and
+the profiles of this root disagree (dev: on, release: off); pin one with `--profile`".
+
+Types (F1). A checked operator is emitted only where the operand's `cir/1` type is the operand's
+Rust type, width and signedness both; where the reader gives an operand another type than
+rustc's, the operator is refused at its line. Since `story:rust-reader-platform-int-width`,
+`v.len()` is `usize`, unsigned `platform`, so `v.len() - 1` under the checks reads as `-!` on an
+unsigned `platform` operand and panics at 0, as Rust does. A reading that still differs in type
+(the named index of `enumerate()`, already refused) must stay refused, never become a checked
+operator over the wrong range.
 
 The platform row keeps wave 1's caution: W of `usize` is the target's (32 or 64), and `cir/1`'s
 `platform` does not fix it for Rust. `+! -! *!` on `platform` are read with W = 64, as every
@@ -131,7 +144,8 @@ How it is stated, additively:
   `-!` a signed operand; anything else is refused.
 - `crates/model/src/features.rs`: `BINOPS` gains the seven, `COMPOUND` their names, `UNOPS`
   `neg_checked`; 15 new ids, family `operator`. `features_used` (`crates/conformance`) does not
-  add `sem.int.wrap` or `sem.rem.sign` for them: they do not wrap.
+  add `sem.int.wrap` for them, as they do not wrap; `%!` and `%!=` add `sem.rem.sign`, as `%`
+  does, since the remainder still takes the dividend's sign (F2).
 - `schemas/cir-1.schema.json`: regenerated. `op` is an unconstrained string, so the operator
   change is in the description text only; the `build` record (§ 4) adds one optional property to
   the module. `schemas/cir-1.features.json` and `conformance/kit.json`: regenerated with the 15
@@ -163,64 +177,123 @@ Why an `op` string and not a field or a node kind:
 
 | field | type | meaning |
 |---|---|---|
-| `profile` | string, optional | the profile the reader was told (`dev`, `release`, `test`, `bench` or a custom one) |
+| `profile` | string, optional | the profile pinned with `--profile` (`dev`, `release`, `test`, `bench` or a custom one); absent when every profile of the root agreed and none was pinned (F8) |
 | `overflow_checks` | bool, optional | the resolved setting; absent when the reader could not tell, and then every node of row "cannot tell" was refused |
 | `debug_assertions` | bool, optional | the resolved setting, by the same rules; `story:rust-reader-cfg-features` reads `cfg(debug_assertions)` from it |
 | `features` | array of string, optional, sorted, unique | the enabled Cargo features; written by `story:rust-reader-cfg-features` (`[]` means none, absent means not resolved) |
 
 The record states what the reader read; no consumer needs it to give a node its meaning, which
-the nodes carry. A writer that ignores it loses nothing. The Rust reader writes `build` whenever
-it is told a profile; `story:rust-reader-integer-overflow` writes `profile`, `overflow_checks`
-and `debug_assertions`, `story:rust-reader-cfg-features` adds `features`. Other readers write no
-`build`.
+the nodes carry. A writer that ignores it loses nothing, and no runner reads it (F6, § 5.6). The
+Rust reader always writes `build`; `story:rust-reader-integer-overflow` writes `profile`,
+`overflow_checks` and `debug_assertions`, `story:rust-reader-cfg-features` adds `features`.
+Other readers write no `build`.
 
 ### 5. How the Rust reader takes `overflow-checks`
 
-The profile is an input, never assumed: `codespec-read-rust --profile <name> <crate dir>`, and
-`codespec read --lang rust --profile <name>` passes it on (`--profile` for a reader that does not
-take it fails at the reader, as `--spans` does). Without `--profile` the reader cannot tell
-(§ 2). It then resolves the setting as Cargo does for that profile:
+Inputs: `codespec-read-rust [--profile <name>] [--root <dir>] <crate dir>`; `codespec read --lang
+rust` passes both on (refused for a reader that does not take them, as `--spans` is). No profile
+is hard-coded.
 
-1. **The workspace root.** Cargo reads `[profile.*]` only from the workspace root's manifest and
-   ignores it, with a warning, in a member's; the reader does the same. The root is the crate's
-   own `Cargo.toml` when it has `[workspace]`; else the manifest that `package.workspace` names;
-   else the nearest ancestor directory's `Cargo.toml` with `[workspace]`. An ancestor's
-   workspace whose `members` (paths and globs) do not hold the crate and whose `exclude` does not
-   name it is an error, as in Cargo; one that excludes it leaves the crate its own root. Ancestor
-   manifests are read as regular files of at most `MAX_SOURCE_BYTES`, and only `[workspace]`,
-   `[profile]` and `package.workspace` are used. Today the reader reads only inside the crate
-   directory: this is the one widening.
-2. **The chain.** `dev` and `release` are built in; `test` inherits `dev` and `bench` inherits
-   `release`; a custom profile names its parent with `inherits`, which must end at a built-in.
-   A custom profile not defined, without `inherits`, or in a cycle is an error, as in Cargo.
-3. **The value.** The first of: `[profile.<p>.package.<crate>]` for each profile `p` of the chain,
-   child first; `[profile.<p>]` for each `p` of the chain, child first; the built-in default
-   (`dev`: `overflow-checks = true`, `debug-assertions = true`; `release`: both false).
-   `[profile.<p>.package."*"]` and `build-override` do not apply to a workspace member and are
-   ignored. `debug-assertions` resolves the same way and is independent: Cargo passes
-   `-C overflow-checks` on its own.
-4. **Configuration files in the source tree.** `.cargo/config.toml` (and `.cargo/config`) in the
-   crate's directory and in each directory up to and including the workspace root: a
-   `[profile.<p>]` setting there wins over the manifest, nearest directory first, as Cargo's
-   configuration does. A `build.rustflags` or `target.*.rustflags` naming `overflow-checks` (or
-   `debug-assertions`) there means the reader cannot tell.
-5. **Not read.** `$CARGO_HOME/config.toml`, configuration files above the workspace root, and the
-   environment (`CARGO_PROFILE_<P>_OVERFLOW_CHECKS`, `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`) belong
-   to the build host, not to the source. The crate doc says so, and `build` names the profile and
-   value read, so a build that sets the value there is visible as a mismatch.
+**5.1 The root (F6).** The settings that apply are the building workspace root's, not the
+crate's own: Cargo reads `[profile]` only from the root manifest of the workspace it builds, and
+ignores it in every other manifest, a path dependency's included. The reader reads the root it is
+pointed at. `--root <dir>` names the directory whose `Cargo.toml` is the building root (a runner's
+or a harness driver's workspace). Without `--root`, the root is the crate's own workspace by
+Cargo's lookup: the crate's `Cargo.toml` when it has `[workspace]`; else the manifest that
+`package.workspace` names; else the nearest ancestor `Cargo.toml` with `[workspace]`, whose
+`members` must hold the crate unless its `exclude` names it (an error otherwise, as in Cargo).
+Root and ancestor manifests are read as regular files of at most `MAX_SOURCE_BYTES`, and only
+`[workspace]`, `[profile]`, `workspace.package.version` and `package.workspace` are used: the one
+widening of what the reader reads, today only the crate directory. Under a root whose `members`
+do not hold the crate, the crate is a non-member (a path dependency), which decides the tiers of
+5.3.
 
-The crate doc of `adapters/rust-read/src/lib.rs` states the profile rule and replaces the
-operator row's "a trace that overflows is not equal by construction".
+**5.2 The chain.** `dev` and `release` are built in; `test` inherits `dev`, `bench` inherits
+`release`; a custom profile names its parent with `inherits`, which must end at a built-in. A
+pinned profile that is not defined, a custom one without `inherits`, or a cycle is an error, as
+in Cargo.
+
+**5.3 Cargo's order (F4).** For profile `p` and the read crate, the first tier that sets the key
+wins:
+
+1. `[profile.<p>.package.<spec>]` whose spec matches the crate (5.4);
+2. `[profile.<p>.package."*"]`, only when the crate is not a member of the root;
+3. `[profile.<p>]`;
+4. the default of the chain's built-in: `dev` `overflow-checks = true`, `debug-assertions =
+   true`; `release` both false.
+
+`[profile.<p>.build-override]` applies to build scripts, proc macros and their dependencies, not
+to the crate's code, and is skipped. Within a tier, configuration comes before the manifest
+(Cargo merges a profile's configuration table over its manifest table), and the child profile
+before its parent along `inherits`. So a package override in the manifest beats a profile-level
+setting in configuration, and at profile level configuration beats the manifest. The reader reads
+the manifest's tables; a configuration layer it cannot place makes the value unknown (5.5).
+`debug-assertions` resolves the same way. Cargo passes `-C overflow-checks` itself where it differs
+from `debug-assertions`, so the two resolve independently, except through rustflags (5.5).
+
+**5.4 Package specs (F3).** A key of `[profile.<p>.package]` is a package ID spec. The reader
+resolves `name`, and `name@version` and `name:version` with a full or partial version (`1`, `1.2`,
+`1.2.3`) compared component by component with the crate's `[package] version` (or the root's
+`workspace.package.version` for `version.workspace = true`). A key naming another package is
+skipped. A key it cannot resolve makes the value unknown when it may name the crate: a URL form
+(`registry+…#name@…`, `path+file://…#…`, any key with `#` or `://`), a version with pre-release or
+build metadata, or a crate version the reader cannot read.
+
+**5.5 Unknown (F5).** Cargo reads configuration from the directory it runs in, that directory's
+ancestors and `$CARGO_HOME`; the reader cannot tell where the build runs. So any `.cargo/config.toml`
+or `.cargo/config` in the crate's directory, the root's directory, or a directory between them
+that sets a `profile` key or any rustflags (`build.rustflags`, `target.<triple>.rustflags`,
+`target.<cfg>.rustflags`) makes `overflow-checks` and `debug-assertions` unknown. So do
+`rustflags` in a `[profile.*]` table of the root manifest (the unstable `profile-rustflags`), and
+`-C overflow-checks` or `-C debug-assertions` in any rustflags source the reader reads (rustc's
+`overflow-checks` follows `debug-assertions` where it is not set itself). Unknown means the
+profile-dependent operators are refused (§ 2) and `build.overflow_checks` is absent. Not read at
+all, and named in the crate doc as outside the reading: `$CARGO_HOME/config.toml`, configuration
+above the root, and the environment (`CARGO_PROFILE_*`, `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`,
+`CARGO_BUILD_RUSTFLAGS`).
+
+**5.6 Default and pin (F8, F9).** Without `--profile`, the reader resolves the setting for every
+profile the root can build: `dev`, `test`, `release`, `bench` and each custom profile the root
+defines, each through its chain. All known and equal: that value, and `build` without `profile`.
+Any unknown, or two that differ: unknown, and the refusal says which profiles gave what.
+`--profile <name>` pins one. A root with no `[profile]` table disagrees (`dev` and `test` on,
+`release` and `bench` off), so such a crate needs `--profile`; a root that sets
+`[profile.release] overflow-checks = true`, as services often do, reads without one.
+
+**5.7 Who passes what (F6, F7).** No runner reads `build`; each caller pins the profile its build
+uses:
+
+- `codespec-run-rust` (`adapters/rust-run/src/lib.rs`, the generated `codespec-run` workspace)
+  builds the subject as a path dependency with `cargo build`, profile `dev`, in a root without
+  `[profile]`: checks on. The conformance engine reads the Rust corpus with `--profile dev`; the
+  corpus crate's own root has no `[profile]` either, so the pin names what step 1 ran.
+- The inventory harness builds `examples/inventory/source` as a path dependency of
+  `drivers/rust-original` (its own `[workspace]`, no `[profile]`, `cargo build`): the
+  `examples-inventory` task (`Taskfile.yml`, the read at line 336) and the release workflow
+  (`.github/workflows/release-build.yml:88-89`, which reads it and compares bytes with the
+  checked-in document) both pass `--profile dev`, so the bytes compare.
+- `codespec edit` runs the reader with `--spans` alone (`crates/edit/src/run.rs:1162`); it gains
+  `--profile`, passed on for every read. Without it, a crate whose profiles agree reads as
+  before; where they disagree, each profile-dependent operator is refused in every read, and edit
+  refuses a change set that meets one, as it refuses any refusal. The Rust edit fixtures
+  (`examples/edit/rust/source`, `crates/cli/tests/fixtures/edit/rust/*`) have no `[profile]` and
+  use `+` and `*`, so their programs and tests pass `--profile dev`, the profile their `--build`
+  commands build with.
+
+The crate doc of `adapters/rust-read/src/lib.rs` states these rules and replaces the operator
+row's "a trace that overflows is not equal by construction".
 
 ### 6. Shared with `story:rust-reader-cfg-features`
 
-The `--profile` input, the resolution of § 5 and the `build` record are one: `cfg(debug_assertions)`
-is read from `build.debug_assertions`, resolved by the same chain, and the module records the
-features beside it. Without `--profile` both stories cannot tell, and refuse.
+The `--profile` and `--root` inputs, the resolution of § 5 (order, specs, unknowns, the default
+over all profiles) and the `build` record are one: `cfg(debug_assertions)` is read from
+`build.debug_assertions`, resolved by the same rules, and the module records the features beside
+it. When `debug-assertions` is unknown, or the profiles disagree on it without a pin, a
+`cfg(debug_assertions)` item stays refused.
 
 ### 7. Every evaluator and writer refuses an operator it does not know
 
-Today, for an `op` string it does not know (read off the code at `efd4d802`):
+Today, for an `op` string it does not know (read off the code at `efd4d802`, unchanged at `65a79bc3`):
 
 | adapter | binop | unop | compound assign | claim of the new ids | after the change |
 |---|---|---|---|---|---|
@@ -274,8 +347,8 @@ today's `+`.
   `schemas/cir-1.schema.json`, `schemas/cir-1.features.json` (generated).
 - `crates/eval/src/interp.rs` (`arith`, `Unop`), `docs/evaluator.md` § 5.1.
 - `adapters/rust-read/src/{lib.rs,body.rs,main.rs}` (`binary`, the `Neg` arm, `compound`, the
-  `wrapping` table, `--profile`), the profile resolution beside the manifest reading in
-  `lib.rs` (`read_crate`), `adapters/rust-read/tests/reader.rs`, `tests/cases.rs` (`--profile
+  `wrapping` table, `--profile`, `--root`), the profile resolution beside the manifest reading
+  in `lib.rs` (`read_crate`), `adapters/rust-read/tests/reader.rs`, `tests/cases.rs` (`--profile
   dev`).
 - `adapters/go/cmd/codespec-write-go/{write.go,names.go}` and a test file; `describe.go`
   unchanged.
@@ -291,10 +364,17 @@ today's `+`.
   the calls encoding has no panic line); and the `rust/case.rs` of `op-add`, `op-sub`, `op-mul`,
   `op-div`, `op-rem`, `op-shl`, `op-shr`, `unop-neg` and their `assign-*` change to the
   `wrapping_*` form (or a proven count), which is what Go's operator means, so each still uses
-  its subject when read with `--profile dev`.
-- `Taskfile.yml` (`examples-inventory` reads with `--profile dev`, the profile its harness builds
-  the original with), `examples/inventory/*` regenerated; `crates/docs` generated pages; the
-  crate doc of `adapters/rust-read/src/lib.rs`; `docs/design.md` § 3 (a row); `CHANGELOG.md`.
+  its subject when read with `--profile dev`. `conformance/cases/sem-rem-sign/rust/case.rs`
+  (`a % b` on `i64`) reads as `%!` and keeps its subject `sem.rem.sign` (F2); its corpus copy
+  `conformance/reader/rust/sem-rem-sign` is regenerated unchanged.
+- `Taskfile.yml` (`examples-inventory`, the read at line 336, passes `--profile dev`),
+  `.github/workflows/release-build.yml:88-89` (the same flag), `examples/inventory/*`
+  regenerated (F7).
+- `crates/edit/src/run.rs` (`read`, line 1162: `--profile` passed on), `crates/cli/src/lib.rs`
+  (`edit --profile`), the programs of `examples/edit/rust` and `scripts/examples-edit.sh`, the
+  tests over `crates/cli/tests/fixtures/edit/rust` (F7).
+- `crates/docs` generated pages; the crate doc of `adapters/rust-read/src/lib.rs`;
+  `docs/design.md` § 3 (a row); `CHANGELOG.md`.
 - Unchanged and refusing: `adapters/elixir/lib/scalar_writer.ex`, `adapters/odin/src/write.rs`.
 
 ### 10. Test plan, red first
@@ -305,47 +385,66 @@ a tree under `~/.cache`. Red first on main `f09c740f`:
 1. `adapters/rust-read/tests/reader.rs`: the story's crate; `div(i32::MIN, -1)` and
    `rem(i32::MIN, -1)` read without `--profile` and evaluated stop `panic`. On main they print
    -2147483648 and 0: red.
-2. The same crate with `[profile.release] overflow-checks = true`, read with `--profile release`:
-   `add` holds `+!`, `add(i32::MAX, 1)` panics; with no `[profile]` and `--profile release`:
-   `+`, -2147483648; `--profile dev`: `+!`; no `--profile`: `add` and `neg` refused at their
-   lines, `div` and `rem` read. On main: red (`+` read in every case).
+2. The same crate, profiles (F8, F9): with `[profile.release] overflow-checks = true` and no
+   `--profile`, every profile agrees: `add` holds `+!`, `add(i32::MAX, 1)` panics, `build` has
+   no `profile`; with no `[profile]` and no `--profile`: `add` and `neg` refused at their lines
+   (dev and test on, release and bench off), `div` and `rem` read; `--profile release`: `+`,
+   -2147483648; `--profile dev`: `+!`. On main: red (`+` read in every case).
 3. Shifts (`story:rust-reader-shift-count`'s crate): `--profile dev` gives `<<!`, `shl(1, 32)`,
    `mask(64)`, `shl_signed(1, 64)` panic; `--profile release` gives the masked form, 1, 0 and 1,
    as Rust; red on main (0, 18446744073709551615, 0).
-4. Resolution, one crate each: a custom profile `inherits = "release"`; a member whose root has
-   `[profile.release] overflow-checks = true` and whose own `[profile]` is ignored;
-   `[profile.release.package.<crate>]`; `.cargo/config.toml` at the root overriding the manifest;
-   `build.rustflags` with `-C overflow-checks` (cannot tell); a profile not defined (error); the
-   `build` record of each.
-5. Model: strict reading accepts each checked operator on integers and refuses it on a float, a
+4. Resolution, one crate each, with the `build` record of each: a custom profile `inherits =
+   "release"`; a member whose root has `[profile.release] overflow-checks = true` and whose own
+   `[profile]` is ignored; a manifest `[profile.release.package.<crate>]` beating `[profile.release]`
+   (F4); package keys `<crate>`, `<crate>@0.1`, `<crate>:0.1.0` applied, `<crate>@0.2` skipped,
+   `registry+https://…#<crate>@0.1.0` unknown (F3); `package."*"` applied only under a `--root`
+   that does not hold the crate (F6); a `.cargo/config.toml` in the crate's or the root's
+   directory with a `profile` key or `build.rustflags`, and `rustflags` in the root's
+   `[profile.release]`, each unknown (F5); a pinned profile not defined (error).
+5. Types (F1): `pub fn last(v: Vec<i64>) -> usize { v.len() - 1 }` with `--profile dev` holds
+   `-!` on unsigned `platform` and `last(vec![])` panics.
+6. Model: strict reading accepts each checked operator on integers and refuses it on a float, a
    string, mixed types and `-!` on unsigned; `build` with an unknown field refused;
    `examples-check` shows every checked-in document byte-equal.
-6. Evaluator: each operator at its bounds (`MAX +! 1`, `MIN -! 1`, `MIN *! -1`, `-! MIN`,
+7. Evaluator: each operator at its bounds (`MAX +! 1`, `MIN -! 1`, `MIN *! -1`, `-! MIN`,
    `MIN /! -1`, `MIN %! -1`, `x /! 0`, `x <<! W`, `x <<! (W - 1)`, `x <<! -1`) for widths 8 to
    64, signed and unsigned: a panic or the value.
-7. Writers: Go (gofmt-clean, vetted, the helper panics at each bound), Rust (builds without
+8. Writers: Go (gofmt-clean, vetted, the helper panics at each bound), Rust (builds without
    warnings, same), C (through `codespec-run-c`); Elixir, Gleam and Odin refuse a module with
    `+!`, `-!` and `+!=`.
-8. Kit and claims: `conformance-cases`, `eval-kit`, `conformance-kit`, the writers' conform runs
+9. Kit and claims: `conformance-cases`, `eval-kit`, `conformance-kit`, the writers' conform runs
    and `adapters/rust-read/tests/cases.rs` green with the 15 cases; the Go and C readers' runs do
    not claim them.
-9. Examples: `examples-inventory` (read with `--profile dev`, Go and Rust outputs regenerated,
-   harness 200 × 300 byte-equal) and `eval-diff` over `inventory`.
+10. Examples and callers (F7): `examples-inventory` (read with `--profile dev`, Go and Rust
+   outputs regenerated, harness 200 × 300 byte-equal), `eval-diff` over `inventory`, the release
+   workflow's read of `examples/inventory/source` byte-equal, `task examples-edit` and the edit
+   tests over `crates/cli/tests/fixtures/edit/rust` unchanged with `--profile dev`.
 
 ### 11. Open questions
 
-- Q1. Reading ancestor manifests and `.cargo/config.toml` widens what the reader reads beyond the
-  crate directory. Alternative: refuse whenever the crate's own manifest has no `[workspace]`.
+- Q1. Reading the root's and ancestors' manifests and configuration files widens what the reader
+  reads beyond the crate directory. Alternative: refuse whenever the crate's own manifest has no
+  `[workspace]` and no `--root` is given.
 - Q2. The environment and `$CARGO_HOME` stay unread. An explicit input
   (`--overflow-checks on|off`) recorded in `build` would let a build that sets it there be read
   right; not proposed here.
 - Q3. `usize` and `isize` shifts stay refused because `platform` does not fix W for Rust, while
   `+! -! *!` on them assume W = 64. Fixing the target width for Rust's `platform` would settle
   both.
-- Q4. `codespec edit` runs the Rust reader with `--spans`; it should pass the profile through
-  (`codespec edit --profile`), or a Rust edit refuses at each dependent operator.
+- Q4. Settled in revision 2 (F7, F8): `codespec edit --profile`, § 5.7.
 - Q5. The conformance engine passes `--profile dev` to the Rust reader only: one per-language
   reader argument in a generic engine.
 - Q6. Panics are not in the calls encoding, so the kit cases cover the non-overflowing path only;
   the panics are held by the tests of § 10. `docs/evaluator.md` § 9's `sem.panic.*` would let
   the kit hold them.
+
+### 12. Revision 2: what each finding changed
+
+- F1, `len()` typed signed: § 2 "Types" (checked only on the Rust type; `len()` is `usize`), test 5.
+- F2, `%!` dropped `sem.rem.sign`: § 3 (`%!` keeps it), § 9 (the `sem-rem-sign` case).
+- F3, package ID specs: § 5.4, test 4.
+- F4, precedence: § 5.3 (Cargo's tiers; configuration before manifest within a tier), test 4.
+- F5, configuration by working directory, profile rustflags, `-C` flags: § 5.5, test 4.
+- F6, the building root decides: § 5.1 (`--root`), § 5.7 (runners; `build` unread), test 4.
+- F7, missing callers: § 5.7, § 9 (release workflow, `examples-inventory`, edit), test 10.
+- F8, F9, the default without `--profile`: § 5.6, § 2, § 4, test 2.
