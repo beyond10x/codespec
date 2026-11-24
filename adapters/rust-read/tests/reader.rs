@@ -3996,3 +3996,112 @@ fn a_module_with_nothing_left_out_has_no_left_out_key() {
     assert!(m.left_out.is_empty());
     assert!(!m.to_json().contains("left_out"), "{}", m.to_json());
 }
+
+// ----- adversary, wave 1 -----------------------------------------------------------------------
+
+/// A derived `PartialEq` of an enum with data calls the `PartialEq` of each variant's field, so
+/// `==` on an enum (a `cir/1` union) that holds a hand-compared type, or on a struct holding such
+/// an enum, goes through the hand-written impl. rustc: `wrap_eq(Wrap::K(Key { v: 1 }),
+/// Wrap::K(Key { v: 11 }))` is `true`; `cir/1`'s built-in `==` gives `false`.
+#[test]
+fn adversary_a_comparison_of_an_enum_holding_a_hand_compared_type_is_refused_at_its_line() {
+    let m = read(&lines(&[
+        "pub struct Key { pub v: i64 }",
+        "impl PartialEq for Key { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "#[derive(PartialEq)]",
+        "pub enum Wrap { K(Key), Nothing }",
+        "#[derive(PartialEq)]",
+        "pub struct Outer { pub e: Wrap }",
+        "pub fn wrap_eq(a: Wrap, b: Wrap) -> bool {",
+        "    a == b",
+        "}",
+        "pub fn outer_ne(a: Outer, b: Outer) -> bool {",
+        "    a != b",
+        "}",
+        "pub fn pick(a: Wrap, b: Wrap) -> i64 {",
+        "    match a {",
+        "        v if v == b => 1,",
+        "        _ => 0,",
+        "    }",
+        "}",
+    ]));
+    assert_foreign(&m, "WrapEq", "lib.rs:8", "by hand");
+    assert_foreign(&m, "OuterNe", "lib.rs:11", "by hand");
+    assert_foreign(&m, "Pick", "lib.rs:15", "by hand");
+}
+
+/// A hand-written `PartialEq` whose impl names its type by an alias, or names the trait by a
+/// renamed import, is the impl `==` calls all the same. rustc: both functions return `true` for
+/// `v` 1 and 11.
+#[test]
+fn adversary_a_hand_written_partial_eq_through_an_alias_or_a_renamed_trait_is_refused() {
+    let m = read(&lines(&[
+        "pub struct Alias { pub v: i64 }",
+        "pub type Al = Alias;",
+        "impl PartialEq for Al { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "pub fn alias_eq(a: Alias, b: Alias) -> bool {",
+        "    a == b",
+        "}",
+        "pub struct Renamed { pub v: i64 }",
+        "use std::cmp::PartialEq as Peq;",
+        "impl Peq for Renamed { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "pub fn renamed_eq(a: Renamed, b: Renamed) -> bool {",
+        "    a == b",
+        "}",
+    ]));
+    assert_foreign(&m, "AliasEq", "lib.rs:5", "by hand");
+    assert_foreign(&m, "RenamedEq", "lib.rs:11", "by hand");
+}
+
+/// A `HashMap` finds a key through its hand-written `PartialEq` (and `Hash`); `cir/1`'s map
+/// compares keys as Go's built-in `==`. rustc: `size(1, 11)` is 1. Read, it is refused, or it
+/// evaluates to what Rust gives.
+#[test]
+fn adversary_a_map_keyed_by_a_hand_compared_type_is_refused_or_evaluates_equal_to_rust() {
+    let m = read(&lines(&[
+        "use std::collections::HashMap;",
+        "use std::hash::{Hash, Hasher};",
+        "#[derive(Clone, Copy, Eq)]",
+        "pub struct Key { pub v: i64 }",
+        "impl PartialEq for Key { fn eq(&self, o: &Self) -> bool { self.v % 10 == o.v % 10 } }",
+        "impl Hash for Key { fn hash<H: Hasher>(&self, h: &mut H) { (self.v % 10).hash(h); } }",
+        "pub fn size(a: i64, b: i64) -> i64 {",
+        "    let mut m: HashMap<Key, i64> = HashMap::new();",
+        "    m.insert(Key { v: a }, 5);",
+        "    m.insert(Key { v: b }, 6);",
+        "    m.len() as i64",
+        "}",
+    ]));
+    let size = m.funcs.iter().find(|f| f.name == "Size").expect("Size");
+    let refused = all_stmts(&size.body)
+        .iter()
+        .any(|s| matches!(s, Stmt::Foreign { .. }));
+    if !refused {
+        let out = evaluate(&m, &[("Size", &["1", "11"])]);
+        assert!(
+            out.trim_end().ends_with('1') && !out.trim_end().ends_with("11"),
+            "Size(1, 11) read without a refusal printed {out:?}; Rust gives 1"
+        );
+    }
+}
+
+/// A `#[test]` function is built only by the test harness, with or without `#[cfg(test)]`
+/// around it: a normal build leaves it out, so it is listed in `left_out` and not read.
+#[test]
+fn adversary_a_test_function_outside_a_cfg_test_module_is_left_out() {
+    let m = read(&lines(&[
+        "pub fn double(x: i64) -> i64 { x * 2 }",
+        "#[test]",
+        "fn doubles() { assert_eq!(double(2), 4); }",
+    ]));
+    assert_eq!(
+        m.funcs.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        ["Double"]
+    );
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+    assert!(
+        m.left_out.iter().any(|l| l.what == "fn doubles"),
+        "{:?}",
+        m.left_out
+    );
+}
