@@ -345,7 +345,7 @@ Model additions (additive, `cir/1` minor):
 To check: whether every reader spells string literals as Go's `strconv.Quote` does (not
 verified). If yes, the model doc says so. If not, that is `cir/2`.
 
-In (Timo, 2026-11-24, relayed by the operator; earlier this line read "Out: goroutines and `select`"): a started task, a `select` over channel operations and a channel close, as additive `cir/1` nodes (`story:cir1-tasks-and-select`), run under a seeded scheduler (`story:eval-deterministic-tasks`). Until those stories are implemented, the table above holds.
+In (the owner, 2026-11-24, relayed by the operator; earlier this line read "Out: goroutines and `select`"): a started task, a `select` over channel operations and a channel close, as additive `cir/1` nodes (`story:cir1-tasks-and-select`), run under a seeded scheduler (`story:eval-deterministic-tasks`). Until those stories are implemented, the table above holds.
 
 ## 10. Runtime: one evaluator
 
