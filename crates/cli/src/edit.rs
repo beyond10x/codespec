@@ -4,12 +4,13 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use codespec_edit::run::{Outcome, Request, cache_dir, edit};
+use codespec_edit::run::{Outcome, Request, Status, cache_dir, edit};
 
 /// The arguments of `codespec edit`.
 #[derive(clap::Args)]
 pub struct Args {
-    /// The language of the inputs; selects the reader `codespec-read-<lang>`. Wave 1 runs rust.
+    /// The language of the inputs; selects the reader `codespec-read-<lang>`. Wave 1 runs rust
+    /// and go; a reader of another language that gives no spans is refused (exit 1).
     #[arg(long)]
     pub lang: String,
     /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
@@ -19,6 +20,14 @@ pub struct Args {
     /// target is exported is refused.
     #[arg(long)]
     pub closed_world: bool,
+    /// Write the edited files after verification, each through a temporary file in its
+    /// directory and a rename, only when every file read still has the SHA-256 it was read with.
+    #[arg(long)]
+    pub apply: bool,
+    /// text, the unified diff; or json, codespec-edit-report/1 (each row's status and reasons,
+    /// each edited file's SHA-256 before and after, the diff).
+    #[arg(long, value_parser = ["text", "json"], default_value = "text")]
+    pub format: String,
     /// The edit program: cq rules and `edit` items.
     #[arg(
         short = 'e',
@@ -31,27 +40,25 @@ pub struct Args {
     /// A file holding the edit program.
     #[arg(short = 'f', long = "file", value_name = "FILE")]
     pub file: Option<PathBuf>,
-    /// The input directories, each read as one module: for Rust, a crate directory.
+    /// The input directories, each read as one module: for Rust a crate directory, for Go a
+    /// package directory.
     #[arg(required = true)]
     pub dirs: Vec<PathBuf>,
 }
 
-/// Run `codespec edit`: print the diff (exit 0), or every refusal or the failed verification on
-/// standard error (exit 1), or the error (exit 2).
+/// Run `codespec edit`: print the diff, or with `--format json` the report (exit 0), or every
+/// refusal, the failed verification or the stale file on standard error (exit 1; the report
+/// still on standard output with `--format json`), or the error (exit 2).
 pub fn run(a: &Args) -> ExitCode {
     match outcome(a) {
         Ok(o) => {
-            match &o {
-                Outcome::NoRow => {}
-                Outcome::Verified { diff, .. } => print!("{diff}"),
-                Outcome::Refused(reasons) => {
-                    for r in reasons {
-                        eprintln!("codespec edit: refused: {r}");
-                    }
-                }
-                Outcome::Unverified { reason, .. } => {
-                    eprintln!("codespec edit: verification failed: {reason}")
-                }
+            if a.format == "json" {
+                print!("{}", o.report());
+            } else if matches!(o.status, Status::Planned | Status::Applied) {
+                print!("{}", o.diff);
+            }
+            for r in &o.reasons {
+                eprintln!("codespec edit: {r}");
             }
             ExitCode::from(o.exit_code())
         }
@@ -79,6 +86,7 @@ fn outcome(a: &Args) -> Result<Outcome, String> {
         dirs: a.dirs.clone(),
         program,
         closed_world: a.closed_world,
+        apply: a.apply,
         cache,
     })
 }

@@ -4,30 +4,41 @@
 //! the pipeline of `codespec edit` (`docs/code-edit-language.md` § 3.3, § 7.3), for every caller
 //! (`codespec edit`, the MCP server):
 //!
-//! 1. each input directory is read with `codespec-read-<lang> --spans`;
+//! 1. each input directory is read with `codespec-read-<lang> --spans`, the reader started in
+//!    that directory (the Go reader resolves imports by the `go.mod` above its working
+//!    directory);
 //! 2. the fact base is built over the set with `source_name` from the span documents, and the
 //!    `edit` items are evaluated; a possible row is refused with the unknown sites it rests on;
 //! 3. the definite rows' operations are planned into a change set ([`crate::change::plan_with`]);
-//!    a refusal of any row refuses the set;
-//! 4. the root the readers resolve against ([`cargo_root`] for Rust) is copied without `.git`
-//!    and `target` into a fresh directory under the cache directory, the edited files are
-//!    written there, the copied input directories are read again with `--spans`, and the set read
-//!    is compared with `S'` ([`crate::compare::compare`]);
-//! 5. the outcome holds the unified diff ([`crate::diff::unified`]); nothing is written to the
-//!    inputs, and the copy is removed.
+//!    a refused row is dropped and the others planned again, so the outcome shows what they
+//!    would change, but a refusal of any row refuses the set: nothing is written;
+//! 4. the root the readers resolve against ([`module_root`]: Rust's Cargo workspace root, Go's
+//!    `go.mod` directory) is copied without `.git` and `target` into a fresh directory under the
+//!    cache directory (a relative `replace` path in a copied `go.mod` made absolute,
+//!    [`rewrite_go_mod`]), the edited files are written there, the copied input directories are
+//!    read again with `--spans`, and the set read is compared with `S'`
+//!    ([`crate::compare::compare`]); the copy is removed;
+//! 5. with `apply`, after verification and only when every file read still has the SHA-256 it
+//!    was read with, each edited file is written through a temporary file in its directory and a
+//!    rename.
 //!
-//! Wave 1 runs `rename` and `rename_field` over Rust; another language or operation is an
-//! error "not yet: <what>".
+//! The outcome holds each row's status, each edited file's SHA-256 before and after, and the
+//! unified diff ([`crate::diff::unified`]), paths relative to the request's `cwd`;
+//! [`Outcome::report`] is `codespec-edit-report/1`.
+//!
+//! Wave 1 runs `rename`, `rename_field`, `retarget` and `delete` over Rust and Go. A reader of
+//! another language that gives no spans is refused ("the <lang> reader gives no spans"); one that
+//! gives spans is an error "not yet: --lang <lang>".
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use codespec_model::{MAX_NESTING, Module};
 use codespec_query::{EditRows, FactBase, Row};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::change::{self, ChangeSet, Input, Op, Options};
 use crate::compare::{Comparison, compare};
@@ -38,11 +49,14 @@ use crate::spans::{self, FORMAT, SpanDoc, sha256_hex};
 /// The fields of a reader's `--spans` output.
 const OUTPUT_KEYS: &[&str] = &["cir", "files", "spans", "unspanned", "refs"];
 
+/// The format of [`Outcome::report`].
+pub const REPORT_FORMAT: &str = "codespec-edit-report/1";
+
 /// The languages [`edit`] runs.
-pub const LANGS: &[&str] = &["rust"];
+pub const LANGS: &[&str] = &["rust", "go"];
 
 /// The operations [`edit`] runs.
-pub const OPS: &[&str] = &["rename", "rename_field"];
+pub const OPS: &[&str] = &["rename", "rename_field", "retarget", "delete"];
 
 /// One run of an edit program.
 #[derive(Debug, Clone)]
@@ -51,7 +65,8 @@ pub struct Request {
     pub lang: String,
     /// The directory holding the adapter programs.
     pub adapters: PathBuf,
-    /// The directory a relative input is resolved against; the diff names files relative to it.
+    /// The directory a relative input is resolved against; the diff and the report name files
+    /// relative to it.
     pub cwd: PathBuf,
     /// The input directories, each read as one module, in order.
     pub dirs: Vec<PathBuf>,
@@ -59,6 +74,8 @@ pub struct Request {
     pub program: String,
     /// No code outside the inputs refers to their exported names.
     pub closed_world: bool,
+    /// Write the edited files after verification.
+    pub apply: bool,
     /// The cache directory the copy is made under; never inside a root that is copied.
     pub cache: PathBuf,
 }
@@ -70,37 +87,137 @@ pub struct Timing {
     pub reread: Duration,
 }
 
-/// What a run gives.
-#[derive(Debug, Clone)]
-pub enum Outcome {
+/// What a run came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
     /// No `edit` item gave a row: nothing to change.
     NoRow,
-    /// Every row planned, and the copy with the edits read again as `S'`: the diff, the roots
-    /// copied (canonical paths, in the order of the inputs), the time taken.
-    Verified {
-        diff: String,
-        roots: Vec<PathBuf>,
-        timing: Timing,
-    },
-    /// One or more rows refused, each reason (`row <n>: <rule>: <site>: <message>`); nothing
-    /// planned.
-    Refused(Vec<String>),
-    /// The copy with the edits read again otherwise than `S'`, or not at all: the reason.
-    Unverified {
-        reason: String,
-        roots: Vec<PathBuf>,
-        timing: Timing,
-    },
+    /// Every row planned and the copy with the edits read again as `S'`; nothing written.
+    Planned,
+    /// As planned, and the edited files written.
+    Applied,
+    /// One or more rows refused, or the reader gives no spans; nothing written.
+    Refused,
+    /// The copy with the edits read otherwise than `S'`, or not at all; nothing written.
+    Unverified,
+    /// A file changed between its read and the write; nothing written.
+    Stale,
+}
+
+impl Status {
+    /// The status as the report spells it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Status::NoRow => "no-row",
+            Status::Planned => "planned",
+            Status::Applied => "applied",
+            Status::Refused => "refused",
+            Status::Unverified => "unverified",
+            Status::Stale => "stale",
+        }
+    }
+}
+
+/// One row of an `edit` item: its number (from 1, over every item in order), the operation and
+/// its values, its status (`planned`, `applied` or `refused`) and, refused, why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowOutcome {
+    pub row: usize,
+    pub op: String,
+    pub args: Vec<String>,
+    pub status: &'static str,
+    pub reasons: Vec<String>,
+}
+
+/// One edited file: its path relative to the request's `cwd`, its SHA-256 as read and with the
+/// edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileOutcome {
+    pub path: String,
+    pub sha256_before: String,
+    pub sha256_after: String,
+}
+
+/// What a run gives.
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    pub status: Status,
+    pub rows: Vec<RowOutcome>,
+    /// The files the planned rows edit, by path.
+    pub files: Vec<FileOutcome>,
+    /// The unified diff of the planned rows; empty when none is planned.
+    pub diff: String,
+    /// Every reason the set is not planned or not written, each starting with what happened:
+    /// `refused: row <n>: <rule>: <site>: <message>`, `refused: the <lang> reader gives no spans:
+    /// …`, `verification failed: …`, `not written: <file>: changed since it was read`.
+    pub reasons: Vec<String>,
+    /// The roots copied (canonical paths, in the order of the inputs); not in the report.
+    pub roots: Vec<PathBuf>,
+    /// Not in the report.
+    pub timing: Timing,
 }
 
 impl Outcome {
-    /// 0 when nothing is to change or every row planned and verified, 1 on a refusal or a failed
-    /// verification. An error is 2.
-    pub fn exit_code(&self) -> u8 {
-        match self {
-            Outcome::NoRow | Outcome::Verified { .. } => 0,
-            Outcome::Refused(_) | Outcome::Unverified { .. } => 1,
+    fn new(status: Status) -> Outcome {
+        Outcome {
+            status,
+            rows: Vec::new(),
+            files: Vec::new(),
+            diff: String::new(),
+            reasons: Vec::new(),
+            roots: Vec::new(),
+            timing: Timing::default(),
         }
+    }
+
+    /// 0 when nothing is to change or every row planned and verified (and written with
+    /// `apply`), 1 on a refusal, a failed verification or a stale file. An error is 2.
+    pub fn exit_code(&self) -> u8 {
+        match self.status {
+            Status::NoRow | Status::Planned | Status::Applied => 0,
+            Status::Refused | Status::Unverified | Status::Stale => 1,
+        }
+    }
+
+    /// `codespec-edit-report/1`: the status, the rows, the files with their SHA-256 before and
+    /// after, the diff and the reasons; keys sorted, two-space indent, a final line break, no
+    /// time field and no absolute path of the run.
+    pub fn report(&self) -> String {
+        let rows: Vec<Value> = self
+            .rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "row": r.row,
+                    "op": r.op,
+                    "args": r.args,
+                    "status": r.status,
+                    "reasons": r.reasons,
+                })
+            })
+            .collect();
+        let files: Vec<Value> = self
+            .files
+            .iter()
+            .map(|f| {
+                json!({
+                    "path": f.path,
+                    "sha256_before": f.sha256_before,
+                    "sha256_after": f.sha256_after,
+                })
+            })
+            .collect();
+        let doc = json!({
+            "format": REPORT_FORMAT,
+            "status": self.status.as_str(),
+            "rows": rows,
+            "files": files,
+            "diff": self.diff,
+            "reasons": self.reasons,
+        });
+        let mut out = serde_json::to_string_pretty(&doc).expect("a JSON value always serializes");
+        out.push('\n');
+        out
     }
 }
 
@@ -126,13 +243,10 @@ pub fn cache_dir() -> Option<PathBuf> {
         })
 }
 
-/// Run the edit program of `r` as a dry run (see the module doc). An error (the program, a
-/// reader, an input, the copy; "not yet: <what>" for a language or an operation wave 1 does not
-/// run) is the caller's exit 2.
+/// Run the edit program of `r` (see the module doc). An error (the program, a reader, an input,
+/// the copy, a write; "not yet: <what>" for a language or an operation wave 1 does not run) is
+/// the caller's exit 2.
 pub fn edit(r: &Request) -> Result<Outcome, String> {
-    if !LANGS.contains(&r.lang.as_str()) {
-        return Err(format!("not yet: --lang {}", r.lang));
-    }
     let program = codespec_query::parse(&r.program)?;
     if program.edits.is_empty() {
         return Err("no edit item: write edit <op>(…) :- body.".into());
@@ -149,19 +263,40 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     if r.dirs.is_empty() {
         return Err("no input directory".into());
     }
-    let reader = r.adapters.join(format!("codespec-read-{}", r.lang));
     let paths: Vec<PathBuf> = r.dirs.iter().map(|d| r.cwd.join(d)).collect();
-    let mut read = Vec::with_capacity(paths.len());
-    for p in &paths {
-        read.push(read_spanned(&reader, p)?);
+    if let Some((d, _)) = r.dirs.iter().zip(&paths).find(|(_, p)| !p.is_dir()) {
+        return Err(format!("{}: no such input directory", d.display()));
     }
-    let modules: Vec<Module> = read.iter().map(|s| s.cir.clone()).collect();
+    let reader = r.adapters.join(format!("codespec-read-{}", r.lang));
+    if !LANGS.contains(&r.lang.as_str()) {
+        // A reader that gives no spans is the answer for its language; one that does is not
+        // run yet.
+        return match read(&reader, &paths[0]) {
+            Err(Read::NoSpans(why)) => {
+                let mut o = Outcome::new(Status::Refused);
+                o.reasons.push(format!("refused: {why}"));
+                Ok(o)
+            }
+            Err(Read::Error(e)) => Err(e),
+            Ok(_) => Err(format!("not yet: --lang {}", r.lang)),
+        };
+    }
+    let mut read_set = Vec::with_capacity(paths.len());
+    for p in &paths {
+        read_set.push(read_spanned(&reader, p)?);
+    }
+    let modules: Vec<Module> = read_set.iter().map(|s| s.cir.clone()).collect();
+    let cwd = canonical(&r.cwd)?;
+    let mut dirs = Vec::with_capacity(paths.len());
+    for p in &paths {
+        dirs.push(relative(&cwd, &canonical(p)?).display().to_string());
+    }
 
     // Rows.
     let names = {
         let plain = FactBase::build(&modules);
         let mut names = Vec::new();
-        for s in &read {
+        for s in &read_set {
             let ids = Ids::from_facts(&s.cir, &plain);
             names.extend(source_names(&s.spans, &ids).into_iter().map(|n| {
                 codespec_query::SourceName {
@@ -175,61 +310,97 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     let facts = FactBase::build_with_names(&modules, &[], None, &names);
     let items = codespec_query::edit_rows(&program, &facts)?;
     drop(facts);
-    let mut refused = Vec::new();
-    let mut ops = Vec::new();
-    let mut op_rows = Vec::new();
-    let mut n = 0;
+    let mut out = Outcome::new(Status::Planned);
+    // Per definite row: its index in `out.rows` and its operation.
+    let mut live: Vec<(usize, Op)> = Vec::new();
     for item in &items {
         for row in &item.rows {
-            n += 1;
+            let n = out.rows.len() + 1;
+            let mut o = RowOutcome {
+                row: n,
+                op: item.op.clone(),
+                args: row
+                    .values
+                    .iter()
+                    .map(|v| match v {
+                        codespec_query::Value::Str(s) => s.clone(),
+                        v => v.to_string(),
+                    })
+                    .collect(),
+                status: "planned",
+                reasons: Vec::new(),
+            };
             if row.unknown.is_empty() {
-                ops.push(op(item, row)?);
-                op_rows.push(n);
+                live.push((n - 1, op(item, row)?));
             } else {
                 let sites: Vec<String> = row
                     .unknown
                     .iter()
                     .map(|s| format!("{} at {} ({})", s.site, s.pos, s.reason))
                     .collect();
-                refused.push(format!(
-                    "row {n}: possible: {}: {} rests on code the fact base cannot see",
+                o.status = "refused";
+                o.reasons.push(format!(
+                    "possible: {}: {} rests on code the fact base cannot see",
                     sites.join("; "),
                     head(item, row)
                 ));
             }
+            out.rows.push(o);
         }
     }
-    if n == 0 {
-        return Ok(Outcome::NoRow);
+    if out.rows.is_empty() {
+        out.status = Status::NoRow;
+        return Ok(out);
     }
 
-    // The change set.
-    let inputs: Vec<Input> = read
+    // The change set of the rows not refused: a refused row is dropped and the rest planned
+    // again, until none is refused.
+    let inputs: Vec<Input> = read_set
         .into_iter()
-        .zip(&r.dirs)
-        .map(|(s, d)| Input {
+        .zip(dirs)
+        .map(|(s, dir)| Input {
             module: s.cir,
             spans: s.spans,
-            dir: d.display().to_string(),
+            dir,
         })
         .collect();
     let opts = Options {
         closed_world: r.closed_world,
     };
     let source = |file: &str| source_at(&inputs, &paths, file).map(|(_, _, bytes)| bytes);
-    let cs = match change::plan_with(&inputs, &ops, &opts, &source) {
-        Ok(cs) => Some(cs),
-        Err(rs) => {
-            refused.extend(rs.into_iter().map(|mut f| {
-                f.row = op_rows[f.row - 1];
-                f.to_string()
-            }));
-            None
+    let cs = loop {
+        if live.is_empty() {
+            break None;
+        }
+        let ops: Vec<Op> = live.iter().map(|(_, op)| op.clone()).collect();
+        match change::plan_with(&inputs, &ops, &opts, &source) {
+            Ok(cs) => break Some(cs),
+            Err(refusals) => {
+                let mut dropped = BTreeSet::new();
+                for f in refusals {
+                    let i = live[f.row - 1].0;
+                    let row = &mut out.rows[i];
+                    row.status = "refused";
+                    row.reasons
+                        .push(format!("{}: {}: {}", f.rule, f.site, f.message));
+                    dropped.insert(i);
+                }
+                live.retain(|(i, _)| !dropped.contains(i));
+            }
         }
     };
-    let cs = match cs {
-        Some(cs) if refused.is_empty() => cs,
-        _ => return Ok(Outcome::Refused(refused)),
+    for row in out.rows.iter().filter(|row| row.status == "refused") {
+        for reason in &row.reasons {
+            out.reasons
+                .push(format!("refused: row {}: {reason}", row.row));
+        }
+    }
+    let refused = !out.reasons.is_empty();
+    if refused {
+        out.status = Status::Refused;
+    }
+    let Some(cs) = cs else {
+        return Ok(out);
     };
 
     // The edited files' bytes, as read.
@@ -237,6 +408,19 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     for file in cs.files() {
         sources.insert(file.to_string(), source_at(&inputs, &paths, file)?);
     }
+    for (file, (_, _, bytes)) in &sources {
+        out.files.push(FileOutcome {
+            path: file.clone(),
+            sha256_before: sha256_hex(bytes),
+            sha256_after: sha256_hex(&cs.apply(file, bytes)),
+        });
+    }
+    out.diff = diff::unified(cs.edits(), &|file: &str| {
+        sources
+            .get(file)
+            .map(|(_, _, b)| b.clone())
+            .ok_or_else(|| "not read".to_string())
+    })?;
 
     // The copy, the edited files in it, the re-read.
     let start = Instant::now();
@@ -244,41 +428,211 @@ pub fn edit(r: &Request) -> Result<Outcome, String> {
     copy.fill(&cs, &sources)?;
     let copied = start.elapsed();
     let start = Instant::now();
-    let reread = reread(&reader, &copy, &r.dirs);
-    let timing = Timing {
+    let dirs: Vec<&str> = inputs.iter().map(|i| i.dir.as_str()).collect();
+    let reread = reread(&reader, &copy, &dirs);
+    out.timing = Timing {
         copy: copied,
         reread: start.elapsed(),
     };
-    let roots = copy.roots.clone();
+    out.roots = copy.roots.clone();
     drop(copy);
-    let reread = match reread {
-        Ok(set) => set,
-        Err(reason) => {
-            return Ok(Outcome::Unverified {
-                reason,
-                roots,
-                timing,
-            });
-        }
+    let failed = match reread {
+        Ok(set) => match compare(&cs, &set) {
+            c @ Comparison::Differs { .. } => Some(c.to_string()),
+            Comparison::Equal => None,
+        },
+        Err(reason) => Some(reason),
     };
-    if let c @ Comparison::Differs { .. } = compare(&cs, &reread) {
-        return Ok(Outcome::Unverified {
-            reason: c.to_string(),
-            roots,
-            timing,
-        });
+    if let Some(reason) = failed {
+        out.reasons.push(format!("verification failed: {reason}"));
+        if !refused {
+            out.status = Status::Unverified;
+        }
+        return Ok(out);
     }
-    let diff = diff::unified(cs.edits(), &|file: &str| {
-        sources
-            .get(file)
-            .map(|(_, _, b)| b.clone())
-            .ok_or_else(|| "not read".to_string())
-    })?;
-    Ok(Outcome::Verified {
-        diff,
-        roots,
-        timing,
+    if refused || !r.apply {
+        return Ok(out);
+    }
+
+    // The write.
+    if let Some(file) = stale(&inputs, &paths) {
+        out.status = Status::Stale;
+        out.reasons
+            .push(format!("not written: {file}: changed since it was read"));
+        return Ok(out);
+    }
+    for (file, (k, path, bytes)) in &sources {
+        write_through(&paths[*k].join(path), &cs.apply(file, bytes))?;
+    }
+    out.status = Status::Applied;
+    for row in &mut out.rows {
+        row.status = "applied";
+    }
+    Ok(out)
+}
+
+/// The first file read (by its path as edits name it) whose bytes no longer have the SHA-256 they
+/// were read with, or that cannot be read.
+fn stale(inputs: &[Input], paths: &[PathBuf]) -> Option<String> {
+    inputs.iter().zip(paths).find_map(|(i, dir)| {
+        i.spans.files.iter().find_map(|f| {
+            let now = std::fs::read(dir.join(&f.path))
+                .ok()
+                .map(|b| sha256_hex(&b));
+            (now.as_deref() != Some(f.sha256.as_str())).then(|| join(&i.dir, &f.path))
+        })
     })
+}
+
+/// Write `bytes` to `to` through a temporary file in its directory, with `to`'s permissions, and
+/// a rename.
+fn write_through(to: &Path, bytes: &[u8]) -> Result<(), String> {
+    let err = |e: std::io::Error| format!("writing {}: {e}", to.display());
+    let name = to
+        .file_name()
+        .ok_or_else(|| format!("writing {}: no file name", to.display()))?;
+    let tmp = to.with_file_name(format!(
+        ".{}.codespec-edit-{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    let written = std::fs::write(&tmp, bytes)
+        .and_then(|()| std::fs::metadata(to))
+        .and_then(|m| std::fs::set_permissions(&tmp, m.permissions()))
+        .and_then(|()| std::fs::rename(&tmp, to));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err(e));
+    }
+    Ok(())
+}
+
+/// `p` made canonical, or an error naming it.
+fn canonical(p: &Path) -> Result<PathBuf, String> {
+    p.canonicalize()
+        .map_err(|e| format!("{}: {e}", p.display()))
+}
+
+/// `path` relative to `base`, both absolute and normalized: `..` for each part of `base` past
+/// their common prefix, then the rest of `path`; empty when they are equal.
+fn relative(base: &Path, path: &Path) -> PathBuf {
+    let b: Vec<Component> = base.components().collect();
+    let p: Vec<Component> = path.components().collect();
+    let common = b.iter().zip(&p).take_while(|(x, y)| x == y).count();
+    let mut out = PathBuf::new();
+    for _ in common..b.len() {
+        out.push("..");
+    }
+    for c in &p[common..] {
+        out.push(c.as_os_str());
+    }
+    out
+}
+
+/// `path` with `.` dropped and each `..` taking off the part before it, without reading the file
+/// system.
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c.as_os_str()),
+        }
+    }
+    out
+}
+
+/// The directory the reader of `lang` resolves `dir` against, copied for verification: for Rust
+/// the Cargo workspace root ([`cargo_root`]), for Go the nearest directory from `dir` upward
+/// holding a `go.mod`, else `dir`.
+pub fn module_root(lang: &str, dir: &Path) -> PathBuf {
+    match lang {
+        "go" => dir
+            .ancestors()
+            .find(|d| d.join("go.mod").is_file())
+            .unwrap_or(dir)
+            .to_path_buf(),
+        _ => cargo_root(dir),
+    }
+}
+
+/// `text`, a `go.mod`, with each `replace` whose replacement is a relative path (`./…`, `../…`)
+/// pointing at `map` of that path made absolute against `root`; an absolute path, a module path
+/// and every other byte stay as they are. A path is written bare, or quoted when it holds a
+/// space, a quote or a backslash.
+pub fn rewrite_go_mod(text: &str, root: &Path, map: &dyn Fn(PathBuf) -> PathBuf) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut block = false;
+    for line in text.split_inclusive('\n') {
+        let code = line.find("//").map_or(line, |i| &line[..i]);
+        let t = code.trim();
+        let directive = if block {
+            if t.starts_with(')') {
+                block = false;
+            }
+            !t.starts_with(')') && !t.is_empty()
+        } else if let Some(rest) = t.strip_prefix("replace")
+            && rest.starts_with(|c: char| c.is_whitespace() || c == '(')
+        {
+            if rest.trim_start().starts_with('(') {
+                block = true;
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        };
+        match directive.then(|| replacement(code)).flatten() {
+            Some((start, end, path)) if is_relative_path(&path) => {
+                let abs = map(normalize(&root.join(&path)));
+                out.push_str(&line[..start]);
+                out.push_str(&go_mod_path(&abs.display().to_string()));
+                out.push_str(&line[end..]);
+            }
+            _ => out.push_str(line),
+        }
+    }
+    out
+}
+
+/// The byte range of the token after `=>` in a `replace` line and its value, unquoted.
+fn replacement(code: &str) -> Option<(usize, usize, String)> {
+    let arrow = code.find("=>")? + 2;
+    let start = arrow + (code[arrow..].len() - code[arrow..].trim_start().len());
+    let rest = &code[start..];
+    if let Some(quoted) = rest.strip_prefix('"') {
+        let mut value = String::new();
+        let mut chars = quoted.char_indices();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '"' => return Some((start, start + 1 + i + 1, value)),
+                '\\' => value.push(chars.next()?.1),
+                c => value.push(c),
+            }
+        }
+        None
+    } else {
+        let len = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        (len > 0).then(|| (start, start + len, rest[..len].to_string()))
+    }
+}
+
+/// A `go.mod` replacement that is a relative file path.
+fn is_relative_path(p: &str) -> bool {
+    p == "." || p == ".." || p.starts_with("./") || p.starts_with("../")
+}
+
+/// `p` as a `go.mod` token: bare, or quoted when it holds a space, a quote or a backslash.
+fn go_mod_path(p: &str) -> String {
+    if p.contains(|c: char| c.is_whitespace() || c == '"' || c == '\\') {
+        format!("{p:?}")
+    } else {
+        p.to_string()
+    }
 }
 
 /// A file's path as edits name it: the input's directory joined with its span document's path
@@ -347,6 +701,11 @@ fn op(item: &EditRows, row: &Row) -> Result<Op, String> {
             old: arg(1)?,
             new: arg(2)?,
         }),
+        "retarget" => Ok(Op::Retarget {
+            site: arg(0)?,
+            func: arg(1)?,
+        }),
+        "delete" => Ok(Op::Delete { func: arg(0)? }),
         other => Err(format!("not yet: {other}")),
     }
 }
@@ -397,7 +756,7 @@ impl Copy {
         let mut at = Vec::with_capacity(paths.len());
         for p in paths {
             let dir = canon(p)?;
-            let root = cargo_root(&dir);
+            let root = module_root(&r.lang, &dir);
             let k = match roots.iter().position(|x| *x == root) {
                 Some(k) => k,
                 None => {
@@ -438,7 +797,44 @@ impl Copy {
         for (k, root) in copy.roots.iter().enumerate() {
             copy_tree(root, &copy.dir.join(k.to_string()))?;
         }
+        if r.lang == "go" {
+            copy.rewrite_go_mods()?;
+        }
         Ok(copy)
+    }
+
+    /// Rewrite the `go.mod` of each copied root ([`rewrite_go_mod`]): a relative `replace` path
+    /// points at its original, or at its copy when it lies in a copied root, so the copy's
+    /// imports resolve as the original's do.
+    fn rewrite_go_mods(&self) -> Result<(), String> {
+        let map = |abs: PathBuf| {
+            self.roots
+                .iter()
+                .enumerate()
+                .find_map(|(k, root)| {
+                    abs.strip_prefix(root).ok().map(|rest| {
+                        let copy = self.dir.join(k.to_string());
+                        if rest.as_os_str().is_empty() {
+                            copy
+                        } else {
+                            copy.join(rest)
+                        }
+                    })
+                })
+                .unwrap_or(abs)
+        };
+        for (k, root) in self.roots.iter().enumerate() {
+            let file = self.dir.join(k.to_string()).join("go.mod");
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let new = rewrite_go_mod(&text, root, &map);
+            if new != text {
+                std::fs::remove_file(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+                std::fs::write(&file, new).map_err(|e| format!("{}: {e}", file.display()))?;
+            }
+        }
+        Ok(())
     }
 
     /// Write the edited files into the copy.
@@ -520,13 +916,13 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 /// Read each input's directory in the copy again with spans: the modules, or why not.
-fn reread(reader: &Path, copy: &Copy, dirs: &[PathBuf]) -> Result<Vec<Module>, String> {
+fn reread(reader: &Path, copy: &Copy, dirs: &[&str]) -> Result<Vec<Module>, String> {
     let mut set = Vec::with_capacity(dirs.len());
     for (dir, at) in dirs.iter().zip(&copy.inputs) {
         let s = read_spanned(reader, at).map_err(|e| {
             format!(
                 "{}: the copy with the edits does not read: {e}",
-                dir.display()
+                if dir.is_empty() { "." } else { dir }
             )
         })?;
         set.push(s.cir);
@@ -571,15 +967,36 @@ pub fn reader_lang(reader: &Path) -> String {
 /// Run `reader --spans dir`, take its object `{cir, files, spans, unspanned, refs}`, strictly
 /// read the `cir/1` module, add `format`, `module` and `cir_sha256`, and strictly read the span
 /// document against the module and the files under `dir`. A reader that fails on `--spans` or
-/// prints a bare module is refused: "the <lang> reader gives no spans".
+/// prints a bare module is refused: "the <lang> reader gives no spans". The reader runs in `dir`,
+/// given as an absolute path (the Go reader resolves imports by the `go.mod` above its working
+/// directory).
 pub fn read_spanned(reader: &Path, dir: &Path) -> Result<Spanned, String> {
+    read(reader, dir).map_err(|e| match e {
+        Read::NoSpans(m) | Read::Error(m) => m,
+    })
+}
+
+/// Why [`read`] gave no spanned module.
+enum Read {
+    /// The reader failed on `--spans` or printed a bare module: "the <lang> reader gives no
+    /// spans: …".
+    NoSpans(String),
+    /// Anything else.
+    Error(String),
+}
+
+fn read(reader: &Path, dir: &Path) -> Result<Spanned, Read> {
     let lang = reader_lang(reader);
-    let no_spans = |why: String| format!("the {lang} reader gives no spans: {why}");
-    let output = Command::new(reader)
+    let no_spans = |why: String| Read::NoSpans(format!("the {lang} reader gives no spans: {why}"));
+    let error = |e: String| Read::Error(format!("{}: {e}", reader.display()));
+    let abs = |p: &Path| std::path::absolute(p).map_err(|e| error(format!("{}: {e}", p.display())));
+    let (program, at) = (abs(reader)?, abs(dir)?);
+    let output = Command::new(&program)
+        .current_dir(&at)
         .arg("--spans")
-        .arg(dir)
+        .arg(&at)
         .output()
-        .map_err(|e| format!("{}: {e}", reader.display()))?;
+        .map_err(|e| error(e.to_string()))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let first = stderr.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
@@ -589,7 +1006,7 @@ pub fn read_spanned(reader: &Path, dir: &Path) -> Result<Spanned, String> {
             output.status
         )));
     }
-    let split = split(&output.stdout).map_err(|e| format!("{}: {e}", reader.display()))?;
+    let split = split(&output.stdout).map_err(error)?;
     let Some((cir, rest)) = split else {
         return Err(no_spans(format!(
             "{} --spans printed a bare cir/1 module",
@@ -597,12 +1014,11 @@ pub fn read_spanned(reader: &Path, dir: &Path) -> Result<Spanned, String> {
         )));
     };
     if let Some(k) = rest.keys().find(|k| !OUTPUT_KEYS.contains(&k.as_str())) {
-        return Err(format!(
-            "{}: the --spans output has an unknown field {k:?}",
-            reader.display()
-        ));
+        return Err(error(format!(
+            "the --spans output has an unknown field {k:?}"
+        )));
     }
-    let module = Module::from_json(&cir).map_err(|e| format!("{}: cir: {e}", reader.display()))?;
+    let module = Module::from_json(&cir).map_err(|e| error(format!("cir: {e}")))?;
     let mut doc = serde_json::Map::new();
     doc.insert("format".into(), FORMAT.into());
     doc.insert("module".into(), label(&module).into());
@@ -617,8 +1033,8 @@ pub fn read_spanned(reader: &Path, dir: &Path) -> Result<Spanned, String> {
     }
     let ids = Ids::new(&module);
     let source = |path: &str| std::fs::read(dir.join(path)).map_err(|e| e.to_string());
-    let spans = spans::read_value(&Value::Object(doc), &ids, &source)
-        .map_err(|e| format!("{}: {e}", reader.display()))?;
+    let spans =
+        spans::read_value(&Value::Object(doc), &ids, &source).map_err(|e| error(e.to_string()))?;
     drop(ids);
     Ok(Spanned { cir: module, spans })
 }

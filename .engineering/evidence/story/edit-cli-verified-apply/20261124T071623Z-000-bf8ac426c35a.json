@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T07:16:23Z",
+  "actor": "human:timo",
+  "artifact": "story:edit-cli-verified-apply",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-cli --locked: query edit:: 26 passed (go_rename_across_both_packages_dry_run_then_apply_then_nothing_left, go_rename_of_an_exported_function_without_closed_world_exits_1_and_writes_nothing, go_retarget_of_every_call_of_load_is_applied_and_verified, go_delete_of_an_uncalled_function_is_applied_and_verified, go_rename_in_a_module_with_a_relative_replace_verifies_in_the_copy, go_rename_in_the_replaced_module_verifies_against_its_copy, go_rename_of_a_function_called_inside_a_foreign_statement_exits_1_naming_it, a_file_changed_between_read_and_apply_exits_1_and_nothing_is_written, a_program_that_does_not_parse_and_a_missing_input_directory_exit_2, a_reader_that_gives_no_spans_exits_1_naming_the_reader, the_json_report_of_a_planned_and_a_refused_row_equals_the_checked_in_one, an_absolute_input_directory_gives_paths_relative_to_the_current_directory), whole package 37 s; cargo test -p b10x-codespec-edit --locked: 99 passed (4 go.mod rewrite cases); cargo test -p codespec-docs: 46 passed",
+    "reference": "crates/cli/tests/edit/mod.rs"
+  }
+}

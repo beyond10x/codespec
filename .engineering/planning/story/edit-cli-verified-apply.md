@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:edit-cli-verified-apply
 kind: story
-status: active
+status: implemented
 title: 'codespec edit: Go, every wave-1 operation, --apply, the JSON report'
 summary: 'Extends the Rust slice: Go, retarget and delete, --apply with a stale check, codespec-edit-report/1'
 relations:
@@ -29,10 +29,11 @@ scope:
   path: crates/edit/tests/main.rs
 - confidence: inferred
   path: website/docs/reference/cli.md
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-24T00:42:50Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-24T01:16:47Z", actor: "human:timo", revision: 9}
+- {from: "active", to: "implemented", at: "2026-11-24T07:16:23Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: codespec edit: Go, every wave-1 operation, --apply, the JSON report
 

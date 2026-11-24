@@ -15,7 +15,7 @@ use std::process::{Command, Output};
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use codespec_edit::run::{Outcome, Request};
+use codespec_edit::run::{Request, Status};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edit")
@@ -264,20 +264,14 @@ fn a_program_without_a_row_exits_0_with_empty_output() {
 }
 
 #[test]
-fn go_and_a_delete_program_exit_2_with_not_yet() {
-    let o = edit_with("go", "go", rust_adapters(), &["stock", "-e", RENAME_LOAD]);
-    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
-    assert!(stderr(&o).contains("not yet: --lang go"), "{}", stderr(&o));
+fn an_absolute_crate_directory_gives_the_diff_with_relative_paths() {
+    let stock = rust_fixtures().join("stock");
     let o = edit(
-        "delete",
-        &[
-            "stock",
-            "-e",
-            r#"edit delete(F) :- func{id: F, name: "Spare"}."#,
-        ],
+        "absolute",
+        &["--closed-world", stock.to_str().unwrap(), "-e", RENAME_LOAD],
     );
-    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
-    assert!(stderr(&o).contains("not yet: delete"), "{}", stderr(&o));
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), expected_diff("load.diff"));
 }
 
 #[test]
@@ -296,11 +290,9 @@ fn a_workspace_member_verifies_in_a_copy_of_the_workspace_root() {
         RENAME_LOAD,
     ))
     .unwrap();
-    let Outcome::Verified { roots, .. } = &outcome else {
-        panic!("{outcome:?}");
-    };
+    assert_eq!(outcome.status, Status::Planned, "{outcome:?}");
     assert_eq!(
-        roots,
+        &outcome.roots,
         &[rust_fixtures().join("works").canonicalize().unwrap()]
     );
 }
@@ -341,6 +333,7 @@ fn request(case: &str, adapters: &Path, dirs: &[&str], program: &str) -> Request
         dirs: dirs.iter().map(PathBuf::from).collect(),
         program: program.into(),
         closed_world: true,
+        apply: false,
         cache: cache(case),
     }
 }
@@ -361,9 +354,8 @@ fn the_library_gives_the_cli_s_diff_and_the_copy_and_re_read_take_under_5_s() {
     ))
     .unwrap();
     let whole = start.elapsed();
-    let Outcome::Verified { diff, timing, .. } = &outcome else {
-        panic!("{outcome:?}");
-    };
+    assert_eq!(outcome.status, Status::Planned, "{outcome:?}");
+    let (diff, timing) = (&outcome.diff, &outcome.timing);
     assert_eq!(diff, &stdout(&cli));
     eprintln!(
         "copy {:?}, re-read {:?}, whole run {whole:?}",
@@ -383,4 +375,442 @@ fn a_cache_directory_inside_the_copied_root_is_an_error_and_is_not_made() {
     let e = codespec_edit::run::edit(&r).unwrap_err();
     assert!(e.contains("is inside"), "{e}");
     assert!(!rust_fixtures().join("stock/cache").exists());
+}
+
+// `codespec edit --lang go` (`story:edit-cli-verified-apply`) on a copy of `fixtures/edit/go/`
+// per case: `shop` (one go.mod, packages `stock` and `front`; `front` calls `stock.Load` and
+// `stock.Weight`, and `stock.Total` inside a `go` statement, a foreign statement with a call
+// list), `replace` (module `app` with `replace example.com/lib => ../lib`, a sibling module).
+// The Go reader is built once for the run.
+
+fn go_fixtures() -> PathBuf {
+    fixtures().join("go")
+}
+
+/// The directory holding `codespec-read-go`, built once for the run: into a directory of this
+/// process, then renamed into place, so runs in parallel never execute a half-written file.
+fn go_adapters() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let base = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-edit-go-reader");
+        let build = base.join(format!("build-{}", std::process::id()));
+        std::fs::create_dir_all(&build).unwrap();
+        let o = Command::new("go")
+            .args(["build", "-o"])
+            .arg(format!("{}/", build.display()))
+            .arg("./cmd/codespec-read-go")
+            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../adapters/go"))
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{}", stderr(&o));
+        let dir = base.join("adapters");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::rename(build.join("codespec-read-go"), dir.join("codespec-read-go")).unwrap();
+        let _ = std::fs::remove_dir_all(&build);
+        dir
+    })
+}
+
+/// A fresh copy of `fixtures/edit/go` for one case.
+fn go_copy(case: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("cli-edit-go")
+        .join(case);
+    let _ = std::fs::remove_dir_all(&dir);
+    copy_dir(&go_fixtures(), &dir);
+    dir
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        let dst = to.join(e.file_name());
+        if e.file_type().unwrap().is_dir() {
+            copy_dir(&e.path(), &dst);
+        } else {
+            std::fs::copy(e.path(), &dst).unwrap();
+        }
+    }
+}
+
+/// `codespec edit --lang <lang> --adapters <adapters> <args>` in `cwd`, with the cache directory
+/// of `case` and the environment `env`.
+fn edit_in(
+    case: &str,
+    cwd: &Path,
+    lang: &str,
+    adapters: &Path,
+    env: &[(&str, &Path)],
+    args: &[&str],
+) -> Output {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_codespec"));
+    c.env("CODESPEC_CACHE_DIR", cache(case)).current_dir(cwd);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    c.args(["edit", "--lang", lang, "--adapters"])
+        .arg(adapters)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+/// `codespec edit --lang go` in `<copy>/shop`.
+fn go_edit(case: &str, shop: &Path, args: &[&str]) -> Output {
+    edit_in(case, shop, "go", go_adapters(), &[], args)
+}
+
+fn go_expected(name: &str) -> String {
+    std::fs::read_to_string(go_fixtures().join(name)).unwrap()
+}
+
+/// The files a diff names on its `+++ b/` lines, joined to `dir`.
+fn diff_files(diff: &str, dir: &Path) -> Vec<PathBuf> {
+    diff.lines()
+        .filter_map(|l| l.strip_prefix("+++ b/"))
+        .map(|p| dir.join(p))
+        .collect()
+}
+
+/// The paths whose digest differs between `before` and `after`.
+fn changed(before: &BTreeMap<PathBuf, String>, after: &BTreeMap<PathBuf, String>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = after
+        .iter()
+        .filter(|(p, d)| before.get(*p) != Some(*d))
+        .map(|(p, _)| p.clone())
+        .collect();
+    out.extend(before.keys().filter(|p| !after.contains_key(*p)).cloned());
+    out.sort();
+    out
+}
+
+const RENAME_GO: &str = r#"edit rename(F, "Fetch") :- func{id: F, name: "Load"}."#;
+
+#[test]
+fn go_rename_across_both_packages_dry_run_then_apply_then_nothing_left() {
+    let shop = go_copy("go-rename").join("shop");
+    let before = digests(&shop);
+    let o = go_edit(
+        "go-rename",
+        &shop,
+        &["--closed-world", "stock", "front", "-e", RENAME_GO],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let diff = stdout(&o);
+    assert_eq!(diff, go_expected("rename.diff"));
+    assert_eq!(digests(&shop), before, "a dry run changed an input file");
+
+    let o = go_edit(
+        "go-rename",
+        &shop,
+        &[
+            "--closed-world",
+            "--apply",
+            "stock",
+            "front",
+            "-e",
+            RENAME_GO,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), diff, "--apply printed another diff");
+    let mut files = diff_files(&diff, &shop);
+    files.sort();
+    assert_eq!(changed(&before, &digests(&shop)), files);
+    let stock = std::fs::read_to_string(shop.join("stock/stock.go")).unwrap();
+    assert!(stock.contains("func Fetch() int {"), "{stock}");
+
+    let o = go_edit(
+        "go-rename",
+        &shop,
+        &[
+            "--closed-world",
+            "--apply",
+            "stock",
+            "front",
+            "-e",
+            RENAME_GO,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), "", "a second run changed something");
+}
+
+#[test]
+fn go_rename_of_an_exported_function_without_closed_world_exits_1_and_writes_nothing() {
+    let shop = go_copy("go-exported").join("shop");
+    let before = digests(&shop);
+    let o = go_edit(
+        "go-exported",
+        &shop,
+        &["--apply", "stock", "front", "-e", RENAME_GO],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("exported: example.com/shop/stock.Load: "), "{e}");
+    assert_eq!(stdout(&o), "");
+    assert_eq!(digests(&shop), before, "an input file changed");
+}
+
+/// Run `program` with `--closed-world --apply` on a fresh copy of `shop`: the diff equals
+/// `expected`, written are exactly its files, and the program selects nothing afterwards.
+fn go_applies(case: &str, program: &str, expected: &str) {
+    let shop = go_copy(case).join("shop");
+    let before = digests(&shop);
+    let o = go_edit(
+        case,
+        &shop,
+        &["--closed-world", "--apply", "stock", "front", "-e", program],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let diff = stdout(&o);
+    assert_eq!(diff, go_expected(expected));
+    let mut files = diff_files(&diff, &shop);
+    files.sort();
+    assert_eq!(changed(&before, &digests(&shop)), files);
+    let o = go_edit(
+        case,
+        &shop,
+        &["--closed-world", "stock", "front", "-e", program],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(
+        stdout(&o),
+        "",
+        "the program still selects a row after its apply"
+    );
+}
+
+#[test]
+fn go_retarget_of_every_call_of_load_is_applied_and_verified() {
+    go_applies(
+        "go-retarget",
+        r#"edit retarget(S, G) :- call{site: S, callee: "example.com/shop/stock.Load"},
+                                  func{id: G, name: "LoadCached"}."#,
+        "retarget.diff",
+    );
+}
+
+#[test]
+fn go_delete_of_an_uncalled_function_is_applied_and_verified() {
+    go_applies(
+        "go-delete",
+        r#"edit delete(F) :- func{id: F, name: "spare"}, !calls(_, F)."#,
+        "delete.diff",
+    );
+}
+
+#[test]
+fn go_rename_in_a_module_with_a_relative_replace_verifies_in_the_copy() {
+    let replace = go_copy("go-replace").join("replace");
+    let before = digests(&replace);
+    let o = edit_in(
+        "go-replace",
+        &replace,
+        "go",
+        go_adapters(),
+        &[],
+        &[
+            "--closed-world",
+            "app",
+            "-e",
+            r#"edit rename(F, "Display") :- func{id: F, name: "Show"}."#,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let diff = stdout(&o);
+    assert!(
+        diff.contains("-func Show() int {\n+func Display() int {"),
+        "{diff}"
+    );
+    assert_eq!(digests(&replace), before, "an input file changed");
+}
+
+#[test]
+fn go_rename_in_the_replaced_module_verifies_against_its_copy() {
+    let replace = go_copy("go-replace-both").join("replace");
+    let o = edit_in(
+        "go-replace-both",
+        &replace,
+        "go",
+        go_adapters(),
+        &[],
+        &[
+            "--closed-world",
+            "app",
+            "lib",
+            "-e",
+            r#"edit rename(F, "Measure") :- func{id: F, name: "Size"}."#,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let diff = stdout(&o);
+    assert!(
+        diff.contains("+\treturn lib.Measure(2)") && diff.contains("+func Measure(n int) int {"),
+        "{diff}"
+    );
+}
+
+#[test]
+fn go_rename_of_a_function_called_inside_a_foreign_statement_exits_1_naming_it() {
+    let shop = go_copy("go-foreign").join("shop");
+    let before = digests(&shop);
+    let o = go_edit(
+        "go-foreign",
+        &shop,
+        &[
+            "--closed-world",
+            "--apply",
+            "stock",
+            "front",
+            "-e",
+            r#"edit rename(F, "Sum") :- func{id: F, name: "Total"}."#,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("listed: example.com/shop/front.Refresh#0.calls.0: "),
+        "{e}"
+    );
+    assert_eq!(stdout(&o), "");
+    assert_eq!(digests(&shop), before, "an input file changed");
+}
+
+#[test]
+fn a_file_changed_between_read_and_apply_exits_1_and_nothing_is_written() {
+    let shop = go_copy("go-stale").join("shop");
+    let adapters = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-edit-go-touch");
+    let _ = std::fs::remove_dir_all(&adapters);
+    std::fs::create_dir_all(&adapters).unwrap();
+    let reader = adapters.join("codespec-read-go");
+    std::fs::copy(go_fixtures().join("reader-touch.sh"), &reader).unwrap();
+    std::fs::set_permissions(&reader, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink(
+        go_adapters().join("codespec-read-go"),
+        adapters.join("real-reader"),
+    )
+    .unwrap();
+    let touched = shop.join("stock/stock.go");
+    let original = std::fs::read(&touched).unwrap();
+    let mut before = digests(&shop);
+    before.remove(&touched);
+    let o = edit_in(
+        "go-stale",
+        &shop,
+        "go",
+        &adapters,
+        &[("TOUCH", &touched)],
+        &[
+            "--closed-world",
+            "--apply",
+            "stock",
+            "front",
+            "-e",
+            RENAME_GO,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("stock/stock.go: changed since it was read"),
+        "{e}"
+    );
+    let now = std::fs::read(&touched).unwrap();
+    assert!(
+        now.starts_with(&original) && now.ends_with(b"// changed meanwhile\n"),
+        "{}",
+        String::from_utf8_lossy(&now)
+    );
+    let mut after = digests(&shop);
+    after.remove(&touched);
+    assert_eq!(after, before, "a file was written");
+}
+
+#[test]
+fn a_program_that_does_not_parse_and_a_missing_input_directory_exit_2() {
+    let shop = go_copy("go-exit-2").join("shop");
+    let o = go_edit(
+        "go-exit-2",
+        &shop,
+        &["stock", "-e", r#"edit rename(F, "Fetch") :- func{id: F"#],
+    );
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    assert_eq!(stdout(&o), "");
+    let o = go_edit("go-exit-2", &shop, &["stock", "nowhere", "-e", RENAME_GO]);
+    assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("nowhere: no such input directory"), "{e}");
+    assert_eq!(stdout(&o), "");
+}
+
+#[test]
+fn a_reader_that_gives_no_spans_exits_1_naming_the_reader() {
+    let shop = go_copy("java").join("shop");
+    let adapters = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-edit-java");
+    let _ = std::fs::remove_dir_all(&adapters);
+    std::fs::create_dir_all(&adapters).unwrap();
+    let reader = adapters.join("codespec-read-java");
+    std::fs::copy(go_fixtures().join("reader-java.sh"), &reader).unwrap();
+    std::fs::set_permissions(&reader, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::copy(
+        go_fixtures().join("module.cir.json"),
+        adapters.join("module.cir.json"),
+    )
+    .unwrap();
+    let o = edit_in(
+        "java",
+        &shop,
+        "java",
+        &adapters,
+        &[],
+        &["stock", "-e", RENAME_GO],
+    );
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("the java reader gives no spans"), "{e}");
+    assert_eq!(stdout(&o), "");
+}
+
+#[test]
+fn the_json_report_of_a_planned_and_a_refused_row_equals_the_checked_in_one() {
+    let shop = go_copy("go-report").join("shop");
+    let program = format!(
+        "{RENAME_GO}\n{}",
+        r#"edit rename(F, "Sum") :- func{id: F, name: "Total"}."#
+    );
+    let args = [
+        "--closed-world",
+        "--format",
+        "json",
+        "stock",
+        "front",
+        "-e",
+        program.as_str(),
+    ];
+    let first = go_edit("go-report", &shop, &args);
+    assert_eq!(first.status.code(), Some(1), "{}", stderr(&first));
+    assert_eq!(stdout(&first), go_expected("report.json"));
+    let second = go_edit("go-report", &shop, &args);
+    assert_eq!(second.stdout, first.stdout, "a second run differs");
+}
+
+#[test]
+fn an_absolute_input_directory_gives_paths_relative_to_the_current_directory() {
+    let shop = go_copy("go-absolute").join("shop");
+    let (stock, front) = (shop.join("stock"), shop.join("front"));
+    let o = go_edit(
+        "go-absolute",
+        &shop,
+        &[
+            "--closed-world",
+            stock.to_str().unwrap(),
+            front.to_str().unwrap(),
+            "-e",
+            RENAME_GO,
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(stdout(&o), go_expected("rename.diff"));
 }

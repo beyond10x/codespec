@@ -1,0 +1,14 @@
+--- a/stock/stock.go
++++ b/stock/stock.go
+@@ -16,11 +16,6 @@
+ 	return Load() + Load()
+ }
+ 
+-// spare is called by nothing.
+-func spare() int {
+-	return 5
+-}
+-
+ // Weight gives the weight of n items.
+ func Weight(n int) int {
+ 	return n * 2

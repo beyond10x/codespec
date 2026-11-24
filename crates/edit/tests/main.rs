@@ -402,3 +402,47 @@ fn the_design_s_languages_section_holds_the_spans_protocol() {
 
 /// Change sets, `rename` and `rename_field` (`story:edit-engine-rename`).
 mod change_sets;
+
+// The `go.mod` rewrite of the verification copy (`story:edit-cli-verified-apply`).
+
+fn rewrite(text: &str) -> String {
+    codespec_edit::run::rewrite_go_mod(text, Path::new("/src/shop/app"), &|p| p)
+}
+
+#[test]
+fn a_relative_replace_becomes_the_absolute_path_of_its_target() {
+    let text = "module example.com/app\n\ngo 1.22\n\nrequire example.com/lib v0.0.0\n\nreplace example.com/lib => ../lib\n";
+    assert_eq!(rewrite(text), text.replace("=> ../lib", "=> /src/shop/lib"),);
+}
+
+#[test]
+fn a_replace_block_a_version_a_comment_and_a_quoted_path_are_rewritten_byte_for_byte() {
+    let text = "module example.com/app\r\n\r\nreplace (\r\n\texample.com/lib v1.2.0 => ./vendored/lib // kept here\r\n\texample.com/b => \"../with space\"\r\n)\r\n// replace example.com/c => ../c\r\n";
+    let want = "module example.com/app\r\n\r\nreplace (\r\n\texample.com/lib v1.2.0 => /src/shop/app/vendored/lib // kept here\r\n\texample.com/b => \"/src/shop/with space\"\r\n)\r\n// replace example.com/c => ../c\r\n";
+    assert_eq!(rewrite(text), want);
+}
+
+#[test]
+fn an_absolute_or_module_path_replace_and_every_other_line_stay_as_they_are() {
+    let text = "module example.com/app // replace x => ../y\n\nreplace example.com/lib => /opt/lib\nreplace example.com/old v1.0.0 => example.com/new v1.1.0\nrequire example.com/lib v0.0.0\nreplace\texample.com/tab => ../tab\n";
+    let want = text.replace("=> ../tab", "=> /src/shop/tab");
+    assert_eq!(rewrite(text), want);
+    let plain = "module example.com/app\n\ngo 1.22\n";
+    assert_eq!(rewrite(plain), plain);
+}
+
+#[test]
+fn a_path_into_a_copied_root_is_mapped_to_the_copy() {
+    let text = "module example.com/app\n\nreplace example.com/lib => ../lib\n";
+    let mapped = codespec_edit::run::rewrite_go_mod(text, Path::new("/src/shop/app"), &|p| match p
+        .strip_prefix("/src/shop/lib")
+    {
+        Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from("/cache/copy/1"),
+        Ok(rest) => Path::new("/cache/copy/1").join(rest),
+        Err(_) => p,
+    });
+    assert_eq!(
+        mapped,
+        "module example.com/app\n\nreplace example.com/lib => /cache/copy/1\n"
+    );
+}

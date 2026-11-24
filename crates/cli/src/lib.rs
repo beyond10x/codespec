@@ -304,22 +304,31 @@ pub enum Cmd {
     /// sites. Path patterns and properties are refused.
     Query(query::Args),
     /// Change source code with a cq edit program: each row of an `edit` item's body is one
-    /// operation (rename, rename_field), planned on cir/1 and applied to the source by its spans,
-    /// as a dry run printing a unified diff. Exit 0 when every row is planned and verified, or
-    /// there is no row; 1 when a row is refused or verification fails, each reason on standard
-    /// error; 2 on an error.
+    /// operation (rename, rename_field, retarget, delete), planned on cir/1 and applied to the
+    /// source by its spans, over Rust and Go. A dry run prints a unified diff (paths relative to
+    /// the current directory); --apply writes it; --format json prints codespec-edit-report/1.
+    /// Exit 0 when every row is planned and verified (and written with --apply), or there is no
+    /// row; 1 when a row is refused, verification fails or a file changed since it was read,
+    /// each reason on standard error, nothing written; 2 on an error (the program, a reader, an
+    /// input).
     ///
-    /// Each directory is read with `codespec-read-<lang> --spans`; the fact base is built over
-    /// the set as `codespec query` builds it, with source_name from the span documents. A
-    /// possible row is refused with the unknown sites it rests on; so is a row whose target is
-    /// exported, without --closed-world. Before anything is printed, the root the reader resolves
-    /// against (Rust: the Cargo workspace root, the nearest directory above the crate whose
-    /// Cargo.toml has [workspace], else the crate directory) is copied without .git and target
-    /// into the cache directory ($CODESPEC_CACHE_DIR/edit, else $XDG_CACHE_HOME/codespec/edit,
-    /// else ~/.cache/codespec/edit), the edited files are written there, the copied directories
-    /// are read again, and the set read must equal the expected cir/1 byte for byte; the first
-    /// differing path is printed otherwise. Nothing is written to the inputs. Not yet: a language
-    /// other than rust, and the operations retarget and delete (exit 2).
+    /// Each directory is read with `codespec-read-<lang> --spans`, the reader started in it; the
+    /// fact base is built over the set as `codespec query` builds it, with source_name from the
+    /// span documents. A possible row is refused with the unknown sites it rests on; so is a row
+    /// whose target is exported, without --closed-world, and a row the reader could not see
+    /// whole (a call list or foreign source naming the target). Before anything is printed, the
+    /// root the reader resolves against (Rust: the Cargo workspace root, the nearest directory
+    /// above the crate whose Cargo.toml has [workspace], else the crate directory; Go: the
+    /// directory of the go.mod above the package, a relative replace path in the copy's go.mod
+    /// made absolute) is copied without .git and target into the cache directory
+    /// ($CODESPEC_CACHE_DIR/edit, else $XDG_CACHE_HOME/codespec/edit, else
+    /// ~/.cache/codespec/edit), the edited files are written there, the copied directories are
+    /// read again, and the set read must equal the expected cir/1 byte for byte; the first
+    /// differing path is printed otherwise. With --apply each file is then written through a
+    /// temporary file in its directory and a rename, only when every file read still has the
+    /// SHA-256 it was read with. The report holds each row's status (planned, applied, refused)
+    /// and reasons, each edited file's SHA-256 before and after, and the diff; no time. A reader
+    /// that gives no spans is refused, naming it.
     Edit(edit::Args),
     /// Run the calls of a codespec-calls/1 file against a cir/1 module with the evaluator and
     /// print one line per call, as the conformance kit's runners print them. Exit 0 when every

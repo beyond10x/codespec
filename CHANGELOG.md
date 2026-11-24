@@ -19,7 +19,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
   Cargo workspace is copied into the cache directory, the edited files are written there and read
   again, and the result must be the expected `cir/1` exactly. A row that rests on code the fact
   base cannot see, or names an exported function without `--closed-world`, is refused with its
-  reason (exit 1). Go, `retarget` and `delete` are not there yet (exit 2).
+  reason (exit 1).
+- `codespec edit` also edits Go (`--lang go <package dir>…`; the copy checked is the directory of
+  the `go.mod` above the packages, a relative `replace` path in it made absolute) and runs
+  `retarget` (point a call at another function of the callee's package with the same signature)
+  and `delete` (remove a function nothing calls, with its doc comment). `--apply` writes the
+  checked change, each file through a temporary file and a rename, and only when no file read has
+  changed since; otherwise nothing is written (exit 1). `--format json` prints a
+  `codespec-edit-report/1` document: each row's status (`planned`, `applied`, `refused`) and
+  reasons, each edited file's SHA-256 before and after, and the diff. Diff and report name files
+  relative to the current directory, also for an absolute input directory. A reader that gives no
+  spans (`--lang java`) is refused by name (exit 1).
 
 ## 0.12.0
 
