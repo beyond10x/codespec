@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:35:48Z",
+  "actor": "human:operator",
+  "artifact": "epic:ecmascript-to-native",
+  "kind": "epic",
+  "revision": 2,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ecma-scope-round-1",
+    "reference": "round-1-scope-finding-1",
+    "review": "review-result:ecma-scope-round-1",
+    "outcome": "fixed"
+  }
+}

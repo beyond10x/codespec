@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:43:46Z",
+  "actor": "human:operator",
+  "artifact": "story:ecmascript-reader",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ecma-acceptance-round-1",
+    "reference": "supersedes-the-escalated-correction-record-of-round-1-acceptance-finding-4-the-finding-asked-for-a-cli-check-added-in-round-1",
+    "review": "review-result:ecma-acceptance-round-1",
+    "outcome": "fixed"
+  }
+}
