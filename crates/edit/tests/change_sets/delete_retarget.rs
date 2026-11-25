@@ -688,6 +688,7 @@ fn delete_refused_a_function_an_entry_names() {
     s.module.entries.push(Entry {
         kind: "http".into(),
         func: "spare".into(),
+        path: String::new(),
         method: "GET".into(),
         on: "/spare".into(),
         consumes: vec![],
@@ -695,6 +696,48 @@ fn delete_refused_a_function_an_entry_names() {
     });
     let r = refusals_over(&[&s], &[delete(SPARE_ID)], &Options::default());
     refused_at(&r, "referenced", "example.com/store#entries.0");
+}
+
+/// An `http` entry naming `func` of the module `path`.
+fn entry_of(func: &str, path: &str) -> Entry {
+    Entry {
+        kind: "http".into(),
+        func: func.into(),
+        path: path.into(),
+        method: "GET".into(),
+        on: "/x".into(),
+        consumes: vec![],
+        produces: vec![],
+    }
+}
+
+/// The handler `store.spare`, registered by an entry of `web` (`path` `example.com/store`):
+/// deleting it is refused naming that entry.
+#[test]
+fn delete_refused_a_function_an_entry_of_another_module_registers() {
+    let mut w = web();
+    w.module
+        .entries
+        .push(entry_of("spare", "example.com/store"));
+    let r = refusals_over(&[&store(), &w], &[delete(SPARE_ID)], &Options::default());
+    refused_at(&r, "referenced", "example.com/web#entries.0");
+}
+
+/// An entry of `store` naming `spare` of another module, and one of `web` naming `spare` of a
+/// third: neither registers `store.spare`, which is deleted.
+#[test]
+fn delete_is_not_refused_by_an_entry_naming_its_key_in_another_module() {
+    let mut s = store();
+    s.module.entries.push(entry_of("spare", "example.com/web"));
+    let mut w = web();
+    w.module
+        .entries
+        .push(entry_of("spare", "example.com/elsewhere"));
+    let cs = planned_over(&[&s, &w], &[delete(SPARE_ID)], &Options::default());
+    assert!(
+        !applied(&cs, &s, "store.go").contains(SPARE),
+        "spare is not deleted"
+    );
 }
 
 #[test]

@@ -55,6 +55,7 @@ Every change a user of `codespec` or of `cir/1` would notice.
   in its file is verified (it failed on every such delete). `--apply` writes every temporary file
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
+- The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
 
 ## 0.12.0
 
