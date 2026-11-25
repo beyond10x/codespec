@@ -1,6 +1,6 @@
 {
   "at": "2026-11-24T22:58:07Z",
-  "actor": "human:timo",
+  "actor": "human:operator",
   "artifact": "story:query-recursion-bounded-by-comparison",
   "kind": "story",
   "revision": 5,
