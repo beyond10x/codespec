@@ -57,6 +57,19 @@
 //! that hold and some of the others, `sum` and `collect` the value over those that hold and the
 //! value over all.
 //!
+//! A field a site's facts leave open belongs to that site: what a rule derives from it is a fact
+//! of its own, resting on that site, apart from the facts another site could add. A condition a
+//! rule checks of such a field (`~`, `in`, a comparison with a value) narrows it, and a value of
+//! the documents matches the field only when it satisfies those conditions: with
+//! `skipped(C) :- call{callee: C}, C ~ "^log"`, an unknown callee makes `skipped` possible for a
+//! callee that starts with `log` only, and `!skipped("parse")` stays definite. No value, an open
+//! field neither, is in an empty names list. An open field naming a node (the id of a statement
+//! or expression nothing read, such an expression's operands, a node an opaque function
+//! contains) matches only the node its site sits in (the foreign statement, the opaque function)
+//! and the nodes under it. So a row rests on the sites
+//! that could change it, not on every site of the documents: the sites a run holds grow with the
+//! documents, not with their square.
+//!
 //! # The language
 //!
 //! The grammar is in `syntax.rs`. A rule is `head(X, …) :- body.`; a body joins atoms, positional
@@ -93,6 +106,8 @@
 //! Evaluation is bottom-up and semi-naive, stratum by stratum; a negation or an aggregate inside
 //! a recursion is refused. [`explain`] prints the rules, properties and edit items under the
 //! stratum of their heads.
+//! An atom whose variables are all bound when it runs asks whether a fact agrees: the rule goes
+//! on once for each smallest set of sites an agreeing fact gives it, not once per agreeing fact.
 //!
 //! A recursion must derive finitely many values: a recursive rule that puts into its head a value
 //! arithmetic or a builtin made from a value the recursion derived is refused when it is
@@ -177,6 +192,16 @@
 //! length runs on any thread. Strata come from an SCC computed without recursion, so a chain of
 //! rules of any length is safe; an index key holds any number of columns.
 //!
+//! [`run_within`] (`codespec query --max-tuples N`) stops an evaluation that holds more than `N`
+//! tuples ([`Cost`]: one for each fact a rule derives, in either evaluation, and each fact of
+//! `reaches` and `reaches_path`; one for each unknown site such a fact rests on; the same for each
+//! derivation of a round not added yet) with an [`OverLimit`] naming the relation whose rules were
+//! running: a relation an aggregate, a negation or a path builds by the rule it sits in, the
+//! query as `?-`. `codespec query` then prints no row and exits 2 naming the file, the relation
+//! and the limit, where a run without one could be killed for its memory. There is no limit by
+//! default. What the engine itself builds beside the facts (the call graph, the closure of
+//! `reaches`, the indexes) is not counted.
+//!
 //! # Gaps
 //!
 //! - `calls` links the static calls only: no dispatch candidates under CHA or RTA. `reached` is
@@ -222,7 +247,7 @@ mod syntax;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub use engine::MAX_BODIES;
+pub use engine::{Cost, MAX_BODIES, OverLimit};
 pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, SourceName, WAITING, schema_text};
 pub use regex::{INST_BYTES, MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
 pub use syntax::{EDIT_OPS, Edit, MAX_BODY, MAX_NESTING, MAX_REGISTERS, Program};
@@ -668,6 +693,20 @@ pub fn run(p: &Program, facts: &FactBase, names: &Names) -> Result<Answer, Strin
     p.refuse_edits()?;
     let c = engine::compile(p, names)?;
     Ok(engine::evaluate(&c, facts))
+}
+
+/// [`run`] with what the evaluation held ([`Cost`]), stopping when it holds more than
+/// `max_tuples` tuples: then the inner result names the relation whose rules were running. The
+/// outer error is [`run`]'s.
+pub fn run_within(
+    p: &Program,
+    facts: &FactBase,
+    names: &Names,
+    max_tuples: Option<usize>,
+) -> Result<Result<(Answer, Cost), OverLimit>, String> {
+    p.refuse_edits()?;
+    let c = engine::compile(p, names)?;
+    Ok(engine::evaluate_within(&c, facts, max_tuples))
 }
 
 /// The rows of one edit item: each binds the operation's arguments.
