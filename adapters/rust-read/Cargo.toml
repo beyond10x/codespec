@@ -27,5 +27,6 @@ toml.workspace = true
 [dev-dependencies]
 b10x-codespec-conformance = { path = "../../crates/conformance" }
 b10x-codespec-edit = { path = "../../crates/edit" }
+b10x-codespec-eval = { path = "../../crates/eval" }
 b10x-codespec-passes = { path = "../../crates/passes" }
 b10x-codespec-query = { path = "../../crates/query" }

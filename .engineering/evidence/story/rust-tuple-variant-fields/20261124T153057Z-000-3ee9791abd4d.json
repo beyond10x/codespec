@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T15:30:57Z",
+  "actor": "human:operator",
+  "artifact": "story:rust-tuple-variant-fields",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust -p codespec-write-rust --locked (reader 117, writer 33 passed, 0 failed)",
+    "reference": "adapters/rust/tests/writer.rs::a_tuple_variant_read_from_rust_is_written_back_as_a_tuple_variant, adapters/rust-read/tests/reader.rs::a_struct_variant_field_named_like_a_tuple_field_is_refused_at_its_line"
+  }
+}

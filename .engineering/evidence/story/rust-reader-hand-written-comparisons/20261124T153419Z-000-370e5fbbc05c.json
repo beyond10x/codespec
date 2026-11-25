@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T15:34:19Z",
+  "actor": "human:operator",
+  "artifact": "story:rust-reader-hand-written-comparisons",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p codespec-read-rust --locked (all green: reader 117, cases 2); tests a_comparison_through_a_hand_written_partial_eq_or_ord_is_refused_at_its_line, a_comparison_through_a_derived_partial_eq_or_ord_reads_as_the_built_in_one",
+    "reference": "adapters/rust-read/tests/reader.rs"
+  }
+}

@@ -7,7 +7,7 @@ defmodule Codespec.ScalarWriter do
 
   @unsupported ~w(types consts errors vars externs refusals opaque methods linknames inits
                   interfaces entries beans injects transactional persistence)
-  @module_fields ~w(format name reader doc funcs layout facts path) ++ @unsupported
+  @module_fields ~w(format name reader doc funcs layout facts path left_out) ++ @unsupported
   @integer_ops ~w(+ - * / % & | ^ &^ << >>)
   @compound Enum.map(@integer_ops, &(&1 <> "="))
   @widths %{"8" => 8, "16" => 16, "32" => 32, "64" => 64, "platform" => 64}

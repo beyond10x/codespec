@@ -22,7 +22,7 @@
 //! | `struct T(pub U)`, `U` an integer, `bool` or `String` | `newtype` |
 //! | `enum T { A, B }` (unit variants) | `enum` over `int` (platform), values the discriminants (`A = 1`) or 0, 1, … |
 //! | the same with `fn value(&self) -> &'static str` (or an integer) matching every variant to a literal | `enum` over `string` (or that integer), the method absorbed |
-//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, … |
+//! | `enum T { A { x: U }, B(U) }` | `union`, tuple fields named `_0`, `_1`, …: the `_<digits>` rule, such a name marks a positional field, so the Rust writer writes `B(U)` back; a struct variant whose field is named `_<digits>` (`V { _0: U }`) would read the same and is refused at that field |
 //! | `enum Error` of unit variants, `V(S)` (`S` a struct) and `Msg(String)`, with a `Display` impl | sentinel errors `Err<V>` (message from its `Display` arm); `S` an error struct whose `Display` is its `Error()`; `Msg` `errorf` |
 //! | `enum M { A(A), B(B) }`, each variant wrapping the struct of its name | absorbed: `Sender<M>` is `chan<- any` and `M::A(x)` is `x` |
 //! | `impl fmt::Display for T` | a value-receiver method `String() string` (`Error() string` for an error struct) returning what it writes; absorbed when it only calls such a method, `self.value()` of a string enum, or the inner value of a string newtype. When the impl is refused, each `{}` and `to_string()` of the type is refused at its line |
@@ -42,13 +42,13 @@
 //! | a bound other than none or one trait of the crate (`Clone`, `Copy`, `PartialEq`, `Ord`, `Sized`, two bounds, a lifetime), a `where` clause other than `T: Tr`, a lifetime or const parameter, an associated type (`T::Item`, `Iterator<Item = i64>`), `impl Tr` as a parameter type, a method with its own type parameters (Go's methods have none), a generic trait, enum or tuple struct, an impl of a trait for a generic struct | refused: `cir/1` constrains a type parameter by `any` or one interface, and has no lifetimes, const parameters or associated types |
 //! | a raw identifier (`r#type`) | its name without `r#` everywhere, a keyword with `_` added (`type_`, so `Type` or `type_` in Go), or `type_1`, `type_2`, … when another name of the file (a raw `r#type_` among them) would read the same; a type or trait the crate declares under a raw keyword is named by its visibility (`pub struct r#match` → `Match`, `struct r#match` → `match_`, `enum r#type` → `type_`), `_` added while that is a Rust keyword or another name of the file; under a raw name that is no keyword (`r#Foo`) it is that name, as a plain `Foo` writes it |
 //! | `use` | nothing of its own: a path names the full path its module's `use` declarations make of it. A std type, trait or function of the reader's tables is matched by that full path, never by its last segment: `Sender` after `use std::sync::mpsc::Sender;` or `std::sync::mpsc::Sender` is a channel, `broadcast::Sender` after `use tokio::sync::broadcast;` is refused. Bare, only the prelude's `String`, `Vec`, `Box`, `Option`, `Result` and `Default` are std's; `HashMap` needs its `use` (a glob import or a `use` inside a function body is not read, so such a name is refused). A name a `use` takes from outside the crate is not the crate's item of that name, and is refused. The crate's own items resolve by name (`files`), and a call `g(…)` of a function the module imports as `use crate::m::f as g;` is a call of `f`. The calls an `opaque` function or a `foreign` statement lists resolve a path the same way (`calls`) |
-//! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a module, item or part of one built only for tests (`#[cfg(test)]`) is not read, and one under a `cfg` the reader cannot resolve (a feature, a platform) is refused (`files`). Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
+//! | `mod m;`, `mod m { … }` | the items of the module, read with the crate's other items; a module, item or part of one built only for tests (`#[cfg(test)]`, an item marked `#[test]` or `#[bench]`) is not read, and one under a `cfg` the reader cannot resolve (a feature, a platform) is refused (`files`). Two types, traits, functions, or constants and statics of one name in two modules are each refused, with every impl of such a type, as a use could name either (`files`) |
 //!
 //! # Types
 //!
 //! | Rust | cir/1 |
 //! |---|---|
-//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform) |
+//! | `i8`…`i64`, `u8`…`u64` | `int` of that width; `isize`, `usize` `int` (platform), signed and unsigned; a length and an index are `usize` |
 //! | `bool`, `String`, `&str` | `bool`, `string` |
 //! | `f32`, `f64` | `float` of that width |
 //! | `[T; N]`, `N` a literal | `array` |
@@ -56,7 +56,7 @@
 //! | `Rc<dyn Any>` (`std::any::Any`) | `any` |
 //! | `Rc<(SyncSender<T>, Receiver<T>)>` | `chan T`, both ends: the Rust writer's form of a channel one function sends on and receives from |
 //! | `dyn Tr`, `Box<dyn Tr>`, `Tr` a trait of the crate | the interface `Tr` |
-//! | `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>` | `slice`, `map` |
+//! | `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>` | `slice`, `map`; a map whose key `K` is, or holds, a type whose `PartialEq`, `PartialOrd`, `Ord` or `Hash` the crate writes by hand is refused at its line, as Rust finds and orders keys through that impl where `cir/1`'s map compares them as Go's built-in `==` |
 //! | `Rc<RefCell<T>>` | `ptr` to `T` |
 //! | a local bound to `&mut x`, `x` a local | `ptr` to the type of `x` |
 //! | `Sender<T>` | `chan<- T`; `chan<- any` for an absorbed message enum |
@@ -90,7 +90,7 @@
 //! | `ch.send(x).expect(…)` / `.unwrap()` | `send` |
 //! | `ch.0.try_send(x).expect(…)` / `.unwrap()`, `ch` a channel of both ends | `send` (a full channel panics, where Go would block) |
 //! | `if`, `else if`, `else` | `if` |
-//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms) | `for_range` over the map or slice. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
+//! | `for (k, v) in m` / `&m` / `m.iter()` / `m.clone()`; `m.keys()`, `m.values()`; `for x in v` (same forms); `for (_, x) in v.iter().enumerate()` | `for_range` over the map or slice; a named index of `enumerate()` is refused, as it is a `usize` and the range gives a signed platform `int`. A `HashMap` visits its keys in no order Rust specifies, as `cir/1`'s map range does. A `BTreeMap` visits them in order: with integer keys it is `for _, k := range sorted_keys(m)`, each value `m[k]` (a source a call gives, or a `clone()` whose values are read, is refused); with other keys it is refused, as Rust orders `String` keys by byte and `sorted_keys` by UTF-16 code unit. The map's type is told from the local's or parameter's written type or `BTreeMap::new()`/`HashMap::new()`, or the field's declared type; a map whose type is not told counts as a `BTreeMap` when the crate names `BTreeMap` or `BTreeSet`, as a `HashMap` otherwise |
 //! | `while c { … }`, `loop { … }` | `for` with and without a condition; a last statement that steps the loop (an assignment) is its `post` when every `continue` runs it first (`if …{ post; continue; }`, or the writer's `{ post; continue; }`) |
 //! | `break`, `continue` (without a label) | `break`, `continue`; a `break` in a `match` arm leaves the loop, as `cir/1`'s `break` in a `switch` does |
 //! | `match x { A => …, B | C => …, _ => … }` on literals and unit variants | `switch`; an exhaustive match on an enum's variants makes its last arm the default |
@@ -132,7 +132,9 @@
 //! | `T { f: x, .. }` | `struct`; a field whose value is the zero literal (`0`, `false`, `""`, `String::new()`) is left out, as Go does |
 //! | `Rc::new(RefCell::new(x))` | `&x` |
 //! | `format!("a {} {:>3}", x, y)` | `sprintf("a %s %3d", x, y)`: `{}` is `%d` for an integer, `%t` for a `bool`, `%s` otherwise; `{x}` captures the local; `>N`, `<N`, `0N` widths |
-//! | `+ - * / % & | ^ << >>`, comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `+ - * / % & | ^`, `<< >>` (next row), comparisons, `&& || !`, unary `-` | `binop`, `unop` (Rust's `+` panics on overflow where Go wraps: a trace that overflows is not equal by construction); on floats only `+ - * /` and comparisons, since Go has no `%` on them; functions do not compare |
+//! | `x << n`, `x >> n`, `x <<= n`, `x >>= n` on integers | `binop`, `assign`, only where the count `n` is proven below the width W of `x`'s type (8, 16, 32, 64): an integer literal below W (unsuffixed, Rust's `i32`), a `const` whose literal is below W, `e & m` with a literal `m` at most W - 1, or `e % k` with a literal `k` at most W and `e` unsigned; on a `usize` or `isize` (`platform`, 32 or 64 bits) only an integer literal below 32. Any other shift is refused at its line: Rust panics on a count at or past W with `overflow-checks` and masks it without, where Go gives 0 or the sign |
+//! | `==`, `!=` (and a match guard `v if v == e`) on a type whose `PartialEq` the crate writes by hand; `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does; either on a type that holds such a type at any depth (a field, an enum variant's field, the type a newtype wraps or an alias names, a type argument, an element, what an `Option`, `Box` or other wrapper in a field's type holds) | refused at its line: Rust calls the impl, where `cir/1`'s comparison is Go's built-in one. An impl counts by the trait its path resolves to (`use std::cmp::PartialEq as Peq; impl Peq for T`) and by the type an alias names (`type A = T; impl PartialEq for A`). A derived `PartialEq`, `PartialOrd` or `Ord` reads as the built-in comparison |
 //! | `x & !y` on integers | `x &^ y`, as the Rust writer writes Go's bit clear |
 //! | `x.clone()` of a value without a slice or map inside, an array's elements and a generic struct's type arguments included | `x` (Go copies) |
 //! | `*p`, `p` bound to `&mut x` | `*p` |
@@ -149,7 +151,7 @@
 //! | receiver | method | cir/1 |
 //! |---|---|---|
 //! | `String` | `clone`, `to_string`, `to_owned`, `as_str`, `into` | the value |
-//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len` (platform `int`) |
+//! | `String`, `Vec`, `HashMap`, `BTreeMap` | `len()`; `len() as i64` | `len`: unsigned platform `int` (`usize`); `int 64` for `as i64` |
 //! | `String`, `Vec`, `HashMap`, `BTreeMap` | `is_empty()` | `len(x) == 0` |
 //! | `String` | `push_str(t)` (statement) | `s += t` |
 //! | `String::from(x)`, `String::new()` | | `x`, `""` |
@@ -333,6 +335,7 @@ fn read_tree_spans(
         apart,
         paths,
         offsets,
+        left_out,
     } = tree;
     let recorder = spans.then(|| {
         let order: BTreeMap<&String, usize> =
@@ -384,7 +387,8 @@ fn read_tree_spans(
     r.scan(&ast);
     let shared = r.spans.clone();
     let rust_names = spans.then(|| spans_names(&r));
-    let m = r.module(name, &ast);
+    let mut m = r.module(name, &ast);
+    m.left_out = left_out;
     let out = rust_names.map(|names| {
         let rec = std::mem::take(&mut *shared.borrow_mut());
         spans::output(&m, name, rec, &names)
@@ -940,6 +944,19 @@ pub(crate) struct Reader {
     pub sigs: BTreeMap<(Option<String>, String), Sig>,
     pub ptr_types: BTreeSet<String>,
     pub consts: BTreeMap<String, (String, Type)>,
+    /// The literal value of each read `const`, by Go name: what proves a shift's count.
+    pub const_values: BTreeMap<String, String>,
+    /// Types whose `PartialEq` the crate writes by hand, by Rust name.
+    pub hand_eq: BTreeSet<String>,
+    /// Types whose `PartialOrd` or `Ord` the crate writes by hand, by Rust name.
+    pub hand_ord: BTreeSet<String>,
+    /// Types whose `Hash` the crate writes by hand, by Rust name.
+    pub hand_hash: BTreeSet<String>,
+    /// The names each struct, enum, union and type alias of the crate writes in its fields'
+    /// (variants' fields', aliased) types, by the type's Rust name, `Self` as the type itself:
+    /// what a derived comparison of the type may call, read from the source whether or not the
+    /// type itself is read.
+    pub held: BTreeMap<String, Vec<String>>,
     /// Types `enum Error` wraps: their `Display` is their `Error()`.
     pub error_structs: BTreeSet<String>,
     /// Unit enums whose `value()` method was absorbed.
@@ -1159,6 +1176,21 @@ fn last_seg(t: &syn::Type) -> Option<(&syn::Ident, Vec<&syn::Type>)> {
     Some((&seg.ident, args))
 }
 
+/// Every path segment's name `t` writes, inside its generic arguments too: `Option<Box<m::K>>`
+/// gives `Option`, `Box`, `m` and `K`.
+fn type_names(t: &syn::Type) -> Vec<String> {
+    struct Names(Vec<String>);
+    impl<'a> syn::visit::Visit<'a> for Names {
+        fn visit_path_segment(&mut self, s: &'a syn::PathSegment) {
+            self.0.push(s.ident.to_string());
+            syn::visit::visit_path_segment(self, s);
+        }
+    }
+    let mut v = Names(Vec::new());
+    syn::visit::Visit::visit_type(&mut v, t);
+    v.0
+}
+
 /// The ident of a path type without generic arguments.
 fn plain_ident(t: &syn::Type) -> Option<String> {
     match last_seg(t) {
@@ -1285,6 +1317,11 @@ impl Reader {
             sigs: BTreeMap::new(),
             ptr_types: BTreeSet::new(),
             consts: BTreeMap::new(),
+            const_values: BTreeMap::new(),
+            hand_eq: BTreeSet::new(),
+            hand_ord: BTreeSet::new(),
+            hand_hash: BTreeSet::new(),
+            held: BTreeMap::new(),
             error_structs: BTreeSet::new(),
             value_enums: BTreeSet::new(),
             displays: BTreeSet::new(),
@@ -1697,6 +1734,20 @@ impl Reader {
 
     /// The first named type `t` mentions that the module does not declare: a struct, newtype,
     /// enum or union refused, or a crate trait not read as an interface.
+    /// The type in the map key type `key` whose `PartialEq`, `PartialOrd`/`Ord` or `Hash` the
+    /// crate writes by hand, with that trait: a map finds, hashes and orders its keys through it.
+    pub(crate) fn hand_keyed(&self, key: &Type) -> Option<(String, &'static str)> {
+        [
+            (&self.hand_eq, "PartialEq"),
+            (&self.hand_ord, "PartialOrd or Ord"),
+            (&self.hand_hash, "Hash"),
+        ]
+        .into_iter()
+        .find_map(|(set, tr)| {
+            body::hand_written(self, key, set, &mut BTreeSet::new()).map(|n| (n, tr))
+        })
+    }
+
     fn undeclared(&self, t: &Type) -> Option<String> {
         match t {
             Type::Named { name, targs } => {
@@ -1963,8 +2014,19 @@ impl Reader {
                             elem: Box::new(one(a)?),
                         }),
                         ("std::collections::HashMap" | "std::collections::BTreeMap", [k, v]) => {
+                            let key = self.ty(k, self_ty)?;
+                            if let Some((held, tr)) = self.hand_keyed(&key) {
+                                return Err(format!(
+                                    "a `{name}` keyed by {}, whose {tr} the crate writes by hand: Rust finds and orders its keys through that impl, where cir/1's map compares them as Go's built-in `==`",
+                                    if held == src_of(*k) {
+                                        format!("`{held}`")
+                                    } else {
+                                        format!("`{}`, which holds {held}", src_of(*k))
+                                    }
+                                ));
+                            }
                             Ok(Type::Map {
-                                key: Box::new(self.ty(k, self_ty)?),
+                                key: Box::new(key),
                                 elem: Box::new(self.ty(v, self_ty)?),
                             })
                         }
@@ -2423,6 +2485,92 @@ impl Reader {
                     self.traits.insert(t.ident.to_string(), None);
                 }
                 _ => {}
+            }
+        }
+        // What each type holds, by the names its fields' types write, and the comparison and
+        // hash impls written by hand: `==`, `<`, a map's key lookup and the rest on the type
+        // call them, which `cir/1`'s built-in comparison does not. Both are known before any
+        // type is read, so a field's map type is checked as it is read.
+        for item in &f.items {
+            let (name, tys): (String, Vec<&syn::Type>) = match item {
+                syn::Item::Struct(s) => (
+                    s.ident.to_string(),
+                    s.fields.iter().map(|f| &f.ty).collect(),
+                ),
+                syn::Item::Union(u) => (
+                    u.ident.to_string(),
+                    u.fields.named.iter().map(|f| &f.ty).collect(),
+                ),
+                syn::Item::Enum(e) => (
+                    e.ident.to_string(),
+                    e.variants
+                        .iter()
+                        .flat_map(|v| v.fields.iter().map(|f| &f.ty))
+                        .collect(),
+                ),
+                syn::Item::Type(a) => (a.ident.to_string(), vec![&*a.ty]),
+                _ => continue,
+            };
+            let names = tys
+                .into_iter()
+                .flat_map(type_names)
+                .map(|n| if n == "Self" { name.clone() } else { n })
+                .collect();
+            self.held
+                .entry(name)
+                .or_default()
+                .extend::<Vec<String>>(names);
+        }
+        let aliases: BTreeMap<String, &syn::Type> = f
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                syn::Item::Type(a) => Some((a.ident.to_string(), &*a.ty)),
+                _ => None,
+            })
+            .collect();
+        for item in &f.items {
+            self.enter(item);
+            let syn::Item::Impl(im) = item else { continue };
+            let Some((p, _)) = &im.trait_ else { continue };
+            // The trait by the path it resolves to (`use std::cmp::PartialEq as Peq` makes `Peq`
+            // std's `PartialEq`); a trait of the crate is none of std's, nor is a name the crate
+            // declares a trait of.
+            let full = self.full_path(p);
+            let tr = match full.as_slice() {
+                [first, ..] if first == "crate" => continue,
+                [one] if self.traits.contains_key(one) => continue,
+                [.., last] => last.clone(),
+                [] => continue,
+            };
+            let set = match tr.as_str() {
+                "PartialEq" => &mut self.hand_eq,
+                "PartialOrd" | "Ord" => &mut self.hand_ord,
+                "Hash" => &mut self.hand_hash,
+                _ => continue,
+            };
+            // The type, and every type an alias chain from it names (`type A = T; impl … for A`).
+            let mut ty = match &*im.self_ty {
+                syn::Type::Reference(r) => &*r.elem,
+                t => t,
+            };
+            for _ in 0..=aliases.len() {
+                // By its last segment whatever its arguments (`Ref<'a>`, `Key<T>`).
+                let syn::Type::Path(tp) = ty else { break };
+                let Some(t) = tp.path.segments.last().map(|s| s.ident.to_string()) else {
+                    break;
+                };
+                let next = aliases.get(&t);
+                set.insert(t);
+                match next {
+                    Some(n) => {
+                        ty = match n {
+                            syn::Type::Reference(r) => &r.elem,
+                            t => t,
+                        }
+                    }
+                    None => break,
+                }
             }
         }
         // A type a serde attribute gives a wire form of its own (wire names, a shape other than
@@ -2911,9 +3059,12 @@ impl Reader {
                 // is refused naming it.
                 let read = self
                     .ty(&c.ty, None)
-                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|_| t));
+                    .and_then(|t| body::const_value(self, &c.expr, &t, "constant").map(|v| (t, v)));
                 match read {
-                    Ok(t) => {
+                    Ok((t, v)) => {
+                        if let Expr::Lit { value, .. } = v {
+                            self.const_values.insert(go.clone(), value);
+                        }
                         self.consts.insert(rust, (go, t));
                     }
                     Err(e) => {
@@ -3168,7 +3319,19 @@ impl Reader {
                             for v in &e.variants {
                                 let mut fields = Vec::new();
                                 for (i, fl) in v.fields.iter().enumerate() {
+                                    // `_<digits>` marks a tuple field in cir/1: a struct
+                                    // variant's field of that name would read as one.
                                     let fname = match &fl.ident {
+                                        Some(id) if tuple_field_name(&id.to_string()) => {
+                                            bad = Some((
+                                                self.pos(fl.span()),
+                                                format!(
+                                                    "the field `{id}` of the struct variant {}: a name `_<digits>` marks a tuple field in cir/1, so the variant would read as the tuple variant `{}(…)`",
+                                                    v.ident, v.ident
+                                                ),
+                                            ));
+                                            continue;
+                                        }
                                         Some(id) => names::exported(&id.to_string()),
                                         None => format!("_{i}"),
                                     };
@@ -3178,7 +3341,7 @@ impl Reader {
                                             t,
                                             embedded: false,
                                         }),
-                                        Err(r) => bad = Some(r),
+                                        Err(r) => bad = Some((pos.clone(), r)),
                                     }
                                 }
                                 variants.push(UnionVariant {
@@ -3186,7 +3349,7 @@ impl Reader {
                                     fields,
                                 });
                             }
-                            if let Some(r) = bad {
+                            if let Some((pos, r)) = bad {
                                 late_refusals.push(Refusal {
                                     pos,
                                     what: n,
@@ -3548,6 +3711,7 @@ impl Reader {
             injects: vec![],
             transactional: vec![],
             persistence: vec![],
+            left_out: vec![],
         }
     }
 
@@ -3772,6 +3936,12 @@ fn screaming(s: &str) -> String {
     } else {
         s.to_lowercase()
     }
+}
+
+/// Whether `name` is `_<digits>`, the name `cir/1` gives a tuple variant's positional field.
+fn tuple_field_name(name: &str) -> bool {
+    name.strip_prefix('_')
+        .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// A unit enum's discriminants: explicit integer literals, or one more than the previous, from 0.

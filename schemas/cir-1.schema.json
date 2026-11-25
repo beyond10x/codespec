@@ -90,6 +90,13 @@
         "type": "string"
       }
     },
+    "left_out": {
+      "description": "Every declaration of the source a normal build of the module leaves out, so the reader\ndid not read it (Rust: code built only for tests, `#[cfg(test)]`), in source order. Not a\nrefusal: the module the build holds does not declare it. A count of what was read names\nits denominator with it.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LeftOut"
+      }
+    },
     "linknames": {
       "description": "Every function of the module linked by name to a function of another module (Go\n`//go:linkname`).",
       "type": "array",
@@ -1660,6 +1667,29 @@
         "name",
         "exported",
         "methods"
+      ]
+    },
+    "LeftOut": {
+      "description": "One declaration a normal build leaves out.",
+      "type": "object",
+      "properties": {
+        "pos": {
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why a normal build leaves it out.",
+          "type": "string"
+        },
+        "what": {
+          "description": "Its kind and its source name: `fn helper`, `fn Bag.probe` for a method, `mod tests`, or\n`mod tests;` for a module file, which is not read, so what it declares is not listed.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pos",
+        "what",
+        "reason"
       ]
     },
     "Linkname": {

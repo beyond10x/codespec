@@ -2,20 +2,34 @@
 format: aep.planning-md/3
 id: story:rust-reader-platform-int-width
 kind: story
-status: draft
-title: usize and isize keep their type through the Rust reader and writer
-summary: len() in a usize function reads to a module whose Go and Rust outputs build; a Rust round trip keeps usize and isize.
+status: implemented
+title: usize and isize keep their type through the Rust reader
+summary: len() in a usize function reads to a module in which every returned value has the result's type, and its Go output builds; the Rust writer's isize/usize is story:rust-writer-platform-int-width.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: adapters/rust-read/src/body.rs
+- confidence: cited
+  path: adapters/rust-read/tests/reader.rs
+- confidence: inferred
+  path: examples/series/series.rust-read.cir.json
+revision: 13
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T01:44:35Z", actor: "human:operator", revision: 11}
+- {from: "proposed", to: "active", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 12}
+- {from: "active", to: "implemented", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 13, decided_on: {"recorded":{"test_result":1}}}
 ---
-# Story: usize and isize keep their type through the Rust reader and writer
+# Story: usize and isize keep their type through the Rust reader
 
 ## Outcome
 
-`v.len()` in a function returning `usize` is read to a module whose Go and Rust outputs build,
-and a Rust crate read and written back as Rust keeps `usize` and `isize` instead of `u64` and
-`i64`.
+`v.len()` in a function returning `usize`, and every other value of platform width, is read with
+the type the Rust source gives it, so every returned value has the result's type and the module's
+Go output builds. Writing `isize` and `usize` back as Rust is
+`story:rust-writer-platform-int-width` (`epic:go-and-rust-writers-with-harness`).
 
 ## Why
 
@@ -41,13 +55,11 @@ signed value from an unsigned result:
 ## Done When
 
 - A failing test first in `adapters/rust-read/tests/reader.rs`: `count` above reads to a module
-  in which every returned value has the result's type (or a refusal), red on main.
-- `codespec-write-rust` writes `int` of platform width as `isize`/`usize` (decision for the
-  operator, default yes; the checked-in Rust outputs regenerated through their tasks), tested
-  in `adapters/rust/tests/writer.rs`.
-- The written Go and Rust of the crate above build.
+  in which every returned value has the result's type, red on main.
+- The Go written from the crate above builds and vets.
 
 ## Scope
 
-- `adapters/rust-read/src/body.rs`, `adapters/rust/src/write.rs`, their tests, `CHANGELOG.md`.
-  Reproducer: `target/repro/widths/`.
+- `adapters/rust-read/src/body.rs` (`platform_int`, the `len` intrinsic),
+  `adapters/rust-read/tests/reader.rs`, `CHANGELOG.md`. Before `story:rust-tuple-variant-fields`
+  (same test file and changelog). Reproducer: `target/repro/widths/`.

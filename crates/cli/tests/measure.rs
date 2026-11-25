@@ -566,3 +566,40 @@ fn a_refused_declaration_also_listed_as_opaque_counts_once() {
     );
     assert_eq!(report.total.functions, 2);
 }
+
+/// A crate of one function, a `#[cfg(test)]` helper and a `#[cfg(test)]` module of two tests.
+const TEST_ONLY: &str = "\
+pub fn double(x: i64) -> i64 { x * 2 }
+#[cfg(test)] fn helper() -> i64 { 21 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn doubles() { assert_eq!(double(helper()), 42); }
+    #[test] fn doubles_zero() { assert_eq!(double(0), 0); }
+}
+";
+
+/// The Rust reader's document of a crate with test-only code, measured: the share read is of the
+/// one function a normal build holds, and the report says what was left out as test-only.
+#[test]
+fn what_the_rust_reader_left_out_as_test_only_is_counted_beside_the_share_read() {
+    let m = codespec_read_rust::read_source("cfgtest", "lib.rs", TEST_ONLY).unwrap();
+    let path = scratch("cfgtest.cir.json");
+    std::fs::write(&path, m.to_json()).unwrap();
+    let p = path.to_str().unwrap();
+    let out = stdout(&codespec(&["measure", p]));
+    assert!(
+        out.ends_with(
+            "read 1 of 1 functions, 100.0%\nleft out as test-only: 3 functions, 1 module\n"
+        ),
+        "{out}"
+    );
+    assert_eq!(out, text(&measure(&m)));
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&codespec(&["measure", "--format", "json", p]))).unwrap();
+    assert_eq!(
+        report["total"]["left_out"],
+        serde_json::json!({"functions": 3, "modules": 1, "other": 0}),
+        "{report}"
+    );
+}

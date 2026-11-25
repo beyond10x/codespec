@@ -7,6 +7,8 @@ title: The Rust reader reads cfg-gated items of the default build
 summary: Items under cfg(feature) and cfg(debug_assertions) are read as the default build has them, or refused when it cannot tell.
 relations:
 - decomposes: epic:async-network-service-translation
+- depends_on: design:cir1-checked-integer-operators
+- depends_on: story:rust-reader-integer-overflow
 scope:
 - confidence: inferred
   path: CHANGELOG.md
@@ -14,7 +16,7 @@ scope:
   path: adapters/rust-read/src/files.rs
 - confidence: inferred
   path: adapters/rust-read/tests/reader.rs
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads cfg-gated items of the default build
 
@@ -23,8 +25,9 @@ revision: 2
 An item or statement under `cfg(feature = "x")`, `cfg(not(feature = "x"))` or
 `cfg(debug_assertions)` is read as the crate's default build has it: features from the
 manifest's `default` list (none when there is no `[features]` table), `debug_assertions` from
-the profile the reader is told (the same setting `story:rust-reader-integer-overflow` takes),
-refused when it cannot tell. The module records which configuration it was read for.
+the profile the reader is told, refused when it cannot tell. The module records which
+configuration it was read for. The profile input and that record are the ones
+`design:cir1-checked-integer-operators` states for `overflow-checks`.
 
 ## Why
 

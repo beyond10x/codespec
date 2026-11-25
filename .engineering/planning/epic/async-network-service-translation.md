@@ -21,7 +21,7 @@ relations:
 - depends_on: story:cir1-defer-receiver-root
 - depends_on: story:listed-macro-format-string
 - depends_on: story:reader-indirect-sites-rust
-revision: 8
+revision: 9
 ---
 # Epic: An async network service read from Rust and written as Go
 
@@ -123,13 +123,19 @@ depends on it and on `story:rust-reader-externs`, wave 5). Every Rust reader sto
 `adapters/rust-read/src/`, so `aep plan artifact waves` puts a wave's stories one after another;
 a wave is what is delivered before the next starts, in the order listed.
 
-1. Release 0.14.0. Silent misreads, about 24 of 1543: `story:rust-reader-shift-count`,
-   `story:rust-reader-platform-int-width`, `story:rust-tuple-variant-fields` (a misread on the
-   round trip), `story:rust-reader-hand-written-comparisons`,
-   `story:rust-reader-std-types-by-path` for the parts `story:rust-reader-no-silent-misread`
-   did not take, `story:rust-reader-count-test-only-items` (the denominator), and the design
-   note of `story:rust-reader-integer-overflow` (D1 = A, a checked operator in `cir/1`) with its
-   adversary pass. Its implementation waits for the note.
+1. Release 0.14.0. Silent misreads, about 24 of 1543: `story:rust-reader-shift-count` (a shift
+   whose count is not proven below the width is refused), `story:rust-reader-platform-int-width`
+   (the reader half), `story:rust-tuple-variant-fields` (a misread on the round trip),
+   `story:rust-reader-hand-written-comparisons` (the refusal),
+   `story:rust-reader-count-test-only-items` (the denominator; blocked on
+   `decision-blocker:cir1-test-only-count-field`), and `design:cir1-checked-integer-operators`,
+   the design note of `story:rust-reader-integer-overflow` (D1 = A, a checked operator in
+   `cir/1`), with its adversary review recorded as a `review-result`. The implementation waits
+   for the note. In series: `story:rust-reader-shift-count` →
+   `story:rust-reader-hand-written-comparisons`, and `story:rust-reader-platform-int-width` →
+   `story:rust-tuple-variant-fields`. `story:rust-reader-std-types-by-path` is archived:
+   `story:rust-reader-no-silent-misread` took all of it. After the wave: re-measure on the build
+   node, release 0.14.0.
 2. Release 0.15.0. About 299 of 1543 (generated 262 of 1007):
    `story:rust-reader-integer-overflow` (implementation), `story:rust-reader-workspace-crates`
    (including a module another crate re-exports with `pub use other::module::*`),
@@ -164,7 +170,8 @@ a wave is what is delivered before the next starts, in the order listed.
 After each wave the reader is run on the service again and the count replaces the estimate here.
 
 Outside this epic (Rust writer, Rust to Rust), from the same report, in this order:
-`story:writer-rust-floats`, `story:rust-writer-interfaces-and-generics`.
+`story:writer-rust-floats`, `story:rust-writer-interfaces-and-generics`; and
+`story:rust-writer-platform-int-width`, the writer half of `story:rust-reader-platform-int-width`.
 
 ## Acceptance
 

@@ -1926,6 +1926,30 @@ fn a_module_without_persistence_reads_as_before_and_writes_no_field() {
     assert!(!m.to_json().contains("\"persistence\""));
 }
 
+/// `left_out` is additive: a document with it reads and writes back the same, one without it
+/// writes no field, and an entry with a field it does not know is refused.
+#[test]
+fn left_out_reads_back_canonical_and_is_strict() {
+    let mut v = orders();
+    let plain = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert!(plain.left_out.is_empty());
+    assert!(!plain.to_json().contains("\"left_out\""));
+    v["left_out"] = serde_json::json!([
+        {"pos": "lib.rs:2", "what": "fn helper", "reason": "built only under `cfg(test)`"},
+        {"pos": "lib.rs:3", "what": "mod tests", "reason": "built only under `cfg(test)`"}
+    ]);
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert_eq!(m.left_out.len(), 2);
+    assert_eq!(m.left_out[0].what, "fn helper");
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    v["left_out"][0]["kind"] = serde_json::json!("fn");
+    let err = Module::from_json(&serde_json::to_vec(&v).expect("json"))
+        .expect_err("refused")
+        .to_string();
+    assert!(err.contains("kind"), "{err}");
+}
+
 #[test]
 fn a_transactional_mark_on_a_function_the_module_lacks_is_refused() {
     let mut v = with_framework();

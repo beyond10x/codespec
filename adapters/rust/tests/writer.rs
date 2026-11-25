@@ -1142,3 +1142,65 @@ fn a_map_loop_reads_each_value_as_the_earlier_iterations_left_it() {
     );
     assert_eq!(printed, "6\n10\n");
 }
+
+// ----- tuple variants --------------------------------------------------------------------------
+
+/// `op_add` with the union `Shape` of `variants` declared beside its function.
+fn with_shape(variants: Value) -> Value {
+    let mut doc = op_add();
+    doc["types"] = serde_json::json!([{
+        "k": "union",
+        "name": "Shape",
+        "exported": true,
+        "variants": variants,
+        "pos": "lib.rs:1",
+    }]);
+    doc["layout"] = serde_json::json!(["type:Shape", "func:Add"]);
+    doc
+}
+
+fn i64_t() -> Value {
+    serde_json::json!({"k": "int", "width": "64", "signed": true})
+}
+
+/// `pub enum Shape { Circle(i64), Rect { w: i64, h: i64 } }` as `codespec-read-rust` reads it:
+/// the positional field is named `_0`, which marks a tuple field in `cir/1`. Written back, the
+/// variant is the tuple variant `Circle(i64)` again, so `Shape::Circle(5)` in a caller builds and
+/// a serde-derived wire form stays `{"Circle":5}`.
+#[test]
+fn a_tuple_variant_read_from_rust_is_written_back_as_a_tuple_variant() {
+    let doc = with_shape(serde_json::json!([
+        {"name": "Circle", "fields": [{"name": "_0", "t": i64_t()}]},
+        {"name": "Pair", "fields": [{"name": "_0", "t": i64_t()}, {"name": "_1", "t": {"k": "string"}}]},
+        {"name": "Rect", "fields": [{"name": "W", "t": i64_t()}, {"name": "H", "t": i64_t()}]},
+    ]));
+    let (_, lib) = write_ok(&doc, "tuple-variant");
+    let s = squash(&lib);
+    assert!(s.contains("Circle(i64)"), "{lib}");
+    assert!(s.contains("Pair(i64,String)"), "{lib}");
+    assert!(s.contains("Rect{w:i64,h:i64}"), "{lib}");
+    assert!(!s.contains("_0"), "{lib}");
+}
+
+/// A variant whose fields are named `_<digits>` but are not exactly `_0`, `_1`, … in order, or
+/// that mixes such a field with a named one, has no Rust form: the module is refused, naming the
+/// type.
+#[test]
+fn a_variant_whose_positional_fields_are_not_zero_to_n_in_order_is_refused() {
+    for (i, fields) in [
+        serde_json::json!([{"name": "_1", "t": i64_t()}]),
+        serde_json::json!([{"name": "_0", "t": i64_t()}, {"name": "W", "t": i64_t()}]),
+        serde_json::json!([{"name": "W", "t": i64_t()}, {"name": "_1", "t": i64_t()}]),
+        serde_json::json!([{"name": "_1", "t": i64_t()}, {"name": "_0", "t": i64_t()}]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let doc = with_shape(serde_json::json!([{"name": "Odd", "fields": fields}]));
+        refused_naming(
+            doc.to_string().as_bytes(),
+            &format!("tuple-variant-odd-{i}"),
+            "type Shape",
+        );
+    }
+}

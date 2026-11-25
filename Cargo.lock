@@ -269,6 +269,7 @@ version = "0.13.0"
 dependencies = [
  "b10x-codespec-conformance",
  "b10x-codespec-edit",
+ "b10x-codespec-eval",
  "b10x-codespec-model",
  "b10x-codespec-passes",
  "b10x-codespec-query",

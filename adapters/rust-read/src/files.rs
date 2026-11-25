@@ -15,8 +15,14 @@
 //! The reader reads a normal build of the crate, not its tests (`built`): a module, a module file
 //! whose inner attributes say `#![cfg(test)]`, an item, and inside an item a statement, a match
 //! arm, a struct literal's field, an impl's or trait's item, a field or a variant marked
-//! `#[cfg(test)]` (or `all(test, …)`, `not(not(test))`) is left out before anything is read;
-//! what `not(test)` marks is read. A condition the reader cannot resolve (a feature, a platform,
+//! `#[cfg(test)]` (or `all(test, …)`, `not(not(test))`) is left out before anything is read, and
+//! so is one marked `#[test]`, `#[bench]` or `#[<path>::test]`, which only the test harness
+//! builds, with or without a `cfg(test)` around it; what `not(test)` marks is read. An item left out is listed in the module's `left_out` with
+//! its line: a function, type, trait, constant or static by name, an impl's function as
+//! `fn <type>.<name>`, an inline module with every item it holds, a module file whose
+//! `#![cfg(test)]` is read with its items, and a module file under an outer `#[cfg(test)]` alone
+//! (`mod <name>;`), as its file is not read. A `use`, a macro, a statement, a match arm, a field
+//! or a variant is not listed. A condition the reader cannot resolve (a feature, a platform,
 //! `debug_assertions`) is not guessed: a statement under it is kept for the reader to make
 //! `foreign` with a refusal; a module or item under it, or an item holding any other part under
 //! it, is refused at its line, a function or impl among them kept apart as below.
@@ -33,7 +39,7 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use codespec_model::Refusal;
+use codespec_model::{LeftOut, Refusal};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 
@@ -150,6 +156,8 @@ pub(crate) struct Tree {
     /// Where in each file read the text `syn` parsed starts: after a byte-order mark and a `#!`
     /// line, which a span's byte offsets do not count.
     pub offsets: Vec<usize>,
+    /// What a normal build leaves out, in the order read (`Walk::leave_out`).
+    pub left_out: Vec<LeftOut>,
 }
 
 impl Tree {
@@ -307,6 +315,7 @@ impl Walk {
                 span_files: BTreeMap::new(),
                 refusals: Vec::new(),
                 apart: Vec::new(),
+                left_out: Vec::new(),
                 paths: Vec::new(),
                 offsets: Vec::new(),
             },
@@ -366,6 +375,58 @@ impl Walk {
         self.tree.refusals.push(Refusal { pos, what, reason });
     }
 
+    fn left(&mut self, pos: String, what: String, reason: String) {
+        self.tree.left_out.push(LeftOut { pos, what, reason });
+    }
+
+    /// `item` of the file `rel`, which a normal build leaves out for `reason`, listed in
+    /// `left_out`: a function, type, trait, constant or static by its name; an inline module
+    /// with every item it holds; an impl by its functions; a module file alone, as its file is
+    /// not read. A `use`, a macro and other items that declare no code are not listed.
+    fn leave_out(&mut self, item: &syn::Item, rel: &str, reason: &str) {
+        let pos = |s: proc_macro2::Span| format!("{rel}:{}", s.start().line);
+        match item {
+            syn::Item::Mod(m) => {
+                let name = unraw(&m.ident);
+                match &m.content {
+                    Some((_, inner)) => {
+                        self.left(pos(item.span()), format!("mod {name}"), reason.into());
+                        self.leave_out_within(inner, rel, &format!("mod {name}"));
+                    }
+                    None => self.left(
+                        pos(item.span()),
+                        format!("mod {name};"),
+                        format!(
+                            "{reason}; its file is not read, so what it declares is not listed"
+                        ),
+                    ),
+                }
+            }
+            syn::Item::Impl(im) => {
+                let ty = crate::impl_type_name(&im.self_ty).unwrap_or_else(|| src_of(&*im.self_ty));
+                for i in &im.items {
+                    if let syn::ImplItem::Fn(f) = i {
+                        let what = format!("fn {ty}.{}", unraw(&f.sig.ident));
+                        self.left(pos(i.span()), what, reason.into());
+                    }
+                }
+            }
+            _ => {
+                if let Some((_, kind, name)) = named(item) {
+                    self.left(pos(item.span()), format!("{kind} {name}"), reason.into());
+                }
+            }
+        }
+    }
+
+    /// The items of `within` (`mod tests`), which a normal build leaves out, listed.
+    fn leave_out_within(&mut self, items: &[syn::Item], rel: &str, within: &str) {
+        let reason = format!("inside {within}, which a normal build leaves out");
+        for i in items {
+            self.leave_out(i, rel, &reason);
+        }
+    }
+
     /// `item`, of the module `module`, refused for `reason` and not read; a function or impl
     /// kept apart, so its calls are listed as an opaque function's.
     fn apart(&mut self, item: syn::Item, module: &str, reason: String) {
@@ -383,7 +444,10 @@ impl Walk {
     fn items(&mut self, items: Vec<syn::Item>, at: &At) -> Result<(), String> {
         for mut item in items {
             match built(attrs_of!(&item).map_or(&[], Vec::as_slice)) {
-                Built::No => continue,
+                Built::No(c) => {
+                    self.leave_out(&item, &at.rel, &left_out_reason(&c));
+                    continue;
+                }
                 Built::Unknown(c) => {
                     self.apart(item, &at.module, unresolved(&c));
                     continue;
@@ -396,6 +460,9 @@ impl Walk {
                 }
                 let mut prune = Prune::default();
                 prune.visit_item_mut(&mut item);
+                for (line, what, reason) in prune.left {
+                    self.left(format!("{}:{line}", at.rel), what, reason);
+                }
                 match prune.unknown {
                     Some((line, c)) => {
                         let reason = format!("a part of it at line {line} is {}", unresolved(&c));
@@ -523,7 +590,15 @@ impl Walk {
                 }
             };
             match built(&ast.attrs) {
-                Built::No => continue,
+                Built::No(c) => {
+                    self.left(
+                        pos,
+                        format!("mod {name}"),
+                        format!("its file is {}", left_out_reason(&c)),
+                    );
+                    self.leave_out_within(&ast.items, &rel, &format!("mod {name}"));
+                    continue;
+                }
                 Built::Unknown(c) => {
                     self.refuse(pos, what, format!("its file is {}", unresolved(&c)));
                     continue;
@@ -647,7 +722,8 @@ fn named(item: &syn::Item) -> Option<(&'static str, &'static str, String)> {
 /// of attributes marks (`built`).
 pub(crate) enum Built {
     Yes,
-    No,
+    /// Not built: the source of the `cfg` whose condition a normal build does not meet.
+    No(String),
     /// Built only when a condition the reader cannot resolve holds: that `cfg`'s source.
     Unknown(String),
 }
@@ -658,6 +734,9 @@ pub(crate) enum Built {
 /// `debug_assertions`) the reader cannot resolve, and does not guess. Several `cfg`s hold
 /// together. A `cfg_attr` that adds a `cfg` is a condition the reader cannot resolve.
 pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
+    if let Some(a) = attrs.iter().find(|a| harness_only(a)) {
+        return Built::No(format!("#[{}]", src_of(&a.meta)));
+    }
     let mut unknown = None;
     for a in attrs.iter().filter(|a| is_cfg(a)) {
         let holds = if a.path().is_ident("cfg") {
@@ -666,7 +745,7 @@ pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
             None
         };
         match holds {
-            Some(false) => return Built::No,
+            Some(false) => return Built::No(src_of(&a.meta)),
             Some(true) => {}
             None => {
                 unknown.get_or_insert_with(|| src_of(&a.meta));
@@ -674,6 +753,28 @@ pub(crate) fn built(attrs: &[syn::Attribute]) -> Built {
         }
     }
     unknown.map_or(Built::Yes, Built::Unknown)
+}
+
+/// Whether `a` makes its item one only the test harness builds: `#[test]`, `#[bench]`, or an
+/// attribute of a test framework named by a path ending in `test` (`#[tokio::test]`), each of
+/// which a normal build leaves out as it does `cfg(test)`.
+fn harness_only(a: &syn::Attribute) -> bool {
+    let p = a.path();
+    p.is_ident("test")
+        || p.is_ident("bench")
+        || (p.segments.len() > 1 && p.segments.last().is_some_and(|s| s.ident == "test"))
+}
+
+/// Why what is built only under the condition `c` (a `cfg`'s source), which a normal build
+/// does not meet, is left out.
+fn left_out_reason(c: &str) -> String {
+    format!("built only under `{c}`, which a normal build leaves out")
+}
+
+/// An identifier's name without `r#`.
+fn unraw(i: &syn::Ident) -> String {
+    let n = i.to_string();
+    n.strip_prefix("r#").unwrap_or(&n).to_string()
 }
 
 /// Why what is built only under the condition `c` (a `cfg`'s source) is refused.
@@ -778,17 +879,19 @@ fn stmt_attrs_mut(s: &mut syn::Stmt) -> Option<&mut Vec<syn::Attribute>> {
 /// fields of a struct literal, items of an impl or trait, fields and variants. The `cfg`s of
 /// what stays are taken out with it, but for a statement under a condition the reader cannot
 /// resolve, which stays as it is for the reader to keep as `foreign`. Any other `cfg` left (one
-/// the reader cannot resolve, elsewhere) is `unknown`: its line and source.
+/// the reader cannot resolve, elsewhere) is `unknown`: its line and source. A function of an
+/// impl taken out is in `left`: its line, `fn <type>.<name>` and why.
 #[derive(Default)]
 struct Prune {
     unknown: Option<(usize, String)>,
+    left: Vec<(usize, String, String)>,
 }
 
 /// Whether what `attrs` mark stays: not when a normal build leaves it out; its `cfg`s taken out
 /// when a normal build builds it, kept when the reader cannot tell.
 fn keep(attrs: &mut Vec<syn::Attribute>) -> bool {
     match built(attrs) {
-        Built::No => false,
+        Built::No(_) => false,
         Built::Yes => {
             attrs.retain(|a| !is_cfg(a));
             true
@@ -844,7 +947,15 @@ impl VisitMut for Prune {
     }
 
     fn visit_item_impl_mut(&mut self, im: &mut syn::ItemImpl) {
+        let ty = crate::impl_type_name(&im.self_ty).unwrap_or_else(|| src_of(&*im.self_ty));
+        let left = &mut self.left;
         im.items.retain_mut(|i| {
+            if let syn::ImplItem::Fn(f) = &*i
+                && let Built::No(c) = built(&f.attrs)
+            {
+                let what = format!("fn {ty}.{}", unraw(&f.sig.ident));
+                left.push((i.span().start().line, what, left_out_reason(&c)));
+            }
             let attrs = match i {
                 syn::ImplItem::Const(c) => &mut c.attrs,
                 syn::ImplItem::Fn(f) => &mut f.attrs,

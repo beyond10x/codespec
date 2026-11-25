@@ -18,10 +18,14 @@
 //! - A refusal's category is the text of its `reason` before the first `: ` when that is one of
 //!   the Groovy reader's eight categories, and `uncategorised` otherwise, so every reader's output
 //!   is measured.
+//! - What a normal build leaves out (`left_out`, Rust's `#[cfg(test)]` code) is not in the share
+//!   read; it is counted beside it by the first word of its `what`: `fn` a function, `mod` a
+//!   module, anything else another item.
 //!
 //! The text report is a table, one row per file and a `total` row, with every category as a
-//! column, then the share read. `codespec-measure/1` is the same counts as canonical JSON, with
-//! the function names and only the categories that occur.
+//! column, then the share read, then, when the module left anything out, `left out as test-only:`
+//! and its counts. `codespec-measure/1` is the same counts as canonical JSON, with the function
+//! names and only the categories that occur, and `left_out` in `total` only when anything was.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -84,6 +88,38 @@ pub struct Total {
     /// `read` of `functions` as a percentage with one decimal, rounded half up; `n/a` without
     /// functions.
     pub share_read: String,
+    /// What a normal build leaves out, counted: only when the module left anything out.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_out: Option<LeftOutCount>,
+}
+
+/// The entries of a module's `left_out` by kind.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct LeftOutCount {
+    pub functions: usize,
+    pub modules: usize,
+    pub other: usize,
+}
+
+/// The counts of `left_out`, `None` when it is empty.
+fn left_out_count(m: &Module) -> Option<LeftOutCount> {
+    if m.left_out.is_empty() {
+        return None;
+    }
+    let mut c = LeftOutCount::default();
+    for l in &m.left_out {
+        match l.what.split_once(' ').map_or(l.what.as_str(), |(k, _)| k) {
+            "fn" => c.functions += 1,
+            "mod" => c.modules += 1,
+            _ => c.other += 1,
+        }
+    }
+    Some(c)
+}
+
+/// `n` and the word for one, with an `s` unless `n` is 1.
+fn counted(n: usize, one: &str) -> String {
+    format!("{n} {one}{}", if n == 1 { "" } else { "s" })
 }
 
 /// The file of a `pos`: the text before its last `:`.
@@ -238,6 +274,7 @@ pub fn measure(m: &Module) -> Report {
             refused,
             refusals: counts(&total_refusals),
             share_read: share(read, read + refused),
+            left_out: left_out_count(m),
         },
     }
 }
@@ -307,5 +344,17 @@ pub fn text(r: &Report) -> String {
         "read {} of {} functions, {}\n",
         r.total.read, r.total.functions, r.total.share_read
     );
+    if let Some(l) = &r.total.left_out {
+        let parts: Vec<String> = [
+            (l.functions, "function"),
+            (l.modules, "module"),
+            (l.other, "other item"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, one)| counted(n, one))
+        .collect();
+        out += &format!("left out as test-only: {}\n", parts.join(", "));
+    }
     out
 }
