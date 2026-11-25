@@ -1,0 +1,13 @@
+{
+  "format": "codespec-barrier/1",
+  "language": "go",
+  "numbered": [
+    {"path": "syscall", "name": "RawSyscall", "arg": 0},
+    {"path": "syscall", "name": "Syscall", "arg": 0}
+  ],
+  "fixed": [],
+  "syscalls": [
+    {"name": "getpid", "number": 39, "effects": ["proc"]},
+    {"name": "getppid", "number": 110, "effects": ["proc"]}
+  ]
+}

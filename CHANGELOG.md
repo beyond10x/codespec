@@ -6,28 +6,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
-- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
-  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
-  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
-  `cfg(test)` was around it. `codespec measure`
-  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
-  JSON shows it as `total.left_out`. A document without the field is unchanged.
-
-### Changed
-
-- The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
-  the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
-  a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read
-  Go's shift before; the kit's Rust sources of `op-shl`, `op-shr`, `assign-shl` and `assign-shr`
-  mask their count (`b & 63`).
-- The Rust reader refuses `==`, `!=` and a match guard `v if v == e` on a type whose `PartialEq`
-  the crate writes by hand, and `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does
-  (or on a type that holds one at any depth: a field, an enum variant's field, an `Option` or
-  `Box` inside one), at the comparison's line; it read them as the built-in comparison before.
-  An impl counts through a type alias and a renamed trait import. A derived impl reads as before.
-- The Rust reader refuses a `HashMap` or `BTreeMap` whose key type is, or holds, a type whose
-  `PartialEq`, `PartialOrd`, `Ord` or `Hash` the crate writes by hand, at its line (a local, a
-  parameter, a struct field); it read such a map with Go's built-in key comparison before.
+- `codespec diff <old-dir> <new-dir>` prints `codespec-diff-report/1`, what changed in the code facts between two revisions (functions, signatures, effects, syscalls by call-site id, raises, reach, entries, `unknown` reasons); exit 0 with no delta, 1 with deltas, 2 on an input error; defined in the crate doc of the new crate `b10x-codespec-diff`.
+- `codespec effects`: each `syscalls` and `effect_sites` entry has `sites`, the ids `{callee, n}`
+  of the function's own calls that lead there, which stay the same when lines move (defined in
+  the crate doc of `b10x-codespec-effects`). A reason names a function literal
+  `<holder>.lambda@<n>`, no longer `func literal at <file>:<line>`.
+- The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
 
 ### Fixed
 
@@ -37,6 +21,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   such a character as Go's `\uNNNN`, `\UNNNNNNNN` or `\xNN`; a `foreign` statement's `src` writes it as
   `\u{..}` (a raw string that holds one as the cooked string of the same text, a doc comment's
   text as `\u{..}`). Strict reading is unchanged.
+- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
+  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
+  `cfg(test)` was around it. `codespec measure`
+  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
+  JSON shows it as `total.left_out`. A document without the field is unchanged.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.
@@ -57,6 +47,22 @@ Every change a user of `codespec` or of `cir/1` would notice.
   with the `@Path` of the class or of the interface it implements, directly or through another,
   not of the interface that declares the method; a class with none is no resource and gets no
   entry, and one whose interfaces name different paths is refused at its line.
+
+### Changed
+
+- The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
+  the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
+  a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read
+  Go's shift before; the kit's Rust sources of `op-shl`, `op-shr`, `assign-shl` and `assign-shr`
+  mask their count (`b & 63`).
+- The Rust reader refuses `==`, `!=` and a match guard `v if v == e` on a type whose `PartialEq`
+  the crate writes by hand, and `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does
+  (or on a type that holds one at any depth: a field, an enum variant's field, an `Option` or
+  `Box` inside one), at the comparison's line; it read them as the built-in comparison before.
+  An impl counts through a type alias and a renamed trait import. A derived impl reads as before.
+- The Rust reader refuses a `HashMap` or `BTreeMap` whose key type is, or holds, a type whose
+  `PartialEq`, `PartialOrd`, `Ord` or `Hash` the crate writes by hand, at its line (a local, a
+  parameter, a struct field); it read such a map with Go's built-in key comparison before.
 
 ## 0.13.0
 

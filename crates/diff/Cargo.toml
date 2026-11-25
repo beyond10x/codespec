@@ -1,0 +1,17 @@
+[package]
+name = "b10x-codespec-diff"
+description = "The diff report codespec-diff-report/1 that codespec diff prints: what changed in the code facts of a set of cir/1 documents between two revisions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_diff"
+
+[dependencies]
+b10x-codespec-model = { path = "../model" }
+b10x-codespec-effects = { path = "../effects" }
+serde.workspace = true
+serde_json.workspace = true

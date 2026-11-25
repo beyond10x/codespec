@@ -26,6 +26,8 @@ type Module struct {
 	Methods   []MethodSet `json:"methods,omitempty"`
 	Linknames []Linkname  `json:"linknames,omitempty"`
 	Inits     []CallRef   `json:"inits,omitempty"`
+	// The routes the package registers, in source order (entries.go).
+	Entries []Entry `json:"entries,omitempty"`
 	// Interface types: the package's own in source order, then those of other packages a call
 	// goes through (candidates; the encoder emits those an interface call uses).
 	Interfaces []Interface `json:"interfaces,omitempty"`
