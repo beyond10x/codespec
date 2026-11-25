@@ -8,6 +8,7 @@ summary: cq relation entry_point over Module.entries (kind, on, method), so a ru
 relations:
 - decomposes: epic:codebase-transformations
 - depends_on: story:query-recursion-bounded-by-comparison
+- depends_on: story:go-http-entries
 scope:
 - confidence: inferred
   path: crates/query/src/facts.rs
@@ -21,7 +22,7 @@ scope:
   path: crates/query/tests/query.rs
 - confidence: inferred
   path: docs/query-language.md
-revision: 5
+revision: 7
 ---
 # Story: cq reads a module's entries as a relation
 
@@ -78,6 +79,10 @@ lists no relation over `Module.entries`; `crates/query/src/facts.rs` reads no `e
   one entry of each kind in `ENTRY_KINDS`, iterating the constant, gives one row per kind, so a kind
   added later is covered with no change to cq;
   `task check` green; each new test inside the 60 s bound.
+- An `http` entry with `path` (the optional field `story:go-http-entries` adds to `Entry`)
+  joins the node of `func` in the module at `path`, not a function of the registering module:
+  `entry_point.func` is that node id and `entry_point.module` the registering module (a test
+  over a set where the registering module declares a function with the same key).
 
 ## Scope
 
@@ -91,3 +96,5 @@ lists no relation over `Module.entries`; `crates/query/src/facts.rs` reads no `e
 - `story:java-reader-synchronized` runs after this one (a `depends_on` edge): it adds a relation
   to the same files.
 - `CHANGELOG.md` gets one line; conflicts there are resolved at merge.
+- Waits on `story:go-http-entries`, planned on branch `plan/release-diff` (no edge: the id does
+  not exist on this branch); add the `depends_on` edge when both branches are merged.

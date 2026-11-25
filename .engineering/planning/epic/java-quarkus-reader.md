@@ -7,7 +7,7 @@ title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 13
+revision: 15
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
@@ -46,6 +46,9 @@ application. `epic:groovy-grails-reader` is the precedent for a framework-aware 
   `story:java-reader-finally-and-resources`, `story:java-reader-synchronized`,
   `story:java-reader-annotation-facts`, `story:java-reader-persistence-facts`,
   `story:java-reader-cdi-observes-entry`, `story:java-reader-scheduled-startup-entries`,
+  `story:java-reader-project-interface-implementations`, `story:java-reader-string-methods`,
+  `story:java-reader-exception-mapper-of-project-exceptions`, `story:java-reader-static-jdk-calls`,
+  `story:java-reader-null-results`, `story:java-reader-unread-class-new`,
   `story:release-jvm-readers`, `story:java-read-dependencies`, `story:java-reader-public-corpus`,
   and of other epics `story:query-recursion-bounded-by-comparison`, `story:reach-entry-file`,
   `story:cq-entry-relation`, `story:cq-query-string`, `story:check-not-applicable` and
@@ -114,9 +117,21 @@ Lane A, one implementer, serial. Each story depends on the one before it: they s
     Also depends on `story:reach-entry-file` (its reach case runs with no entry flag).
 19. `story:java-reader-scheduled-startup-entries`: kind `startup` (`scheduled` exists). After 18
     (`ENTRY_KINDS`, schema) and `story:reach-entry-file`, for the same reasons.
+20. `story:java-reader-project-interface-implementations`: 18 (`implements <T>`); also depends on
+    `story:java-reader-cross-package-interface-calls` (the extern interface type).
+21. `story:java-reader-string-methods`: 11 (a String method on a string value).
+22. `story:java-reader-exception-mapper-of-project-exceptions`: 8; also depends on 3
+    (`story:java-reader-unchecked-exceptions`: the exception class is an error type).
+23. `story:java-reader-static-jdk-calls`: 6 (`interface List as a value`).
+24. `story:java-reader-null-results`: 5 (`null where a map is expected`).
+25. `story:java-reader-unread-class-new`: 5 (`new X is outside the reader's library table`, the
+    cascade of a class not read).
 
 Items 14 to 17 come from the gaps codesec's Java rules name; they share Lane A's three files, so
-each depends on the one before it (14 on 13), and 18 depends on 17.
+each depends on the one before it (14 on 13), and 18 depends on 17. Items 20 to 25 are the refusal
+reasons of the consumer's re-read of 2026-11-24 that no story covered (counts in order of size);
+they share the same three files, so each depends on the one before it, 20 on 19. Each has a
+synthetic reproducer and the refusal line the reader gives for it on branch `plan/java-consumer-stories`.
 
 Lane B, one implementer. Its stories carry a `depends_on` edge only where two of them edit the
 same file, and the edge names that file:

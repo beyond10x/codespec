@@ -2,7 +2,7 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
-## Unreleased
+## 0.13.0
 
 ### Added
 
