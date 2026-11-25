@@ -1178,3 +1178,206 @@ fn the_cache_covers_the_names_and_a_fact_base_without_names_is_cached_as_before(
     assert_eq!(other.digest, named.digest);
     assert_eq!(other.source, Source::Cache);
 }
+
+/// A Go module of the functions `f0` … `f<n>`, each `f<k>` calling `f<k+1>`: a call chain of `n`
+/// calls.
+fn chain(n: usize) -> Module {
+    use serde_json::json;
+    let funcs: Vec<serde_json::Value> = (0..=n)
+        .map(|k| {
+            let body: Vec<serde_json::Value> = (k < n)
+                .then(|| {
+                    json!({
+                        "k": "expr",
+                        "x": {"k": "call", "name": format!("f{}", k + 1), "args": [], "t": {"k": "unit"}},
+                        "pos": format!("chain.go:{}", 2 * k + 2),
+                    })
+                })
+                .into_iter()
+                .collect();
+            json!({
+                "name": format!("f{k}"), "exported": false, "params": [], "results": [],
+                "body": body, "pos": format!("chain.go:{}", 2 * k + 1),
+            })
+        })
+        .collect();
+    let layout: Vec<String> = (0..=n).map(|k| format!("func:f{k}")).collect();
+    let doc = json!({
+        "format": "cir/1",
+        "name": "chain",
+        "reader": {"language": "go", "name": "hand-written", "version": "0"},
+        "types": [],
+        "funcs": funcs,
+        "layout": layout,
+        "path": "example.com/chain",
+    });
+    Module::from_json(&serde_json::to_vec(&doc).unwrap()).unwrap()
+}
+
+/// `q` run over `modules` on a thread with a deadline, so a recursion that derives without end
+/// fails the test instead of hanging it.
+fn in_time(q: String, modules: Vec<Module>) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let shown = q.clone();
+    std::thread::spawn(move || {
+        let out = parse(&q).and_then(|p| {
+            run(&p, &FactBase::build(&modules), &Names::default()).map(|a| a.to_text())
+        });
+        let _ = tx.send(out);
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap_or_else(|_| panic!("{shown}: ran for 10 s without an end"))
+}
+
+/// The depth-limited reach of the story's reproducer, its recursive rule's body `body`.
+fn reach(body: &str) -> String {
+    format!(
+        "depth_limit(4).\n\
+         edge(S, G) :- calls{{site: S, target: G}}.\n\
+         reach(F, G, 1) :- call{{func: F, site: S}}, edge(S, G).\n\
+         reach(F, H, D2) :- {body}.\n\
+         ?- reach(F, G, D)."
+    )
+}
+
+const UNBOUNDED: &str = "reach: a rule of a recursion puts a new value into its head, made by arithmetic or a builtin from a value the recursion derived: it could derive without end; make the value from facts outside the recursion, or bound it by a relation of the fact base";
+
+/// A recursion whose depth counter is bounded by a comparison with a fact (`D < M`) derives the
+/// rows of depth 1 to 4 over a chain of 6 calls, as the same rule bounded by a relation does;
+/// without the comparison it is refused as before.
+#[test]
+fn a_recursion_bounded_by_a_comparison_with_a_fact_derives_the_rows_up_to_its_bound() {
+    let bounded = reach(
+        "reach(F, G, D), depth_limit(M), D < M, call{func: G, site: Y}, edge(Y, H), D2 = D + 1",
+    );
+    let rows = in_time(bounded, vec![chain(6)]).unwrap_or_else(|e| panic!("{e}"));
+    let depths: BTreeSet<&str> = rows
+        .lines()
+        .map(|l| l.rsplit('\t').next().unwrap())
+        .collect();
+    assert_eq!(depths, BTreeSet::from(["1", "2", "3", "4"]), "{rows}");
+    assert_eq!(rows.lines().count(), 6 + 5 + 4 + 3, "{rows}");
+    let by_relation = format!(
+        "depth(1). depth(2). depth(3). depth(4).\n{}",
+        reach("reach(F, G, D), call{func: G, site: Y}, edge(Y, H), D2 = D + 1, depth(D2)")
+    );
+    assert_eq!(in_time(by_relation, vec![chain(6)]).unwrap(), rows);
+    let unbounded =
+        reach("reach(F, G, D), depth_limit(M), call{func: G, site: Y}, edge(Y, H), D2 = D + 1");
+    assert_eq!(in_time(unbounded, vec![chain(6)]).unwrap_err(), UNBOUNDED);
+}
+
+/// A comparison bounds a made value only against a finite value (a fact, a literal) and only on
+/// the side its step moves it to: `D < M`, `D <= M`, `M > D`, `M >= D` or the made value itself
+/// below `M` for `D + 1`; `D > M` for `D - 1`. The other side, a bound by a value the recursion
+/// derived, and a step of unknown sign or a product stay refused.
+#[test]
+fn a_comparison_bounds_a_recursion_only_against_a_finite_value_on_the_side_its_step_moves_to() {
+    let walk = "reach(F, G, D), call{func: G, site: Y}, edge(Y, H)";
+    let deepest = |rows: &str| -> i64 {
+        rows.lines()
+            .map(|l| l.rsplit('\t').next().unwrap().parse::<i64>().unwrap())
+            .max()
+            .unwrap()
+    };
+    for (bound, max) in [
+        ("depth_limit(M), D <= M, D2 = D + 1", 5),
+        ("depth_limit(M), M > D, D2 = D + 1", 4),
+        ("depth_limit(M), M >= D, D2 = D + 1", 5),
+        ("D < 3, D2 = D + 1", 3),
+        ("depth_limit(M), D2 = D + 1, D2 <= M", 4),
+        ("depth_limit(M), D2 = 1 + D, M >= D2", 4),
+    ] {
+        let q = reach(&format!("{walk}, {bound}"));
+        let rows = in_time(q.clone(), vec![chain(6)]).unwrap_or_else(|e| panic!("{q}: {e}"));
+        assert_eq!(deepest(&rows), max, "{q}");
+    }
+    let down = "edge(S, G) :- calls{site: S, target: G}.\n\
+                down(F, G, -1) :- call{func: F, site: S}, edge(S, G).\n\
+                down(F, H, D2) :- down(F, G, D), D > -3, call{func: G, site: Y}, edge(Y, H), D2 = D - 1.\n\
+                ?- down(F, G, D).";
+    let rows = in_time(down.to_string(), vec![chain(6)]).unwrap();
+    let least = rows
+        .lines()
+        .map(|l| l.rsplit('\t').next().unwrap().parse::<i64>().unwrap())
+        .min()
+        .unwrap();
+    assert_eq!(least, -3, "{rows}");
+    for bound in [
+        "depth_limit(M), D > M, D2 = D + 1",
+        "depth_limit(M), M < D, D2 = D + 1",
+        "depth_limit(M), D >= M, D2 = D + 1",
+        "depth_limit(M), D < M, D2 = D - 1",
+        "depth_limit(M), D2 = D + 1, D2 >= M",
+        "reach(G, X, E), D < E, D2 = D + 1",
+        "depth_limit(M), D < M, D2 = D * 2",
+        "depth_limit(M), D < M, depth_limit(K), D2 = D + K",
+    ] {
+        let q = reach(&format!("{walk}, {bound}"));
+        assert_eq!(
+            in_time(q.clone(), vec![chain(6)]).unwrap_err(),
+            UNBOUNDED,
+            "{q}"
+        );
+    }
+}
+
+/// The upper evaluation of a bounded recursion ends when its bound is a field of a fact an
+/// unknown site could add (`call{line: M}` of the function without a body, any value there): the
+/// value the bound lets through is then any value, not one more each round. The calls read are at
+/// lines 4, 8 and 16, so `n` holds 0 to 16: 17 values, possibly more through `hook`.
+#[test]
+fn a_bound_an_unknown_site_leaves_open_makes_the_value_any_value_and_the_recursion_ends() {
+    let q = "n(0) :- module{path: _}.\n\
+             n(X) :- n(Y), call{line: M}, Y < M, X = Y + 1.\n\
+             ?- N = count{ n(K) }.";
+    let possible = vec![module(&fixture("unknown/possible/plugin.cir.json"))];
+    let out = in_time(q.to_string(), possible).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        out,
+        "17\tpossible: example.com/plugin.hook at example.com/plugin/plugin.go:12 (opaque function: declared without a body)\n"
+    );
+}
+
+/// Adversary: the order of two comparisons bounding one step must not decide the answer.
+/// `Y < 3` bounds the step whatever the wild `call{line: M}` holds, so `n` holds 0 to 3 and no
+/// unknown site can add a value: the count is 4, definitely, and `n(50)` is definitely absent.
+#[test]
+fn a_step_bounded_by_a_literal_stays_definite_whatever_order_its_comparisons_are_written_in() {
+    let possible = || vec![module(&fixture("unknown/possible/plugin.cir.json"))];
+    for order in ["Y < 3, Y < M", "Y < M, Y < 3"] {
+        let rules = format!(
+            "n(0) :- module{{path: _}}.\n\
+             n(X) :- n(Y), call{{line: M}}, {order}, X = Y + 1.\n\
+             far(50) :- module{{path: _}}.\n"
+        );
+        let count = in_time(format!("{rules}?- N = count{{ n(K) }}."), possible())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(count, "4\n", "{order}");
+        let absent = in_time(format!("{rules}?- far(K), !n(K)."), possible())
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(absent, "50\n", "{order}");
+    }
+}
+
+/// A step by a literal that is not positive is no bounded step: `D + -1` under `D < 3` moves away
+/// from its bound, as `-1 + D` does and `D - -1` under `D > -3`, and `D + 0` makes no step at all.
+/// Each stays refused.
+#[test]
+fn a_step_by_a_literal_that_is_not_positive_is_no_bounded_step_and_stays_refused() {
+    let walk = "reach(F, G, D), call{func: G, site: Y}, edge(Y, H)";
+    for bound in [
+        "D < 3, D2 = D + -1",
+        "D < 3, D2 = -1 + D",
+        "D > -3, D2 = D - -1",
+        "D < 3, D2 = D + 0",
+        "D > -3, D2 = D - 0",
+    ] {
+        let q = reach(&format!("{walk}, {bound}"));
+        assert_eq!(
+            in_time(q.clone(), vec![chain(6)]).unwrap_err(),
+            UNBOUNDED,
+            "{q}"
+        );
+    }
+}
