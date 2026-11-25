@@ -11,6 +11,8 @@ relations:
 - depends_on: story:go-http-entries
 scope:
 - confidence: inferred
+  path: AGENTS.md
+- confidence: inferred
   path: Cargo.lock
 - confidence: inferred
   path: Cargo.toml
@@ -32,7 +34,7 @@ scope:
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 6
+revision: 8
 ---
 # Story: `codespec diff` reports what changed in the code facts between two revisions
 
@@ -132,7 +134,8 @@ Not run on main `5f82fff9`: `crates/cli/src/lib.rs` has no `diff` command.
 - `codespec diff --help` and the site's reference pages generated (`task docs-generate`); a
   capability `diff` shipped in `crates/docs/src/status.rs` naming its test; the new crate in
   the workspace members, in a `test` part of `scripts/check-parts.txt` (the `lint` part fails
-  otherwise) and with a public `description` naming no private name; `task check` green; each
+  otherwise) and with a public `description` naming no private name; a row for `crates/diff` in
+  `AGENTS.md`'s table of what the repository owns; `task check` green; each
   new test under 60 s and the crate's test step within the 120 s budget.
 
 ## Scope
@@ -141,8 +144,11 @@ Not run on main `5f82fff9`: `crates/cli/src/lib.rs` has no `diff` command.
   `Cargo.toml` (members), `Cargo.lock`, `crates/cli/Cargo.toml`, `crates/cli/src/lib.rs` and
   `crates/cli/src/main.rs` (the `Diff` command), `scripts/check-parts.txt`,
   `crates/docs/src/status.rs`, `website/data/status.json`, `website/docs/reference/cli.md` and
-  `crates.md`. Inferred; recorded as typed scope. `CHANGELOG.md` gets one line, outside the
-  typed scope; conflicts there are resolved at merge.
+  `crates.md`, `AGENTS.md` (the row of `crates/diff` in the table of what the repository owns).
+  Inferred; recorded as typed scope. `CHANGELOG.md` gets one line, outside the typed scope;
+  conflicts there are resolved at merge.
+- `story:entry-bindings` (draft) edits `crates/cli/src/lib.rs` too; it runs after this one:
+  `story:entry-bindings` depends_on `story:diff-command`.
 - After `story:stable-site-identity` (the site ids, `crates/effects`) and `story:go-http-entries`
   (`Entry.path` and the echo fixture): `depends_on` edges.
 - `story:reach-entry-file` (epic `sound-reach`, draft) gives `reach` its default of recorded

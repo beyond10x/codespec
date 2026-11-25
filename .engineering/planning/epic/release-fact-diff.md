@@ -5,7 +5,7 @@ kind: epic
 status: draft
 title: Diff the code facts of two revisions of a service
 summary: codespec diff over two linked sets of cir/1 documents, with call sites named by function, callee and ordinal, and Go net/http and echo routes recorded as http entries
-revision: 2
+revision: 3
 ---
 # Epic: Diff the code facts of two revisions of a service
 
@@ -19,7 +19,9 @@ removed. Functions and call sites are named so that they are the same across rev
 code is the same: a function by module path and function key, a call site by its function, its
 callee and its ordinal among that function's calls of the callee, never by line. The Go reader
 records the routes a `net/http` or echo service registers as `http` entries, so the diff of a Go
-service starts from what its clients can call.
+service starts from what its clients can call. The diff also reports each reason a function's facts
+may be incomplete that appears or disappears: a fact that turns unknown can hide an effect change,
+so the diff reports it.
 
 ## Why
 
@@ -42,10 +44,12 @@ lines below.
 
 1. `story:go-http-entries` (C4) and `story:stable-site-identity` (C2) at once: they share no file
    but `CHANGELOG.md`, whose conflicts are resolved at merge. C4 lands in the Go reader and in
-   `Entry` of `crates/model/src/lib.rs`; C2 in `crates/model/src/walk.rs` and `crates/effects`.
+   `Entry` of `crates/model/src/lib.rs` with its consumers in `crates/edit`; C2 in `crates/effects`
+   and the netcheck reduction of `crates/docs`.
 2. `story:diff-command` (C3) after both: it names sites the way C2 defines them, and diffs the
    entries C4 records.
-3. The release that ships the three, then its installation on the workstation.
+3. `story:release-fact-diff-release` after the three: the release that ships them, installed on
+   the workstation.
 
 ## Done When
 
@@ -59,7 +63,8 @@ lines below.
 - `codespec-diff-report/1` is defined in the crate doc of `b10x-codespec-diff`, and `codespec diff`
   is on the site's CLI reference page.
 - The codespec release that ships `story:stable-site-identity`, `story:go-http-entries` and
-  `story:diff-command` is installed on the workstation; `codespec --version` prints that release.
+  `story:diff-command` is installed on the workstation and `codespec --version` prints it
+  (`story:release-fact-diff-release`, whose Done When names the version before and after).
 
 ## Out of scope
 

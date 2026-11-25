@@ -15,14 +15,22 @@ scope:
 - confidence: inferred
   path: crates/cli/tests/measure.rs
 - confidence: inferred
+  path: crates/edit/src/delete.rs
+- confidence: inferred
+  path: crates/edit/src/rename.rs
+- confidence: inferred
+  path: crates/edit/tests/change_sets
+- confidence: inferred
   path: crates/model/src/lib.rs
 - confidence: inferred
   path: crates/model/tests/model.rs
 - confidence: inferred
+  path: docs/design.md
+- confidence: inferred
   path: schemas/cir-1.schema.json
 - confidence: inferred
   path: website/docs/reference/cir-1.md
-revision: 4
+revision: 6
 ---
 # Story: The Go reader records net/http and echo routes as http entries
 
@@ -44,14 +52,35 @@ the package registers, with `method`, `on` (the path) and `func` (the handler):
   of a named type whose `ServeHTTP` is the entry, or `http.HandlerFunc(f)`, whose `f` is.
 
 The handler may be declared in another package than the one registering the route, which is how
-a Go service is usually laid out (`main` registers, `handlers` serves). `cir/1` `Entry` gains an
-optional `path`: the import path of the module declaring `func`, omitted when it is this module.
-Strict reading checks `func` against `funcs` only when `path` is empty, and refuses a `path`
-equal to the module's own. The doc of `Entry.method` says empty means any method and lists any
-upper-case method token. A document without `path` reads as before; the schema and
-`website/docs/reference/cir-1.md` are regenerated. This is an added optional field, as `beans`,
-`injects` and `persistence` were; whether it needs `cir/2` is checked against the rules for
-`cir/1` in `AGENTS.md` before work starts, and the answer is written in the change.
+a Go service is usually laid out (`main` registers, `handlers` serves). The entry cannot go into
+the handler package's document: `codespec-read-go` reads one package directory per run
+(`main.go`: `codespec-read-go <package dir>`; `load` parses that one directory) and
+`scripts/read-repo.sh` runs it once per package, in parallel, so the run that reads `handlers`
+never sees `main`'s registrations. So `cir/1` `Entry` gains an optional `path`: the import path
+of the module declaring `func`, omitted when it is this module. Strict reading checks `func`
+against `funcs` only when `path` is empty, and refuses a `path` equal to the module's own. The
+doc of `Entry.method` says empty means any method and lists any upper-case method token. A
+document without `path` reads as before; the schema and `website/docs/reference/cir-1.md` are
+regenerated. This is an added optional field, as `beans`, `injects` and `persistence` were
+(`docs/design.md` lines 76-85, the rules for `cir/1` in `AGENTS.md`): no field changes its
+meaning when `path` is absent.
+
+Every consumer on main that reads `Entry.func` as a key of its own module is changed here:
+
+- `crates/model/src/lib.rs` (strict reading, the set of entry functions that may list `raises`,
+  near line 2662): only entries without `path` admit a function of this module.
+- `crates/edit/src/rename.rs` (near line 969): renaming a function rekeys an entry of its own
+  module only when the entry has no `path`, and an entry of any other module of the set whose
+  `path` is the renamed function's module path.
+- `crates/edit/src/delete.rs` (near line 236): deleting a function is refused for an entry of its
+  own module without `path`, and for an entry of any module of the set whose `path` is the
+  function's module path; an entry whose `path` names another module does not block it.
+- `crates/edit/tests/change_sets/delete_retarget.rs` (line 688) builds an `Entry` literal: it
+  gets the new field.
+
+Consumers in draft stories that must resolve `path` when they read entries:
+`story:reach-entry-file` (`kind: http` lines), `story:entry-bindings` (bindings per entry) and
+`story:cq-entry-relation` (`entry_point{func, module}`).
 
 A registration the reader cannot turn into an entry is listed as not discovered: a `refusals`
 item at the registration's position, `what` `http route`, and a reason naming why. It never
@@ -130,6 +159,17 @@ has no entries field, so `main` of the reproducer is read with three echo calls 
 - Strict reading: an entry with `path` naming no function of its own module is accepted, one
   with `path` equal to the module's path is refused naming it, and an entry without `path` still
   needs its function in `funcs` (tests in `crates/model/tests/model.rs`).
+- Near misses for the consumers, each a test:
+  - strict reading: a function of the registering module whose key equals a `path` entry's
+    `func` and that lists `raises` is refused, as it would be with no entry
+    (`crates/model/tests/model.rs`);
+  - rename: renaming a local function whose key equals a `path` entry's `func` leaves that entry
+    unchanged; renaming the handler in its own module rekeys the `path` entry of the registering
+    module (`crates/edit/tests/change_sets/`);
+  - delete: deleting a local function whose key equals a `path` entry's `func` is not refused by
+    that entry; deleting the handler in its own module is refused naming the registering
+    module's entry (`crates/edit/tests/change_sets/delete_retarget.rs`).
+- `docs/design.md`'s table of additive changes gains a row for `Entry.path`.
 - `task schema` and `task docs-generate` run; checked-in documents that hold no entry are
   unchanged; `task check` green; `go test` of the reader within the 120 s step budget, each new
   test under 60 s.
@@ -140,11 +180,14 @@ has no entries field, so `main` of the reproducer is read with three echo calls 
   `entries_test.go`, `testdata/entries/`), `crates/model/src/lib.rs` (`Entry.path`, the doc of
   `Entry.method`, `check_framework`), `crates/model/tests/model.rs`,
   `crates/cli/tests/measure.rs`, `crates/cli/tests/fixtures/go-routes/`,
-  `schemas/cir-1.schema.json`, `website/docs/reference/cir-1.md`. Inferred; recorded as typed scope.
-  `CHANGELOG.md` gets one line, outside the typed scope; conflicts there are resolved at merge.
+  `crates/edit/src/rename.rs`, `crates/edit/src/delete.rs`, `crates/edit/tests/change_sets/`,
+  `schemas/cir-1.schema.json`, `website/docs/reference/cir-1.md`, `docs/design.md`. Inferred;
+  recorded as typed scope. `CHANGELOG.md` gets one line, outside the typed scope; conflicts there are resolved at
+  merge.
 - Shares no file with `story:stable-site-identity`; both can run at once.
 - `story:entry-bindings` (epic `slice-to-service`, draft) adds `params` and `responses` to the
-  same `Entry`; it excludes recognising `net/http` in the Go reader, which this story does.
-  Whichever starts second rebases on the other.
-- `story:cq-entry-relation` (draft, not on main) reads `Module.entries` into cq: an entry with
-  `path` names a function of another module, which its `func` node id must resolve.
+  same `Entry`, the schema, `cir-1.md` and the `Entry` literal of `delete_retarget.rs`; it
+  excludes recognising `net/http` in the Go reader, which this story does. It runs after this
+  one: `story:entry-bindings` depends_on `story:go-http-entries`.
+- `story:reach-entry-file` and `story:cq-entry-relation` (drafts) read `Module.entries`; each must
+  resolve `path` (listed in the Outcome).

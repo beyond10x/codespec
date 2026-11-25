@@ -7,6 +7,8 @@ title: An entry says where its parameters come from and how its results become r
 relations:
 - decomposes: epic:slice-to-service
 - depends_on: story:slice-command
+- depends_on: story:go-http-entries
+- depends_on: story:diff-command
 revision: 1
 ---
 # Story: an entry says where its parameters come from and how its results become responses
