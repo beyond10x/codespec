@@ -7,7 +7,7 @@ title: The Rust reader reads shared state behind Arc and a mutex
 relations:
 - decomposes: epic:async-network-service-translation
 - informed_by: story:rust-reader-borrow-kinds
-revision: 3
+revision: 4
 ---
 # Story: The Rust reader reads shared state behind Arc and a mutex
 
@@ -18,6 +18,11 @@ revision: 3
 their `.await`), are read as a value guarded by a lock whose acquire and release are explicit in
 `cir/1` (an additive node or an extern type the writer maps to `sync.Mutex`/`sync.RWMutex`; the
 choice is the story's first step and written in the crate doc).
+
+`Arc`, `Mutex` and `RwLock` are matched by the full path they name after `use`
+(`std::sync::Arc`, `std::sync::Mutex`, `std::sync::RwLock`, `tokio::sync::Mutex`,
+`tokio::sync::RwLock`), never by their last segment, as `story:rust-reader-no-silent-misread`
+does for the reader's other tables; a type of another crate with the same last segment is refused.
 
 ## Why
 

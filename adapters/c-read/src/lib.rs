@@ -1137,6 +1137,7 @@ impl<'s> Assembly<'s> {
             injects: Vec::new(),
             transactional: Vec::new(),
             persistence: Vec::new(),
+            left_out: Vec::new(),
         };
         if prefix.is_empty() {
             module

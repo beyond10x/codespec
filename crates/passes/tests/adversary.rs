@@ -198,6 +198,7 @@ fn module(types: Vec<TypeDecl>, funcs: Vec<Func>) -> Module {
         injects: vec![],
         transactional: vec![],
         persistence: vec![],
+        left_out: vec![],
     }
 }
 

@@ -6,7 +6,8 @@ status: draft
 title: The Rust reader reads iterator chains and the std trait impls a service writes
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+- depends_on: story:rust-reader-hand-written-comparisons
+revision: 3
 ---
 # Story: The Rust reader reads iterator chains and the std trait impls a service writes
 
@@ -16,6 +17,10 @@ revision: 2
 or a map are read as the `for_range` loop they mean; `impl Default for T`, `impl From<A> for B`
 and `T::default()` on such an impl are read as functions; `s.into_bytes()` and `String` to
 bytes are read where `cir/1` has the conversion, or refused naming it.
+
+A comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) on a type whose `PartialEq`, `PartialOrd` or `Ord`
+the crate writes by hand, which `story:rust-reader-hand-written-comparisons` refuses, is read here
+as a call of that impl, and that refusal is lifted.
 
 ## Why
 
