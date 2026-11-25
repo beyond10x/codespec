@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T23:09:08Z",
+  "actor": "human:timo",
+  "artifact": "story:asm-ir-lower-maps",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:asmir-design-round-2",
+    "reference": "round-2-design-finding-3",
+    "review": "review-result:asmir-design-round-2",
+    "outcome": "fixed"
+  }
+}

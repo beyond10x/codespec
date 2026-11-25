@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T23:09:09Z",
+  "actor": "human:timo",
+  "artifact": "story:asm-kit-conformance",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:asmir-scope-round-2",
+    "reference": "round-2-scope-finding-1",
+    "review": "review-result:asmir-scope-round-2",
+    "outcome": "fixed"
+  }
+}

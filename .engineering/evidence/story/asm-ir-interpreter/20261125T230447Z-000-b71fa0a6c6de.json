@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T23:04:47Z",
+  "actor": "human:timo",
+  "artifact": "story:asm-ir-interpreter",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:asmir-acceptance-round-1",
+    "reference": "round-1-acceptance-finding-8",
+    "review": "review-result:asmir-acceptance-round-1",
+    "outcome": "fixed"
+  }
+}
