@@ -28,6 +28,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec read --spans` drops a span or `unspanned` entry that names no node of the `cir/1`
   document, prints `dropped span <at> <role>: names no node of the cir/1 document <module>` on
   standard error for each, and reads the rest strictly; it refused the whole span document before.
+- `codespec-read-rust` reads a source whose string, character literal, comment or doc comment holds a
+  control or format character (a zero-width joiner in a test string): strict reading refused the
+  reader's own `src` or `value` and the file gave no document. A string literal's `value` writes
+  such a character as Go's `\uNNNN`, `\UNNNNNNNN` or `\xNN`; a `foreign` statement's `src` writes it as
+  `\u{..}` (a raw string that holds one as the cooked string of the same text, a doc comment's
+  text as `\u{..}`). Strict reading is unchanged.
 - `codespec query` holds memory linear in the documents where it grew with their square or
   cube. A site nothing read (a foreign statement without a call list, an opaque function) in one
   module made every row of every other module rest on it, through a negation of a relation whose

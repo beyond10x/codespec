@@ -211,6 +211,10 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions`;
   Rust outside the subset is kept as `foreign` with a refusal at its line:
   `adapters/rust-read/tests/reader.rs::a_closure_is_kept_as_foreign_with_a_refusal_at_its_line`;
+  a control or format character in a literal, comment or doc comment is written as an escape, never
+  refused as a whole file:
+  `adapters/rust-read/tests/reader.rs::a_foreign_statement_keeps_a_format_character_as_an_escape_in_its_source`,
+  `adapters/rust-read/tests/reader.rs::a_string_literal_holding_a_format_character_is_read_and_written_as_an_escape`;
   a crate is read with every module file it names, each position naming its own file:
   `adapters/rust-read/tests/whole_crate.rs`; what the reader refuses still lists its calls:
   `adapters/rust-read/tests/listed_calls.rs`.
