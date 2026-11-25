@@ -33,6 +33,11 @@ pub struct Args {
     /// A codespec-barrier/1 document, for the syscall and effect relations.
     #[arg(long, value_name = "FILE")]
     pub barrier: Option<PathBuf>,
+    /// Stop with exit 2 when the evaluation holds more than N tuples: a fact the program
+    /// derives, a site such a fact rests on and a derivation not yet added count one each.
+    /// Bounds the memory of a run over many documents; none by default.
+    #[arg(long, value_name = "N")]
+    pub max_tuples: Option<usize>,
 }
 
 /// Run `codespec query`: exit 0 with no row, 1 with rows; an error is the caller's 2.
@@ -71,7 +76,11 @@ pub fn run(a: &Args) -> Result<ExitCode, String> {
     };
     let paths: Vec<PathBuf> = documents.iter().map(PathBuf::from).collect();
     let loaded = codespec_query::load_with(&paths, &a.summaries, a.barrier.as_deref())?;
-    let answer = codespec_query::run(&program, &loaded.facts, &names)?;
+    let (answer, _) = codespec_query::run_within(&program, &loaded.facts, &names, a.max_tuples)?
+        .map_err(|e| match &a.file {
+            Some(path) => format!("query {}: {e}", path.display()),
+            None => format!("query: {e}"),
+        })?;
     if a.format == "json" {
         print!("{}", answer.to_json());
     } else {
