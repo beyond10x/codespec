@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use codespec_model::walk::{children, stmt_exprs, walk_stmts};
 use codespec_model::{
-    CallRef, ChanDir, Expr, FloatBits, IntWidth, MethodSig, Module, Pos, Stmt, Type, TypeDecl,
-    receiver_type_name,
+    CallRef, ChanDir, Expr, FloatBits, Func, IntWidth, MethodSig, Module, Pos, Stmt, Type,
+    TypeDecl, receiver_type_name,
 };
 
 mod trace;
@@ -27,7 +27,8 @@ const INCOMPLETE: usize = 0;
 enum Kind {
     Func(usize, usize),
     Opaque(usize, usize),
-    Lambda(usize, Pos),
+    /// A function literal: its module, its position and its name, `<holder>.lambda@<n>`.
+    Lambda(usize, Pos, String),
     /// The initializers of a module's variables.
     Init(usize),
     /// A call through an interface, by its spelling and method.
@@ -112,6 +113,8 @@ struct Graph<'a> {
     lambda_calls: HashMap<usize, &'a [CallRef]>,
     /// The node of each `lambda` call ref, by the address of the call ref.
     lambda_of_ref: HashMap<usize, usize>,
+    /// How many function literals each node holds so far.
+    lambda_count: HashMap<usize, u32>,
     /// The call being resolved, if any.
     call: Option<Call>,
     /// How many sites of each callee each node has so far.
@@ -259,6 +262,26 @@ fn type_sig(m: &Module, t: &Type) -> String {
     }
 }
 
+/// The signature of function `f` of module `m`: its receiver's type first, then its parameters'
+/// types, spelled as [`type_sig`] spells a function type (`func(string) (int, error)`); a variadic
+/// last parameter as `...<elem>`. Parameter names are not part of it.
+pub(crate) fn signature(m: &Module, f: &Func) -> String {
+    let mut params: Vec<String> = f.recv.iter().map(|r| type_sig(m, &r.t)).collect();
+    for p in &f.params {
+        params.push(match (&p.t, p.variadic) {
+            (Type::Slice { elem }, true) => format!("...{}", type_sig(m, elem)),
+            (t, _) => type_sig(m, t),
+        });
+    }
+    let results: Vec<String> = f.results.iter().map(|t| type_sig(m, t)).collect();
+    let r = match results.as_slice() {
+        [] => String::new(),
+        [one] => format!(" {one}"),
+        more => format!(" ({})", more.join(", ")),
+    };
+    format!("func({}){r}", params.join(", "))
+}
+
 /// The signature of a function value of type `t`: its underlying function type spelled as
 /// [`type_sig`] spells it.
 fn value_sig(m: &Module, t: &Type) -> String {
@@ -353,6 +376,7 @@ impl<'a> Graph<'a> {
             lambda_bodies: HashMap::new(),
             lambda_calls: HashMap::new(),
             lambda_of_ref: HashMap::new(),
+            lambda_count: HashMap::new(),
             call: None,
             ordinals: HashMap::new(),
         }
@@ -742,7 +766,8 @@ impl<'a> Graph<'a> {
                 self.uses(holder, sig.clone(), cand);
             }
             CallRef::Lambda { sig, calls, pos } => {
-                let l = self.add(Kind::Lambda(mi, pos.clone()));
+                let name = self.lambda_name(holder);
+                let l = self.add(Kind::Lambda(mi, pos.clone(), name));
                 self.lambda_calls.insert(l, calls);
                 self.lambda_of_ref.insert(c as *const CallRef as usize, l);
                 for c in calls {
@@ -1018,7 +1043,8 @@ impl<'a> Graph<'a> {
                 Expr::Lambda { body, t, .. } => {
                     let at = e as *const Expr as usize;
                     if !self.lambdas.contains_key(&at) {
-                        let l = self.add(Kind::Lambda(mi, pos.clone()));
+                        let name = self.lambda_name(holder);
+                        let l = self.add(Kind::Lambda(mi, pos.clone(), name));
                         self.lambdas.insert(at, l);
                         self.lambda_bodies.insert(l, body);
                         self.body(l, mi, body);
@@ -1306,7 +1332,7 @@ impl<'a> Graph<'a> {
         match &self.nodes[n].kind {
             Kind::Func(mi, i) => self.modules[*mi].funcs[*i].pos.clone(),
             Kind::Opaque(mi, i) => self.modules[*mi].opaque[*i].pos.clone(),
-            Kind::Lambda(_, pos) => pos.clone(),
+            Kind::Lambda(_, pos, _) => pos.clone(),
             _ => String::new(),
         }
     }
@@ -1347,6 +1373,23 @@ impl<'a> Graph<'a> {
         }
     }
 
+    /// The name of the next function literal node `holder` holds: `<holder>.lambda@<n>`, `n`
+    /// counting from 1 per holder in the order the literals are found.
+    fn lambda_name(&mut self, holder: usize) -> String {
+        let n = self.lambda_count.entry(holder).or_insert(0);
+        *n += 1;
+        let n = *n;
+        let of = match &self.nodes[holder].kind {
+            Kind::Func(mi, i) => self.modules[*mi].funcs[*i].key(),
+            Kind::Opaque(mi, i) => self.modules[*mi].opaque[*i].key(),
+            Kind::Lambda(_, _, name) => name.clone(),
+            Kind::Init(_) => crate::VAR_INIT.to_string(),
+            Kind::Iface(d) => d.clone(),
+            Kind::Value(sig) => format!("value:{sig}"),
+        };
+        format!("{of}.lambda@{n}")
+    }
+
     /// A name for node `n` in a reason of a function of module `from`.
     fn name(&self, n: usize, from: usize) -> String {
         let qualify = |mi: usize, s: String| {
@@ -1359,7 +1402,7 @@ impl<'a> Graph<'a> {
         match &self.nodes[n].kind {
             Kind::Func(mi, i) => qualify(*mi, self.modules[*mi].funcs[*i].key()),
             Kind::Opaque(mi, i) => qualify(*mi, self.modules[*mi].opaque[*i].key()),
-            Kind::Lambda(mi, pos) => qualify(*mi, format!("func literal at {pos}")),
+            Kind::Lambda(mi, _, name) => qualify(*mi, name.clone()),
             Kind::Init(mi) => qualify(*mi, "variable initializers".to_string()),
             Kind::Iface(d) => d.clone(),
             Kind::Value(sig) => format!("func value {sig}"),
@@ -1658,7 +1701,14 @@ pub(crate) fn reach(modules: &[Module], opts: &Options) -> ReachReport {
     }
 }
 
-pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options) -> Report {
+/// The report, and what runs when a module loads that its `funcs` do not list, each with its
+/// module: the module's variable initializers (named [`crate::VAR_INIT`]) and every Go `init`
+/// function after the first (named `init`).
+pub(crate) fn analyze(
+    modules: &[Module],
+    summaries: &[Summary],
+    opts: &Options,
+) -> (Report, Vec<(usize, FuncEffects)>) {
     let (g, declared, _) = dispatched(modules, summaries, opts);
 
     let comps = components(&g.nodes);
@@ -1726,7 +1776,11 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
         opts.report.is_empty() || opts.report.iter().any(|r| *r == m.path || *r == m.name)
     };
     let mut funcs = Vec::new();
-    for n in 0..declared {
+    // What runs when a module loads that `funcs` does not list: its variable initializers and
+    // every Go `init` function after the first.
+    let mut at_load = Vec::new();
+    let no_pos = Pos::new();
+    for n in 0..g.nodes.len() {
         let (mi, name, pos) = match &g.nodes[n].kind {
             Kind::Func(mi, i) => (
                 *mi,
@@ -1738,9 +1792,15 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
                 modules[*mi].opaque[*i].key(),
                 &modules[*mi].opaque[*i].pos,
             ),
+            Kind::Init(mi) => (*mi, crate::VAR_INIT.to_string(), &no_pos),
             _ => continue,
         };
-        if !reported(&modules[mi]) || g.keys[mi].get(&name) != Some(&n) {
+        if !reported(&modules[mi]) {
+            continue;
+        }
+        let listed = n < declared && g.keys[mi].get(&name) == Some(&n);
+        let go_init = n < declared && modules[mi].reader.language == "go" && name == "init";
+        if !listed && !go_init && !matches!(g.nodes[n].kind, Kind::Init(_)) {
             continue;
         }
         let node = &g.nodes[n];
@@ -1856,7 +1916,7 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
                 .sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
         }
 
-        funcs.push(FuncEffects {
+        let entry = FuncEffects {
             path: modules[mi].path.clone(),
             name,
             pos: pos.clone(),
@@ -1867,7 +1927,12 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
             effect_sites,
             dispatch,
             unknown_roots,
-        });
+        };
+        if listed {
+            funcs.push(entry);
+        } else {
+            at_load.push((mi, entry));
+        }
     }
 
     let mut notes = BTreeSet::new();
@@ -1883,7 +1948,7 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
             }
         }
     }
-    Report {
+    let report = Report {
         format: REPORT_FORMAT.into(),
         module: if modules.len() == 1 {
             modules[0].name.clone()
@@ -1892,5 +1957,6 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
         },
         funcs,
         notes: notes.into_iter().collect(),
-    }
+    };
+    (report, at_load)
 }

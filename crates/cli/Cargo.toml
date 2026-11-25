@@ -25,6 +25,7 @@ b10x-codespec-check = { path = "../check" }
 b10x-codespec-query = { path = "../query" }
 b10x-codespec-eval = { path = "../eval" }
 b10x-codespec-edit = { path = "../edit" }
+b10x-codespec-diff = { path = "../diff" }
 serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
