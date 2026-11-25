@@ -167,9 +167,12 @@ fn go_adapters() -> &'static Path {
 }
 
 /// The effects report of revision `rev` of `crates/cli/tests/fixtures/moved-lines`, read with
-/// `codespec-read-go`.
-fn moved_lines_report(rev: &str) -> serde_json::Value {
-    let doc = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("moved-lines-{rev}.cir.json"));
+/// `codespec-read-go` into a directory of the test `test`'s own: tests run in parallel threads,
+/// and one must never read a document another is writing.
+fn moved_lines_report(test: &str, rev: &str) -> serde_json::Value {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(test);
+    std::fs::create_dir_all(&dir).unwrap();
+    let doc = dir.join(format!("moved-lines-{rev}.cir.json"));
     let read = Command::new(env!("CARGO_BIN_EXE_codespec"))
         .args(["read", "--lang", "go"])
         .arg(
@@ -244,8 +247,8 @@ fn load_env(r: &serde_json::Value) -> serde_json::Value {
 /// of the `env` entry stay `os.Getenv@1` and `os.Getenv@2`.
 #[test]
 fn a_change_that_only_moves_lines_keeps_every_call_site_id() {
-    let a = moved_lines_report("a");
-    let b = moved_lines_report("b");
+    let a = moved_lines_report("moved-lines-ids", "a");
+    let b = moved_lines_report("moved-lines-ids", "b");
     let sites = serde_json::json!([
         {"callee": "os.Getenv", "n": 1},
         {"callee": "os.Getenv", "n": 2}
@@ -267,8 +270,8 @@ fn a_change_that_only_moves_lines_keeps_every_call_site_id() {
 /// dropped.
 #[test]
 fn a_change_that_only_moves_lines_yields_no_delta() {
-    let a = moved_lines_report("a");
-    let b = moved_lines_report("b");
+    let a = moved_lines_report("moved-lines-no-delta", "a");
+    let b = moved_lines_report("moved-lines-no-delta", "b");
     assert_ne!(a, b, "the positions differ");
     let lists = site_lists(&a);
     assert!(!lists.is_empty(), "{a}");
