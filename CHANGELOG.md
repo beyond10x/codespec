@@ -2,6 +2,56 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
+## Unreleased
+
+### Added
+
+- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
+  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
+  `cfg(test)` was around it. `codespec measure`
+  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
+  JSON shows it as `total.left_out`. A document without the field is unchanged.
+
+### Changed
+
+- The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
+  the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
+  a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read
+  Go's shift before; the kit's Rust sources of `op-shl`, `op-shr`, `assign-shl` and `assign-shr`
+  mask their count (`b & 63`).
+- The Rust reader refuses `==`, `!=` and a match guard `v if v == e` on a type whose `PartialEq`
+  the crate writes by hand, and `<`, `<=`, `>`, `>=` on one whose `PartialOrd` or `Ord` it does
+  (or on a type that holds one at any depth: a field, an enum variant's field, an `Option` or
+  `Box` inside one), at the comparison's line; it read them as the built-in comparison before.
+  An impl counts through a type alias and a renamed trait import. A derived impl reads as before.
+- The Rust reader refuses a `HashMap` or `BTreeMap` whose key type is, or holds, a type whose
+  `PartialEq`, `PartialOrd`, `Ord` or `Hash` the crate writes by hand, at its line (a local, a
+  parameter, a struct field); it read such a map with Go's built-in key comparison before.
+
+### Fixed
+
+- `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
+  length returned as `usize` has the result's type and its Go output builds; a named index of
+  `enumerate()` is refused at its line.
+- A Rust tuple variant (`Circle(i64)`) read by `codespec-read-rust` and written by
+  `codespec-write-rust` is a tuple variant again, not `Circle { _0: i64 }`: in `cir/1` a union
+  field named `_<digits>` marks a positional field. The reader refuses a struct variant whose
+  field is named `_<digits>` at that field's line; the writer refuses a variant whose such fields
+  are not `_0`, `_1`, … in order or sit beside a named one.
+- `codespec query` runs a depth-limited recursion again (refused since 0.11.0): a step `D + c`
+  (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
+  made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
+  one bounds it from below; any other value made from a derived one stays refused with the same
+  message. A step bounded by several comparisons stays definite when one of them is not a field
+  an unknown site could add, in whatever order they are written.
+- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
+  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
+  refuses differing annotations at their line instead of reading no entry. The entry's path starts
+  with the `@Path` of the class or of the interface it implements, directly or through another,
+  not of the interface that declares the method; a class with none is no resource and gets no
+  entry, and one whose interfaces name different paths is refused at its line.
+
 ## 0.13.0
 
 ### Added
@@ -52,21 +102,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
   in its file is verified (it failed on every such delete). `--apply` writes every temporary file
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
-
-### Fixed
-
-- `codespec query` runs a depth-limited recursion again (refused since 0.11.0): a step `D + c`
-  (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
-  made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
-  one bounds it from below; any other value made from a derived one stays refused with the same
-  message. A step bounded by several comparisons stays definite when one of them is not a field
-  an unknown site could add, in whatever order they are written.
-- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
-  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
-  refuses differing annotations at their line instead of reading no entry. The entry's path starts
-  with the `@Path` of the class or of the interface it implements, directly or through another,
-  not of the interface that declares the method; a class with none is no resource and gets no
-  entry, and one whose interfaces name different paths is refused at its line.
 
 ## 0.12.0
 

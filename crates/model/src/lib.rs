@@ -111,6 +111,24 @@ pub struct Module {
     /// types: on a type of `types` (`T`) or a field of one (`T.f`). Source order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub persistence: Vec<Persistence>,
+    /// Every declaration of the source a normal build of the module leaves out, so the reader
+    /// did not read it (Rust: code built only for tests, `#[cfg(test)]`), in source order. Not a
+    /// refusal: the module the build holds does not declare it. A count of what was read names
+    /// its denominator with it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left_out: Vec<LeftOut>,
+}
+
+/// One declaration a normal build leaves out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LeftOut {
+    pub pos: Pos,
+    /// Its kind and its source name: `fn helper`, `fn Bag.probe` for a method, `mod tests`, or
+    /// `mod tests;` for a module file, which is not read, so what it declares is not listed.
+    pub what: String,
+    /// Why a normal build leaves it out.
+    pub reason: String,
 }
 
 /// One persistence mark: an annotation of a type or of a field of it that tells an object-relational

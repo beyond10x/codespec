@@ -7,7 +7,9 @@ title: The Rust reader does not read integer overflow as wrapping without saying
 summary: Integer + - * neg / % are read with the meaning the crate's build gives them, or refused; MIN / -1 no longer reads as MIN.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 3
+- depends_on: design:cir1-checked-integer-operators
+- depends_on: story:rust-reader-shift-count
+revision: 6
 ---
 # Story: The Rust reader does not read integer overflow as wrapping without saying so
 
@@ -15,7 +17,10 @@ revision: 3
 
 Rust integer `+`, `-`, `*`, unary `-`, `/` and `%` are read with the meaning the crate's build
 gives them, or refused. Today every one is read as Go's wrapping operator with no refusal; the
-crate doc only notes that "a trace that overflows is not equal by construction".
+crate doc only notes that "a trace that overflows is not equal by construction". A `<<` or `>>`
+whose count is not proven below the width, which `story:rust-reader-shift-count` refuses, is read
+here by the same `overflow-checks` rule. The node is the one `design:cir1-checked-integer-operators`
+states.
 
 ## Why
 
@@ -57,8 +62,9 @@ Conditions:
   - `wrapping_*`, `checked_*`, `saturating_*`, `overflowing_*` are explicit.
   The reader takes the `overflow-checks` setting from the Cargo manifest's profile, or refuses when it
   cannot tell. No hard-coded "debug".
-- A design note in the planning store comes first, additive to cir/1, with an adversary pass on the
-  note before the implementor starts.
+- The design note is `design:cir1-checked-integer-operators` (wave 1), with its adversary review;
+  it covers `<<` and `>>` too. This story implements it (wave 2) and starts when the note is
+  approved.
 - Every evaluator and writer that does not know the operator refuses it; none ignores it.
 - Red first: this story's reproducer fails on main f09c740f before the change.
 
@@ -68,6 +74,9 @@ Conditions:
   evaluated does not return -2147483648 (a panic, or a refusal at its line); red on main.
 - A second test: the crate above with `[profile.release] overflow-checks = true` is not read as
   wrapping `+`.
+- A shift test: with `overflow-checks = true`, `x << n` where `n` is not proven below the
+  width reads as the checked shift (panics at a count at or past the width); without it, as the
+  masked shift; red on main.
 - The crate doc names the build whose meaning the reader reads.
 
 ## Scope

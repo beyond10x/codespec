@@ -7,7 +7,6 @@ title: An async network service example, read from Rust, written as Go and compa
 relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: story:rust-reader-async
-- depends_on: story:rust-reader-std-types-by-path
 - depends_on: story:rust-reader-option-values
 - depends_on: story:rust-reader-shared-state
 - depends_on: story:rust-reader-iterators-and-std-impls
@@ -18,6 +17,7 @@ relations:
 - depends_on: story:go-writer-extern-map
 - depends_on: story:harness-service-traces
 - depends_on: story:extern-ports
+- depends_on: story:rust-reader-no-silent-misread
 revision: 1
 ---
 # Story: An async network service example, read from Rust, written as Go and compared
