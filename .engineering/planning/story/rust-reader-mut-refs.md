@@ -39,6 +39,11 @@ Checked correct, no misread: `let p = &mut it; p.count += 10; it.count` evaluate
 `&Vec<i64>` parameter read as the value gives Rust's result. The report's "references dropped"
 did not reproduce as a misread on main: every other form is refused.
 
+Refs codesec#14 item 3, one of its 4 confirmed defects: a function taking `&mut T` ("a mutable
+reference `&mut T` is outside cir/1") is refused whole, so its statements are not in the fact base.
+This story covers the `&mut T` parameter (`bump`, `reset`). The hidden statements of the four
+defects are `story:rust-reader-refused-signature-keeps-body`.
+
 ## Done When
 
 - A failing test first in `adapters/rust-read/tests/reader.rs`: `bump` and its caller, `reset`
