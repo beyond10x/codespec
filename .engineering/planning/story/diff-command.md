@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:diff-command
 kind: story
-status: draft
+status: active
 title: codespec diff reports what changed in the code facts between two revisions
 summary: 'codespec diff over two directories of cir/1 documents prints codespec-diff-report/1: units, signatures, effects, syscalls by call site, raises, reach and entries'
 relations:
@@ -34,7 +34,10 @@ scope:
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 8
+revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 9}
+- {from: "proposed", to: "active", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 10}
 ---
 # Story: `codespec diff` reports what changed in the code facts between two revisions
 

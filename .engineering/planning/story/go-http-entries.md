@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-http-entries
 kind: story
-status: draft
+status: active
 title: The Go reader records net/http and echo routes as http entries
 summary: codespec-read-go records net/http and echo routes in Module.entries with method and path; Entry gains an optional path for a handler of another package
 relations:
@@ -30,7 +30,10 @@ scope:
   path: schemas/cir-1.schema.json
 - confidence: inferred
   path: website/docs/reference/cir-1.md
-revision: 7
+revision: 9
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T00:32:27Z", actor: "human:timo", revision: 8}
+- {from: "proposed", to: "active", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 9}
 ---
 # Story: The Go reader records net/http and echo routes as http entries
 
