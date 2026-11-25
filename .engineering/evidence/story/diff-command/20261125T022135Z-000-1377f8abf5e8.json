@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-25T02:21:35Z",
+  "actor": "human:operator",
+  "artifact": "story:diff-command",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "diff tests 0 -> 23, cli effects 6 -> 8; one syscall change reported as syscall-added/-removed under syscall.Syscall@1; moved-lines fixture gives no delta; adversary round 1 (04595240): 2 findings fixed; node gate at c7b4b2a0 on build-1d: fmt, clippy -D warnings, tests of model/effects/edit/cli/diff/docs, go test ./... in adapters/go and task docs-check, each exit 0",
+    "reference": "ff688d5e"
+  }
+}
