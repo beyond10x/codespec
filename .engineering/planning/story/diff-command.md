@@ -36,8 +36,8 @@ scope:
   path: website/docs/reference/crates.md
 revision: 10
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 9}
-- {from: "proposed", to: "active", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 10}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 9}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 10}
 ---
 # Story: `codespec diff` reports what changed in the code facts between two revisions
 

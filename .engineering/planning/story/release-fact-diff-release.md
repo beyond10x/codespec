@@ -43,8 +43,8 @@ scope:
   path: website/docs/guides/add-an-adapter.md
 revision: 4
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 3}
-- {from: "proposed", to: "active", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 4}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:32Z", actor: "human:operator", revision: 4}
 ---
 # Story: Release and install the codespec that ships the release fact diff
 
