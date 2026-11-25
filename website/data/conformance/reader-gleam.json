@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "gleam",
-    "version": "0.12.0",
-    "manifest_sha256": "4b54ca7feae8b79fd2b19cdafd4ff87a213c937345f3224695e3feabc42abebb"
+    "version": "0.13.0",
+    "manifest_sha256": "160ab868849f9fe4441d830ea8c55f5814d9c4027046c214f1258bf260849501"
   },
   "kit": {
-    "version": "0.12.0",
-    "sha256": "d39daada44c6c090213c4b6c8ca83e4f12ca01e1260b8db0017730885b2f9ff8"
+    "version": "0.13.0",
+    "sha256": "bbd043c939cbcdd5a699a649bcd30b0ec386b8d369ff64fcfca92ee0e229942e"
   },
   "corpus": {
     "sha256": "3573dddbd570a2b166956fe60d6e67a099211864bd1361ea87be4112dd64e566"
   },
-  "codespec": "0.12.0",
+  "codespec": "0.13.0",
   "features": [
     {
       "id": "assign.add",
