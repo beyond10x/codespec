@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use codespec_model::walk::{children, stmt_exprs, walk_stmts};
 use codespec_model::{
-    CallRef, ChanDir, Expr, FloatBits, IntWidth, MethodSig, Module, Pos, Stmt, Type, TypeDecl,
-    receiver_type_name,
+    CallRef, ChanDir, Expr, FloatBits, Func, IntWidth, MethodSig, Module, Pos, Stmt, Type,
+    TypeDecl, receiver_type_name,
 };
 
 mod trace;
@@ -257,6 +257,26 @@ fn type_sig(m: &Module, t: &Type) -> String {
             format!("func({}){r}", list(params))
         }
     }
+}
+
+/// The signature of function `f` of module `m`: its receiver's type first, then its parameters'
+/// types, spelled as [`type_sig`] spells a function type (`func(string) (int, error)`); a variadic
+/// last parameter as `...<elem>`. Parameter names are not part of it.
+pub(crate) fn signature(m: &Module, f: &Func) -> String {
+    let mut params: Vec<String> = f.recv.iter().map(|r| type_sig(m, &r.t)).collect();
+    for p in &f.params {
+        params.push(match (&p.t, p.variadic) {
+            (Type::Slice { elem }, true) => format!("...{}", type_sig(m, elem)),
+            (t, _) => type_sig(m, t),
+        });
+    }
+    let results: Vec<String> = f.results.iter().map(|t| type_sig(m, t)).collect();
+    let r = match results.as_slice() {
+        [] => String::new(),
+        [one] => format!(" {one}"),
+        more => format!(" ({})", more.join(", ")),
+    };
+    format!("func({}){r}", params.join(", "))
 }
 
 /// The signature of a function value of type `t`: its underlying function type spelled as

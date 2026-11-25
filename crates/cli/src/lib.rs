@@ -217,6 +217,54 @@ pub enum Cmd {
         #[arg(long = "report", value_name = "MODULE")]
         report: Vec<String>,
     },
+    /// Compare the code facts of one program at two revisions and print what changed, as
+    /// codespec-diff-report/1: functions added and removed, signatures, effects, syscalls by call
+    /// site, raises, reach, entries and unknown reasons. Exit 0 with no delta, 1 with deltas, 2 on
+    /// an input error.
+    ///
+    /// Each directory's *.cir.json documents are read strictly as one program; a directory with
+    /// none, a document strict reading refuses and two documents of one directory with the same
+    /// module path are input errors. Both revisions are analysed as `codespec effects` and
+    /// `codespec reach` analyse them, with the same options. The entries of a revision are every
+    /// --entry, every exported function of each --exported module and every function its
+    /// documents record as an entry; without --entry and --exported, main.main too; every Go init
+    /// function and every module's variable initializers. A delta names a function as
+    /// `<module path>.<key>` and a call by its call-site id `<callee>@<n>`, never by a file or a
+    /// line: a change that only moves lines gives no delta. The same inputs give the same bytes.
+    /// The format is the crate doc of b10x-codespec-diff.
+    Diff {
+        /// The old revision: a directory of cir/1 documents.
+        old: PathBuf,
+        /// The new revision: a directory of cir/1 documents.
+        new: PathBuf,
+        /// A codespec-effects/1 summary of functions outside the modules; repeat for several.
+        /// Where two name one function, the first counts.
+        #[arg(long = "summaries", value_name = "FILE")]
+        summaries: Vec<PathBuf>,
+        /// A codespec-barrier/1 document: the functions that enter the operating system and
+        /// what each syscall does.
+        #[arg(long, value_name = "FILE")]
+        barrier: Option<PathBuf>,
+        /// An entry function, `<path>.<name>` or `<path>.<type>.<method>`, in both revisions;
+        /// repeat for several.
+        #[arg(long = "entry", value_name = "FUNC")]
+        entry: Vec<String>,
+        /// A module, by import path or name, whose every exported function is an entry; repeat
+        /// for several.
+        #[arg(long = "exported", value_name = "MODULE")]
+        exported: Vec<String>,
+        /// cha: every candidate of the set; rta (default): only types made and function values
+        /// used by reached code.
+        #[arg(long, value_parser = ["cha", "rta"], default_value = "rta")]
+        dispatch: String,
+        /// Report only the functions of the module with this import path or name; repeat for
+        /// several. All when absent.
+        #[arg(long = "report", value_name = "MODULE")]
+        report: Vec<String>,
+        /// text, one line per delta; or json, codespec-diff-report/1.
+        #[arg(long, value_parser = ["text", "json"], default_value = "text")]
+        format: String,
+    },
     /// Print the call tree from one function as codespec-trace/1: its statements, each if, switch
     /// and loop a branch node with its condition, each call expanded into the callee's tree, a
     /// call through an interface or a function value a dispatch node listing every candidate,

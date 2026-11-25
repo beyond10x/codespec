@@ -279,3 +279,78 @@ fn a_change_that_only_moves_lines_yields_no_delta() {
     assert_eq!(lists, site_lists(&b));
     assert_eq!(without_positions(&a), without_positions(&b));
 }
+
+/// Revision `rev` of the Go fixture pair `pair` read with `codespec read` into
+/// `<CARGO_TARGET_TMPDIR>/<test>/<rev>/`, a directory of the test's own; that directory.
+fn read_revision(test: &str, pair: &Path, rev: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(test).join(rev);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let read = Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .args(["read", "--lang", "go"])
+        .arg(pair.join(rev))
+        .arg("--out")
+        .arg(dir.join("module.cir.json"))
+        .arg("--adapters")
+        .arg(go_adapters())
+        .output()
+        .unwrap();
+    assert!(read.status.success(), "{rev}: {}", text(&read));
+    dir
+}
+
+/// `codespec diff` over the reproducer of `crates/diff/tests/fixtures/syscall`: one call's
+/// syscall number changes, so its site stays `syscall.Syscall@1`. Two deltas, exit 1, in text
+/// and in JSON.
+#[test]
+fn diff_reports_a_changed_syscall_under_its_call_site_id_and_exits_1() {
+    let pair = root().join("crates/diff/tests/fixtures/syscall");
+    let a = read_revision("diff-syscall", &pair, "a");
+    let b = read_revision("diff-syscall", &pair, "b");
+    let barrier = "crates/diff/tests/fixtures/barrier.json";
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let out = codespec(&["diff", a, b, "--barrier", barrier]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "syscall-added example.com/probe.Who syscall.Syscall@1 getppid\n\
+         syscall-removed example.com/probe.Who syscall.Syscall@1 getpid\n"
+    );
+    let json = codespec(&["diff", a, b, "--barrier", barrier, "--format", "json"]);
+    assert_eq!(json.status.code(), Some(1), "{}", text(&json));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(report["format"], "codespec-diff-report/1");
+    assert_eq!(report["dispatch"], "rta");
+    let site = serde_json::json!({"callee": "syscall.Syscall", "n": 1});
+    assert_eq!(
+        report["deltas"],
+        serde_json::json!([
+            {"kind": "syscall-added", "unit": "example.com/probe.Who", "site": site, "value": "getppid"},
+            {"kind": "syscall-removed", "unit": "example.com/probe.Who", "site": site, "value": "getpid"}
+        ])
+    );
+}
+
+/// The consumer's check of the call-site ids through the command: the moved-lines fixture gives
+/// no delta, exit 0, empty output. An empty directory is an input error, exit 2, naming it.
+#[test]
+fn diff_of_the_moved_lines_fixture_is_empty_and_an_empty_directory_exits_2() {
+    let pair = root().join("crates/cli/tests/fixtures/moved-lines");
+    let a = read_revision("diff-moved-lines", &pair, "a");
+    let b = read_revision("diff-moved-lines", &pair, "b");
+    let out = codespec(&[
+        "diff",
+        a.to_str().unwrap(),
+        b.to_str().unwrap(),
+        "--summaries",
+        STD,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(out.stdout.is_empty(), "{}", text(&out));
+    let empty = Path::new(env!("CARGO_TARGET_TMPDIR")).join("diff-empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    let refused = codespec(&["diff", empty.to_str().unwrap(), b.to_str().unwrap()]);
+    assert_eq!(refused.status.code(), Some(2), "{}", text(&refused));
+    let err = String::from_utf8_lossy(&refused.stderr);
+    assert!(err.contains(empty.to_str().unwrap()), "{err}");
+}

@@ -375,6 +375,16 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         area: "Analysis",
+        label: "codespec diff",
+        detail: "codespec diff compares the code facts of one program at two revisions and prints what changed: functions added and removed, signatures, effects, syscalls by call-site id, raises, reach, entries and unknown reasons, never by file or line, so a change that only moves lines gives no delta.",
+        status: "shipped",
+        evidence: Some(
+            "crates/diff/tests/main.rs::the_reproducer_reports_one_syscall_changed_under_one_call_site_id",
+        ),
+        href: "/docs/reference/cli",
+    },
+    Capability {
+        area: "Analysis",
         label: "Evaluator",
         detail: "codespec eval runs a cir/1 module on a calls file with a tree-walking interpreter and prints what the kit's native runners print; every kit case gives its expected output twice byte-equal, and a run that executes a foreign statement or calls an extern without a built-in handler stops naming the node.",
         status: "shipped",

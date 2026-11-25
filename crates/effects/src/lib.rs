@@ -750,6 +750,13 @@ pub fn reach(modules: &[Module], opts: &Options) -> Result<ReachReport, String> 
     Ok(set::reach(modules, opts))
 }
 
+/// The signature of function `f` of module `m`: its receiver's type first, then its parameters'
+/// types, as a function value's signature is spelled (`func(string) (int, error)`, named types by
+/// import path); a variadic last parameter as `...<elem>`. Parameter names are not part of it.
+pub fn signature(m: &Module, f: &codespec_model::Func) -> String {
+    set::signature(m, f)
+}
+
 /// The effects report of `m`, from `summaries`; when two summaries name one extern, the first
 /// passed counts.
 pub fn analyze(m: &Module, summaries: &[Summary]) -> Report {

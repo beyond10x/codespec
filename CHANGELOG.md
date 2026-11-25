@@ -6,6 +6,7 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec diff <old-dir> <new-dir>` prints `codespec-diff-report/1`, what changed in the code facts between two revisions (functions, signatures, effects, syscalls by call-site id, raises, reach, entries, `unknown` reasons); exit 0 with no delta, 1 with deltas, 2 on an input error; defined in the crate doc of the new crate `b10x-codespec-diff`.
 - `codespec effects`: each `syscalls` and `effect_sites` entry has `sites`, the ids `{callee, n}`
   of the function's own calls that lead there, which stay the same when lines move (defined in
   the crate doc of `b10x-codespec-effects`).

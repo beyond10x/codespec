@@ -1,0 +1,11 @@
+{
+  "format": "codespec-effects/1",
+  "language": "go",
+  "externs": [
+    {"path": "github.com/labstack/echo/v4", "name": "Echo.GET", "effects": []},
+    {"path": "github.com/labstack/echo/v4", "name": "Echo.POST", "effects": []},
+    {"path": "github.com/labstack/echo/v4", "name": "Echo.Start", "effects": []},
+    {"path": "github.com/labstack/echo/v4", "name": "New", "effects": []},
+    {"path": "os", "name": "Getenv", "effects": ["env"]}
+  ]
+}
