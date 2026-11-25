@@ -14,10 +14,14 @@ scope:
 - confidence: inferred
   path: crates/corpus/src/file.rs
 - confidence: inferred
+  path: crates/corpus/src/lib.rs
+- confidence: inferred
+  path: crates/corpus/src/main.rs
+- confidence: inferred
   path: crates/corpus/src/reproducer.rs
 - confidence: inferred
   path: crates/corpus/tests
-revision: 2
+revision: 4
 ---
 # Story: Draft one story per reason code above a threshold, with a reproducer written from scratch
 
@@ -73,26 +77,38 @@ Failing tests first, over a triage fixture, a temporary planning store made for 
 recorded clone fixture; no network, no real reader beyond the stub of `story:corpus-bounded-read`.
 None over 5 s; `aep` is called as a process and the test says so if it is absent.
 
-- Over the fixture: three codes over the threshold, one of them with a reproducer, one already
-  tagged on a draft story, one tagged on an implemented story; the output has one `filed`, one
-  `deduplicated`, one `reappeared`, one `waiting for a reproducer`, one `below threshold`, and the
-  store holds exactly one new story that `aep plan artifact validate` calls valid.
-- A second run over the same inputs files nothing (every code `deduplicated`): idempotent.
+- Over a fixture of five codes: A over the threshold with a valid reproducer and no story; B over
+  the threshold and tagged on a draft story; C over the threshold and tagged on an implemented
+  story; D over the threshold with no reproducer directory; E under the threshold. The output
+  is exactly one line each: A `filed`, B `deduplicated`, C `reappeared`, D `waiting for a
+  reproducer`, E `below threshold`; the store holds exactly one new story, A's, and `aep plan
+  artifact validate` calls it valid.
+- A second run over the same five inputs, with A's story now in the store, prints A
+  `deduplicated`, B `deduplicated`, C `reappeared`, D `waiting for a reproducer`, E `below
+  threshold`, and the store's files are byte-equal to after the first run: idempotent.
 - Near misses, each filing nothing: a code with 5 occurrences in 1 repository; 4 occurrences in 2;
   a reproducer whose read gives no refusal; a reproducer holding one 25-byte line that is in the
-  clone fixture's source; a reproducer naming the upstream owner; two codes that kebab to the
-  same slug (their digests differ, both file); a code with characters outside `[a-z0-9 :_-]` in
-  its slug input (stripped, digest keeps them distinct).
+  clone fixture's source; a reproducer naming the upstream owner.
+- Two codes that differ and kebab to the same slug both file, with different ids (the digest
+  differs); a code with characters outside `[a-z0-9 :_-]` in its slug input is stripped in the id
+  and its digest keeps it distinct from a code without them.
 - `--dry-run` writes nothing to the store and prints the same lines.
 - `aep` refusing a write (an invalid relation, a locked store) fails the run with its exact line,
   after the codes already filed are named; nothing is filed twice on the next run.
 
 ## Scope
 
-- Own: `crates/corpus/src/file.rs`, `crates/corpus/src/reproducer.rs`, `crates/corpus/tests/`,
-  `corpus/reproducers/` (new, empty with a `README.md` that says what goes in it and that nothing
-  of an upstream repository does).
+- Own: `crates/corpus/src/file.rs`, `crates/corpus/src/reproducer.rs`, `crates/corpus/tests/`
+  (module `file` of `tests/main.rs`), `crates/corpus/src/main.rs` and `src/lib.rs` (registers
+  `file`), `corpus/reproducers/` (new, empty with a `README.md` that says what goes in it and
+  that nothing of an upstream repository does).
 - After `story:corpus-triage-report` (its input). Writes the planning store only through `aep`,
   so no other story needs to wait on a store file.
+- `story:corpus-kpi-ratchet` runs after this story: both add a subcommand to `src/main.rs` and
+  `src/lib.rs` and a module to `tests/main.rs`, so one `depends_on` edge orders them.
+- Narrowing of the epic's "one story per reason above a threshold": a story is filed only for a
+  code that has a reproducer. This story does not write reproducers (`corpus/reproducers/` ships
+  empty); the writer is the session that runs `file`, and the `waiting for a reproducer` list is
+  that session's queue. The first such reproducer is a Done When of `story:corpus-loop-lane`.
 - Public repository: a story it files may name a public upstream repository as an example of a
   site; it names no company, customer or person.

@@ -11,7 +11,7 @@ relations:
 - informed_by: story:reader-coverage-floor
 - informed_by: epic:go-reader-refusals
 - informed_by: epic:java-quarkus-reader
-revision: 1
+revision: 2
 ---
 # Epic: A self-improvement loop for the readers
 
@@ -19,10 +19,15 @@ revision: 1
 
 For one target language per run, `codespec-corpus` selects N public repositories, reads each with
 the language's reader under bounds, collects every refusal and every failed read as a structured
-record, ranks them in a triage report, drafts one story per reason above a threshold, and writes
-KPI evidence that a committed `ratchet/1` document holds against a baseline. The loop finds gaps
-and files them; it never writes a fix. The drafted stories go through the normal process (critics,
-implement, adversary) like any other.
+record, ranks them in a triage report, drafts one story per reason above a threshold that has a
+reproducer, and writes KPI evidence that a committed `ratchet/1` document holds against a
+baseline. The loop finds gaps and files them; it never writes a fix. The drafted stories go
+through the normal process (critics, implement, adversary) like any other.
+
+The narrowing: a story is filed only for a code that has a reproducer written from scratch. No
+story writes reproducers in bulk; the codes over the threshold without one are the
+`waiting for a reproducer` list of the filer, the queue of whoever runs it, and
+`story:corpus-loop-lane` delivers the first reproducer and the first drafted story.
 
 ```
 select -> read (bounded) -> records -> triage -> file stories -> [normal process fixes the reader]
@@ -74,25 +79,33 @@ reader, and a number that cannot silently go backwards.
    pinned to commits.
 2. `story:corpus-read-records`: the record format and its extraction from a read module.
 3. `story:corpus-bounded-read`: the runner, bounded, on the remote build node through `slot`.
-4. `story:corpus-triage-report`: the triage report and its summary.
+4. `story:corpus-triage-report`: the triage report and its summary, and the committed pinned
+   triage of Go, Rust and Java.
 5. `story:corpus-story-filer`: draft stories from the triage report, deduplicated.
 6. `story:corpus-kpi-ratchet`: the KPI evidence and the `ratchet/1` document with its baseline.
 7. `story:corpus-loop-lane`: the scheduled and manual lane, and the fast check of committed
    evidence in the gate.
 
-Order: 1 and 2 first (2 after 1, which makes the crate), then 3, 4, 5 in a chain (each reads the
-previous one's output), 6 after 4, 7 last. Every story edits `crates/corpus` (new), so they run
-one after another; the `depends_on` edges say so.
+Order, one chain: 1, 2, 3, 4, 5, 6, 7. Each reads the previous one's output (manifest, records,
+the three build-node runs, the three committed pinned triages from story 4, the filer, the KPI
+evidence), and each adds a subcommand to `crates/corpus/src/main.rs` and `src/lib.rs` and a
+module to `tests/main.rs`, so they run one after another; the `depends_on` edges say so, one
+edge per step. Stories 1 to 5 do not need ratchet; stories 6 and 7 are not started before
+ratchet 0.1.0 is released.
+
+Who makes what: the three manifests (story 1); the build-node runs of Go, Rust and Java (story
+3); the committed `corpus/<language>/triage.pinned.json` of the three (story 4); the baselines
+(story 6); the fresh Go run and the first drafted story (story 7).
 
 ## Done When
 
 - Every story above is implemented.
-- One run of the lane on the pinned Go corpus and one on a fresh Go sample have produced a triage
-  report each, with at least one story drafted by the filer from the fresh one.
-- `task check` holds the Go pinned corpus's KPIs against the committed baseline (fast check of
-  committed evidence), and the lane run fails, naming the KPI, when a reader change worsens one.
-- Rust and Java have the same, each by a manifest, a driver and a baseline; no other story is
-  needed for them.
+- One run on each pinned corpus (Go, Rust, Java; story 3) has a committed triage report (story
+  4), and one run on a fresh Go sample has a triage report and at least one story drafted by the
+  filer from it (story 7).
+- `task check` holds the pinned corpus's KPIs of Go, Rust and Java against the committed baselines
+  (fast check of committed files, story 7), and the lane run fails, naming the KPI, when a reader
+  change worsens one (story 7).
 
 ## Needs from ratchet (`beyond10x/ratchet`, public)
 
@@ -109,8 +122,10 @@ and `ratchet-reference/1`.
   committed file and prints a `ratchet-evidence/1` document, so no import source kind is needed.
 - A place for the accepted values that a pull request diff shows. Ratchet's
   `story:records-tracked-baseline-directory` (draft, ratchet `epic:format-gaps-first-format-consumer`)
-  is that; without it the baseline is read from the record store of `docs/design.md` § 6 and the
-  diff of a baseline move is not in the pull request.
+  is that. Without it a baseline move is not in the pull request diff, so story 6 is held until
+  the release has it.
+- The trade-off record `ratchet-trade-off/1` (`docs/design.md` § 3, § 5), which stories 6 and 7
+  use when a reader change worsens an enforced KPI and buys a better one.
 - Not needed: a ratio of two measurements (the tool prints the ratio as one exact number; ratchet
   `story:requirement-over-two-measurements` is not a dependency) and a per-language scope (one
   assessment per language).

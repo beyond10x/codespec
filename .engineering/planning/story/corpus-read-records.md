@@ -13,12 +13,14 @@ scope:
 - confidence: inferred
   path: crates/corpus/src/code.rs
 - confidence: inferred
+  path: crates/corpus/src/lib.rs
+- confidence: inferred
   path: crates/corpus/src/records.rs
 - confidence: inferred
   path: crates/corpus/tests
 - confidence: inferred
   path: schemas/codespec-corpus-records-1.schema.json
-revision: 2
+revision: 4
 ---
 # Story: One record per refusal and per failed read, with a reason code, in a versioned format
 
@@ -89,7 +91,8 @@ network. None over 5 s.
 
 ## Scope
 
-- Own: `crates/corpus/src/records.rs`, `crates/corpus/src/code.rs`, `crates/corpus/tests/`,
+- Own: `crates/corpus/src/records.rs`, `crates/corpus/src/code.rs`, `crates/corpus/tests/`
+  (module `records` of `tests/main.rs`), `crates/corpus/src/lib.rs` (declares the modules),
   `schemas/codespec-corpus-records-1.schema.json` (generated).
 - After `story:corpus-manifest` (the crate); reads `codespec_cli::measure` and does not change it.
 - Overlap, `story:measure-report` (implemented): the counts are its; this story adds no

@@ -18,12 +18,16 @@ scope:
 - confidence: inferred
   path: crates/corpus/src/driver
 - confidence: inferred
+  path: crates/corpus/src/lib.rs
+- confidence: inferred
+  path: crates/corpus/src/main.rs
+- confidence: inferred
   path: crates/corpus/src/read.rs
 - confidence: inferred
   path: crates/corpus/tests
 - confidence: inferred
   path: scripts/corpus-read-one.sh
-revision: 2
+revision: 4
 ---
 # Story: Read a corpus under bounds, off the workstation, and write the records
 
@@ -39,7 +43,9 @@ Per repository, one job through `slot`: `slot --timeout 20m sh scripts/corpus-re
 command it routes; no `--local`), clones the repository at the pinned commit, checks the commit,
 enumerates the units of the language, reads each, and prints the repository's records document on
 standard output (one line, the log on standard error). The job holds the clone; nothing of it
-returns except the records. Bounds, all stated in `run.json`:
+returns except the records. On a forge runner, where `slot` is not on `PATH`, the same script runs
+under `timeout` with the same bounds and no `slot` prefix; the prefix is chosen by whether `slot`
+exists, never by a flag that turns the pool off. Bounds, all stated in `run.json`:
 
 - a memory cap per reader process (`ulimit -v`, default 4 GiB): a reader killed by it is a
   `unit-failed:memory` record;
@@ -85,19 +91,22 @@ reported.
   read); a repository with no unit; a deadline reached after two units (the rest
   `repo-deadline`, the two read kept); a manifest whose digest line does not match its content
   (refused before any job); the output directory not empty (refused: no mixing of two runs).
-- The job line is checked as text by a test: it starts with `slot --timeout`, names at most 30
-  minutes, and has no `--local`; the driver script is `shellcheck`-clean and has no Python.
-- On the build node, one run of the committed Go manifest completes and its output directory is
-  the evidence the later stories use; the pull request states its wall time and the slowest
-  repository (a measurement, not a test).
+- The job line is checked as text by a test: with a stub `slot` on `PATH` it starts with `slot
+  --timeout`, names at most 30 minutes, and has no `--local`; without one it starts with
+  `timeout`; the driver script is `shellcheck`-clean and has no Python.
+- On the build node, one run of each committed manifest (Go, Rust, Java) completes and its output
+  directory is the input of the first triage in `story:corpus-triage-report`, which commits the
+  pinned triage of each language; the pull request states each run's wall time, the slowest
+  repository and any repository that hit a bound (a measurement, not a test).
 - A run's `run.json` lists every bound; a bound named on the command line is recorded, so two
   runs with different bounds are told apart.
 
 ## Scope
 
 - Own: `crates/corpus/src/read.rs`, `crates/corpus/src/driver/` (`go.rs`, `rust.rs`, `java.rs`),
-  `scripts/corpus-read-one.sh`, `crates/corpus/tests/`, `Taskfile.yml` (task `corpus-read`, not in
-  `task check`).
+  `scripts/corpus-read-one.sh`, `crates/corpus/tests/` (module `read` of `tests/main.rs`),
+  `crates/corpus/src/main.rs` and `src/lib.rs` (registers `read`), `Taskfile.yml` (task
+  `corpus-read`, not in `task check`).
 - After `story:corpus-read-records` (it writes the documents this story produces) and
   `story:corpus-manifest`.
 - Overlap, `scripts/read-repo.sh`: the Go enumeration is copied in logic, not called; that script

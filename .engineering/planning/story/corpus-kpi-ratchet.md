@@ -9,18 +9,25 @@ relations:
 - decomposes: epic:reader-self-improvement-loop
 - depends_on: story:corpus-triage-report
 - informed_by: story:reader-coverage-floor
+- depends_on: story:corpus-story-filer
 scope:
 - confidence: inferred
   path: corpus/assessors
+- confidence: inferred
+  path: corpus/baseline
 - confidence: inferred
   path: corpus/ratchet.yaml
 - confidence: inferred
   path: crates/corpus/src/kpi.rs
 - confidence: inferred
+  path: crates/corpus/src/lib.rs
+- confidence: inferred
+  path: crates/corpus/src/main.rs
+- confidence: inferred
   path: crates/corpus/tests
 - confidence: inferred
   path: ratchet.toml
-revision: 2
+revision: 4
 ---
 # Story: Reader KPIs per language as a ratchet over the pinned corpus, with a committed baseline
 
@@ -55,12 +62,21 @@ the manifest digest (a corpus bump starts a new evidence series), and coverage `
 `skipped: 0` so a run that lost repositories is insufficient evidence, never a pass. It runs no
 corpus and takes under a second. The evidence is deterministic: the same files give the same bytes.
 
-Committed with it: `corpus/<language>/triage.pinned.json` (the last lane run's report) and the
-baseline, adopted once from the first lane run of each language (`ratchet reference adopt`, first
-adoption from prior evidence), in the form of the dependency below.
+The inputs are committed before this story: the manifests of `story:corpus-manifest` and the
+three `corpus/<language>/triage.pinned.json` made by `story:corpus-triage-report` from the
+build-node runs of `story:corpus-bounded-read`. This story makes no corpus run. Committed with it:
+the baseline of each language, `ratchet reference adopt` run once over the evidence of that
+committed triage (first adoption from prior evidence), written into `corpus/baseline/`, the
+tracked directory of reference records that `ratchet.toml` names (`[records]`, the form of the
+dependency below). A corpus bump (a new manifest) changes the manifest, the triage and the
+baseline together; this story claims only the refusal inside `kpi` of a triage whose digest is
+not its manifest's. The gate step that refuses an inconsistent set of committed files is
+`story:corpus-loop-lane`'s.
 
-A corpus bump (a new manifest) is a pull request that changes the manifest, the triage report and
-the baseline together; the fast check refuses a manifest change whose triage names the old digest.
+Not started before ratchet 0.1.0 is released with `assess`, `reference adopt` and `evaluate`
+and with the tracked baseline directory; stories 1 to 5 do not wait for it. If the release lacks
+the tracked directory the story stays draft and the owner is asked, since a baseline that does not
+show in a pull request diff defeats the point.
 
 ## Why
 
@@ -73,37 +89,44 @@ passes the kit and fails the world is visible.
 
 Pinned to ratchet commit `90924c9b114709fa1a5d28be0ce10a4bd93aa64b` (tag `0.0.1`) for the formats;
 the commands wait for its `0.1.0` (waves 5 and 6 of its `ROADMAP.md`: `story:assessor-declaration`,
-`story:reference-adopt-command`, `story:evaluate-command`). Until then `codespec-corpus kpi` and
-the committed files are built and tested without `ratchet`, and the gate step of
-`story:corpus-loop-lane` is added with the release. The baseline's place in the tree
-(`story:records-tracked-baseline-directory`, ratchet, draft) is a dependency of the same kind; if
-the release lacks it, the baseline is read from the record store and a baseline move is not in the
-pull request diff, and this story says so in its pull request.
+`story:reference-adopt-command`, `story:evaluate-command`). The baseline's place in the tree is
+ratchet's `story:records-tracked-baseline-directory` (draft, ratchet `epic:format-gaps-first-format-consumer`).
+The trade-off record `ratchet-trade-off/1` (ratchet `docs/design.md` § 3, § 5) is used by the
+rule above. This story is written and implemented once those are released, so its Done When has
+no "when ratchet exists" branch.
 
 ## Done When
 
 Failing tests first. `codespec-corpus kpi` tests run over `triage.expected.json` of
-`story:corpus-triage-report` and the committed manifests; no `ratchet`, no network, none over 5 s.
+`story:corpus-triage-report` and the committed manifests; no network, none over 5 s. The
+`ratchet` steps run the released binary pinned by version over the committed files, in the 120 s
+step budget (they read committed files only).
 
 - `kpi` over the fixture prints the evidence file checked in as `kpi.expected.evidence.json`,
   byte-equal on two runs.
 - Near misses, each exit 1 naming the cause: a triage whose `manifest_digest` is not the manifest's;
-  a triage of `corpus_kind` `fresh`; a triage with `repos_read` below N (not a pass: the evidence
-  is written with the coverage that makes it insufficient, and a test shows `skipped` above 0); a
-  triage of another language than the manifest's; a number that is not a fixed-place decimal.
-- `ratchet validate` accepts `corpus/ratchet.yaml` and the assessor declaration, once `ratchet`
-  has the command (a gate step added then, with the release); until then a test parses both as
-  YAML and checks the names the evidence uses against the declaration's outputs.
-- A planted regression, when `ratchet evaluate` exists: the committed triage with one more
-  refusal gives fail naming `refusals_per_kloc`, the language and both values; the committed one
-  with a repository missing gives insufficient evidence; the baseline at its adopted values gives
-  pass.
-- The committed baseline for each language equals the evidence of its committed triage.
+  a triage of `corpus_kind` `fresh`; a triage of another language than the manifest's; a number
+  that is not a fixed-place decimal.
+- A triage with `repos_read` below N exits 0 and writes evidence whose coverage has `skipped`
+  above 0, which `ratchet evaluate` reports as insufficient evidence, never a pass.
+- `ratchet validate` accepts `corpus/ratchet.yaml` and the assessor declaration; the names the
+  evidence uses equal the declaration's outputs.
+- Planted regressions over a scratch copy of the committed files: the committed triage with one
+  more refusal gives fail naming `refusals_per_kloc`, the language and both values; with a
+  repository missing, insufficient evidence; the committed files unchanged, pass.
+- The baseline of each language is the file `corpus/baseline/<language>.reference.json` (the name
+  ratchet's tracked directory gives it), and it equals what `ratchet reference adopt` writes for
+  the evidence of that language's committed `corpus/<language>/triage.pinned.json`: a test compares
+  the two for Go, Rust and Java.
 
 ## Scope
 
-- Own: `crates/corpus/src/kpi.rs`, `corpus/ratchet.yaml`, `corpus/assessors/`, `ratchet.toml`,
-  `corpus/<language>/triage.pinned.json`, `crates/corpus/tests/`.
-- After `story:corpus-triage-report`. No YAML or TOML file here carries a comment.
+- Own: `crates/corpus/src/kpi.rs`, `crates/corpus/src/main.rs` and `src/lib.rs` (registers
+  `kpi`), `crates/corpus/tests/` (module `kpi` of `tests/main.rs`), `corpus/ratchet.yaml`,
+  `corpus/assessors/`, `corpus/baseline/`, `ratchet.toml`. The three `triage.pinned.json` are read,
+  not written.
+- After `story:corpus-story-filer` (a `depends_on` edge: both add a subcommand to `src/main.rs`
+  and `src/lib.rs` and a module to `tests/main.rs`) and `story:corpus-triage-report` (the
+  report and the three committed pinned triages). No YAML or TOML file here carries a comment.
 - A reader-coverage floor (`conformance/reader-floors.json`) is not moved to ratchet by this
   story.

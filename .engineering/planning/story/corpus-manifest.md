@@ -21,7 +21,7 @@ scope:
   path: crates/corpus
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 2
+revision: 3
 ---
 # Story: A corpus manifest of N public repositories, pinned to commits, same inputs same list
 
@@ -74,10 +74,12 @@ its time in the report; none runs over 5 s, none over 60 s.
   `--mode top`; a manifest whose recorded snapshot digest differs from the file it names
   (`select --check <manifest> --candidates <file>` re-derives and compares).
 - A `reader` id that `codespec read` has no adapter for (`--language Cobol`) is refused by name.
-- `scripts/check-part.sh inventory` passes: the crate's test target is in a `test` part of
-  `scripts/check-parts.txt`.
+- `scripts/check-part.sh inventory` passes with the crate's test target in a `test` part of
+  `scripts/check-parts.txt` and fails when that line is removed.
 - The committed `corpus/go/manifest.pinned.json`, `corpus/rust/…`, `corpus/java/…` re-derive from
-  their committed snapshots with `select --check`; that check is in the gate and reads no network.
+  their committed snapshots with `select --check`, run by hand in this story's pull request. The
+  gate's check over the committed manifests is owned by `story:corpus-loop-lane`
+  (`task corpus-check`); this story adds none. Its only gate change is the `test` line above.
 - The three manifests are made once by a run with network, and the pull request says which date.
 - `docs`: the crate doc holds both formats, the shuffle and every refusal; `AGENTS.md` table has
   the crate's row.
@@ -93,4 +95,5 @@ its time in the report; none runs over 5 s, none over 60 s.
   pinned Java manifest here is the same six repositories at the same commits when that story
   merges first (its list is the input), or its own list when this one does; the later of the two
   re-points the other, and that re-pointing is a change to that story, which the owner decides.
-- First story of the epic: it creates the crate, so every later story depends on it.
+- First story of the epic: it creates the crate and its dispatch (`src/main.rs`, `src/lib.rs`,
+  `tests/main.rs`, one module per story), so every later story depends on it.

@@ -10,12 +10,22 @@ relations:
 - depends_on: story:corpus-bounded-read
 scope:
 - confidence: inferred
+  path: corpus/go/triage.pinned.json
+- confidence: inferred
+  path: corpus/java/triage.pinned.json
+- confidence: inferred
+  path: corpus/rust/triage.pinned.json
+- confidence: inferred
+  path: crates/corpus/src/lib.rs
+- confidence: inferred
+  path: crates/corpus/src/main.rs
+- confidence: inferred
   path: crates/corpus/src/triage.rs
 - confidence: inferred
   path: crates/corpus/tests
 - confidence: inferred
   path: schemas/codespec-triage-1.schema.json
-revision: 2
+revision: 4
 ---
 # Story: Triage the records of a run: group by reason, count, rank
 
@@ -77,10 +87,19 @@ Failing tests first, over a records directory of three generic repositories writ
 - A code seen in only one repository is in the report and marked by its `repos` of 1; nothing is
   dropped below a threshold here: the threshold is the filer's.
 - The crate doc holds the format; the schema is generated and drift-checked.
+- The first pinned triage of each language is made here and committed: the output directories of
+  the three build-node runs of `story:corpus-bounded-read` (Go, Rust, Java manifests) go through
+  `triage`, and `corpus/go/triage.pinned.json`, `corpus/rust/triage.pinned.json` and
+  `corpus/java/triage.pinned.json` are committed, each with the `manifest_digest` of its committed
+  manifest and `corpus_kind` `pinned`. Test: each committed file reads back with the strict
+  reader of this story and names the digest of the committed manifest next to it. This is the
+  only source of those three files; `story:corpus-kpi-ratchet` reads them and makes none.
 
 ## Scope
 
-- Own: `crates/corpus/src/triage.rs`, `crates/corpus/tests/`,
+- Own: `crates/corpus/src/triage.rs`, `crates/corpus/tests/` (module `triage` of `tests/main.rs`),
+  `crates/corpus/src/main.rs` and `src/lib.rs` (registers `triage`),
+  `corpus/go/triage.pinned.json`, `corpus/rust/triage.pinned.json`, `corpus/java/triage.pinned.json`,
   `schemas/codespec-triage-1.schema.json` (generated).
-- After `story:corpus-read-records` (its input) and `story:corpus-bounded-read` (the run it
-  triages; the fixtures here do not need it, so the code can be written beside it).
+- After `story:corpus-read-records` (its input) and `story:corpus-bounded-read` (the runs it
+  triages, for the committed pinned reports, and the crate's dispatch it shares).
