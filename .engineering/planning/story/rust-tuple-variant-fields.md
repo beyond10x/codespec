@@ -25,9 +25,9 @@ scope:
   path: examples/series/series.rust-read.cir.json
 revision: 11
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 9}
-- {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 10}
-- {from: "active", to: "implemented", at: "2026-11-24T15:30:57Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"test_result":1}}}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 9}
+- {from: "proposed", to: "active", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 10}
+- {from: "active", to: "implemented", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 11, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: A tuple variant reads and writes back as a tuple variant
 

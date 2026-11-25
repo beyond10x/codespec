@@ -1,6 +1,6 @@
 {
   "at": "2026-11-24T18:10:34Z",
-  "actor": "human:timo",
+  "actor": "human:operator",
   "artifact": "story:rust-reader-count-test-only-items",
   "kind": "story",
   "revision": 10,

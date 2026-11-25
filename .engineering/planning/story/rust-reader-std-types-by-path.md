@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:async-network-service-translation
 revision: 3
 transitions:
-- {from: "draft", to: "archived", at: "2026-11-24T14:10:55Z", actor: "human:timo", revision: 3}
+- {from: "draft", to: "archived", at: "2026-11-25T01:44:35Z", actor: "human:operator", revision: 3}
 ---
 # Story: The Rust reader maps a std type only when its path is std's
 

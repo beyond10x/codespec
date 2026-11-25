@@ -24,9 +24,9 @@ scope:
   path: schemas/cir-1.schema.json
 revision: 10
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 8}
-- {from: "proposed", to: "active", at: "2026-11-24T15:37:27Z", actor: "human:timo", revision: 9}
-- {from: "active", to: "implemented", at: "2026-11-24T16:32:31Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1}}}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 8}
+- {from: "proposed", to: "active", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 9}
+- {from: "active", to: "implemented", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 10, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader counts what it leaves out as test-only
 

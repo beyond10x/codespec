@@ -1,6 +1,6 @@
 {
   "at": "2026-11-24T15:27:52Z",
-  "actor": "human:timo",
+  "actor": "human:operator",
   "artifact": "story:rust-reader-platform-int-width",
   "kind": "story",
   "revision": 12,

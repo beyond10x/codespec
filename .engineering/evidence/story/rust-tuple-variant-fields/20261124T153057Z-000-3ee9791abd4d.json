@@ -1,6 +1,6 @@
 {
   "at": "2026-11-24T15:30:57Z",
-  "actor": "human:timo",
+  "actor": "human:operator",
   "artifact": "story:rust-tuple-variant-fields",
   "kind": "story",
   "revision": 10,

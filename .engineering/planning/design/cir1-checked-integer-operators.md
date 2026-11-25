@@ -10,8 +10,8 @@ relations:
 - decomposes: epic:async-network-service-translation
 revision: 7
 transitions:
-- {from: "draft", to: "in_review", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 2}
-- {from: "in_review", to: "approved", at: "2026-11-24T17:30:20Z", actor: "human:timo", revision: 7}
+- {from: "draft", to: "in_review", at: "2026-11-25T01:44:35Z", actor: "human:operator", revision: 2}
+- {from: "in_review", to: "approved", at: "2026-11-25T01:44:38Z", actor: "human:operator", revision: 7}
 ---
 # Design: Checked integer operators in cir/1
 

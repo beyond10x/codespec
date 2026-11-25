@@ -9,7 +9,7 @@ relations:
 - blocks: story:rust-reader-count-test-only-items
 revision: 3
 transitions:
-- {from: "open", to: "cleared", at: "2026-11-24T15:37:19Z", actor: "human:timo", revision: 3}
+- {from: "open", to: "cleared", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 3}
 ---
 # Decision: does cir/1 take an additive field for items a reader left out as test-only?
 

@@ -20,9 +20,9 @@ scope:
   path: adapters/rust-read/tests/reader.rs
 revision: 12
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 10}
-- {from: "proposed", to: "active", at: "2026-11-24T15:10:42Z", actor: "human:timo", revision: 11}
-- {from: "active", to: "implemented", at: "2026-11-24T15:34:19Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"test_result":1}}}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 10}
+- {from: "proposed", to: "active", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 11}
+- {from: "active", to: "implemented", at: "2026-11-25T01:44:37Z", actor: "human:operator", revision: 12, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader refuses a comparison through a hand-written PartialEq or Ord
 

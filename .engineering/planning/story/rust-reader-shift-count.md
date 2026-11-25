@@ -19,9 +19,9 @@ scope:
   path: adapters/rust-read/tests/reader.rs
 revision: 14
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 12}
-- {from: "proposed", to: "active", at: "2026-11-24T15:10:41Z", actor: "human:timo", revision: 13}
-- {from: "active", to: "implemented", at: "2026-11-24T15:30:44Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"test_result":1}}}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:44:35Z", actor: "human:operator", revision: 12}
+- {from: "proposed", to: "active", at: "2026-11-25T01:44:35Z", actor: "human:operator", revision: 13}
+- {from: "active", to: "implemented", at: "2026-11-25T01:44:36Z", actor: "human:operator", revision: 14, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: The Rust reader reads a shift only when its count is proven below the width
 
