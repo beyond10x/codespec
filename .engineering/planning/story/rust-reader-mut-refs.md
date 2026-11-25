@@ -7,7 +7,7 @@ title: The Rust reader reads &mut parameters and mutable borrows of places
 summary: A &mut T parameter, a &mut x argument, for x in &mut v, &mut v[i], &mut s.f and methods through a &mut local are read as pointers.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads `&mut` parameters and mutable borrows of places
 

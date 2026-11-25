@@ -16,7 +16,7 @@ scope:
   path: adapters/rust-read/src/calls.rs
 - confidence: inferred
   path: adapters/rust-read/tests/reader.rs
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads assert!, panic!, matches! and eprintln!
 
