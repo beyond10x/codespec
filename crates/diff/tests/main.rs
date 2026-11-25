@@ -288,3 +288,109 @@ fn two_documents_with_one_module_path_are_refused_naming_both() {
         assert!(e.contains(name), "{name} not in {e}");
     }
 }
+
+// Adversary cases.
+
+/// A function value bound to a function literal whose own call is `unknown`: the holder's
+/// reason `calls func literal at <file>:<line> which is incomplete` carries a position, so two
+/// comment lines above the function must still give no delta ("no field holds a file or a line").
+#[test]
+fn adv_a_moved_function_literal_gives_no_unknown_delta() {
+    assert_eq!(lines("moved-lambda"), Vec::<String>::new());
+}
+
+/// A second Go `init` in a new file that reads the environment: the new revision gains an `env`
+/// effect, so the report is not empty (Go packages commonly have one `init` per file).
+#[test]
+fn adv_a_second_init_with_a_new_effect_gives_a_delta() {
+    let l = lines("second-init");
+    assert!(
+        l.iter().any(|x| x.contains("env")),
+        "a new init reading the environment gave {l:?}"
+    );
+}
+
+/// A package variable whose initializer starts reading the environment: the new revision gains
+/// an `env` effect at start-up, so the report is not empty.
+#[test]
+fn adv_a_variable_initializer_with_a_new_effect_gives_a_delta() {
+    let l = lines("var-init");
+    assert!(
+        l.iter().any(|x| x.contains("env")),
+        "an initializer reading the environment gave {l:?}"
+    );
+}
+
+/// The documents of the Go fixture revision `src`, read into the scratch directory of `test`.
+fn go_modules(test: &str, src: &Path) -> Vec<Module> {
+    read_dir(&documents(&scratch(test), "r", src)).unwrap()
+}
+
+/// Deltas of two modules and three kinds sort by `unit` first, then `kind`: a sort by `kind`
+/// first would put `effect-added example.com/probe.Mode` before the `aaa` units. No other case
+/// has two units whose kinds order differently from their names.
+#[test]
+fn adv_deltas_sort_by_unit_before_kind() {
+    let program = |test: &str, rev: &str| {
+        let mut m = go_modules(
+            &format!("{test}-units"),
+            &fixtures().join("units").join(rev),
+        );
+        m[0].path = "example.com/aaa".into();
+        m.append(&mut go_modules(
+            &format!("{test}-effect"),
+            &fixtures().join("effect").join(rev),
+        ));
+        m
+    };
+    let (old, new) = (program("order-old", "a"), program("order-new", "b"));
+    let (barrier, summaries) = (barrier(), summaries());
+    let opts = Options {
+        summaries: &summaries,
+        barrier: Some(&barrier),
+        dispatch: DispatchMode::Rta,
+        ..Default::default()
+    };
+    assert_eq!(
+        diff(&old, &new, &opts).unwrap().to_text(),
+        "unit-added example.com/aaa.New\n\
+         unit-removed example.com/aaa.Old\n\
+         effect-added example.com/probe.Mode env\n"
+    );
+}
+
+/// A route registered in the main module with a handler of another package (`Entry.path`): the
+/// handler's unit gets `entry-added` and, now being an entry, `reach-gained`.
+#[test]
+fn adv_an_entry_naming_another_package_is_its_function_entry() {
+    let program = |test: &str, with_entry: bool| {
+        let mut app = go_modules(&format!("{test}-app"), &fixtures().join("reach/a"));
+        app[0].path = "example.com/app".into();
+        if with_entry {
+            app[0].entries.push(
+                serde_json::from_value(serde_json::json!({
+                    "kind": "http", "func": "Keep", "path": "example.com/probe",
+                    "method": "GET", "on": "/keep"
+                }))
+                .unwrap(),
+            );
+        }
+        let mut probe = go_modules(&format!("{test}-probe"), &fixtures().join("units/a"));
+        app.append(&mut probe);
+        app
+    };
+    let (old, new) = (program("xpkg-old", false), program("xpkg-new", true));
+    let (barrier, summaries) = (barrier(), summaries());
+    let opts = Options {
+        summaries: &summaries,
+        barrier: Some(&barrier),
+        dispatch: DispatchMode::Rta,
+        ..Default::default()
+    };
+    let r = diff(&old, &new, &opts).unwrap();
+    assert_eq!(
+        r.to_text(),
+        "entry-added example.com/probe.Keep http GET /keep\n\
+         reach-gained example.com/probe.Keep\n"
+    );
+}
