@@ -7,7 +7,7 @@ title: The Rust reader reads an impl of a crate trait for a type the crate does 
 summary: impl Tr for i64 (a crate trait on a primitive or another crate's type) is read on a named type, or refused naming why.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads an impl of a crate trait for a type the crate does not declare
 
@@ -36,6 +36,10 @@ impl Describe for i64 { fn describe(&self) -> i64 { *self } }
    `story:rust-reader-duration`, `story:rust-reader-shared-state`, `story:rust-reader-externs`.
 3. An impl of a std trait: "an impl of From / Clone / PartialEq, which is not a trait of the
    crate, is outside cir/1". Goes with `story:rust-reader-iterators-and-std-impls`.
+
+Refs codesec#14 item 2, partly: 4,669 refusals are "an impl for a type other than a declared one".
+This story covers cause 1 of them, a crate trait on a type the crate does not declare. Causes 2 and
+3 are in the stories named above.
 
 ## Done When
 

@@ -7,7 +7,7 @@ title: The Rust reader reads iterator chains and the std trait impls a service w
 relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: story:rust-reader-hand-written-comparisons
-revision: 3
+revision: 4
 ---
 # Story: The Rust reader reads iterator chains and the std trait impls a service writes
 
@@ -28,6 +28,10 @@ Probes give "the method `.iter()` on Slice …, outside the reader's table", "th
 `.into_iter()` on Slice …, outside the reader's table", "an impl of Default, which is not a
 trait of the crate, is outside cir/1", "the method `.into_bytes()` on String, outside the
 reader's table", "the method `.entry()` on Map …, outside the reader's table".
+
+Refs codesec#14 item 2, partly: 2,900 refusals are "a call outside the reader's table". This story
+covers the std methods among them (`.iter()`, `.into_iter()`, `.entry()`, `.into_bytes()`). Calls
+of another crate's functions are `story:rust-reader-externs`.
 
 ## Acceptance
 
