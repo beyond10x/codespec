@@ -26,7 +26,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `beans` | list of [`Bean`](#bean) | no | The types of the module a dependency-injection container manages, in source order. Each names a type of `types`. |
 | `consts` | list of [`ConstDecl`](#constdecl) | no |  |
 | `doc` | `string` | no |  |
-| `entries` | list of [`Entry`](#entry) | no | The functions a framework starts, in the reader's order: an HTTP resource method, a scheduled method, a message consumer. Each names a function of `funcs`. |
+| `entries` | list of [`Entry`](#entry) | no | The functions a framework starts, in the reader's order: an HTTP resource method, a scheduled method, a message consumer. Each names a function of `funcs`, or with `path` one of another module. |
 | `errors` | list of [`ErrorVar`](#errorvar) | no | Sentinel errors: module-level error values built from a fixed message. |
 | `externs` | list of [`Extern`](#extern) | no | Every function and method outside the module that the module calls, sorted by `path`, then receiver type name (`""` for a function), then `name`, each once. |
 | `facts` | [`Facts`](#facts) or null | no | Whole-module analysis results, written by passes and read by writers. |
@@ -107,15 +107,16 @@ The argument at `index` (from 0) of a call is the integer constant `value`, in d
 
 ## Entry
 
-A function a framework starts, not the program: a reader recognised it from the framework's annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider` class implementing `ExceptionMapper`).
+A function a framework starts, not the program: a reader recognised it from the framework's annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider` class implementing `ExceptionMapper`) or from the calls registering it (Go: `net/http`'s `HandleFunc`, echo's `GET`).
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `consumes` | list of `string` | no | `http`: the media types the method accepts, as written; empty when it declares none. |
-| `func` | `string` | yes | The key of the function in `funcs`: `F` or `T.m`. |
+| `func` | `string` | yes | The key of the function: `F` or `T.m`, in `funcs` when `path` is empty, of the module `path` names otherwise. |
 | `kind` | `string` | yes | One of [`ENTRY_KINDS`]: `http` (a resource method), `scheduled` (a method run on a timer), `incoming` (a message consumer) or `exception-mapper` (a function the framework calls with what an entry raised, when it is of the type `on` names; it takes that one value). |
-| `method` | `string` | no | The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only. |
+| `method` | `string` | no | The HTTP method, an upper-case method token as written (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` or another); empty for any method; `http` only. |
 | `on` | `string` | yes | `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`: `every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name. `exception-mapper`: the extern type the function takes, `<path>.<name>` (the Java reader's `java.lang.Exception.Exception`, a jar class's path being its qualified name). |
+| `path` | `string` | no | `http` only: the import path of the module declaring `func`, when it is not this module (a Go route registered in `main` with a handler of package `handlers`); never the module's own `path`. Empty: `func` is a function of this module. |
 | `produces` | list of `string` | no | `http`: the media types the method produces, as written; empty when it declares none. |
 
 ## ErrorVar

@@ -233,14 +233,26 @@ impl Cx<'_> {
                 }
             }
         }
-        for (i, e) in m.entries.iter().enumerate() {
-            if e.func == key {
-                blocked.push(Refusal {
-                    row,
-                    rule: "referenced",
-                    site: format!("{l}#entries.{i}"),
-                    message: format!("a {} entry starts {id}", e.kind),
-                });
+        // An entry of the module without a `path`, or of any module of the set with the
+        // function's module path as its `path` (a route registered in `main` for a handler of
+        // `handlers`); an entry whose `path` names another module names another function.
+        for (k, inp) in self.inputs.iter().enumerate() {
+            let lk = label(&inp.module);
+            for (i, e) in inp.module.entries.iter().enumerate() {
+                let starts = e.func == key
+                    && if e.path.is_empty() {
+                        k == mi
+                    } else {
+                        !t.mpath.is_empty() && e.path == t.mpath
+                    };
+                if starts {
+                    blocked.push(Refusal {
+                        row,
+                        rule: "referenced",
+                        site: format!("{lk}#entries.{i}"),
+                        message: format!("a {} entry starts {id}", e.kind),
+                    });
+                }
             }
         }
         for (i, f) in m.transactional.iter().enumerate() {

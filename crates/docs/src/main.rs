@@ -35,9 +35,12 @@
 //! `website/docs`.
 #![forbid(unsafe_code)]
 
+mod badges;
 mod calltrace;
 mod cir;
 mod cli;
+mod comparison;
+mod comparison_page;
 mod crates;
 mod diagram;
 mod guide;
@@ -95,6 +98,18 @@ enum Action {
         /// root.
         #[arg(long, default_value = "target/adapters")]
         adapters: PathBuf,
+    },
+    /// Check the comparison data (`website/data/comparison.json`) and write, or with `--check`
+    /// compare, what is generated from it: the file in canonical form, its schema, the page,
+    /// the badge files and the README's badge block. `generate` does this with the rest; this
+    /// needs no built adapter.
+    Comparison {
+        /// Write nothing; fail when a generated file is missing, stale or hand-edited.
+        #[arg(long)]
+        check: bool,
+        /// Repository root.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
     },
     /// Write the checked-in outputs of `examples/netcheck` from the full reports and call trees
     /// `task examples-netcheck` leaves in a work directory.
@@ -227,6 +242,24 @@ fn outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
     all.extend(series::outputs(root)?);
     all.extend(calltrace::outputs(root)?);
     all.extend(netcheck::outputs(root)?);
+    all.extend(comparison_outputs(root)?);
+    Ok(all)
+}
+
+/// The comparison data written back canonical, its schema, its page, the badge files and the
+/// README with its badge block. The data is checked first, so a problem in it stops generation
+/// before any of these is written.
+fn comparison_outputs(root: &Path) -> Result<Vec<(&'static str, String)>> {
+    let c = comparison::check(root)?;
+    let matrix = fs::read_to_string(root.join(support::DATA))
+        .map_err(|e| format!("{}: {e}", support::DATA))?;
+    let mut all = vec![
+        (comparison::DATA, comparison::canonical(&c)),
+        (comparison::SCHEMA, comparison::schema_json()),
+        (comparison_page::PAGE, comparison_page::page(&c)),
+    ];
+    all.extend(badges::files(&matrix, &c)?);
+    all.push((badges::README, badges::readme(root)?));
     Ok(all)
 }
 
@@ -524,6 +557,10 @@ fn main() -> ExitCode {
             root,
             adapters,
         } => generate(&root, &adapters, check),
+        Action::Comparison { check, root } => comparison_outputs(&root).and_then(|all| {
+            all.iter()
+                .try_for_each(|(relative, content)| settle(&root, relative, content, check))
+        }),
         Action::Netcheck { work, root } => netcheck::reduce(&root, &work)
             .map(|()| println!("examples/netcheck: written from {}", work.display())),
         Action::Provenance { site, commit } => write_provenance(&site, &commit)

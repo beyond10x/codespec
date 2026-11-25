@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:35:47Z",
+  "actor": "human:operator",
+  "artifact": "story:native-run-harness",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ecma-acceptance-round-1",
+    "reference": "round-1-acceptance-finding-1",
+    "review": "review-result:ecma-acceptance-round-1",
+    "outcome": "fixed"
+  }
+}

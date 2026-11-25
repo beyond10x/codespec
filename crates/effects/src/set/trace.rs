@@ -155,6 +155,8 @@ impl<'a> Walker<'_, 'a> {
             n.guards.clear();
             n.makes.clear();
             n.refs.clear();
+            n.bit_calls.clear();
+            n.edge_calls.clear();
         }
         f(self.g, s);
         let n = &mut self.g.nodes[s];
@@ -183,7 +185,7 @@ impl<'a> Walker<'_, 'a> {
                     self.g.modules[*mi].opaque[*i].key()
                 )
             }
-            Kind::Lambda(mi, pos) => format!("{}.func literal at {pos}", self.g.label(*mi)),
+            Kind::Lambda(mi, _, name) => format!("{}.{name}", self.g.label(*mi)),
             Kind::Init(mi) => format!("{}.variable initializers", self.g.label(*mi)),
             Kind::Iface(d) => d.clone(),
             Kind::Value(sig) => format!("func value {sig}"),
@@ -313,11 +315,11 @@ impl<'a> Walker<'_, 'a> {
             Kind::Opaque(mi, i) if !modules[mi].opaque[i].no_body => {
                 self.callrefs(mi, &modules[mi].opaque[i].calls, level)
             }
-            Kind::Lambda(mi, _) if self.g.lambda_bodies.contains_key(&n) => {
+            Kind::Lambda(mi, _, _) if self.g.lambda_bodies.contains_key(&n) => {
                 let body = self.g.lambda_bodies[&n];
                 self.stmts(mi, body, level)
             }
-            Kind::Lambda(mi, _) if self.g.lambda_calls.contains_key(&n) => {
+            Kind::Lambda(mi, _, _) if self.g.lambda_calls.contains_key(&n) => {
                 let calls = self.g.lambda_calls[&n];
                 self.callrefs(mi, calls, level)
             }
