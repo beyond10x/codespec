@@ -94,6 +94,19 @@
 //! a recursion is refused. [`explain`] prints the rules, properties and edit items under the
 //! stratum of their heads.
 //!
+//! A recursion must derive finitely many values: a recursive rule that puts into its head a value
+//! arithmetic or a builtin made from a value the recursion derived is refused when it is
+//! compiled, unless the value is a bounded step. A step `D + c` or `c + D` (`c` a positive integer
+//! literal) is bounded when a comparison of the same rule bounds `D`, or the variable the step is
+//! bound to, from above by a finite value, a fact outside the recursion or a literal (`D < M`,
+//! `D <= M`, `M > D`, `M >= D`); a step `D - c` when one bounds it from below (`D > M`, `D >= M`,
+//! `M < D`, `M <= D`). A depth limit is written
+//! `reach(F, H, D2) :- reach(F, G, D), depth_limit(M), D < M, …, D2 = D + 1.` A bound in the other
+//! direction, a bound by a value the recursion derived, a product and a step of a variable's size
+//! stay refused. A value found in a relation outside the recursion (`D2 = D + 1, depth(D2)`) is
+//! finite as before. Where a bound is a field of a fact an unknown site could add, the possible
+//! rows hold any value for what the bounded step made.
+//!
 //! # Path patterns
 //!
 //! `path(A -> B, over: cfg, avoid: N where body, max: 8, witness: W)` holds when a path of at

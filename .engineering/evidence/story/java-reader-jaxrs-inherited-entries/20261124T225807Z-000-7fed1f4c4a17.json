@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T22:58:07Z",
+  "actor": "human:operator",
+  "artifact": "story:java-reader-jaxrs-inherited-entries",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "ReaderTest 99 of 99 green at adf8d01f (94/5 on base); adapters-check 92 of 93 steps on build-1d, the red step the Groovy ReaderTest's 5 Grails-jar cases; adversary round 1 (8d7e40bb): 2 findings fixed",
+    "reference": "adf8d01f"
+  }
+}

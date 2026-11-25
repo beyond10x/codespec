@@ -153,6 +153,7 @@ Quarkus 3 maps to the additive `entries`, `beans` and `injects` of the module:
 | Source | Module |
 |---|---|
 | `@Path` with `@GET`, `@POST`, `@PUT`, `@DELETE` or `@PATCH` | `http` entry with the method and the joined path |
+| a class method implementing such a method of an interface, a source or a class on `CODESPEC_JAVA_CLASSPATH` (an interface an OpenAPI generator writes into `target/generated-sources`, compiled into `target/classes`) | `http` entry of the interface method's verb and path, as below |
 | `@Scheduled`, `@Incoming` | `scheduled`, `incoming` entry |
 | `@ApplicationScoped`, `@Singleton`, `@RequestScoped`, `@Dependent` | bean with its scope |
 | `@Inject` | injection, resolved to the one bean when its package lists it (the bean is read as a struct), else an extern |
@@ -169,6 +170,18 @@ refuses a duplicate. Elsewhere (a method, a static field, an interface, a class 
 they stay refusals, and so does one whose argument holds a tab or line break inside a literal. `@Transactional` is recorded in `transactional`, the keys of the functions
 that run in a transaction, a class-level one for each of its methods. `@Produces` and `@Consumes` are
 recorded as `produces` and `consumes` on the `http` entry, the method's own or else its class's.
+
+JAX-RS applies an interface method's annotations to a class method that implements it and declares
+none of its own, so that method is an `http` entry: the interface method's verb, its `@Path` joined
+to the class's `@Path` or else the interface's, its media types the interface method's, else the
+class's, else the interface's. A parameter is bound by the annotations of the interface method's
+parameter (`@PathParam("id")`), so a path parameter is printed without the null refusal. The
+interface is a source of the project or a class on `CODESPEC_JAVA_CLASSPATH`, implemented directly
+or through another interface. Refused, with no `http` entry for the method
+(`testdata/project-inherited-entries`): a class method with JAX-RS annotations of its own whose verb
+or `@Path` differ from the interface method's, at the method's line (JAX-RS then ignores the
+interface method's); interface methods that give one method two verbs or paths, and a class `@Path`
+that differs from the interface's, at the class's line.
 
 A project read maps these where a package read refuses them, each with what Java does that the
 module keeps, and refuses at its line the forms it cannot keep (`testdata/project-forms`, one
