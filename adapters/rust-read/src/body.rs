@@ -1226,7 +1226,7 @@ impl<'r> Fx<'r> {
         });
         Stmt::Foreign {
             lang: "rust".into(),
-            src,
+            src: crate::text::source(&src).into_owned(),
             reason,
             pos,
             calls: Some(calls),

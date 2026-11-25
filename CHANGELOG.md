@@ -31,6 +31,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Fixed
 
+- `codespec-read-rust` reads a source whose string, character literal, comment or doc comment holds a
+  control or format character (a zero-width joiner in a test string): strict reading refused the
+  reader's own `src` or `value` and the file gave no document. A string literal's `value` writes
+  such a character as Go's `\uNNNN`, `\UNNNNNNNN` or `\xNN`; a `foreign` statement's `src` writes it as
+  `\u{..}` (a raw string that holds one as the cooked string of the same text, a doc comment's
+  text as `\u{..}`). Strict reading is unchanged.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.

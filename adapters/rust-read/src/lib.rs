@@ -10,6 +10,11 @@
 //! and left out, and a function among them is an `opaque` function with the calls of its body
 //! (`calls`).
 //!
+//! A control or format character of the source (a zero-width joiner in a string, a comment or a doc
+//! comment) is written as an escape, never dropped and never left raw, since strict reading refuses it
+//! in a document: Go's `\uNNNN` in a string literal's `value`, `\u{..}` in a `foreign` `src` and in a
+//! `doc`.
+//!
 //! `cir/1` is Go-shaped: the passes and writers expect `(T, error)` results, `(T, bool)` comma-ok
 //! results, pointer receivers, sentinel errors and channels of `any`. The reader maps Rust's idioms
 //! back to those shapes; it is the inverse of the Rust writer (`adapters/rust/src/write.rs`).
@@ -216,6 +221,7 @@ mod calls;
 mod files;
 mod names;
 mod spans;
+mod text;
 
 pub use files::{MAX_CRATE_BYTES, MAX_FILES, MAX_MODULE_DEPTH};
 
@@ -1118,7 +1124,7 @@ fn doc(attrs: &[syn::Attribute]) -> String {
             lines.push(v.strip_prefix(' ').unwrap_or(&v).to_string());
         }
     }
-    lines.join("\n").trim().to_string()
+    text::escaped(lines.join("\n").trim()).into_owned()
 }
 
 /// The std items the reader's type and call tables name, each by every full path that names it,
@@ -1221,8 +1227,8 @@ pub(crate) fn go_quote(s: &str) -> String {
             '\u{8}' => out.push_str("\\b"),
             '\u{c}' => out.push_str("\\f"),
             '\u{b}' => out.push_str("\\v"),
-            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                out.push_str(&format!("\\x{:02x}", c as u32))
+            c if (c as u32) < 0x20 || c as u32 == 0x7f || text::refused(c) => {
+                out.push_str(&text::go_escape(c))
             }
             c => out.push(c),
         }
