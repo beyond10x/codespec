@@ -69,6 +69,7 @@ version = "0.13.0"
 dependencies = [
  "b10x-codespec-check",
  "b10x-codespec-conformance",
+ "b10x-codespec-diff",
  "b10x-codespec-edit",
  "b10x-codespec-effects",
  "b10x-codespec-eval",
@@ -93,6 +94,16 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "b10x-codespec-diff"
+version = "0.13.0"
+dependencies = [
+ "b10x-codespec-effects",
+ "b10x-codespec-model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
