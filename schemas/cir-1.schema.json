@@ -21,7 +21,7 @@
       "type": "string"
     },
     "entries": {
-      "description": "The functions a framework starts, in the reader's order: an HTTP resource method, a\nscheduled method, a message consumer. Each names a function of `funcs`.",
+      "description": "The functions a framework starts, in the reader's order: an HTTP resource method, a\nscheduled method, a message consumer. Each names a function of `funcs`, or with `path` one\nof another module.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/Entry"
@@ -509,7 +509,7 @@
       ]
     },
     "Entry": {
-      "description": "A function a framework starts, not the program: a reader recognised it from the framework's\nannotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider`\nclass implementing `ExceptionMapper`).",
+      "description": "A function a framework starts, not the program: a reader recognised it from the framework's\nannotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider`\nclass implementing `ExceptionMapper`) or from the calls registering it (Go: `net/http`'s\n`HandleFunc`, echo's `GET`).",
       "type": "object",
       "properties": {
         "consumes": {
@@ -520,7 +520,7 @@
           }
         },
         "func": {
-          "description": "The key of the function in `funcs`: `F` or `T.m`.",
+          "description": "The key of the function: `F` or `T.m`, in `funcs` when `path` is empty, of the module\n`path` names otherwise.",
           "type": "string"
         },
         "kind": {
@@ -528,11 +528,15 @@
           "type": "string"
         },
         "method": {
-          "description": "The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only.",
+          "description": "The HTTP method, an upper-case method token as written (`GET`, `POST`, `PUT`, `DELETE`,\n`PATCH`, `HEAD`, `OPTIONS` or another); empty for any method; `http` only.",
           "type": "string"
         },
         "on": {
           "description": "`http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:\n`every=<interval>` or `cron=<expression>`, as written. `incoming`: the channel name.\n`exception-mapper`: the extern type the function takes, `<path>.<name>` (the Java reader's\n`java.lang.Exception.Exception`, a jar class's path being its qualified name).",
+          "type": "string"
+        },
+        "path": {
+          "description": "`http` only: the import path of the module declaring `func`, when it is not this module (a\nGo route registered in `main` with a handler of package `handlers`); never the module's own\n`path`. Empty: `func` is a function of this module.",
           "type": "string"
         },
         "produces": {

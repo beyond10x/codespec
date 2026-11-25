@@ -92,7 +92,8 @@ pub struct Module {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub interfaces: Vec<Interface>,
     /// The functions a framework starts, in the reader's order: an HTTP resource method, a
-    /// scheduled method, a message consumer. Each names a function of `funcs`.
+    /// scheduled method, a message consumer. Each names a function of `funcs`, or with `path` one
+    /// of another module.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<Entry>,
     /// The types of the module a dependency-injection container manages, in source order. Each
@@ -132,7 +133,8 @@ pub const ENTRY_KINDS: &[&str] = &["http", "scheduled", "incoming", "exception-m
 
 /// A function a framework starts, not the program: a reader recognised it from the framework's
 /// annotations (Java Quarkus: `@GET` with `@Path`, `@Scheduled`, `@Incoming`, a `@Provider`
-/// class implementing `ExceptionMapper`).
+/// class implementing `ExceptionMapper`) or from the calls registering it (Go: `net/http`'s
+/// `HandleFunc`, echo's `GET`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
@@ -140,9 +142,16 @@ pub struct Entry {
     /// `incoming` (a message consumer) or `exception-mapper` (a function the framework calls with
     /// what an entry raised, when it is of the type `on` names; it takes that one value).
     pub kind: String,
-    /// The key of the function in `funcs`: `F` or `T.m`.
+    /// The key of the function: `F` or `T.m`, in `funcs` when `path` is empty, of the module
+    /// `path` names otherwise.
     pub func: String,
-    /// The HTTP method, `GET`, `POST`, `PUT`, `DELETE` or `PATCH`; `http` only.
+    /// `http` only: the import path of the module declaring `func`, when it is not this module (a
+    /// Go route registered in `main` with a handler of package `handlers`); never the module's own
+    /// `path`. Empty: `func` is a function of this module.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    /// The HTTP method, an upper-case method token as written (`GET`, `POST`, `PUT`, `DELETE`,
+    /// `PATCH`, `HEAD`, `OPTIONS` or another); empty for any method; `http` only.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub method: String,
     /// `http`: the path, the resource's and the method's joined, starting with `/`. `scheduled`:
@@ -2438,7 +2447,9 @@ impl Module {
         Ok(())
     }
 
-    /// Every entry point of a known kind naming a function of `funcs`, every bean naming a type of
+    /// Every entry point of a known kind naming a function of `funcs`, or, an `http` one only, with
+    /// a `path` that is a module path other than the module's own, naming a function of that
+    /// module (not checked here: the document holds no other module); every bean naming a type of
     /// `types`, every persistence mark an annotation's simple name with arguments of one line each,
     /// on a type of `types` or a field of one of its structs.
     fn check_framework(&self) -> Result<(), String> {
@@ -2446,6 +2457,34 @@ impl Module {
         for e in &self.entries {
             if !ENTRY_KINDS.contains(&e.kind.as_str()) {
                 return Err(format!("entry point of unknown kind {}", e.kind));
+            }
+            if !e.path.is_empty() {
+                if e.kind != "http" {
+                    return Err(format!(
+                        "entry point {} of kind {} has a path: only an http entry names a function of another module",
+                        e.func, e.kind
+                    ));
+                }
+                if !is_module_path(&e.path) {
+                    return Err(format!(
+                        "entry point {} names the path {:?}, which is no module path",
+                        e.func, e.path
+                    ));
+                }
+                let parts: Vec<&str> = e.func.split('.').collect();
+                if parts.len() > 2 || !parts.iter().all(|p| is_name(p)) {
+                    return Err(format!(
+                        "entry point {:?} of {}: a function key is `F` or `T.m`, each a name",
+                        e.func, e.path
+                    ));
+                }
+                if e.path == self.path {
+                    return Err(format!(
+                        "entry point {} names the module's own path {}: an entry of a function of the module has no path",
+                        e.func, e.path
+                    ));
+                }
+                continue;
             }
             if !funcs.contains(&e.func) {
                 return Err(format!(
@@ -2659,7 +2698,12 @@ impl Module {
                 break;
             }
         }
-        let entries: BTreeSet<&str> = self.entries.iter().map(|e| e.func.as_str()).collect();
+        let entries: BTreeSet<&str> = self
+            .entries
+            .iter()
+            .filter(|e| e.path.is_empty())
+            .map(|e| e.func.as_str())
+            .collect();
         let iface_names: BTreeSet<&str> = self.iface_call_names();
         for (i, f) in self.funcs.iter().enumerate() {
             let key = f.key();
