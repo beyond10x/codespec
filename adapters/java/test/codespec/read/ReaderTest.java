@@ -233,6 +233,24 @@ public final class ReaderTest {
         cases.add(() -> t.formsRefused("Spot.java", "field of java.awt.Point, which is not read"));
         names.add("project_the_forms_fixture_refuses_exactly_at_its_markers");
         cases.add(t::projectTheFormsFixtureRefusesExactlyAtItsMarkers);
+        names.add("inherited_a_method_implementing_an_annotated_interface_of_the_sources_or_the_class_path_is_an_http_entry");
+        cases.add(t::inheritedAMethodImplementingAnAnnotatedInterfaceIsAnHttpEntry);
+        names.add("inherited_a_class_method_with_its_own_differing_verb_or_path_is_refused_at_its_line");
+        cases.add(() -> t.inheritedRefused("TasksResource.java", "JAX-RS annotations of its own", List.of("TasksResource.get", "TasksResource.create")));
+        names.add("inherited_two_interfaces_giving_one_method_two_verbs_are_refused_at_the_class_line_and_give_no_entry");
+        cases.add(() -> t.inheritedRefused("NotesResource.java", "two interfaces", List.of("NotesResource.note")));
+        names.add("inherited_a_class_path_differing_from_its_interface_path_is_refused_at_the_class_line");
+        cases.add(() -> t.inheritedRefused("PathsResource.java", "a @Path of its own", List.of("PathsResource.list")));
+        names.add("inherited_the_clash_package_refuses_exactly_at_its_markers_and_keeps_the_agreeing_entry");
+        cases.add(t::inheritedTheClashPackageRefusesExactlyAtItsMarkers);
+        names.add("adversary_inherited_a_method_of_a_super_interface_is_served_under_the_path_of_the_interface_the_class_implements");
+        cases.add(t::adversaryInheritedSuperInterfaceMethodIsServedUnderTheImplementedInterfacePath);
+        names.add("adversary_inherited_no_path_on_the_class_or_any_interface_is_no_root_resource_and_no_entry");
+        cases.add(t::adversaryInheritedNoTypePathIsNoEntry);
+        names.add("inherited_a_class_without_a_path_implementing_interfaces_of_different_paths_is_refused_at_the_class_line");
+        cases.add(() -> t.inheritedRefused("TwoRootsResource.java", "interfaces with different @Path values", List.of("TwoRootsResource.leaf")));
+        names.add("inherited_a_class_path_differing_from_the_path_of_an_interface_it_implements_through_none_of_its_methods_is_refused");
+        cases.add(() -> t.inheritedRefused("OwnRootResource.java", "a @Path of its own", List.of("OwnRootResource.leaf")));
         int passed = 0;
         int failed = 0;
         for (int i = 0; i < cases.size(); i++) {
@@ -1505,8 +1523,12 @@ public final class ReaderTest {
 
     /** The markers {@code // refused: <fragment>} of the fixture's package {@code forms}, by {@code <file>:<line>}. */
     private Map<String, String> formsMarkers() throws IOException {
+        return markers(testdata.resolve("project-forms/src/main/java/forms"));
+    }
+
+    /** The markers {@code // refused: <fragment>} of the {@code .java} files in {@code dir}, by {@code <file>:<line>}. */
+    private static Map<String, String> markers(Path dir) throws IOException {
         Map<String, String> out = new java.util.TreeMap<>();
-        Path dir = testdata.resolve("project-forms/src/main/java/forms");
         try (Stream<Path> files = Files.list(dir)) {
             for (Path f : files.filter(Files::isRegularFile).sorted().toList()) {
                 List<String> lines = Files.readAllLines(f);
@@ -1533,6 +1555,178 @@ public final class ReaderTest {
         List<String> want = new ArrayList<>(formsMarkers().keySet());
         got.sort(null);
         check(got.equals(want), "refusals at " + got + ", markers at " + want);
+    }
+
+    // ---- http entries inherited from an annotated interface ----
+
+    private Map<String, Map<String, Object>> inheritedRead;
+
+    /**
+     * The fixture {@code project-inherited-entries} read as a project: the interfaces under its
+     * {@code gen} directory compiled first into a class directory put on the class path beside the
+     * jars, as a generator's interfaces compiled into {@code target/classes} are; the others are
+     * sources under {@code src/main/java}.
+     */
+    private Map<String, Map<String, Object>> inherited() throws Exception {
+        if (inheritedRead != null) {
+            return inheritedRead;
+        }
+        Path fixture = testdata.resolve("project-inherited-entries");
+        Path classes = work.resolve("inherited-entries-classes");
+        Files.createDirectories(classes);
+        List<String> args = new ArrayList<>(List.of("--release", "17", "-proc:none", "-d", classes.toString(), "-cp",
+            String.join(":", classpath().stream().map(Path::toString).toList())));
+        try (Stream<Path> s = Files.walk(fixture.resolve("gen"))) {
+            s.filter(p -> p.toString().endsWith(".java")).sorted().forEach(p -> args.add(p.toString()));
+        }
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        int rc = javax.tools.ToolProvider.getSystemJavaCompiler().run(null, err, err, args.toArray(new String[0]));
+        check(rc == 0, "javac of the fixture's gen interfaces: " + err.toString(StandardCharsets.UTF_8));
+        List<Path> cp = new ArrayList<>(classpath());
+        cp.add(classes);
+        Map<String, Map<String, Object>> modules = Reader.readProject(fixture, cp);
+        check(modules.keySet().equals(Set.of("org.example.api", "org.example.clash", "org.example.local")), "packages " + modules.keySet());
+        inheritedRead = modules;
+        return modules;
+    }
+
+    /** Each http entry of a module as {@code <func> <method> <on> consumes=[…] produces=[…]}. */
+    private static List<String> httpEntries(Map<String, Object> doc) {
+        List<String> got = new ArrayList<>();
+        for (Object e : list(doc.getOrDefault("entries", List.of()))) {
+            Map<String, Object> m = map(e);
+            if ("http".equals(m.get("kind"))) {
+                got.add(m.get("func") + " " + m.get("method") + " " + m.get("on")
+                    + " consumes=" + m.getOrDefault("consumes", List.of()) + " produces=" + m.getOrDefault("produces", List.of()));
+            }
+        }
+        return got;
+    }
+
+    /**
+     * {@code org.example.api.ItemsResource} implements {@code ItemsApi}, an interface compiled onto
+     * the class path, and {@code org.example.local.ItemsResource} one of the sources; neither class
+     * carries a JAX-RS annotation. Each method gets the http entry of the interface method it
+     * implements, its media types from the interface, and the path parameter {@code id} is printed
+     * without the null refusal: the interface's {@code @PathParam("id")} binds it.
+     */
+    private void inheritedAMethodImplementingAnAnnotatedInterfaceIsAnHttpEntry() throws Exception {
+        Map<String, Map<String, Object>> modules = inherited();
+        Map<String, Object> api = modules.get("org.example.api");
+        List<String> got = httpEntries(api);
+        check(got.equals(List.of(
+            "ItemsResource.get GET /items/{id} consumes=[] produces=[application/json]",
+            "ItemsResource.create POST /items consumes=[text/plain] produces=[application/json]",
+            "ItemsResource.replace PUT /items/{id} consumes=[] produces=[application/json]",
+            "ItemsResource.remove DELETE /items/{id} consumes=[] produces=[application/json]",
+            "ItemsResource.patch PATCH /items/{id} consumes=[] produces=[application/json]")), "org.example.api entries " + got);
+        check(!api.containsKey("refusals"), "org.example.api refusals " + api.get("refusals"));
+        Map<String, Object> local = modules.get("org.example.local");
+        got = httpEntries(local);
+        check(got.equals(List.of(
+            "ItemsResource.get GET /items/{id} consumes=[] produces=[]",
+            "ItemsResource.create POST /items consumes=[] produces=[]")), "org.example.local entries " + got);
+        check(!local.containsKey("refusals"), "org.example.local refusals " + local.get("refusals"));
+    }
+
+    /**
+     * The package {@code org.example.clash} refuses at each marker in {@code file} holding {@code
+     * fragment}, and none of {@code funcs} has an http entry.
+     */
+    private void inheritedRefused(String file, String fragment, List<String> funcs) throws Exception {
+        Map<String, Object> doc = inherited().get("org.example.clash");
+        List<String> missing = new ArrayList<>();
+        int n = 0;
+        for (Map.Entry<String, String> m : markers(testdata.resolve("project-inherited-entries/src/main/java/org/example/clash")).entrySet()) {
+            if (!m.getKey().startsWith(file + ":") || !m.getValue().equals(fragment)) {
+                continue;
+            }
+            n++;
+            boolean found = false;
+            for (Object r : list(doc.getOrDefault("refusals", List.of()))) {
+                found |= m.getKey().equals(map(r).get("pos")) && String.valueOf(map(r).get("reason")).contains(fragment);
+            }
+            if (!found) {
+                missing.add(m.getKey());
+            }
+        }
+        check(n > 0, "no marker " + fragment + " in " + file);
+        check(missing.isEmpty(), "no refusal holding '" + fragment + "' at " + missing + "; refusals "
+            + Json.write(doc.getOrDefault("refusals", List.of())).replaceAll("\\s+", " "));
+        for (String e : httpEntries(doc)) {
+            check(!funcs.contains(e.substring(0, e.indexOf(' '))), "an http entry for a refused method: " + e);
+        }
+    }
+
+    /**
+     * {@code org.example.clash} refuses at its markers and nowhere else, and its one http entry is
+     * {@code TasksResource.remove}, whose own annotations equal those of the interface method.
+     */
+    private void inheritedTheClashPackageRefusesExactlyAtItsMarkers() throws Exception {
+        Map<String, Object> doc = inherited().get("org.example.clash");
+        List<String> got = refusalPositions(doc);
+        got.sort(null);
+        List<String> want = new ArrayList<>(markers(testdata.resolve("project-inherited-entries/src/main/java/org/example/clash")).keySet());
+        check(got.equals(want), "refusals at " + got + ", markers at " + want + ": "
+            + Json.write(doc.getOrDefault("refusals", List.of())).replaceAll("\\s+", " "));
+        List<String> entries = httpEntries(doc);
+        check(entries.equals(List.of("TasksResource.remove DELETE /tasks/{id} consumes=[] produces=[]")), "org.example.clash entries " + entries);
+    }
+
+    // ---- adversary: inherited http entries the fixture adversary-inherited holds ----
+
+    private Map<String, Map<String, Object>> adversaryInheritedRead;
+
+    /**
+     * The fixture {@code adversary-inherited} read as a project: the interfaces under its {@code gen}
+     * directory compiled onto the class path beside the jars, as in {@link #inherited}.
+     */
+    private Map<String, Map<String, Object>> adversaryInherited() throws Exception {
+        if (adversaryInheritedRead != null) {
+            return adversaryInheritedRead;
+        }
+        Path fixture = testdata.resolve("adversary-inherited");
+        Path classes = work.resolve("adversary-inherited-classes");
+        Files.createDirectories(classes);
+        List<String> args = new ArrayList<>(List.of("--release", "17", "-proc:none", "-d", classes.toString(), "-cp",
+            String.join(":", classpath().stream().map(Path::toString).toList())));
+        try (Stream<Path> s = Files.walk(fixture.resolve("gen"))) {
+            s.filter(p -> p.toString().endsWith(".java")).sorted().forEach(p -> args.add(p.toString()));
+        }
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        int rc = javax.tools.ToolProvider.getSystemJavaCompiler().run(null, err, err, args.toArray(new String[0]));
+        check(rc == 0, "javac of the fixture's gen interfaces: " + err.toString(StandardCharsets.UTF_8));
+        List<Path> cp = new ArrayList<>(classpath());
+        cp.add(classes);
+        adversaryInheritedRead = Reader.readProject(fixture, cp);
+        return adversaryInheritedRead;
+    }
+
+    /**
+     * {@code ShopResource} implements {@code @Path("/api") ShopApi}, which extends {@code BaseApi},
+     * both on the class path, and {@code BaseApi.ping} carries {@code @GET @Path("/ping")} under no
+     * type-level {@code @Path}. JAX-RS finds the root
+     * resource through {@code ShopApi} and serves {@code ping} at {@code /api/ping}: an entry on any
+     * other path is a wrong entry read silently (a refusal would be acceptable).
+     */
+    private void adversaryInheritedSuperInterfaceMethodIsServedUnderTheImplementedInterfacePath() throws Exception {
+        Map<String, Object> doc = adversaryInherited().get("org.example.chain");
+        List<String> got = httpEntries(doc);
+        for (String e : got) {
+            check(e.startsWith("ShopResource.ping GET /api/ping "), "org.example.chain entry " + e + ", JAX-RS serves GET /api/ping");
+        }
+        check(!got.isEmpty() || doc.containsKey("refusals"), "org.example.chain: neither an entry nor a refusal");
+    }
+
+    /**
+     * {@code LooseResource} carries no {@code @Path} and implements {@code LooseApi}, which carries
+     * none on the type either, only {@code @GET @Path("/loose")} on its method. Neither is a root
+     * resource, so JAX-RS serves nothing at {@code /loose}; a class with that annotation of its own
+     * gets no entry either.
+     */
+    private void adversaryInheritedNoTypePathIsNoEntry() throws Exception {
+        List<String> got = httpEntries(adversaryInherited().get("org.example.loose"));
+        check(got.isEmpty(), "org.example.loose entries " + got + ": no @Path on a type, no root resource");
     }
 
     /**
