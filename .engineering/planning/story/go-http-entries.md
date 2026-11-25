@@ -30,7 +30,7 @@ scope:
   path: schemas/cir-1.schema.json
 - confidence: inferred
   path: website/docs/reference/cir-1.md
-revision: 6
+revision: 7
 ---
 # Story: The Go reader records net/http and echo routes as http entries
 
@@ -58,7 +58,9 @@ the handler package's document: `codespec-read-go` reads one package directory p
 `scripts/read-repo.sh` runs it once per package, in parallel, so the run that reads `handlers`
 never sees `main`'s registrations. So `cir/1` `Entry` gains an optional `path`: the import path
 of the module declaring `func`, omitted when it is this module. Strict reading checks `func`
-against `funcs` only when `path` is empty, and refuses a `path` equal to the module's own. The
+against `funcs` only when `path` is empty, refuses a `path` equal to the module's own, and
+refuses `path` on an entry of any kind but `http` (an `exception-mapper` entry's check reads its
+function's parameter, which only a local function has). The
 doc of `Entry.method` says empty means any method and lists any upper-case method token. A
 document without `path` reads as before; the schema and `website/docs/reference/cir-1.md` are
 regenerated. This is an added optional field, as `beans`, `injects` and `persistence` were
@@ -157,8 +159,9 @@ has no entries field, so `main` of the reproducer is read with three echo calls 
 - `codespec measure` over the near-miss fixture counts `main` as read, not refused (a test in
   `crates/cli/tests/measure.rs`, whose binary already builds `codespec-read-go` once).
 - Strict reading: an entry with `path` naming no function of its own module is accepted, one
-  with `path` equal to the module's path is refused naming it, and an entry without `path` still
-  needs its function in `funcs` (tests in `crates/model/tests/model.rs`).
+  with `path` equal to the module's path is refused naming it, a `scheduled`, `incoming` or
+  `exception-mapper` entry with `path` is refused naming its kind, and an entry without `path`
+  still needs its function in `funcs` (tests in `crates/model/tests/model.rs`).
 - Near misses for the consumers, each a test:
   - strict reading: a function of the registering module whose key equals a `path` entry's
     `func` and that lists `raises` is refused, as it would be with no entry

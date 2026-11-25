@@ -4,7 +4,7 @@ id: story:stable-site-identity
 kind: story
 status: draft
 title: A call site is named by its function, its callee and its ordinal, never by line
-summary: A derived call-site id {callee, n} per function, defined in crates/model walk.rs and carried in codespec effects reports beside the positions
+summary: A call-site id {callee, n} per function, defined in the effects crate doc (order over walk_stmts and stmt_exprs of crates/model walk.rs, which is not changed) and carried in codespec effects reports beside the positions
 relations:
 - decomposes: epic:release-fact-diff
 scope:
@@ -26,7 +26,7 @@ scope:
   path: website/docs/examples
 - confidence: inferred
   path: website/docs/guides/map-a-repository-to-syscalls.md
-revision: 7
+revision: 9
 ---
 # Story: A call site is named by its function, its callee and its ordinal, never by line
 
@@ -54,30 +54,35 @@ of each lambda body the function holds, in the order found (a lambda's sites are
 | node | `callee` |
 |---|---|
 | `Expr::Call` | `<module path>.<name>`, the holder's module |
-| `Expr::Method` | `<module path>.<type>.<name>`, the module and name of the receiver's named type |
+| `Expr::Method` | `<module path>.<type>.<name>`, the module and name of the receiver's named type; on a receiver of type `error`, `iface:error.<name>` (the analysis dispatches it as a call through the interface `error`) |
 | `Expr::Extern` | `<path>.<name>` |
 | `Expr::ExternMethod` | `<path>.<type>.<name>` |
 | `Expr::IfaceCall` | `iface:<interface key>.<name>`, the key `Interface::key` gives |
 | `Expr::CallValue` | `value:<signature>`, the signature spelled as the effects analysis spells one (`func([]byte) (int, error)`) |
 | `Expr::Intrinsic` `println` | `println` |
-| `Expr::FuncRef` (a function used as a value) | `ref:<module path>.<function key>` |
-| `Expr::Lambda` | `lambda:<signature>` |
-| a `CallRef` of a `foreign` statement's or an opaque function's `calls`, in the order listed | `func`: `<path>.<name>`, `path` the holder's module path when empty; `method`: `<path>.<recv>.<name>`, the same; `iface`: `iface:<iface>.<name>`; `value`: `value:<sig>`; `ref`: `ref:<path>.<recv>.<name>` (`recv` and its dot omitted when empty); `lambda`: `lambda:<sig>`; `named`: `named:<form>:<path>.<name>` (`path` and its dot omitted when empty); `new` is no site |
+| a `CallRef` of a `foreign` statement's or an opaque function's `calls`, in the order listed | `func`: `<path>.<name>`, `path` the holder's module path when empty; `method`: `<path>.<recv>.<name>`, the same; `iface`: `iface:<iface>.<name>`; `value`: `value:<sig>`; `lambda`: `lambda:<sig>` (the literal's own calls are sites of the literal, which the holder calls); `ref`, `new` and `named` are no site |
 | a function without a body whose syscalls the barrier fixes, or which a linkname links | `body`, `n` 1 |
 
 The module path is the module's `path`, or its `name` when it has none (the rule of `func_id`
-in `crates/eval/src/id.rs`). Every other node is no site.
+in `crates/eval/src/id.rs`). Every other node is no site: a function used as a value
+(`Expr::FuncRef`, `CallRef::Ref`) or a function literal in a body (`Expr::Lambda`) is not
+called there, and the calls inside such a literal are its holder's sites as above. A call the
+analysis records as `unknown` instead of an edge or an effect (an extern without a summary, a
+method on an undeclared type, a `named` call ref, a call of an undeclared function) is no site
+either: the `unknown` entry keeps its position and reason.
 
 The table and the order are written in the crate doc of `b10x-codespec-effects` (the section on
 `codespec-effects-report/1`), which is the definition; a tool outside this repository that reads
-`cir/1` follows it.
+`cir/1` follows it. The order uses `walk_stmts` and `stmt_exprs` of `crates/model/src/walk.rs` as
+they are; this story does not change that file.
 
 ### How the analysis carries it
 
 `crates/effects/src/set.rs` records the site at each `set()` and `edge()` call, beside the
-position it records today: `Node.sites` and `Node.edges` carry the site with the `Pos`, and the
-report gathers `sites` from them the way it gathers `at`. Nothing joins sites to calls by
-position.
+position it records today, in new fields named apart from the existing `Node.sites` (bit and
+`Pos`): `Node.bit_calls` for the bits a call sets and `Node.edge_calls` for the edges, by index.
+The report gathers `sites` from them the way it gathers `at`. `unknown()` records no site.
+Nothing joins sites to calls by position.
 
 ### Decision: derived by the tools, not a new `cir/1` field
 
@@ -143,8 +148,10 @@ or syscall (`crates/effects/src/set.rs`, `BTreeSet<Pos>`), so two calls on one l
   - two calls of one callee in two statements on one line: two sites, one position;
   - a `foreign` statement with listed calls: each listed call is a site, spelled by the table,
     in the order listed;
-  - a `FuncRef` and a lambda: `ref:` and `lambda:` sites; a call inside the lambda counts as
-    its holder's, after the holder's own statements;
+  - a call inside a lambda counts as its holder's, after the holder's own statements; the
+    lambda itself and a `FuncRef` give no site;
+  - `err.Error()` on a value of type `error`: site `iface:error.Error@1`;
+  - a call of an extern no summary names: no site, and its `unknown` entry is unchanged;
   - a function moved to another file of the same module: same sites;
   - two calls of different callees swapped: same sites;
   - two calls of the same callee swapped: `@1` and `@2` exchange what they reach (pinned, and

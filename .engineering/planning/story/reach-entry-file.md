@@ -7,6 +7,7 @@ title: Reach entries as a reviewed data file, by name, by pattern or by recorded
 relations:
 - decomposes: epic:sound-reach
 - depends_on: story:reach-three-valued
+- depends_on: story:go-http-entries
 scope:
 - confidence: inferred
   path: CHANGELOG.md
@@ -24,7 +25,7 @@ scope:
   path: examples/entries/
 - confidence: inferred
   path: website/docs/guides/
-revision: 7
+revision: 10
 ---
 # Story: reach entries as a reviewed data file, by name, by pattern or by recorded kind
 
@@ -55,6 +56,10 @@ function.
   today (a test).
 - A test parses the four starter files as `codespec-entries/1` without an error. Running them
   against a set is not part of this story: each names functions of a project a person fills in.
+- An `http` entry with `path` (`story:go-http-entries`) selects the function `func` of the module
+  at `path` in the linked set: a test over a set whose registering module records the entry and
+  also declares a function with the same key; the report reaches the function of the module at
+  `path` with distance 0 and does not select the same-named function of the registering module.
 
 ## Scope
 
@@ -62,3 +67,5 @@ function.
   `crates/effects/src/lib.rs` (entry matching), `examples/entries/`,
   `website/docs/guides` (one section), `CHANGELOG.md`. Inferred; recorded as typed scope.
 - Runs after `story:reach-three-valued` (same files).
+- Runs after `story:go-http-entries` (a `depends_on` edge): it adds `Entry.path`, which a `kind:
+  http` line resolves to the function of the module at `path`.
