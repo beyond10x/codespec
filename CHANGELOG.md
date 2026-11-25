@@ -2,7 +2,7 @@
 
 Every change a user of `codespec` or of `cir/1` would notice.
 
-## 0.13.0
+## Unreleased
 
 ### Added
 
@@ -11,6 +11,27 @@ Every change a user of `codespec` or of `cir/1` would notice.
   of the function's own calls that lead there, which stay the same when lines move (defined in
   the crate doc of `b10x-codespec-effects`). A reason names a function literal
   `<holder>.lambda@<n>`, no longer `func literal at <file>:<line>`.
+- The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
+
+### Fixed
+
+- `codespec query` runs a depth-limited recursion again (refused since 0.11.0): a step `D + c`
+  (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
+  made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
+  one bounds it from below; any other value made from a derived one stays refused with the same
+  message. A step bounded by several comparisons stays definite when one of them is not a field
+  an unknown site could add, in whatever order they are written.
+- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
+  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
+  refuses differing annotations at their line instead of reading no entry. The entry's path starts
+  with the `@Path` of the class or of the interface it implements, directly or through another,
+  not of the interface that declares the method; a class with none is no resource and gets no
+  entry, and one whose interfaces name different paths is refused at its line.
+
+## 0.13.0
+
+### Added
+
 - `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
   functions, struct fields, calls, field accesses and struct literal fields are in the source
   files, by byte range and line. It is checked strictly against the module and the files; the
@@ -57,22 +78,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
   in its file is verified (it failed on every such delete). `--apply` writes every temporary file
   before the first rename and puts back what it renamed when a rename fails, so a failed write
   leaves every file as read (exit 2).
-- The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
-
-### Fixed
-
-- `codespec query` runs a depth-limited recursion again (refused since 0.11.0): a step `D + c`
-  (`c` a positive integer) is bounded when a comparison of the same rule bounds `D`, or the value
-  made, from above by a fact or a literal (`D < M`, `D <= M`, `M > D`, `M >= D`), and `D - c` when
-  one bounds it from below; any other value made from a derived one stays refused with the same
-  message. A step bounded by several comparisons stays definite when one of them is not a field
-  an unknown site could add, in whatever order they are written.
-- The Java reader gives a class method that implements a JAX-RS-annotated interface method (of the
-  sources or on `CODESPEC_JAVA_CLASSPATH`, such as a generated API interface) its `http` entry, and
-  refuses differing annotations at their line instead of reading no entry. The entry's path starts
-  with the `@Path` of the class or of the interface it implements, directly or through another,
-  not of the interface that declares the method; a class with none is no resource and gets no
-  entry, and one whose interfaces name different paths is refused at its line.
 
 ## 0.12.0
 
