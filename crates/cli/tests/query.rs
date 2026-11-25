@@ -94,6 +94,26 @@ fn no_rows_exit_0_and_an_error_exits_2() {
     assert_eq!(missing.status.code(), Some(2), "{missing:?}");
 }
 
+/// Past `--max-tuples` the run stops with exit 2, naming the file, the relation and
+/// the limit, and prints no row; at a limit it stays within, it prints its rows.
+#[test]
+fn a_query_past_max_tuples_exits_2_naming_the_relation_and_the_limit() {
+    let doc = shop("max-tuples");
+    let over = codespec(&["--max-tuples", "3", "-f", &quiet(), &doc]);
+    assert_eq!(over.status.code(), Some(2), "{over:?}");
+    assert_eq!(stdout(&over), "");
+    assert_eq!(
+        String::from_utf8_lossy(&over.stderr),
+        format!(
+            "codespec: query {}: the evaluation went over 3 tuples (--max-tuples) in the rules of reached_from_main; give fewer documents at once or a higher limit\n",
+            quiet()
+        )
+    );
+    let within = codespec(&["--max-tuples", "100000", "-f", &quiet(), &doc]);
+    assert_eq!(within.status.code(), Some(1), "{within:?}");
+    assert_eq!(stdout(&within), expected("shop.txt"));
+}
+
 /// A program with an edit item is `codespec edit`'s: `codespec query` exits 2, naming the item
 /// and `codespec edit`, and prints no row.
 #[test]

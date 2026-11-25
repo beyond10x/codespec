@@ -28,6 +28,129 @@ enum V {
     List(Vec<V>),
     /// Anything: a field of a wild fact.
     Top,
+    /// Anything one unknown site could hold, as far as the upper evaluation has narrowed it: a
+    /// field of a wild fact of the fact base ([`Wild`]).
+    Wild(Rc<Wild>),
+}
+
+/// A field of a wild fact that one unknown site adds: the site, whether it names a node of the
+/// code nothing read (no node of the documents is one), and the conditions the rule that bound
+/// it has checked of it. Two wild fields of different sites are different values in a store, so
+/// a fact one site could add keeps resting on that site alone.
+#[derive(Debug)]
+struct Wild {
+    site: u32,
+    unread_node: bool,
+    conds: Vec<Cond>,
+}
+
+/// What tells conditions apart: their kind, the regular expression, names list or operator, the
+/// value compared with, and whether it is negated.
+type CondKey<'a> = (u8, usize, Option<&'a V>, bool);
+
+/// A condition a rule checked of a wild field: a regular expression, a names list or a
+/// comparison with a value, each possibly negated.
+#[derive(Debug, Clone)]
+enum Cond {
+    Match(Rc<Regex>, bool),
+    In(Rc<NameList>, bool),
+    Cmp(Op, V),
+}
+
+impl Cond {
+    /// Identity: a condition is the step it comes from.
+    fn key(&self) -> CondKey<'_> {
+        match self {
+            Cond::Match(re, neg) => (0, Rc::as_ptr(re) as usize, None, *neg),
+            Cond::In(l, neg) => (1, Rc::as_ptr(l) as usize, None, *neg),
+            Cond::Cmp(op, v) => (2, *op as usize, Some(v), false),
+        }
+    }
+
+    /// Whether the value `v`, which holds no wild field, satisfies it.
+    fn holds(&self, v: &V) -> bool {
+        match self {
+            Cond::Match(re, neg) => match v {
+                V::Str(s) => re.is_match(s) != *neg,
+                _ => *neg,
+            },
+            Cond::In(l, neg) => match v {
+                V::Str(s) => l.holds(s) != *neg,
+                _ => *neg,
+            },
+            Cond::Cmp(op, w) => compare(v, *op, w),
+        }
+    }
+}
+
+impl Wild {
+    /// Whether the site could hold `v` here, a value without a wild field.
+    fn admits(&self, v: &V) -> bool {
+        !self.unread_node && self.conds.iter().all(|c| c.holds(v))
+    }
+
+    /// The same field with one more condition checked.
+    fn with(&self, c: Cond) -> V {
+        let mut conds = self.conds.clone();
+        conds.push(c);
+        V::Wild(Rc::new(Wild {
+            site: self.site,
+            unread_node: self.unread_node,
+            conds,
+        }))
+    }
+
+    fn key(&self) -> (u32, bool, Vec<CondKey<'_>>) {
+        (
+            self.site,
+            self.unread_node,
+            self.conds.iter().map(Cond::key).collect(),
+        )
+    }
+}
+
+impl PartialEq for Wild {
+    fn eq(&self, o: &Wild) -> bool {
+        self.key() == o.key()
+    }
+}
+impl Eq for Wild {}
+impl std::hash::Hash for Wild {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.key().hash(h);
+    }
+}
+impl PartialOrd for Wild {
+    fn partial_cmp(&self, o: &Wild) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Wild {
+    fn cmp(&self, o: &Wild) -> std::cmp::Ordering {
+        self.key().cmp(&o.key())
+    }
+}
+
+/// `p op q` on two values without a wild field; `=` is `==` here.
+fn compare(p: &V, op: Op, q: &V) -> bool {
+    match op {
+        Op::Eq | Op::Bind => p == q,
+        Op::Ne => p != q,
+        _ => {
+            let ord = match (p, q) {
+                (V::Int(m), V::Int(n)) => Some(m.cmp(n)),
+                (V::Str(m), V::Str(n)) => Some(m.cmp(n)),
+                _ => None,
+            };
+            ord.is_some_and(|o| match op {
+                Op::Lt => o.is_lt(),
+                Op::Le => o.is_le(),
+                Op::Gt => o.is_gt(),
+                Op::Ge => o.is_ge(),
+                _ => unreachable!("handled above"),
+            })
+        }
+    }
 }
 
 impl V {
@@ -46,13 +169,26 @@ impl V {
             V::Int(n) => Value::Int(*n),
             V::Str(s) => Value::Str(s.to_string()),
             V::List(l) => Value::List(l.iter().map(V::value).collect()),
-            V::Top => unreachable!("an answer holds no wild field"),
+            V::Top | V::Wild(_) => unreachable!("an answer holds no wild field"),
+        }
+    }
+
+    /// The value with the site of each wild field left out.
+    fn unsited(&self) -> V {
+        match self {
+            V::Wild(w) => V::Wild(Rc::new(Wild {
+                site: 0,
+                unread_node: w.unread_node,
+                conds: w.conds.clone(),
+            })),
+            V::List(l) => V::List(l.iter().map(V::unsited).collect()),
+            v => v.clone(),
         }
     }
 
     fn has_top(&self) -> bool {
         match self {
-            V::Top => true,
+            V::Top | V::Wild(_) => true,
             V::List(l) => l.iter().any(V::has_top),
             _ => false,
         }
@@ -121,9 +257,14 @@ struct Store {
     anns: Vec<Ann>,
     /// How often each tuple's annotation was replaced by a smaller one.
     shrunk: Vec<u8>,
+    /// The sites the annotations name, all together.
+    sites: usize,
     at: HashMap<Vec<V>, usize>,
-    /// The tuples with a wild field; never in an index.
-    tops: Vec<usize>,
+    /// The tuples with a wild field, never in an index, in groups that differ in the sites of
+    /// their wild fields alone: a condition on a value holds of each tuple of a group or of none.
+    tops: Vec<Vec<usize>>,
+    /// The group of each tuple with a wild field, by the tuple with its sites left out.
+    top_group: HashMap<Vec<V>, usize>,
     indexes: RefCell<HashMap<Vec<usize>, Index>>,
 }
 
@@ -152,15 +293,26 @@ impl Store {
                     return None;
                 }
                 self.shrunk[k] = self.shrunk[k].saturating_add(1);
+                self.sites = self.sites - old.len() + ann.len();
                 *old = ann;
                 return Some(k);
             }
+            let before = old.len();
             union(old, &ann);
+            self.sites = self.sites - before + old.len();
             return Some(k);
         }
         let k = self.tuples.len();
         if t.iter().any(V::has_top) {
-            self.tops.push(k);
+            let n = self.tops.len();
+            let g = *self
+                .top_group
+                .entry(t.iter().map(V::unsited).collect())
+                .or_insert(n);
+            if g == n {
+                self.tops.push(Vec::new());
+            }
+            self.tops[g].push(k);
         } else {
             for (cols, index) in self.indexes.get_mut().iter_mut() {
                 index.entry(key_of(cols, &t)).or_default().push(k);
@@ -168,6 +320,7 @@ impl Store {
         }
         self.at.insert(t.clone(), k);
         self.tuples.push(t);
+        self.sites += ann.len();
         self.anns.push(ann);
         self.shrunk.push(0);
         Some(k)
@@ -178,6 +331,13 @@ impl Store {
         if cols.is_empty() || key.iter().any(V::has_top) {
             return (0..self.tuples.len()).collect();
         }
+        let mut out = self.indexed(cols, key);
+        out.extend(self.tops.iter().flatten());
+        out
+    }
+
+    /// The tuples without a wild field whose columns `cols` hold `key`.
+    fn indexed(&self, cols: &[usize], key: &[V]) -> Vec<usize> {
         let mut indexes = self.indexes.borrow_mut();
         let index = indexes.entry(cols.to_vec()).or_insert_with(|| {
             let mut ix: HashMap<Vec<V>, Vec<usize>> = HashMap::new();
@@ -188,9 +348,32 @@ impl Store {
             }
             ix
         });
-        let mut out = index.get(key).cloned().unwrap_or_default();
-        out.extend(&self.tops);
+        index.get(key).cloned().unwrap_or_default()
+    }
+
+    /// The tuples whose columns `cols` may hold `key` in `mode`. With no wild field in `key`:
+    /// those the index gives, and each group of tuples with a wild field whose first tuple
+    /// agrees, without testing the others of the group.
+    fn agreeing(&self, cols: &[usize], key: &[V], mode: Mode) -> Vec<usize> {
+        let agrees = |k: usize| {
+            let t = &self.tuples[k];
+            cols.iter().zip(key).all(|(&c, v)| eqv(v, &t[c], mode))
+        };
+        if cols.is_empty() || key.iter().any(V::has_top) {
+            return (0..self.tuples.len()).filter(|&k| agrees(k)).collect();
+        }
+        let mut out = self.indexed(cols, key);
+        for g in &self.tops {
+            if agrees(g[0]) {
+                out.extend(g);
+            }
+        }
         out
+    }
+
+    /// What the store holds, as [`Cost`] counts it: one for each fact and each site a fact rests on.
+    fn weight(&self) -> usize {
+        self.tuples.len() + self.sites
     }
 }
 
@@ -279,7 +462,7 @@ enum Step {
     Scan(Rel, Vec<Arg>),
     Neg(Rel, Vec<Arg>),
     Cmp(Arg, Op, Arg),
-    Match(Arg, Regex, bool),
+    Match(Arg, Rc<Regex>, bool),
     /// Membership in a names list; with the variable unbound, each entry as written.
     In(Arg, Rc<NameList>, bool),
     Builtin(Builtin, Vec<Arg>),
@@ -1256,7 +1439,9 @@ impl Compiler<'_> {
                     }
                     s
                 }
-                Low::Match(t, re, neg) => Step::Match(arg(&t, &mut slots), Regex::new(&re)?, neg),
+                Low::Match(t, re, neg) => {
+                    Step::Match(arg(&t, &mut slots), Rc::new(Regex::new(&re)?), neg)
+                }
                 Low::In(t, l, neg) => {
                     let s = Step::In(arg(&t, &mut slots), self.list(&l)?, neg);
                     bind(&t, &mut bound);
@@ -2044,6 +2229,42 @@ struct Eval<'a> {
     witness_elems: Cell<usize>,
     /// The `reaches_path` facts of a scan with an end bound, by (from, to, upper).
     paths: RefCell<HashMap<PathEnds, Rc<Store>>>,
+    /// What the evaluation holds and held at most, and the limit it stops at.
+    cost: Cell<Cost>,
+    /// The derivations of the running round not added to their relations yet, with their sites.
+    pending: Cell<usize>,
+    limit: Option<usize>,
+    /// The relation whose rule was running when the evaluation went over its limit.
+    over: Cell<Option<usize>>,
+}
+
+/// What an evaluation holds, counted in tuples: one for each fact of a relation the program
+/// derives (both bounds) or of `reaches` and `reaches_path`, one for each unknown site such a
+/// fact rests on, and the same for each derivation of a round not added to its relation yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cost {
+    /// The facts and their sites at the end.
+    pub held: usize,
+    /// The most held at once, the derivations of a round included.
+    pub peak: usize,
+}
+
+/// An evaluation that went over its limit of tuples ([`Cost`]): the relation whose rule was
+/// running, and the limit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverLimit {
+    pub relation: String,
+    pub limit: usize,
+}
+
+impl std::fmt::Display for OverLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the evaluation went over {} tuples (--max-tuples) in the rules of {}; give fewer documents at once or a higher limit",
+            self.limit, self.relation
+        )
+    }
 }
 
 /// The graphs path patterns and properties walk, built from the fact base once.
@@ -2267,13 +2488,37 @@ type PathEnds = (Option<V>, Option<V>, bool);
 /// The relations of the call graph whose upper bound [`Eval::graph_wild`] computes.
 const GRAPH_WILD: &[&str] = &["effect", "syscall", "scc", "reached"];
 
+/// The fields of a wild fact that name a node of the code nothing read when the site leaves them
+/// open: the statement or expression itself, an expression's operands, a node an opaque
+/// function contains. None of them is a node of the documents.
+const UNREAD_NODES: &[(&str, &str)] = &[
+    ("expr", "id"),
+    ("expr", "x"),
+    ("expr", "y"),
+    ("stmt", "id"),
+    ("contains", "inner"),
+];
+
+/// Whether `a` and `b` may be the same value: equal, or in the upper mode a wild field that could
+/// hold the other (a field of a site nothing read is no node of the documents, and satisfies
+/// the conditions its rule checked).
 fn eqv(a: &V, b: &V, mode: Mode) -> bool {
-    a == b || (mode == Mode::Upper && (*a == V::Top || *b == V::Top))
+    if a == b {
+        return true;
+    }
+    if mode != Mode::Upper {
+        return false;
+    }
+    match (a, b) {
+        (V::Top, _) | (_, V::Top) | (V::Wild(_), V::Wild(_)) => true,
+        (V::Wild(w), v) | (v, V::Wild(w)) => v.has_top() || w.admits(v),
+        _ => false,
+    }
 }
 
 fn arith(a: &V, op: char, b: &V) -> Option<V> {
     match (a, b) {
-        (V::Top, _) | (_, V::Top) => Some(V::Top),
+        (V::Top | V::Wild(_), _) | (_, V::Top | V::Wild(_)) => Some(V::Top),
         (V::Int(x), V::Int(y)) => match op {
             '+' => x.checked_add(*y),
             '-' => x.checked_sub(*y),
@@ -2320,6 +2565,31 @@ fn value_of(a: &Arg, b: &[Option<V>]) -> Option<V> {
 }
 
 impl<'a> Eval<'a> {
+    /// A store that held `before` ([`Store::weight`]) now holds `after`.
+    fn hold(&self, before: usize, after: usize) {
+        let mut c = self.cost.get();
+        c.held = c.held + after - before;
+        c.peak = c.peak.max(c.held + self.pending.get());
+        self.cost.set(c);
+    }
+
+    /// One more derivation of a rule of `r`, resting on `sites` sites, waits to be added; whether
+    /// the evaluation is still within its limit (when not, it notes the relation and stops).
+    fn derived_one(&self, r: &CRule, sites: usize) -> bool {
+        self.pending.set(self.pending.get() + 1 + sites);
+        let mut c = self.cost.get();
+        let now = c.held + self.pending.get();
+        c.peak = c.peak.max(now);
+        self.cost.set(c);
+        if self.limit.is_some_and(|l| now > l) {
+            if self.over.get().is_none() {
+                self.over.set(Some(r.head));
+            }
+            return false;
+        }
+        true
+    }
+
     fn base_store(&self, name: &'static str, upper: bool) -> Rc<Store> {
         if let Some(s) = self.base.borrow().get(&(name, upper)) {
             return s.clone();
@@ -2364,15 +2634,27 @@ impl<'a> Eval<'a> {
                 st.insert(row.iter().map(V::of).collect(), Vec::new());
             }
             if upper {
+                let fields = relation(name).expect("a relation").fields;
                 for (row, site) in self.fb.wild.get(name).into_iter().flatten() {
                     let t = row
                         .iter()
-                        .map(|v| v.as_ref().map_or(V::Top, V::of))
+                        .zip(fields)
+                        .map(|(v, (field, _))| match v {
+                            Some(v) => V::of(v),
+                            None => V::Wild(Rc::new(Wild {
+                                site: *site as u32,
+                                unread_node: UNREAD_NODES.contains(&(name, *field)),
+                                conds: Vec::new(),
+                            })),
+                        })
                         .collect();
                     st.insert(t, vec![*site as u32]);
                 }
                 self.graph_wild(name, &mut st);
             }
+        }
+        if ON_DEMAND.contains(&name) {
+            self.hold(0, st.weight());
         }
         let st = Rc::new(st);
         self.base.borrow_mut().insert((name, upper), st.clone());
@@ -2459,6 +2741,7 @@ impl<'a> Eval<'a> {
                 }
             }
         }
+        self.hold(0, st.weight());
         let st = Rc::new(st);
         self.paths.borrow_mut().insert(key, st.clone());
         st
@@ -3033,7 +3316,7 @@ impl<'a> Eval<'a> {
                         Piece::State(s) => run.marks[*s].as_deref().unwrap_or("").to_string(),
                         Piece::Reg(r) => match &run.regs[*r] {
                             Some(V::Str(s)) => s.to_string(),
-                            Some(V::Top) | None => String::new(),
+                            Some(V::Top | V::Wild(_)) | None => String::new(),
                             Some(v) => v.value().to_string(),
                         },
                     })
@@ -3207,17 +3490,17 @@ impl<'a> Eval<'a> {
                 key.push(v);
             }
         }
-        let cands = match only {
-            Some(d) => d.to_vec(),
-            None => store.candidates(&cols, &key),
-        };
-        cands
-            .into_iter()
-            .filter(|&k| {
-                let t = &store.tuples[k];
-                cols.iter().zip(&key).all(|(&c, v)| eqv(v, &t[c], mode))
-            })
-            .collect()
+        match only {
+            Some(d) => d
+                .iter()
+                .copied()
+                .filter(|&k| {
+                    let t = &store.tuples[k];
+                    cols.iter().zip(&key).all(|(&c, v)| eqv(v, &t[c], mode))
+                })
+                .collect(),
+            None => store.agreeing(&cols, &key, mode),
+        }
     }
 
     /// Runs the steps of `r`, each solution's head tuple and what it rests on to `out`. The
@@ -3252,6 +3535,7 @@ impl<'a> Eval<'a> {
         };
         if r.steps.is_empty() {
             if let Some(t) = head(&b) {
+                self.derived_one(r, 0);
                 out.push((t, Vec::new()));
             }
             return;
@@ -3265,9 +3549,7 @@ impl<'a> Eval<'a> {
             set: Vec::new(),
         }];
         while let Some(f) = stack.last_mut() {
-            for x in f.set.drain(..) {
-                b[x] = None;
-            }
+            restore(&mut b, &mut f.set);
             let Some(ann) = f.take(&mut b, mode) else {
                 stack.pop();
                 continue;
@@ -3275,7 +3557,11 @@ impl<'a> Eval<'a> {
             let k = f.k + 1;
             if k == r.steps.len() {
                 if let Some(t) = head(&b) {
+                    let over = !self.derived_one(r, ann.len());
                     out.push((t, ann));
+                    if over {
+                        return;
+                    }
                 }
                 continue;
             }
@@ -3308,6 +3594,28 @@ impl<'a> Eval<'a> {
                 let st = self.scan_store(*rel, args, b, mode);
                 let only = delta.filter(|(j, _)| *j == k).map(|(_, d)| d);
                 let ts = self.matches(&st, args, b, only, mode);
+                // A scan that binds no variable asks whether a fact agrees: one way, resting on
+                // what the head would rest on had each agreeing fact derived it, not one way per
+                // fact (each fact of a wild field's scan would otherwise repeat the rest of the
+                // body).
+                let binds = args
+                    .iter()
+                    .any(|a| matches!(a, Arg::Var(x) if b[*x].is_none()));
+                if !binds {
+                    let mut acc: Option<Ann> = None;
+                    for &t in &ts {
+                        let mut a = ann.clone();
+                        union(&mut a, &st.anns[t]);
+                        match &mut acc {
+                            None => acc = Some(a),
+                            Some(old) => merge(old, a),
+                        }
+                        if acc.as_ref() == Some(ann) {
+                            break;
+                        }
+                    }
+                    return Ways::Binds(acc.map(|a| (Vec::new(), a)).into_iter().collect());
+                }
                 Ways::Tuples { st, args, ts }
             }
             Step::Neg(rel, args) => {
@@ -3363,6 +3671,25 @@ impl<'a> Eval<'a> {
                 let (Some(p), Some(q)) = (vx, vy) else {
                     return none();
                 };
+                // A wild field compared with a value is narrowed to the values that compare so.
+                if mode == Mode::Upper {
+                    let flip = |op: Op| match op {
+                        Op::Lt => Op::Gt,
+                        Op::Le => Op::Ge,
+                        Op::Gt => Op::Lt,
+                        Op::Ge => Op::Le,
+                        op => op,
+                    };
+                    match (&p, &q) {
+                        (V::Wild(w), v) if !v.has_top() => {
+                            return narrow(x, w, Cond::Cmp(*op, v.clone()), ann);
+                        }
+                        (v, V::Wild(w)) if !v.has_top() => {
+                            return narrow(y, w, Cond::Cmp(flip(*op), v.clone()), ann);
+                        }
+                        _ => {}
+                    }
+                }
                 let holds = if mode == Mode::Upper && (p.has_top() || q.has_top()) {
                     true
                 } else {
@@ -3395,6 +3722,7 @@ impl<'a> Eval<'a> {
                 let holds = match value_of(x, b) {
                     Some(V::Str(s)) => re.is_match(&s) != *neg,
                     Some(V::Top) => true,
+                    Some(V::Wild(w)) => return narrow(x, &w, Cond::Match(re.clone(), *neg), ann),
                     _ => *neg,
                 };
                 if holds {
@@ -3413,9 +3741,14 @@ impl<'a> Eval<'a> {
                             .collect(),
                     );
                 }
+                // No value is in an empty list, a wild one neither.
                 let holds = match v {
                     Some(V::Str(s)) => list.holds(&s) != *neg,
+                    Some(V::Top | V::Wild(_)) if !*neg && list.entries.is_empty() => false,
                     Some(V::Top) => true,
+                    Some(V::Wild(w)) => {
+                        return narrow(x, &w, Cond::In(list.clone(), *neg), ann);
+                    }
                     _ => *neg,
                 };
                 if holds {
@@ -3522,9 +3855,12 @@ impl<'a> Eval<'a> {
                 Mode::Lower => &mut self.lower[h],
                 Mode::Upper => &mut self.upper[h],
             };
+            let before = st.weight();
             for (t, a) in rows {
                 st.insert(t, a);
             }
+            let after = st.weight();
+            self.hold(before, after);
         }
         let rules: Vec<&CRule> = heads
             .iter()
@@ -3558,6 +3894,9 @@ impl<'a> Eval<'a> {
                     }
                 }
                 found.extend(out.into_iter().map(|(t, a)| (r.head, t, a)));
+                if self.over.get().is_some() {
+                    return;
+                }
             }
             first = false;
             let mut next: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
@@ -3566,10 +3905,17 @@ impl<'a> Eval<'a> {
                     Mode::Lower => &mut self.lower[h],
                     Mode::Upper => &mut self.upper[h],
                 };
-                if let Some(k) = st.insert(t, a) {
+                self.pending
+                    .set(self.pending.get().saturating_sub(1 + a.len()));
+                let before = st.weight();
+                let added = st.insert(t, a);
+                let after = st.weight();
+                self.hold(before, after);
+                if let Some(k) = added {
                     next.entry(h).or_default().push(k);
                 }
             }
+            self.pending.set(0);
             if next.is_empty() {
                 return;
             }
@@ -3601,7 +3947,9 @@ struct Frame<'s> {
     ann: Ann,
     ways: Ways<'s>,
     next: usize,
-    set: Vec<usize>,
+    /// The variables the current way bound, each with the value it held before: none, or a wild
+    /// field the way narrowed.
+    set: Vec<(usize, Option<V>)>,
 }
 
 impl Frame<'_> {
@@ -3618,8 +3966,8 @@ impl Frame<'_> {
                         if let Arg::Var(x) = a {
                             if b[*x].is_none() {
                                 b[*x] = Some(tuple[c].clone());
-                                self.set.push(*x);
-                            } else if self.set.contains(x)
+                                self.set.push((*x, None));
+                            } else if self.set.iter().any(|(y, _)| y == x)
                                 && !eqv(b[*x].as_ref().expect("set"), &tuple[c], mode)
                             {
                                 ok = false;
@@ -3627,9 +3975,7 @@ impl Frame<'_> {
                         }
                     }
                     if !ok {
-                        for x in self.set.drain(..) {
-                            b[x] = None;
-                        }
+                        restore(b, &mut self.set);
                         continue;
                     }
                     let mut a = self.ann.clone();
@@ -3640,13 +3986,42 @@ impl Frame<'_> {
                     let (binds, a) = list.get(self.next)?;
                     self.next += 1;
                     for (x, v) in binds {
-                        b[*x] = Some(v.clone());
-                        self.set.push(*x);
+                        let old = b[*x].replace(v.clone());
+                        self.set.push((*x, old));
                     }
                     return Some(a.clone());
                 }
             }
         }
+    }
+}
+
+/// Undoes the bindings of a way, the last first.
+fn restore(b: &mut [Option<V>], set: &mut Vec<(usize, Option<V>)>) {
+    while let Some((x, old)) = set.pop() {
+        b[x] = old;
+    }
+}
+
+/// The one way a condition on the wild field `w` of `x` goes on: with `x` (a variable) bound to
+/// the field narrowed by the condition.
+fn narrow<'s>(x: &Arg, w: &Wild, c: Cond, ann: &Ann) -> Ways<'s> {
+    let binds = match x {
+        Arg::Var(s) => vec![(*s, w.with(c))],
+        _ => Vec::new(),
+    };
+    Ways::Binds(vec![(binds, ann.clone())])
+}
+
+/// What a fact rests on once derived again resting on `new`, as [`Store::insert`] has it.
+fn merge(old: &mut Ann, new: Ann) {
+    if old.is_empty() || subset(old, &new) {
+        return;
+    }
+    if subset(&new, old) {
+        *old = new;
+    } else {
+        union(old, &new);
     }
 }
 
@@ -3763,10 +4138,26 @@ pub fn evaluate(c: &Compiled, fb: &FactBase) -> Answer {
     evaluate_counting(c, fb).0
 }
 
+/// [`evaluate`] that stops when the evaluation holds more than `limit` tuples ([`Cost`]), with
+/// what it held.
+pub fn evaluate_within(
+    c: &Compiled,
+    fb: &FactBase,
+    limit: Option<usize>,
+) -> Result<(Answer, Cost), OverLimit> {
+    let q = c.query.expect("a program with a query");
+    let (mut rows, _, cost) = evaluate_roots(c, fb, &[q], limit)?;
+    let answer = Answer {
+        vars: c.vars.clone(),
+        rows: rows.pop().expect("one root"),
+    };
+    Ok((answer, cost))
+}
+
 /// [`evaluate`], with how many functions the `reaches_path` witnesses it built hold.
 fn evaluate_counting(c: &Compiled, fb: &FactBase) -> (Answer, usize) {
     let q = c.query.expect("a program with a query");
-    let (mut rows, built) = evaluate_roots(c, fb, &[q]);
+    let (mut rows, built, _) = evaluate_roots(c, fb, &[q], None).expect("no limit");
     let answer = Answer {
         vars: c.vars.clone(),
         rows: rows.pop().expect("one root"),
@@ -3776,12 +4167,17 @@ fn evaluate_counting(c: &Compiled, fb: &FactBase) -> (Answer, usize) {
 
 /// The rows of each of a compiled program's edit items over a fact base, in program order.
 pub fn evaluate_edits(c: &Compiled, fb: &FactBase) -> Vec<Vec<Row>> {
-    evaluate_roots(c, fb, &c.edits).0
+    evaluate_roots(c, fb, &c.edits, None).expect("no limit").0
 }
 
-/// The rows of each relation of `roots`, sorted, and how many functions the `reaches_path`
-/// witnesses built hold.
-fn evaluate_roots(c: &Compiled, fb: &FactBase, roots: &[usize]) -> (Vec<Vec<Row>>, usize) {
+/// The rows of each relation of `roots`, sorted, how many functions the `reaches_path` witnesses
+/// built hold, and what the evaluation held; or, past `limit` tuples, where it stopped.
+fn evaluate_roots(
+    c: &Compiled,
+    fb: &FactBase,
+    roots: &[usize],
+    limit: Option<usize>,
+) -> Result<(Vec<Vec<Row>>, usize, Cost), OverLimit> {
     let n = c.derived.len();
     // The relations the roots need, and those they need an upper bound of.
     let mut need = vec![false; n];
@@ -3861,6 +4257,10 @@ fn evaluate_roots(c: &Compiled, fb: &FactBase, roots: &[usize]) -> (Vec<Vec<Row>
         extra: RefCell::new(Vec::new()),
         witness_elems: Cell::new(0),
         paths: RefCell::new(HashMap::new()),
+        cost: Cell::new(Cost::default()),
+        pending: Cell::new(0),
+        limit,
+        over: Cell::new(None),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {
@@ -3869,8 +4269,14 @@ fn evaluate_roots(c: &Compiled, fb: &FactBase, roots: &[usize]) -> (Vec<Vec<Row>
     for heads in by_stratum.values() {
         ev.stratum(heads, Mode::Lower);
         let up: BTreeSet<usize> = heads.iter().copied().filter(|&d| ev.in_upper[d]).collect();
-        if !up.is_empty() {
+        if !up.is_empty() && ev.over.get().is_none() {
             ev.stratum(&up, Mode::Upper);
+        }
+        if let Some(d) = ev.over.get() {
+            return Err(OverLimit {
+                relation: shown(c, d),
+                limit: limit.expect("a limit"),
+            });
         }
     }
     let answers = roots
@@ -3900,13 +4306,44 @@ fn evaluate_roots(c: &Compiled, fb: &FactBase, roots: &[usize]) -> (Vec<Vec<Row>
                 .collect()
         })
         .collect();
-    (answers, ev.witness_elems.get())
+    Ok((answers, ev.witness_elems.get(), ev.cost.get()))
+}
+
+/// The relation `d` as the program names it: a relation of its own rules aggregates over or a
+/// path avoids by the relation of the rule it sits in, the query as `?-`.
+fn shown(c: &Compiled, d: usize) -> String {
+    let mut d = d;
+    for _ in 0..c.derived.len() {
+        let name = &c.derived[d].name;
+        if name == "__query" {
+            return String::from("the query (?-)");
+        }
+        if !name.starts_with("__") {
+            return name.clone();
+        }
+        let within = c.rules.iter().find(|r| {
+            r.steps.iter().any(|s| match s {
+                Step::Agg { rel, .. } | Step::Neg(rel, _) | Step::Scan(rel, _) => {
+                    *rel == Rel::Derived(d)
+                }
+                Step::Path(p) => {
+                    matches!(&p.avoid, AvoidStep::Rel(rel, _) if *rel == Rel::Derived(d))
+                }
+                _ => false,
+            })
+        });
+        match within {
+            Some(r) => d = r.head,
+            None => break,
+        }
+    }
+    c.derived[d].name.clone()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{compile, evaluate_counting, words};
-    use crate::{FactBase, Names, parse};
+    use super::{Cost, compile, evaluate_counting, evaluate_within, words};
+    use crate::{Answer, FactBase, Names, parse};
 
     /// A module of `n` functions `f000` … each calling the next: a chain.
     fn chain(n: usize) -> FactBase {
@@ -3970,6 +4407,139 @@ mod tests {
         let (out, built) = counted("?- reaches_path(F, G, W).", &chain(10));
         assert_eq!(out.lines().count(), 45);
         assert_eq!(built, (1..10).map(|d| (10 - d) * (d + 1)).sum::<usize>());
+    }
+
+    /// `n` modules `example.com/m<i>` of one file each: `walk(s)` subtracts 1 from `len(s)`,
+    /// calls `helper` three times, holds a foreign statement without a call list (an unknown
+    /// site) and calls itself; `helper` is empty.
+    fn modules(n: usize) -> FactBase {
+        let int = serde_json::json!({"k": "int", "width": "64", "signed": true});
+        let mods: Vec<codespec_model::Module> = (0..n)
+            .map(|i| {
+                let file = format!("m{i}.rs");
+                let call = |name: &str, args: serde_json::Value, line: usize| {
+                    serde_json::json!({
+                        "k": "expr",
+                        "x": {"k": "call", "name": name, "args": args, "t": {"k": "unit"}},
+                        "pos": format!("{file}:{line}"),
+                    })
+                };
+                let s = serde_json::json!({"k": "var", "name": "s", "t": {"k": "string"}});
+                let len = serde_json::json!({
+                    "k": "intrinsic", "name": "len", "args": [s.clone()], "t": int.clone(),
+                });
+                let one = serde_json::json!({"k": "lit", "value": "1", "t": int.clone()});
+                let body = serde_json::json!([
+                    {"k": "let", "names": ["n"], "pos": format!("{file}:2"), "rhs": [
+                        {"k": "binop", "op": "-", "x": len, "y": one, "t": int.clone()},
+                    ]},
+                    call("helper", serde_json::json!([]), 3),
+                    call("helper", serde_json::json!([]), 4),
+                    call("helper", serde_json::json!([]), 5),
+                    {"k": "foreign", "lang": "rust", "src": "m!()", "reason": "macro",
+                     "pos": format!("{file}:6")},
+                    call("walk", serde_json::json!([s]), 7),
+                ]);
+                let doc = serde_json::json!({
+                    "format": "cir/1", "name": format!("m{i}"), "path": format!("example.com/m{i}"),
+                    "reader": {"language": "rust", "name": "hand-written", "version": "0"},
+                    "types": [],
+                    "funcs": [
+                        {"name": "walk", "exported": false,
+                         "params": [{"name": "s", "t": {"k": "string"}}], "results": [],
+                         "body": body, "pos": format!("{file}:1")},
+                        {"name": "helper", "exported": false, "params": [], "results": [],
+                         "body": [], "pos": format!("{file}:9")},
+                    ],
+                    "layout": ["func:walk", "func:helper"],
+                });
+                codespec_model::Module::from_json(&serde_json::to_vec(&doc).unwrap()).unwrap()
+            })
+            .collect();
+        FactBase::build(&mods)
+    }
+
+    /// The answer of `query` on `fb` and what the evaluation held.
+    fn costed(query: &str, fb: &FactBase) -> (Answer, Cost) {
+        let c = compile(&parse(query).unwrap(), &Names::default()).unwrap();
+        evaluate_within(&c, fb, None).unwrap()
+    }
+
+    /// A callee called three times or more in one function, unless a pattern or a names list
+    /// leaves it out: an aggregate over `call` beside a negation of callees a pattern or an empty
+    /// names list tests.
+    const REPEATED: &str = r#"
+        names cheap = [].
+        skipped(C) :- call{callee: C}, C ~ "^(log|print)".
+        skipped(C) :- call{callee: C, name: N}, N in @names.cheap.
+        plain(F, C) :- call{func: F, callee: C, kind: K}, K != "ref", !skipped(C).
+        again(F, C, N) :- plain(F, C), N = count{ call{func: F, callee: C, kind: K}, K != "ref" },
+                          N >= 3.
+        ?- again(F, C, N).
+    "#;
+
+    /// A subtraction from a length that no earlier statement of its function checks: a negation
+    /// of a relation keyed by an expression.
+    const UNCHECKED: &str = r#"
+        sub_of_len(E, F, St) :- expr{func: F, kind: "binop", op: "-", id: E, x: L, stmt: St},
+                                expr{id: L, kind: "intrinsic", name: "len"}.
+        checked(E) :- sub_of_len(E, F, St), stmt{id: G, func: F}, dominates(G, St), G != St.
+        ?- sub_of_len(E, F, St), !checked(E).
+    "#;
+
+    /// A function on a cycle of calls on which no function reads a name of a depth: a join
+    /// over `reaches` both ways beside a pattern on names.
+    const LOOPING: &str = r#"
+        limits(N) :- expr{name: N}, N ~ "depth|limit".
+        limited(F) :- expr{func: F, name: N}, limits(N).
+        loops(F) :- func{id: F}, reaches(F, F).
+        safe(F) :- loops(F), reaches(F, G), reaches(G, F), limited(G).
+        ?- loops(F), !safe(F).
+    "#;
+
+    /// What a rule holds grows linearly with the modules. An unknown site of one module made every
+    /// row of every other module rest on it (Θ(n²) sites held), and a scan of a wild field
+    /// repeated the rest of its body once per fact (Θ(n³) derivations in a round). Four times the
+    /// modules hold at most about four times as much, and a row rests on its own site at most.
+    #[test]
+    fn what_a_rule_holds_grows_linearly_with_the_modules() {
+        let mut report = Vec::new();
+        for (name, query) in [
+            ("repeated", REPEATED),
+            ("unchecked", UNCHECKED),
+            ("looping", LOOPING),
+        ] {
+            let (small, cs) = costed(query, &modules(10));
+            let (big, cb) = costed(query, &modules(40));
+            assert_eq!(small.rows.len(), 10, "{name}: {}", small.to_text());
+            assert_eq!(big.rows.len(), 40, "{name}: {}", big.to_text());
+            // A row rests on its own module's site at most, not on every module's.
+            let sites = big.rows.iter().map(|r| r.unknown.len()).max().unwrap_or(0);
+            let linear = cb.peak <= 4 * cs.peak + 40 && cb.held <= 4 * cs.held + 40;
+            if sites > 1 || !linear {
+                report.push(format!(
+                    "{name}: 10 modules {cs:?}, 40 modules {cb:?}, a row rests on up to {sites} sites"
+                ));
+            }
+        }
+        assert!(report.is_empty(), "{}", report.join("\n"));
+    }
+
+    /// `--max-tuples`: past the limit the evaluation stops and names the relation whose rules
+    /// were running; at what it held, it does not stop.
+    #[test]
+    fn an_evaluation_past_its_limit_stops_naming_the_relation() {
+        let fb = modules(10);
+        let c = compile(&parse(REPEATED).unwrap(), &Names::default()).unwrap();
+        let (_, cost) = evaluate_within(&c, &fb, None).unwrap();
+        assert!(evaluate_within(&c, &fb, Some(cost.peak)).is_ok());
+        let e = evaluate_within(&c, &fb, Some(5)).unwrap_err();
+        assert_eq!(e.limit, 5);
+        assert_eq!(e.relation, "again", "{e}");
+        assert_eq!(
+            e.to_string(),
+            "the evaluation went over 5 tuples (--max-tuples) in the rules of again; give fewer documents at once or a higher limit"
+        );
     }
 
     #[test]

@@ -6,6 +6,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec query --max-tuples N` stops a run that holds more than N tuples (a fact a rule
+  derives, a site such a fact rests on, a derivation not yet added) with exit 2 and
+  `query <file>: the evaluation went over N tuples (--max-tuples) in the rules of <relation>`,
+  printing no row, where a run over many documents was killed for its memory (exit 143, which
+  reads like any other end). The library has it as `run_within`, with what a run held (`Cost`).
+  No limit by default.
 - `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
   a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
   marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
@@ -31,6 +37,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Fixed
 
+- `codespec query` holds memory linear in the documents where it grew with their square or
+  cube. A site nothing read (a foreign statement without a call list, an opaque function) in one
+  module made every row of every other module rest on it, through a negation of a relation whose
+  rule checks a pattern, a names list or a node id of the field the site leaves open; and a join
+  through such a field (`reaches(F, G), reaches(G, F)` with `G` open) repeated the rest of the
+  body once per fact. Now a rule's condition narrows the open field (a value of the documents
+  matches it only when it satisfies the condition; no value is in an empty names list), an open
+  node id matches no node of the documents, each site's facts stay apart, and an atom whose
+  variables are all bound runs once. Rows rest on fewer sites. On 40 one-file modules the three
+  shapes held at most 7,001, 11,240 and 2,694,881 tuples before, and 720, 480 and 640 now; time
+  not measured.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.

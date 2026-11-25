@@ -232,6 +232,7 @@ Usage: codespec query [OPTIONS] [ARGS]...
 | `--names <FILE>` | no | none | none | A JSON object of list name to an array of strings, each replacing the names list of that name the module declares (a list it does not declare is left alone, so the file `codespec check --names` reads serves here too). |
 | `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the documents, for the effect and syscall relations; repeat for several. |
 | `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document, for the syscall and effect relations. |
+| `--max-tuples <N>` | no | none | none | Stop with exit 2 when the evaluation holds more than N tuples: a fact the program derives, a site such a fact rests on and a derivation not yet added count one each. Bounds the memory of a run over many documents; none by default. |
 
 ## `codespec edit`
 
