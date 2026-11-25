@@ -18,8 +18,8 @@ scope:
   path: adapters/java/testdata/project-inherited-entries
 revision: 6
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T22:16:33Z", actor: "human:timo", revision: 5}
-- {from: "proposed", to: "active", at: "2026-11-24T22:16:33Z", actor: "human:timo", revision: 6}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 5}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 6}
 ---
 # Story: a resource method gets its http entry from JAX-RS annotations on the interface it implements
 

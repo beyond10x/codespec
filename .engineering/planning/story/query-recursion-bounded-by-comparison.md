@@ -16,8 +16,8 @@ scope:
   path: docs/query-language.md
 revision: 5
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-24T22:16:38Z", actor: "human:timo", revision: 4}
-- {from: "proposed", to: "active", at: "2026-11-24T22:16:38Z", actor: "human:timo", revision: 5}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 4}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 5}
 ---
 # Story: cq accepts a recursion whose counter is bounded by a comparison with a finite value
 
