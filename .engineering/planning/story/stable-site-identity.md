@@ -28,8 +28,8 @@ scope:
   path: website/docs/guides/map-a-repository-to-syscalls.md
 revision: 11
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-25T00:32:27Z", actor: "human:timo", revision: 10}
-- {from: "proposed", to: "active", at: "2026-11-25T00:32:27Z", actor: "human:timo", revision: 11}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 10}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 11}
 ---
 # Story: A call site is named by its function, its callee and its ordinal, never by line
 

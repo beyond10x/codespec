@@ -32,8 +32,8 @@ scope:
   path: website/docs/reference/cir-1.md
 revision: 9
 transitions:
-- {from: "draft", to: "proposed", at: "2026-11-25T00:32:27Z", actor: "human:timo", revision: 8}
-- {from: "proposed", to: "active", at: "2026-11-25T00:32:28Z", actor: "human:timo", revision: 9}
+- {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 8}
+- {from: "proposed", to: "active", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 9}
 ---
 # Story: The Go reader records net/http and echo routes as http entries
 
