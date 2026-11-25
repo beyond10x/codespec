@@ -37,11 +37,16 @@
 //! | `syscall-added`, `syscall-removed` | the function | `site`: the call-site id (`{callee, n}`, the crate doc of `b10x-codespec-effects`, § Call sites) of the function's own call that leads there; `value`: the syscall |
 //! | `raise-added`, `raise-removed` | the function | `value`: an extern type `path.name` in its `raises` in one revision only |
 //! | `reach-gained`, `reach-lost` | the function | none: reached from the entries in the new revision only, or in the old only; a unit added or removed gives no reach delta |
-//! | `entry-added`, `entry-removed` | the entry's function | `value`: `<kind> <method> <on>` (`http GET /api/items`), the method empty outside `http` |
+//! | `entry-added`, `entry-removed` | the entry's function | `value`: `<kind> <method> <on>` (`http GET /api/items`); `<kind> <on>` without a method (outside `http`, or an `http` entry for any method: `scheduled every=5m`) |
 //! | `unknown-added`, `unknown-removed` | the function | `value`: an `unknown` reason of `codespec effects` (its text, without its position) present in one revision only |
 //!
 //! `unit` is `<module path>.<function key>` (the module's `path`, or its `name` without one), for
-//! functions and opaque functions alike. A function is compared only with the function of the
+//! functions and opaque functions alike. What runs when a module loads is a unit too: its
+//! variable initializers (and the calls of its `inits`) are `<module path>.init:vars` (the name
+//! `init:vars` of `b10x-codespec-effects`, which no function key can be, since a Go `init`
+//! function has the key `init`), with their effects, syscalls, raises and `unknown` reasons and
+//! no signature or reach delta; and every Go `init` function of a module is the one unit
+//! `<module path>.init`, its facts the union of theirs. A function is compared only with the function of the
 //! same unit; an opaque function has no signature, so a unit that is opaque in either revision
 //! gives no `signature` delta. No field holds a file or a line: a change that only moves lines,
 //! or moves a function to another file of its module, gives no delta. With [`Options::report`],
@@ -56,7 +61,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use codespec_effects::{Barrier, CallSite, DispatchMode, Summary};
+use codespec_effects::{Barrier, CallSite, DispatchMode, FuncEffects, Summary};
 use codespec_model::Module;
 use serde::{Deserialize, Serialize};
 
@@ -231,6 +236,21 @@ fn entries(modules: &[Module], opts: &Options) -> Vec<String> {
     out
 }
 
+/// Add what the effects report says of one function to the unit `u`.
+fn absorb(u: &mut Unit, f: &FuncEffects) {
+    u.effects.extend(f.effects.iter().cloned());
+    u.raises.extend(f.raises.iter().cloned());
+    u.unknown.extend(f.unknown.iter().map(|x| x.reason.clone()));
+    for s in &f.syscalls {
+        if s.sites.is_empty() {
+            u.syscalls.insert((None, s.name.clone()));
+        }
+        for site in &s.sites {
+            u.syscalls.insert((Some(site.clone()), s.name.clone()));
+        }
+    }
+}
+
 /// The facts of the revision `modules`.
 fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
     let eopts = codespec_effects::Options {
@@ -263,7 +283,7 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
 
     // The report lists the functions module by module in the order given, each key of a module
     // once: walk the modules alongside it.
-    let report = codespec_effects::analyze_set(modules, opts.summaries, &eopts);
+    let (report, at_load) = codespec_effects::analyze_at_load(modules, opts.summaries, &eopts);
     let mut consumed: Vec<BTreeSet<String>> = vec![BTreeSet::new(); modules.len()];
     let mut mi = 0;
     for f in &report.funcs {
@@ -282,18 +302,20 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
             ));
         };
         consumed[mi].insert(f.name.clone());
-        let u = units.entry(format!("{}.{}", label(m), f.name)).or_default();
-        u.effects = f.effects.iter().cloned().collect();
-        u.raises = f.raises.iter().cloned().collect();
-        u.unknown = f.unknown.iter().map(|x| x.reason.clone()).collect();
-        for s in &f.syscalls {
-            if s.sites.is_empty() {
-                u.syscalls.insert((None, s.name.clone()));
-            }
-            for site in &s.sites {
-                u.syscalls.insert((Some(site.clone()), s.name.clone()));
-            }
-        }
+        absorb(
+            units.entry(format!("{}.{}", label(m), f.name)).or_default(),
+            f,
+        );
+    }
+    // The variable initializers are the unit `<module>.init:vars`; a Go `init` after the first
+    // joins the unit `<module>.init` of the first.
+    for (mi, f) in &at_load {
+        absorb(
+            units
+                .entry(format!("{}.{}", label(&modules[*mi]), f.name))
+                .or_default(),
+            f,
+        );
     }
 
     let reach = codespec_effects::reach(modules, &eopts)?;
@@ -313,7 +335,11 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
             if reported_label(l) {
                 entries.insert((
                     format!("{l}.{}", e.func),
-                    format!("{} {} {}", e.kind, e.method, e.on),
+                    if e.method.is_empty() {
+                        format!("{} {}", e.kind, e.on)
+                    } else {
+                        format!("{} {} {}", e.kind, e.method, e.on)
+                    },
                 ));
             }
         }

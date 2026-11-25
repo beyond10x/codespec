@@ -121,6 +121,15 @@
 //! and a call of a callee inserted before an existing call of it makes the existing one `@2`. A
 //! call of another callee, before or after, changes no id.
 //!
+//! A function literal that a reason names (`calls <func> which is incomplete`) is named the same
+//! way, without a position: `<holder>.lambda@<n>`, `holder` the key of the function that holds it
+//! (the name of the literal for a literal inside a literal; `init:vars`, [`VAR_INIT`], for one in
+//! a variable initializer), `n` counting from 1 per holder over its own literals (not those
+//! inside them) in the order its statements and expressions are walked for sites above, a
+//! `foreign` statement's `lambda` call refs at that statement in the order listed, an opaque
+//! function's in the order listed. Like a site, it keeps its name when lines move; the first literal of `Shout` is `Shout.lambda@1`, and in a reason of a
+//! function of another module `<module path>.Shout.lambda@1`.
+//!
 //! # Dispatch and reachability
 //!
 //! [`Options::dispatch`] picks how a call through an interface or a function value is resolved:
@@ -768,6 +777,23 @@ pub fn analyze(m: &Module, summaries: &[Summary]) -> Report {
 /// fixed point over the whole set. A summary entry for a function a document of the set defines
 /// is not used, and the report notes it.
 pub fn analyze_set(modules: &[Module], summaries: &[Summary], opts: &Options) -> Report {
+    set::analyze(modules, summaries, opts).0
+}
+
+/// The name [`analyze_at_load`] gives a module's variable initializers: `init:vars`, never a
+/// function key, since a Go `init` function already has the key `init`.
+pub const VAR_INIT: &str = "init:vars";
+
+/// [`analyze_set`], and what runs when a module of the set loads that the report's `funcs` do not
+/// list, each entry with the index of its module in `modules`, computed on the same call graph:
+/// the module's variable initializers and the calls of its `inits`, named [`VAR_INIT`] with an
+/// empty `pos`; and every Go `init` function of a module after the first, named `init` (the
+/// report lists one function per key).
+pub fn analyze_at_load(
+    modules: &[Module],
+    summaries: &[Summary],
+    opts: &Options,
+) -> (Report, Vec<(usize, FuncEffects)>) {
     set::analyze(modules, summaries, opts)
 }
 

@@ -394,3 +394,23 @@ fn adv_an_entry_naming_another_package_is_its_function_entry() {
          reach-gained example.com/probe.Keep\n"
     );
 }
+
+/// An entry without a method is `<kind> <on>`, one space: a `scheduled` entry, and an `http`
+/// entry for any method.
+#[test]
+fn an_entry_without_a_method_is_its_kind_and_on() {
+    let old = read_dir(&fixtures().join("raise/a")).unwrap();
+    let mut new = old.clone();
+    for (kind, on) in [("scheduled", "every=5m"), ("http", "/any")] {
+        new[0].entries.push(
+            serde_json::from_value(serde_json::json!({"kind": kind, "func": "Check", "on": on}))
+                .unwrap(),
+        );
+    }
+    let r = diff(&old, &new, &Options::default()).unwrap();
+    assert_eq!(
+        r.to_text(),
+        "entry-added example.com/checks.Check http /any\n\
+         entry-added example.com/checks.Check scheduled every=5m\n"
+    );
+}

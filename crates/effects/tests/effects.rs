@@ -213,7 +213,7 @@ fn calls_inside_a_lambda_count_and_a_call_of_a_function_value_dispatches_to_its_
         reasons,
         [
             ("m.go:5", "foreign statement"),
-            ("m.go:7", "calls func literal at m.go:4 which is incomplete"),
+            ("m.go:7", "calls f.lambda@1 which is incomplete"),
         ]
     );
 }
