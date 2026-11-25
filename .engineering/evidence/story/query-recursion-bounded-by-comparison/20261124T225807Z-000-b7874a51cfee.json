@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-24T22:58:07Z",
+  "actor": "human:operator",
+  "artifact": "story:query-recursion-bounded-by-comparison",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "cargo test -p b10x-codespec-query --locked at adf8d01f: 105 passed, 0 failed (104/1 on base); fmt and clippy exit 0; adversary round 1 (8d7e40bb): 1 finding fixed, mutant test for the positive-literal check added",
+    "reference": "adf8d01f"
+  }
+}

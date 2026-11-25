@@ -56,9 +56,11 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
@@ -158,7 +160,8 @@ import javax.tools.ToolProvider;
  * extern: a call into a jar is an extern with its declared signature, a class of another package
  * of the project an extern of that package. Quarkus 3 maps to the additive {@code entries}, {@code
  * beans} and {@code injects} of the module: {@code @Path} with a verb is an {@code http} entry
- * point, {@code @Scheduled} and {@code @Incoming} entry points, {@code @ApplicationScoped},
+ * point, also on a class method implementing such an interface method ({@link #http}), {@code
+ * @Scheduled} and {@code @Incoming} entry points, {@code @ApplicationScoped},
  * {@code @Singleton}, {@code @RequestScoped} and {@code @Dependent} a bean, {@code @Transactional} a
  * mark in {@code transactional}, {@code @Produces} and {@code @Consumes} the media types of an http entry, {@code @Inject} an
  * injection resolved to the one bean or to an extern. A {@code @RegisterRestClient} interface is
@@ -1310,7 +1313,7 @@ public final class Reader {
     }
 
     /**
-     * Whether an entry names the method: an http method of a {@code @Path} class, a {@code @Scheduled}
+     * Whether an entry names the method: an http method ({@link #http}), a {@code @Scheduled}
      * or {@code @Incoming} method, the {@code toResponse} of a registered {@code ExceptionMapper}.
      * {@link #framework} makes the entries.
      */
@@ -1322,12 +1325,8 @@ public final class Reader {
         if (annotation(m, SCHEDULED) != null || annotation(m, INCOMING) != null) {
             return true;
         }
-        if (annotation(te, PATH) != null) {
-            for (String verb : HTTP_METHODS) {
-                if (annotation(m, "jakarta.ws.rs." + verb) != null) {
-                    return true;
-                }
-            }
+        if (!http(m).verbs().isEmpty()) {
+            return true;
         }
         return te.getKind() == ElementKind.CLASS && exceptionMapper(te) && mapperShape(te) == null && m.equals(mapperMethod(te));
     }
@@ -1396,31 +1395,27 @@ public final class Reader {
      * Whether a parameter of an http entry is a path parameter the framework alone passes: no
      * annotation, or {@code @PathParam} of its own name, a template variable {@code {name}} without a
      * regular expression in the entry's joined path, and no call of the method in the project's
-     * sources. The framework hands it the non-empty segment it matched, converted, never null.
+     * sources. The framework hands it the non-empty segment it matched, converted, never null. A
+     * method bound by an interface method's annotations ({@link #http}) has its parameter's
+     * annotations read from the interface method's parameter in its place.
      */
     private boolean pathParameter(VariableElement v) {
         if (!project || !(v.getEnclosingElement() instanceof ExecutableElement)) {
             return false;
         }
         ExecutableElement m = (ExecutableElement) v.getEnclosingElement();
-        TypeElement te = (TypeElement) m.getEnclosingElement();
-        AnnotationMirror classPath = annotation(te, PATH);
-        boolean http = false;
-        for (String verb : HTTP_METHODS) {
-            http |= annotation(m, "jakarta.ws.rs." + verb) != null;
-        }
-        if (classPath == null || !http) {
+        Http h = http(m);
+        if (h.verbs().isEmpty()) {
             return false;
         }
         String name = v.getSimpleName().toString();
-        List<? extends AnnotationMirror> anns = v.getAnnotationMirrors();
+        VariableElement bound = h.params().equals(m) ? v : h.params().getParameters().get(m.getParameters().indexOf(v));
+        List<? extends AnnotationMirror> anns = bound.getAnnotationMirrors();
         if (!anns.isEmpty() && !(anns.size() == 1 && name.equals(attribute(anns.get(0), "value"))
-            && annotation(v, PATH_PARAM) != null)) {
+            && annotation(bound, PATH_PARAM) != null)) {
             return false;
         }
-        AnnotationMirror methodPath = annotation(m, PATH);
-        String path = joinPaths(attribute(classPath, "value"), methodPath == null ? null : attribute(methodPath, "value"));
-        return List.of(path.split("/")).contains("{" + name + "}") && !calledInProject(m);
+        return List.of(h.path().split("/")).contains("{" + name + "}") && !calledInProject(m);
     }
 
     /**
@@ -2720,7 +2715,6 @@ public final class Reader {
             b.put("pos", declPos(cu, ct, ct.getModifiers()));
             outBeans.add(b);
         }
-        AnnotationMirror classPath = annotation(te, PATH);
         for (Tree m : ct.getMembers()) {
             Element e = trees.getElement(new TreePath(p, m));
             if (m instanceof VariableTree && !e.getModifiers().contains(Modifier.STATIC) && annotation(e, INJECT) != null) {
@@ -2736,17 +2730,21 @@ public final class Reader {
                     }
                     continue;
                 }
-                AnnotationMirror methodPath = annotation(e, PATH);
                 AnnotationMirror scheduled = annotation(e, SCHEDULED);
                 AnnotationMirror incoming = annotation(e, INCOMING);
                 if (annotation(e, TRANSACTIONAL) != null || annotation(te, TRANSACTIONAL) != null) {
                     outTransactional.add(fn.key());
                 }
-                for (String verb : HTTP_METHODS) {
-                    if (classPath != null && annotation(e, "jakarta.ws.rs." + verb) != null) {
-                        entry("http", fn.key(), verb, joinPaths(attribute(classPath, "value"), methodPath == null ? null : attribute(methodPath, "value")),
-                            media(e, te, CONSUMES), media(e, te, PRODUCES));
+                Http h = http(ee);
+                if (h.why() != null) {
+                    if (h.atClass()) {
+                        refuseDecl(cu, ct, ct.getModifiers(), cls, h.why());
+                    } else {
+                        refuseDecl(cu, m, ((MethodTree) m).getModifiers(), fn.key(), h.why());
                     }
+                }
+                for (String verb : h.verbs()) {
+                    entry("http", fn.key(), verb, h.path(), media(h.media(), CONSUMES), media(h.media(), PRODUCES));
                 }
                 if (scheduled != null) {
                     String cron = attribute(scheduled, "cron");
@@ -2788,11 +2786,176 @@ public final class Reader {
         outEntries.add(x);
     }
 
-    /** The media types of {@code ann} on the method, else on its class; empty when neither declares it. */
-    private static List<String> media(Element method, TypeElement cls, String ann) {
-        AnnotationMirror am = annotation(method, ann);
-        if (am == null) {
-            am = annotation(cls, ann);
+    /**
+     * How JAX-RS serves a method: its verbs (empty when it serves none), the joined path, the
+     * elements its media types are read from in order, and the method whose parameters carry the
+     * parameter annotations; or, with {@code why}, a refusal at the method's line or, with {@code
+     * atClass}, at its class's line, and no verb.
+     */
+    private record Http(List<String> verbs, String path, List<Element> media, ExecutableElement params, String why, boolean atClass) {
+    }
+
+    private static final Http NO_HTTP = new Http(List.of(), "", List.of(), null, null, false);
+
+    /**
+     * How JAX-RS serves {@code m}. A method of a {@code @Path} type with a verb of its own: that verb on
+     * the type's path joined with the method's. A method of a class that implements a method of an
+     * interface carrying a verb (an interface of the sources or of the class path, directly or through
+     * another interface): that method's verb and {@code @Path} under the class's {@code @Path}, else
+     * the one {@code @Path} of the interfaces the class implements, directly or through another (the
+     * class is a root resource through it, whichever interface declares the method), its media types
+     * the interface method's, else the class's, else the declaring interface's, and its parameters
+     * bound by the interface method's. JAX-RS applies an
+     * interface method's annotations to an implementing method that declares none of its own. No
+     * entry when neither the class nor an interface it implements carries a {@code @Path}: the class
+     * is no root resource. Refused,
+     * with no verb: a class method with JAX-RS annotations of its own (on it or a parameter) whose
+     * verb or {@code @Path} differ from the interface method's (at its line), interface methods that
+     * give the method different verbs or paths, a class {@code @Path} that differs from the {@code
+     * @Path} of an interface it implements, and, with no class {@code @Path}, interfaces it implements
+     * with different {@code @Path} values (at the class's line).
+     */
+    private Http http(ExecutableElement m) {
+        if (!(m.getEnclosingElement() instanceof TypeElement) || m.getKind() != ElementKind.METHOD) {
+            return NO_HTTP;
+        }
+        TypeElement te = (TypeElement) m.getEnclosingElement();
+        AnnotationMirror classPath = annotation(te, PATH);
+        List<String> own = verbs(m);
+        String ownPath = pathValue(m);
+        List<ExecutableElement> inherited = new ArrayList<>();
+        if (te.getKind() == ElementKind.CLASS && !m.getModifiers().contains(Modifier.STATIC)) {
+            for (TypeElement ie : superInterfaces(te)) {
+                for (Element x : ie.getEnclosedElements()) {
+                    if (x.getKind() == ElementKind.METHOD && !verbs((ExecutableElement) x).isEmpty()
+                        && elements.overrides(m, (ExecutableElement) x, te)) {
+                        inherited.add((ExecutableElement) x);
+                    }
+                }
+            }
+        }
+        if (inherited.isEmpty()) {
+            if (classPath == null || own.isEmpty()) {
+                return NO_HTTP;
+            }
+            return new Http(own, joinPaths(attribute(classPath, "value"), ownPath), List.of(m, te), m, null, false);
+        }
+        String name = te.getSimpleName() + "." + m.getSimpleName();
+        ExecutableElement im = inherited.get(0);
+        TypeElement ie = (TypeElement) im.getEnclosingElement();
+        for (ExecutableElement other : inherited.subList(1, inherited.size())) {
+            if (!binding(other).equals(binding(im))) {
+                return refusal(name + " implements http methods of two interfaces that differ, " + ie.getQualifiedName() + "."
+                    + im.getSimpleName() + " (" + binding(im) + ") and " + ((TypeElement) other.getEnclosingElement()).getQualifiedName()
+                    + "." + other.getSimpleName() + " (" + binding(other) + "): which one JAX-RS serves is not read", true);
+            }
+        }
+        // The class is a root resource through its own @Path or through the @Path of an interface it
+        // implements, directly or through another: not through the interface that declares the method.
+        Map<String, TypeElement> roots = new LinkedHashMap<>();
+        for (TypeElement x : superInterfaces(te)) {
+            String iface = pathValue(x);
+            if (iface != null) {
+                roots.putIfAbsent(joinPaths(iface, null), x);
+            }
+        }
+        String resource = classPath == null ? null : joinPaths(attribute(classPath, "value"), null);
+        for (Map.Entry<String, TypeElement> root : roots.entrySet()) {
+            if (resource != null && !resource.equals(root.getKey())) {
+                return refusal("class " + te.getSimpleName() + " has a @Path of its own (" + resource
+                    + ") that differs from the @Path (" + root.getKey() + ") of interface "
+                    + root.getValue().getQualifiedName() + " it implements: which one JAX-RS serves is not read", true);
+            }
+        }
+        if (resource == null) {
+            if (roots.isEmpty()) {
+                return NO_HTTP;
+            }
+            if (roots.size() > 1) {
+                List<String> named = new ArrayList<>();
+                roots.forEach((path, x) -> named.add(x.getQualifiedName() + " (" + path + ")"));
+                return refusal("class " + te.getSimpleName() + " has no @Path of its own and implements interfaces with different @Path values, "
+                    + String.join(" and ", named) + ": which one JAX-RS serves is not read", true);
+            }
+            resource = roots.keySet().iterator().next();
+        }
+        String methodPath = pathValue(im);
+        if (ownJaxrs(m)) {
+            boolean same = own.equals(verbs(im)) && Objects.equals(ownPath == null ? null : joinPaths(ownPath, null),
+                methodPath == null ? null : joinPaths(methodPath, null));
+            if (!same) {
+                return refusal(name + " has JAX-RS annotations of its own (" + (own.isEmpty() ? "no verb" : String.join(" ", own))
+                    + (ownPath == null ? "" : " @Path " + joinPaths(ownPath, null)) + ") that differ from those of "
+                    + ie.getQualifiedName() + "." + im.getSimpleName() + " it implements (" + binding(im)
+                    + "): JAX-RS then ignores the interface method's, and the reader takes neither", false);
+            }
+            return new Http(own, joinPaths(resource, ownPath), List.of(m, te, ie), m, null, false);
+        }
+        return new Http(verbs(im), joinPaths(resource, methodPath), List.of(im, te, ie), im, null, false);
+    }
+
+    private static Http refusal(String why, boolean atClass) {
+        return new Http(List.of(), "", List.of(), null, why, atClass);
+    }
+
+    /** The verbs of {@code HTTP_METHODS} {@code m} carries, in that order. */
+    private static List<String> verbs(ExecutableElement m) {
+        List<String> out = new ArrayList<>();
+        for (String verb : HTTP_METHODS) {
+            if (annotation(m, "jakarta.ws.rs." + verb) != null) {
+                out.add(verb);
+            }
+        }
+        return out;
+    }
+
+    /** The value of the {@code @Path} of {@code e}, or null without one. */
+    private static String pathValue(Element e) {
+        AnnotationMirror am = annotation(e, PATH);
+        return am == null ? null : attribute(am, "value");
+    }
+
+    /** An interface method's verbs and path joined from its interface's {@code @Path} and its own, as a refusal names them. */
+    private static String binding(ExecutableElement im) {
+        return String.join(" ", verbs(im)) + " " + joinPaths(pathValue(im.getEnclosingElement()), pathValue(im));
+    }
+
+    /** Whether {@code m} or one of its parameters carries an annotation of {@code jakarta.ws.rs}. */
+    private static boolean ownJaxrs(ExecutableElement m) {
+        List<Element> carriers = new ArrayList<>(m.getParameters());
+        carriers.add(m);
+        for (Element e : carriers) {
+            for (AnnotationMirror am : e.getAnnotationMirrors()) {
+                String qn = ((TypeElement) am.getAnnotationType().asElement()).getQualifiedName().toString();
+                if (qn.startsWith("jakarta.ws.rs.")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Every interface {@code te} implements, directly or through another interface, each once, in declaration order. */
+    private Set<TypeElement> superInterfaces(TypeElement te) {
+        Set<TypeElement> out = new LinkedHashSet<>();
+        List<TypeMirror> todo = new ArrayList<>(te.getInterfaces());
+        while (!todo.isEmpty()) {
+            TypeElement ie = (TypeElement) types.asElement(todo.remove(0));
+            if (ie != null && out.add(ie)) {
+                todo.addAll(ie.getInterfaces());
+            }
+        }
+        return out;
+    }
+
+    /** The media types of {@code ann} on the first of {@code from} that declares it; empty when none does. */
+    private static List<String> media(List<Element> from, String ann) {
+        AnnotationMirror am = null;
+        for (Element e : from) {
+            am = annotation(e, ann);
+            if (am != null) {
+                break;
+            }
         }
         List<String> out = new ArrayList<>();
         if (am == null) {
