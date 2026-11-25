@@ -79,6 +79,19 @@ func encode(m *Module) (node, error) {
 	if len(m.Inits) > 0 {
 		doc["inits"] = e.callRefs(m.Inits)
 	}
+	if len(m.Entries) > 0 {
+		doc["entries"] = e.list(len(m.Entries), func(i int) any {
+			x := m.Entries[i]
+			n := node{"kind": x.Kind, "func": x.Func, "on": x.On}
+			if x.Method != "" {
+				n["method"] = x.Method
+			}
+			if x.Path != "" {
+				n["path"] = x.Path
+			}
+			return n
+		})
+	}
 	if len(m.Linknames) > 0 {
 		doc["linknames"] = e.list(len(m.Linknames), func(i int) any {
 			return node{"name": m.Linknames[i].Name, "target": m.Linknames[i].Target}

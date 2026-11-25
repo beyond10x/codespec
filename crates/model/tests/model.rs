@@ -1725,6 +1725,150 @@ fn media_types_on_an_entry_and_transactional_functions_read_and_are_canonical() 
     assert_eq!(again, m);
 }
 
+/// `with_framework` with the import path `example.com/shop` and an `http` entry whose handler
+/// `Items.List` another module, `example.com/shop/handlers`, declares.
+fn with_handler_elsewhere() -> serde_json::Value {
+    let mut v = with_framework();
+    v["path"] = serde_json::json!("example.com/shop");
+    v["entries"]
+        .as_array_mut()
+        .expect("entries")
+        .push(serde_json::json!(
+            {"kind": "http", "func": "Items.List", "method": "GET", "on": "/api/items",
+             "path": "example.com/shop/handlers"}
+        ));
+    v
+}
+
+#[test]
+fn an_entry_with_a_path_names_a_function_of_that_module_and_reads() {
+    let bytes = serde_json::to_vec(&with_handler_elsewhere()).expect("json");
+    let m = Module::from_json(&bytes).expect("admitted");
+    assert_eq!(m.entries[2].path, "example.com/shop/handlers");
+    assert_eq!(m.entries[0].path, "");
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    assert_eq!(again, m);
+    assert!(
+        !m.to_json().contains("\"path\": \"\""),
+        "an empty path is written"
+    );
+}
+
+#[test]
+fn an_entry_whose_path_is_the_modules_own_is_refused_naming_it() {
+    let mut v = with_handler_elsewhere();
+    v["entries"][2]["path"] = serde_json::json!("example.com/shop");
+    let why = refused(&v);
+    assert!(
+        why.contains("entry point Items.List names the module's own path example.com/shop"),
+        "{why}"
+    );
+}
+
+/// With a `path` the document holds no function to check `func` against: it must still be a
+/// function key, and the path a module path.
+#[test]
+fn an_entry_with_a_path_whose_func_is_no_key_or_whose_path_is_no_module_path_is_refused() {
+    for bad in ["a;b", "T.m.x", "", "T."] {
+        let mut v = with_handler_elsewhere();
+        v["entries"][2]["func"] = serde_json::json!(bad);
+        let why = refused(&v);
+        assert!(
+            why.contains(&format!("entry point {bad:?} of example.com/shop/handlers")),
+            "{bad:?}: {why}"
+        );
+    }
+    let mut v = with_handler_elsewhere();
+    v["entries"][2]["path"] = serde_json::json!("a//b");
+    let why = refused(&v);
+    assert!(why.contains("\"a//b\", which is no module path"), "{why}");
+}
+
+#[test]
+fn an_entry_of_another_kind_than_http_with_a_path_is_refused_naming_its_kind() {
+    for kind in ["scheduled", "incoming", "exception-mapper"] {
+        let mut v = with_handler_elsewhere();
+        v["entries"][2]["kind"] = serde_json::json!(kind);
+        v["entries"][2]["method"] = serde_json::json!("");
+        let why = refused(&v);
+        assert!(
+            why.contains(&format!(
+                "entry point Items.List of kind {kind} has a path: only an http entry names a function of another module"
+            )),
+            "{kind}: {why}"
+        );
+    }
+}
+
+#[test]
+fn an_entry_without_a_path_still_names_a_function_of_the_module() {
+    let mut v = with_handler_elsewhere();
+    v["entries"][2]
+        .as_object_mut()
+        .expect("entry")
+        .remove("path");
+    assert!(
+        refused(&v).contains("entry point names Items.List, which is no function of the module")
+    );
+}
+
+/// A module whose exported `Get` raises, and an `http` entry naming `Get` of another module.
+fn raising_get_with_entry_elsewhere() -> serde_json::Value {
+    let exc = serde_json::json!({"k": "extern", "path": "jakarta.ws.rs", "name": "WebApplicationException"});
+    serde_json::json!({
+        "format": "cir/1",
+        "name": "res",
+        "path": "example.com/res",
+        "reader": {"language": "java", "name": "test", "version": "0"},
+        "types": [],
+        "funcs": [{
+            "name": "Get",
+            "exported": true,
+            "params": [],
+            "results": [],
+            "raises": [exc.clone()],
+            "body": [{
+                "k": "raise",
+                "x": {
+                    "k": "extern",
+                    "path": "jakarta.ws.rs.WebApplicationException",
+                    "name": "<init>",
+                    "args": [{"k": "lit", "value": "\"no\"", "t": {"k": "string"}}],
+                    "t": exc.clone()
+                },
+                "pos": "R.java:3"
+            }],
+            "pos": "R.java:2"
+        }],
+        "externs": [{
+            "path": "jakarta.ws.rs.WebApplicationException",
+            "name": "<init>",
+            "params": [{"k": "string"}],
+            "results": [exc]
+        }],
+        "layout": ["func:Get"],
+        "entries": [{"kind": "http", "func": "Get", "method": "GET", "on": "/r", "path": "example.com/other"}]
+    })
+}
+
+/// An entry naming a function of another module does not admit the module's own function of the
+/// same key to raise: it is refused as it would be with no entry.
+#[test]
+fn a_raising_function_whose_key_only_an_entry_of_another_module_names_is_refused() {
+    let v = raising_get_with_entry_elsewhere();
+    let why = refused(&v);
+    assert!(why.contains("function Get raises"), "{why}");
+    assert!(why.contains("no entry names it"), "{why}");
+    let mut own = v.clone();
+    own["entries"][0]
+        .as_object_mut()
+        .expect("entry")
+        .remove("path");
+    let bytes = serde_json::to_vec(&own).expect("json");
+    Module::from_json(&bytes).expect("an entry of the module admits Get to raise");
+}
+
 #[test]
 fn a_persistence_mark_reads_and_one_on_a_type_or_field_the_module_lacks_is_refused() {
     let mut v = with_framework();

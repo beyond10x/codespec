@@ -1,8 +1,8 @@
 //! `codespec`: validate `cir/1` documents, print the schema and the feature vocabulary, apply
 //! passes, run reader and writer adapters, compare implementations of an example on seeded traces
 //! (`harness`), run the conformance kit against an adapter (`conform`), measure how much of a
-//! module a reader read (`measure`), run the built-in defect checks (`check`) and change source
-//! code with a cq edit program (`edit`).
+//! module a reader read (`measure`), run the built-in defect checks (`check`), compare the code
+//! facts of two revisions (`diff`) and change source code with a cq edit program (`edit`).
 //!
 //! An adapter is a program in whatever language suits the source or target language best. A reader
 //! prints one `cir/1` module on stdout; a writer reads one on stdin. This binary validates every
@@ -24,6 +24,15 @@ fn main() -> ExitCode {
     let command = Cli::parse().command;
     if let Cmd::Check { .. } = command {
         return match check(command) {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("codespec: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    if let Cmd::Diff { .. } = command {
+        return match diff(command) {
             Ok(code) => code,
             Err(e) => {
                 eprintln!("codespec: {e}");
@@ -129,6 +138,47 @@ fn check(command: Cmd) -> Result<ExitCode, String> {
         print!("{}", r.to_text());
     }
     Ok(if r.findings.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+/// `codespec diff`: exit 0 with no delta, 1 with deltas; an input error is the caller's 2.
+fn diff(command: Cmd) -> Result<ExitCode, String> {
+    let Cmd::Diff {
+        old,
+        new,
+        summaries,
+        barrier,
+        entry,
+        exported,
+        dispatch,
+        report,
+        format,
+    } = command
+    else {
+        unreachable!("main passes only diff");
+    };
+    let old = codespec_diff::read_dir(&old)?;
+    let new = codespec_diff::read_dir(&new)?;
+    let barrier = read_barrier(barrier.as_deref())?;
+    let summaries = read_summaries(&summaries)?;
+    let opts = codespec_diff::Options {
+        summaries: &summaries,
+        barrier: barrier.as_ref(),
+        report,
+        entries: entry,
+        exported,
+        dispatch: dispatch_mode(Some(&dispatch), true),
+    };
+    let r = codespec_diff::diff(&old, &new, &opts)?;
+    if format == "json" {
+        print!("{}", r.to_json());
+    } else {
+        print!("{}", r.to_text());
+    }
+    Ok(if r.deltas.is_empty() {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -371,6 +421,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
             Ok(())
         }
         Cmd::Check { .. } => check(cmd).map(|_| ()),
+        Cmd::Diff { .. } => unreachable!("main runs diff"),
         Cmd::Query(args) => codespec_cli::query::run(&args).map(|_| ()),
         Cmd::Eval { .. } => unreachable!("main runs eval"),
         Cmd::Edit(_) => unreachable!("main runs edit"),

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-25T02:21:35Z",
+  "actor": "human:operator",
+  "artifact": "story:go-http-entries",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Go reader tests 156 -> 165, model 69 -> 75, edit 112 -> 116, cli measure 9 -> 10; echo fixture one http entry per route with method and path; adversary round 1 (a2e606ea): 3 findings fixed, 2 notes handled; node gate at c7b4b2a0 on build-1d: fmt, clippy -D warnings, tests of model/effects/edit/cli/diff/docs, go test ./... in adapters/go and task docs-check, each exit 0",
+    "reference": "2b4a7ce5"
+  }
+}

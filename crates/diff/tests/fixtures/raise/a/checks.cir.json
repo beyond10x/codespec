@@ -1,0 +1,63 @@
+{
+  "format": "cir/1",
+  "name": "checks",
+  "reader": {
+    "language": "java",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Check",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "Checks.java:4"
+        }
+      ],
+      "pos": "Checks.java:3"
+    }
+  ],
+  "layout": [
+    "func:Check"
+  ],
+  "path": "example.com/checks",
+  "entries": [
+    {
+      "kind": "http",
+      "func": "Check",
+      "method": "GET",
+      "on": "/check"
+    }
+  ]
+}

@@ -361,6 +361,59 @@ fn rename_of_a_function_called_in_its_module_and_from_another_via_extern_gives_s
     assert_eq!(got[1], module_from(want_a));
 }
 
+/// An `http` entry of `api` registering `orders.Load` (`path` `example.com/orders`), one of
+/// `orders` without a path naming its own `Load`, and one of `orders` naming `Load` of `api`.
+fn entry(func: &str, on: &str, path: &str) -> Value {
+    json!({"kind": "http", "func": func, "method": "GET", "on": on, "path": path})
+}
+
+/// Renaming a function rekeys an entry of its own module without a path and an entry of another
+/// module whose `path` is the function's module; an entry whose `path` names another module
+/// keeps its key though it equals the old one.
+#[test]
+fn rename_rekeys_the_entries_naming_the_function_and_no_entry_of_another_module_with_its_key() {
+    let (mut o, mut a) = (orders(), api());
+    let mut v = value(&o.module);
+    v["entries"] = json!([
+        entry("Load", "/own", ""),
+        entry("Load", "/api-load", "example.com/api")
+    ]);
+    o.module = module_from(v);
+    let mut v = value(&a.module);
+    v["entries"] = json!([entry("Load", "/orders", "example.com/orders")]);
+    a.module = module_from(v);
+    let inputs = [o.input(), a.input()];
+    let cs = planned(
+        &inputs,
+        &[rename("example.com/orders.Load", "LoadAll")],
+        &closed(),
+    );
+    let got = cs.expected_as_written();
+    assert_eq!(got[0].entries[0].func, "LoadAll");
+    assert_eq!(got[0].entries[1].func, "Load", "an entry of api's Load");
+    assert_eq!(got[1].entries[0].func, "LoadAll");
+    assert_eq!(got[1].entries[0].path, "example.com/orders");
+}
+
+/// Renaming `orders.Load` leaves an entry of `api` naming `Load` of a third module untouched:
+/// only an entry whose `path` is the renamed function's module is rekeyed.
+#[test]
+fn rename_leaves_an_entry_of_another_module_naming_a_third_modules_function() {
+    let (o, mut a) = (orders(), api());
+    let mut v = value(&a.module);
+    v["entries"] = json!([entry("Load", "/other", "example.com/other")]);
+    a.module = module_from(v);
+    let inputs = [o.input(), a.input()];
+    let cs = planned(
+        &inputs,
+        &[rename("example.com/orders.Load", "LoadAll")],
+        &closed(),
+    );
+    let got = cs.expected_as_written();
+    assert_eq!(got[1].entries[0].func, "Load");
+    assert_eq!(got[1].entries[0].path, "example.com/other");
+}
+
 #[test]
 fn rename_of_a_rust_spelled_function_edits_its_source_spelling() {
     let l = ledger(false);

@@ -7,7 +7,7 @@ title: The Rust reader reads &mut parameters and mutable borrows of places
 summary: A &mut T parameter, a &mut x argument, for x in &mut v, &mut v[i], &mut s.f and methods through a &mut local are read as pointers.
 relations:
 - decomposes: epic:async-network-service-translation
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads `&mut` parameters and mutable borrows of places
 
@@ -38,6 +38,11 @@ which the crate does not declare" (the caller), "a mutable reference `&mut` is o
 Checked correct, no misread: `let p = &mut it; p.count += 10; it.count` evaluates to 11, and a
 `&Vec<i64>` parameter read as the value gives Rust's result. The report's "references dropped"
 did not reproduce as a misread on main: every other form is refused.
+
+Refs codesec#14 item 3, one of its 4 confirmed defects: a function taking `&mut T` ("a mutable
+reference `&mut T` is outside cir/1") is refused whole, so its statements are not in the fact base.
+This story covers the `&mut T` parameter (`bump`, `reset`). The hidden statements of the four
+defects are `story:rust-reader-refused-signature-keeps-body`.
 
 ## Done When
 

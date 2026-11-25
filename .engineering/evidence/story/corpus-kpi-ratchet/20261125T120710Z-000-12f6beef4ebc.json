@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:07:10Z",
+  "actor": "human:operator",
+  "artifact": "story:corpus-kpi-ratchet",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:read-loop-acceptance-round-1",
+    "reference": "corpus-kpi-ratchet.md:101 baseline file and pinned runs",
+    "review": "review-result:read-loop-acceptance-round-1",
+    "outcome": "fixed"
+  }
+}

@@ -7,6 +7,7 @@
 #   code                everything else, and always website/** (pages.yml checks the site),
 #                       docs/** (tests read docs/query-language.md, docs/conformance.md) and
 #                       **/testdata/** (adapters/groovy/testdata/lending/EXPECTED.md is a fixture)
+#                       and the root README.md (codespec-docs writes its badge block)
 #
 # usage: scripts/planning-only.sh < <changed paths, one per line>
 #          exit 0 when every path is planning or prose, 1 when one is code (named on stderr) or
@@ -18,7 +19,7 @@ set -eu
 kind() {
   case "$1" in
     .engineering/*) echo planning ;;
-    website/* | docs/* | */testdata/* | testdata/*) echo code ;;
+    website/* | docs/* | */testdata/* | testdata/* | README.md) echo code ;;
     *.md) echo planning ;;
     *) echo code ;;
   esac
@@ -58,12 +59,13 @@ expect() {
 selftest() {
   failed=0
   expect skip .engineering/planning/story/x.md
-  expect skip .engineering/planning/story/x.md .engineering/reviews/r.md README.md AGENTS.md \
+  expect skip .engineering/planning/story/x.md .engineering/reviews/r.md AGENTS.md \
     CHANGELOG.md adapters/java/README.md ux/findings/UXF-001.md .claude/skills/language-wave/SKILL.md
   expect skip .engineering/aep.toml
   expect run .engineering/planning/story/x.md crates/cli/src/main.rs
   expect run .engineering/planning/story/x.md .github/workflows/check.yml
   expect run README.md scripts/check-parts.txt
+  expect run README.md
   expect run website/docs/getting-started.md
   expect run .engineering/planning/story/x.md website/docs/index.md
   expect run docs/query-language.md

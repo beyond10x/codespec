@@ -7,7 +7,7 @@ title: The Rust reader reads calls, methods and types of other crates as externs
 relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: story:reader-check-externs
-revision: 1
+revision: 2
 ---
 # Story: The Rust reader reads calls, methods and types of other crates as externs
 
@@ -28,6 +28,10 @@ and 1 of 5 functions. Calls give "a call of `serde_json::to_string`, outside the
 table"; error types "`Result<_, serde_json::Error>`: only the crate's closed `enum Error` maps
 to Go's error". The reader's crate doc names this as a limit of the reader, not of Rust
 (`expr.extern`, `expr.extern_method`, `type.extern` unclaimed).
+
+Refs codesec#14 item 2, partly: 3,878 refusals are "a call the crate does not declare" and 2,900
+are "a call outside the reader's table". This story covers calls of another crate's functions, such
+as `serde_json::to_string`. The other cases of both counts are not assigned to a story yet.
 
 ## Acceptance
 

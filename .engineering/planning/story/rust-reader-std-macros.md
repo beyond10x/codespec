@@ -16,7 +16,7 @@ scope:
   path: adapters/rust-read/src/calls.rs
 - confidence: inferred
   path: adapters/rust-read/tests/reader.rs
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads assert!, panic!, matches! and eprintln!
 
@@ -43,6 +43,11 @@ pub fn warn(x: i64) { eprintln!("bad {}", x); }
 
 "the macro assert! is outside cir/1", the same for `panic!`, `matches!` and `eprintln!`. `read 0
 of 4`. Logging and metrics macros are `story:rust-reader-log-and-metric-macros`.
+
+Refs codesec#14 item 2, partly: `assert!` is 3,405 of the 75,187 refusals in the 5,087 documents of
+openai/codex at rust-v0.172.0. This story covers the assert family (`assert!`, `assert_eq!`,
+`debug_assert!`). The other macro invocations (6,296 in all) are only partly assigned: logging and
+metrics macros are `story:rust-reader-log-and-metric-macros`, `select!` is `story:rust-reader-async`.
 
 ## Done When
 
