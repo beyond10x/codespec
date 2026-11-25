@@ -1,0 +1,21 @@
+[package]
+name = "b10x-codespec-corpus"
+description = "The corpus of public repositories the readers are measured on: codespec-corpus fetch writes a candidate snapshot (codespec-corpus-candidates/1) of the top repositories of one GitHub language from gh, codespec-corpus select makes a seeded top-N or random manifest (codespec-corpus/1: name, url, commit) from a snapshot, the same bytes for the same snapshot and arguments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "codespec_corpus"
+
+[[bin]]
+name = "codespec-corpus"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

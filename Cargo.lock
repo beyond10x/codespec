@@ -96,6 +96,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "b10x-codespec-corpus"
+version = "0.13.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "b10x-codespec-edit"
 version = "0.13.0"
 dependencies = [

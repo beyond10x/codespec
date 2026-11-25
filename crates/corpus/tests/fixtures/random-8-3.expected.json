@@ -1,0 +1,27 @@
+{
+  "format": "codespec-corpus/1",
+  "language": "Go",
+  "reader": "go",
+  "mode": "random",
+  "count": 3,
+  "seed": 8,
+  "fetched_on": "2026-11-25",
+  "snapshot_sha256": "38f1d7defc9d93481ebd494af20477a6559dedfcd3ff2b85d1b60ed17f95af9b",
+  "repositories": [
+    {
+      "name": "example-org/alpha",
+      "url": "https://example.com/example-org/alpha",
+      "commit": "1c3dae8b69a17a0381f804ca66935d91d9d72e22"
+    },
+    {
+      "name": "example-org/golf",
+      "url": "https://example.com/example-org/golf",
+      "commit": "fe647517faa6a76cf94edf55607c66b521ad5bd8"
+    },
+    {
+      "name": "example-org/india",
+      "url": "https://example.com/example-org/india",
+      "commit": "fe4d950dd6dc13d7d45aa9bd2360af88e88802c2"
+    }
+  ]
+}

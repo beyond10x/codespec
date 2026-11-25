@@ -12,6 +12,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `cfg(test)` was around it. `codespec measure`
   prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
   JSON shows it as `total.left_out`. A document without the field is unchanged.
+- `codespec-corpus` (`crates/corpus`), the selection step of the reader self-improvement loop:
+  `fetch` writes a candidate snapshot `codespec-corpus-candidates/1` of the top public repositories
+  of one language (Go, Rust or Java) by stars from `gh`, with the commit of each default branch,
+  forks, archived and oversized repositories left out and counted; `select` makes the manifest
+  `codespec-corpus/1` (name, url, commit) as the top N or a seeded random N, the same bytes for the
+  same snapshot, mode, count and seed on any host; `select --check` re-derives a manifest and
+  names the first field that differs. `corpus/<language>/` holds the snapshot and the pinned
+  manifest of each language.
 
 ### Changed
 

@@ -1,0 +1,463 @@
+{
+  "format": "codespec-corpus-candidates/1",
+  "fetched_on": "2026-11-25",
+  "language": "Java",
+  "max_size_kb": 200000,
+  "excluded": {
+    "forks": 0,
+    "archived": 3,
+    "oversized": 23
+  },
+  "candidates": [
+    {
+      "name": "iluwatar/java-design-patterns",
+      "url": "https://github.com/iluwatar/java-design-patterns",
+      "language": "Java",
+      "commit": "4cabb204f240240bea319605a5ffa46ded728001",
+      "stars": 94909,
+      "size_kb": 48731,
+      "rank": 1
+    },
+    {
+      "name": "macrozheng/mall",
+      "url": "https://github.com/macrozheng/mall",
+      "language": "Java",
+      "commit": "dcaa93b3150352e5044708d7211b5bed0af4509f",
+      "stars": 85079,
+      "size_kb": 58744,
+      "rank": 2
+    },
+    {
+      "name": "doocs/advanced-java",
+      "url": "https://github.com/doocs/advanced-java",
+      "language": "Java",
+      "commit": "8aa03929436ab88e6e34273ccf2281886843d91a",
+      "stars": 79206,
+      "size_kb": 34506,
+      "rank": 3
+    },
+    {
+      "name": "TheAlgorithms/Java",
+      "url": "https://github.com/TheAlgorithms/Java",
+      "language": "Java",
+      "commit": "15a4a9d36387782eb324416984b6e465d1c3f7cc",
+      "stars": 67338,
+      "size_kb": 7925,
+      "rank": 4
+    },
+    {
+      "name": "termux/termux-app",
+      "url": "https://github.com/termux/termux-app",
+      "language": "Java",
+      "commit": "8629e632fcb95da272221be327db653fb24befe9",
+      "stars": 65676,
+      "size_kb": 5292,
+      "rank": 5
+    },
+    {
+      "name": "kdn251/interviews",
+      "url": "https://github.com/kdn251/interviews",
+      "language": "Java",
+      "commit": "03fdcb2703ce72dc0606748733d0c13f09d41d21",
+      "stars": 65580,
+      "size_kb": 24462,
+      "rank": 6
+    },
+    {
+      "name": "skylot/jadx",
+      "url": "https://github.com/skylot/jadx",
+      "language": "Java",
+      "commit": "d6c683fc940c4687387f8ae9188c7b8eecc91c85",
+      "stars": 51998,
+      "size_kb": 26645,
+      "rank": 7
+    },
+    {
+      "name": "jeecgboot/JeecgBoot",
+      "url": "https://github.com/jeecgboot/JeecgBoot",
+      "language": "Java",
+      "commit": "6184e2448fbf0a84e7f638596324c69c1a747549",
+      "stars": 48630,
+      "size_kb": 105472,
+      "rank": 8
+    },
+    {
+      "name": "ReactiveX/RxJava",
+      "url": "https://github.com/ReactiveX/RxJava",
+      "language": "Java",
+      "commit": "317ce3607cdab21aed03d5b0c11dfc978aea1548",
+      "stars": 48148,
+      "size_kb": 181885,
+      "rank": 9
+    },
+    {
+      "name": "lysine-dev/retrofit",
+      "url": "https://github.com/lysine-dev/retrofit",
+      "language": "Java",
+      "commit": "54c204719ac5bf952402aaf81f54f9a2f24beee2",
+      "stars": 43948,
+      "size_kb": 11995,
+      "rank": 10
+    },
+    {
+      "name": "ashishps1/awesome-system-design-resources",
+      "url": "https://github.com/ashishps1/awesome-system-design-resources",
+      "language": "Java",
+      "commit": "58bf0b48badf1e6d62d1e3d024e9578ff809c95f",
+      "stars": 43590,
+      "size_kb": 2356,
+      "rank": 11
+    },
+    {
+      "name": "apache/dubbo",
+      "url": "https://github.com/apache/dubbo",
+      "language": "Java",
+      "commit": "ae46e0a5f6fc4ab8489232b0848453818da92e2c",
+      "stars": 41574,
+      "size_kb": 61870,
+      "rank": 12
+    },
+    {
+      "name": "TeamNewPipe/NewPipe",
+      "url": "https://github.com/TeamNewPipe/NewPipe",
+      "language": "Java",
+      "commit": "62c87aa6b7556e260d5639da1d23240cfba17e6e",
+      "stars": 40941,
+      "size_kb": 92508,
+      "rank": 13
+    },
+    {
+      "name": "halo-dev/halo",
+      "url": "https://github.com/halo-dev/halo",
+      "language": "Java",
+      "commit": "e527ca6fcbe74cee953d7c01e41770ff2659cd1d",
+      "stars": 40400,
+      "size_kb": 91542,
+      "rank": 14
+    },
+    {
+      "name": "alibaba/arthas",
+      "url": "https://github.com/alibaba/arthas",
+      "language": "Java",
+      "commit": "4ea01d85748c5c19343535743dd875fe4f38a056",
+      "stars": 37636,
+      "size_kb": 74130,
+      "rank": 15
+    },
+    {
+      "name": "eugenp/tutorials",
+      "url": "https://github.com/eugenp/tutorials",
+      "language": "Java",
+      "commit": "06276d595a63850f516ffab1700340a93d551a85",
+      "stars": 37305,
+      "size_kb": 133528,
+      "rank": 16
+    },
+    {
+      "name": "yuliskov/SmartTube",
+      "url": "https://github.com/yuliskov/SmartTube",
+      "language": "Java",
+      "commit": "b6a1c8221fa395f91786d29202454b864df2a91e",
+      "stars": 36641,
+      "size_kb": 113096,
+      "rank": 17
+    },
+    {
+      "name": "airbnb/lottie-android",
+      "url": "https://github.com/airbnb/lottie-android",
+      "language": "Java",
+      "commit": "05ea92e90381eb8a8ae06855ea2b74f322bebbec",
+      "stars": 35782,
+      "size_kb": 137398,
+      "rank": 18
+    },
+    {
+      "name": "netty/netty",
+      "url": "https://github.com/netty/netty",
+      "language": "Java",
+      "commit": "ee114d1a1791f1b89a1dca08273ad85a18d7e9db",
+      "stars": 35071,
+      "size_kb": 121581,
+      "rank": 19
+    },
+    {
+      "name": "bumptech/glide",
+      "url": "https://github.com/bumptech/glide",
+      "language": "Java",
+      "commit": "aac5418e7b2bcda62f9206dc5c9c896eab75687c",
+      "stars": 35004,
+      "size_kb": 98959,
+      "rank": 20
+    },
+    {
+      "name": "xkcoding/spring-boot-demo",
+      "url": "https://github.com/xkcoding/spring-boot-demo",
+      "language": "Java",
+      "commit": "87a142f9604c1a5365b4d24d22c2c11c26a9d5ab",
+      "stars": 34032,
+      "size_kb": 14194,
+      "rank": 21
+    },
+    {
+      "name": "Blankj/AndroidUtilCode",
+      "url": "https://github.com/Blankj/AndroidUtilCode",
+      "language": "Java",
+      "commit": "7b4caf9e5440046b3fefb63b6b6e2ead7ebaf809",
+      "stars": 33596,
+      "size_kb": 47329,
+      "rank": 22
+    },
+    {
+      "name": "alibaba/nacos",
+      "url": "https://github.com/alibaba/nacos",
+      "language": "Java",
+      "commit": "7a9787de2c4836f59795fd6ecfba38f0f02be8aa",
+      "stars": 33540,
+      "size_kb": 114129,
+      "rank": 23
+    },
+    {
+      "name": "binarywang/WxJava",
+      "url": "https://github.com/binarywang/WxJava",
+      "language": "Java",
+      "commit": "944e5d7ecd7a75d123e92597da73a625cb2bca27",
+      "stars": 33210,
+      "size_kb": 20934,
+      "rank": 24
+    },
+    {
+      "name": "conductor-oss/conductor",
+      "url": "https://github.com/conductor-oss/conductor",
+      "language": "Java",
+      "commit": "8006242289a9139a72740a93f0c41bb423932786",
+      "stars": 32508,
+      "size_kb": 65290,
+      "rank": 25
+    },
+    {
+      "name": "floci-io/floci",
+      "url": "https://github.com/floci-io/floci",
+      "language": "Java",
+      "commit": "4018e8d0b56ca5a91f683aeae9e92c3bedc2996f",
+      "stars": 32113,
+      "size_kb": 149583,
+      "rank": 26
+    },
+    {
+      "name": "xuxueli/xxl-job",
+      "url": "https://github.com/xuxueli/xxl-job",
+      "language": "Java",
+      "commit": "693d27640be76d02ed7214ede57ce75f7f9ebb71",
+      "stars": 30677,
+      "size_kb": 39371,
+      "rank": 27
+    },
+    {
+      "name": "ityouknow/spring-boot-examples",
+      "url": "https://github.com/ityouknow/spring-boot-examples",
+      "language": "Java",
+      "commit": "53c8c8d6d0b957e9d4ae02f99d5993d5e699d522",
+      "stars": 30422,
+      "size_kb": 1074,
+      "rank": 28
+    },
+    {
+      "name": "opendataloader-project/opendataloader-pdf",
+      "url": "https://github.com/opendataloader-project/opendataloader-pdf",
+      "language": "Java",
+      "commit": "1a8adb0598c43cb912e0d138e1ac3254bb1304ec",
+      "stars": 30366,
+      "size_kb": 91173,
+      "rank": 29
+    },
+    {
+      "name": "kestra-io/kestra",
+      "url": "https://github.com/kestra-io/kestra",
+      "language": "Java",
+      "commit": "e6bb59826c5ad676cd11009c0581653d4af59b22",
+      "stars": 30351,
+      "size_kb": 163047,
+      "rank": 30
+    },
+    {
+      "name": "chinabugotech/hutool",
+      "url": "https://github.com/chinabugotech/hutool",
+      "language": "Java",
+      "commit": "87ec11862baae72914df703e25939eb44a8a843c",
+      "stars": 30220,
+      "size_kb": 75944,
+      "rank": 31
+    },
+    {
+      "name": "apolloconfig/apollo",
+      "url": "https://github.com/apolloconfig/apollo",
+      "language": "Java",
+      "commit": "69a2b1fc0ef43744f9357b07ad1912c54981b38c",
+      "stars": 29818,
+      "size_kb": 58508,
+      "rank": 32
+    },
+    {
+      "name": "alibaba/canal",
+      "url": "https://github.com/alibaba/canal",
+      "language": "Java",
+      "commit": "87be50e87686a3e8af08c368d0e1ffd1f59eb04a",
+      "stars": 29749,
+      "size_kb": 24261,
+      "rank": 33
+    },
+    {
+      "name": "alibaba/spring-cloud-alibaba",
+      "url": "https://github.com/alibaba/spring-cloud-alibaba",
+      "language": "Java",
+      "commit": "1290d136d91ba4f3a6764f0429a8aa65ccde9ec0",
+      "stars": 29157,
+      "size_kb": 56432,
+      "rank": 34
+    },
+    {
+      "name": "wuyouzhuguli/SpringAll",
+      "url": "https://github.com/wuyouzhuguli/SpringAll",
+      "language": "Java",
+      "commit": "614d2578d9495acf53cc02f2dee9c6131cc5e51a",
+      "stars": 28907,
+      "size_kb": 1069,
+      "rank": 35
+    },
+    {
+      "name": "OtterMind/Chat2DB",
+      "url": "https://github.com/OtterMind/Chat2DB",
+      "language": "Java",
+      "commit": "96428d5a6598fc3a78f7fb47553f47ce4e71b02a",
+      "stars": 28372,
+      "size_kb": 59265,
+      "rank": 36
+    },
+    {
+      "name": "ashishps1/awesome-low-level-design",
+      "url": "https://github.com/ashishps1/awesome-low-level-design",
+      "language": "Java",
+      "commit": "31595db8c21a8f7785b2ef45d90f16fd8053abad",
+      "stars": 28255,
+      "size_kb": 15979,
+      "rank": 37
+    },
+    {
+      "name": "alibaba/druid",
+      "url": "https://github.com/alibaba/druid",
+      "language": "Java",
+      "commit": "fa8dc9912637a2f729eef9f55356621fec18d40e",
+      "stars": 28140,
+      "size_kb": 94025,
+      "rank": 38
+    },
+    {
+      "name": "lenve/vhr",
+      "url": "https://github.com/lenve/vhr",
+      "language": "Java",
+      "commit": "28a9f8a5b5619234b9d6d99389f9046dd79c99d5",
+      "stars": 28012,
+      "size_kb": 8554,
+      "rank": 39
+    },
+    {
+      "name": "jenkinsci/jenkins",
+      "url": "https://github.com/jenkinsci/jenkins",
+      "language": "Java",
+      "commit": "3209f9a6edadeb5ae84faa8786b2783333e822b1",
+      "stars": 26813,
+      "size_kb": 175182,
+      "rank": 40
+    },
+    {
+      "name": "crossoverJie/JCSprout",
+      "url": "https://github.com/crossoverJie/JCSprout",
+      "language": "Java",
+      "commit": "fc4c6e5f6d1772c2aec4c0f94cb3c8e7eb04018f",
+      "stars": 26778,
+      "size_kb": 1191,
+      "rank": 41
+    },
+    {
+      "name": "qiurunze123/miaosha",
+      "url": "https://github.com/qiurunze123/miaosha",
+      "language": "Java",
+      "commit": "e58017658e549b63fc4db2160d2325ccd7f8435b",
+      "stars": 26553,
+      "size_kb": 65716,
+      "rank": 42
+    },
+    {
+      "name": "apache/incubator-seata",
+      "url": "https://github.com/apache/incubator-seata",
+      "language": "Java",
+      "commit": "7954d1cac07c6365a813c6615cdb5fd8e267fe12",
+      "stars": 26007,
+      "size_kb": 33419,
+      "rank": 43
+    },
+    {
+      "name": "LSPosed/LSPosed",
+      "url": "https://github.com/LSPosed/LSPosed",
+      "language": "Java",
+      "commit": "df74d83eb03a44cc6ad268841ac2ada28d077c77",
+      "stars": 25645,
+      "size_kb": 21655,
+      "rank": 44
+    },
+    {
+      "name": "JakeWharton/butterknife",
+      "url": "https://github.com/JakeWharton/butterknife",
+      "language": "Java",
+      "commit": "fcdebedf3276096db2f51bf6372b849b5a9c75ed",
+      "stars": 25304,
+      "size_kb": 3909,
+      "rank": 45
+    },
+    {
+      "name": "hollischuang/toBeTopJavaer",
+      "url": "https://github.com/hollischuang/toBeTopJavaer",
+      "language": "Java",
+      "commit": "4173f8a806c130d2ae6c71b678a06bb63c9213bb",
+      "stars": 25268,
+      "size_kb": 8004,
+      "rank": 46
+    },
+    {
+      "name": "apache/skywalking",
+      "url": "https://github.com/apache/skywalking",
+      "language": "Java",
+      "commit": "cb632100a5d7c20f754d91b92a0be2d4281436f4",
+      "stars": 25029,
+      "size_kb": 184456,
+      "rank": 47
+    },
+    {
+      "name": "greenrobot/EventBus",
+      "url": "https://github.com/greenrobot/EventBus",
+      "language": "Java",
+      "commit": "0194926b3bcf70cc0d7bfd3c5da16708dd5ab876",
+      "stars": 24670,
+      "size_kb": 1742,
+      "rank": 48
+    },
+    {
+      "name": "Netflix/Hystrix",
+      "url": "https://github.com/Netflix/Hystrix",
+      "language": "Java",
+      "commit": "5ce3bc58c38e7ca60ef2fe0e516e390e294ad941",
+      "stars": 24477,
+      "size_kb": 9828,
+      "rank": 49
+    },
+    {
+      "name": "redisson/redisson",
+      "url": "https://github.com/redisson/redisson",
+      "language": "Java",
+      "commit": "b019f0eb75d149a37711352db9db06f9973ca1eb",
+      "stars": 24435,
+      "size_kb": 38096,
+      "rank": 50
+    }
+  ]
+}
