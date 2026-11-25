@@ -16,7 +16,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-inherited-entries
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 5}
 - {from: "proposed", to: "active", at: "2026-11-25T01:41:52Z", actor: "human:operator", revision: 6}
@@ -96,6 +96,13 @@ The same with `ItemsApi.java` copied into `src/main/java`: no entry, no refusal.
   third case).
 - `adapters/java/README.md` "Projects and Quarkus" names the inherited form.
 - `task adapters-check` green.
+- Release-review case (added): the class-path interface sits in a jar, not a class directory, and is
+  read from the class file's annotations (`@Path` on the interface, a verb and an optional `@Path`
+  on each method, `@PathParam` on its parameters), with no source of it on the source path. Two more
+  fixtures: a class implementing a sub-interface that extends the annotated class-path interface
+  (the methods and the `@Path` are inherited through it), and an annotated interface with `@Path`
+  on the type only and a verb-only method. Each gives `http` entries; the generated sources are
+  never read.
 
 ## Scope
 

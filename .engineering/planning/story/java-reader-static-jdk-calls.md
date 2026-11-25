@@ -17,7 +17,7 @@ scope:
   path: adapters/java/test/codespec/read/ReaderTest.java
 - confidence: inferred
   path: adapters/java/testdata/project-forms
-revision: 2
+revision: 3
 ---
 # Story: a static method called through a JDK type name, and List.of
 
@@ -93,6 +93,10 @@ Maths.java:5 class Math as a value
   a `List.of` handed to a jar method are each refused at their line with the immutable-list reason.
 - A third case: `List.of("a", null)` is refused at its line.
 - README table row; `task adapters-check` green.
+- A fourth case (added from a release review): `ClassLoader.getSystemClassLoader()` and
+  `Thread.currentThread().getContextClassLoader()` as the argument of a call read as extern calls
+  and no longer give "class ClassLoader as a value"; the value passed on is
+  `story:java-reader-jdk-typed-values-in-call-chains`.
 
 ## Scope
 
