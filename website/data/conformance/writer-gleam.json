@@ -3,14 +3,14 @@
   "adapter": {
     "role": "writer",
     "lang": "gleam",
-    "version": "0.12.0",
-    "manifest_sha256": "64f1c44b6c30b7f87f0e69eeec9b2dbbd428ea8fd47f792f72f2a7a9ee67b121"
+    "version": "0.13.0",
+    "manifest_sha256": "7f8003f691e4cb1f909be8002fbda13abe95e6495861edc635304f59ffa8b351"
   },
   "kit": {
-    "version": "0.12.0",
-    "sha256": "95d8977eb0513383566839d335a7f1a24983b28a86277258a0c44cb42ca2bdb6"
+    "version": "0.13.0",
+    "sha256": "53f1829b9c767304aedfb0078986c5edb7af3368a2c1df90ab40e0dc8d69f083"
   },
-  "codespec": "0.12.0",
+  "codespec": "0.13.0",
   "features": [
     {
       "id": "assign.add",

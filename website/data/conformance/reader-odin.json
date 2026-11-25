@@ -3,17 +3,17 @@
   "adapter": {
     "role": "reader",
     "lang": "odin",
-    "version": "0.12.0",
-    "manifest_sha256": "7410bf94b5a60f2cdd482f4be9eb7195494379f1ba0809b34ebbb9458719e453"
+    "version": "0.13.0",
+    "manifest_sha256": "68cbc66edb072aa1d572a69e6177d25116e8df976736ac09bbad334503b25667"
   },
   "kit": {
-    "version": "0.12.0",
-    "sha256": "95d8977eb0513383566839d335a7f1a24983b28a86277258a0c44cb42ca2bdb6"
+    "version": "0.13.0",
+    "sha256": "53f1829b9c767304aedfb0078986c5edb7af3368a2c1df90ab40e0dc8d69f083"
   },
   "corpus": {
     "sha256": "49d6262a4b0e743d460bc6c16f60aedbe23e50535cfd0beec117d3edcd379113"
   },
-  "codespec": "0.12.0",
+  "codespec": "0.13.0",
   "features": [
     {
       "id": "assign.add",
