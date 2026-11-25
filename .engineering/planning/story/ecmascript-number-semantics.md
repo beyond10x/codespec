@@ -27,7 +27,7 @@ scope:
   path: crates/model/src/features.rs
 - confidence: inferred
   path: schemas
-revision: 2
+revision: 3
 ---
 # Story: Float and number semantics are pinned by kit cases
 
@@ -58,14 +58,25 @@ engines would each pick an answer, and a speed comparison would compare programs
   reference, a `calls.json` and `features.json`.
 - Near misses held by cases: `0.1 + 0.2`, `-0.0` printed, `1/0`, `-1/0`, `0/0` printed as one NaN,
   `NaN != NaN`, the integers `2^53` and `2^53 + 1` as floats, a float result of `%` through
-  `math.Mod`.
-- Float to int is defined once, for the reader's lowering: truncation toward zero, wrapped as
-  `sem.int.wrap` does for an in-range value; NaN and an infinity give 0; a value outside the 64-bit
-  range is defined by the case, not left to the platform (Go leaves it implementation-defined, so a
-  reference program must not rely on it). This is JavaScript's `ToInt32` when the target is `int` 32.
-- The externs `math.Sqrt`, `math.Abs`, `math.Floor`, `math.Mod` have evaluator built-ins (as Go's,
-  in `crates/eval/src/builtins.rs`), a mapping in each writer that claims floats, and are the only
-  forms the reader may produce for `Math.sqrt`, `Math.abs`, `Math.floor` and `%` on numbers.
+  `math.Mod`, and the out-of-range stop of a `conv` (`1e20` to `int` 64) and the `ToInt32` values
+  below.
+- Float to int: a `conv` of a `float` to an `int` type is defined only for a finite value whose
+  truncation toward zero fits the target type, and then it is that truncation. For NaN, an
+  infinity or a value that does not fit, `cir/1` defines no result: the evaluator stops with a named
+  stop (`float conversion out of range`, as it stops at any construct `cir/1` leaves open), a kit
+  case holds the stop, and no case or reader output relies on a value. Go leaves the result
+  implementation-defined, which is why the reference programs must not reach it.
+- JavaScript's `ToInt32` is a module function the reader emits, built from existing nodes: NaN and
+  an infinity give 0, otherwise `math.Mod(math.Trunc(x), 4294967296)` is brought into the range of
+  `int` 32 by integer wrap and only then converted, so the `conv` sees an in-range value. A kit case
+  holds it on: `2147483648` (gives `-2147483648`), `4294967296` (0), `4294967301` (5),
+  `-2147483649` (`2147483647`), `4294967295.5` (`-1`), `1e20` (`1661992960`), `-1e20`
+  (`-1661992960`), `-0.5` (0), NaN, `Infinity` and `-Infinity` (0).
+- The externs `math.Sqrt`, `math.Abs`, `math.Floor`, `math.Trunc`, `math.Mod` have evaluator
+  built-ins (as Go's, in `crates/eval/src/builtins.rs`) and a mapping in the Go writer; the writers
+  that take floats later (`story:wasm-writer`, `story:x86-64-writer`) claim `intrinsic.math` and map
+  them in their own Done When. They are the only forms the reader may produce for `Math.sqrt`,
+  `Math.abs`, `Math.floor`, `%` on numbers and the `ToInt32` function.
   `Math.min`, `Math.max`, `Math.pow` and the trigonometric functions are not in the set: their NaN,
   `-0` and last-digit behaviour differs between Go and JavaScript; each is refused by the reader
   with that reason.

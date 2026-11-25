@@ -7,7 +7,7 @@ title: ECMAScript to native code through cir/1, run in a container, compared in 
 summary: A typed ECMAScript subset read into cir/1, written as WebAssembly and x86-64 assembly, run in containers on the build node, and compared in speed with the fastest ECMAScript engines.
 relations:
 - informed_by: epic:low-level-readers
-revision: 1
+revision: 2
 ---
 # Epic: ECMAScript to native code through cir/1, run in a container, compared in speed
 
@@ -30,8 +30,10 @@ file.js --codespec-read-ecmascript--> cir/1 --codespec-write-wasm--> WAT --wasm-
   `codespec write --lang x86-64` writes it as x86-64 GNU assembly (System V ABI, Linux). Each is
   assembled and run in a container on the build node, through `slot`, and its output is compared
   byte for byte with the evaluator's on the same inputs.
-- A committed report compares the speed of the written code with the fastest ECMAScript engines on
-  a public benchmark set, measured on the build node only.
+- `codespec-bench` builds a runnable artifact per benchmark script and writes its ahead-of-time
+  rows in swell's bench schema; swell's `bench/` measures them beside the fastest ECMAScript
+  engines on the build node and holds the data file and the comparison page. codespec measures
+  nothing for the comparison.
 
 ## Why Now
 
@@ -65,16 +67,20 @@ close does typed code written as JavaScript get to a JIT, when nothing is left t
 - D3. The WasmGC mapping of `story:wasm-writer` is inferred, not proven, until that story's tests
   pass on both engines.
 - D4. No step budget is emitted into written code. The conformance run takes one from the engine
-  (wasmtime fuel); the speed runs have none and end at the container's time limit.
+  (wasmtime fuel); the artifacts swell's bench measures have none and end at the bench's own time limit.
 
 ## Done When
 
 - `story:ecmascript-number-semantics`, `story:ecmascript-swell-surface`, `story:ecmascript-reader`,
   `story:native-run-harness`, `story:ecmascript-run-oracle`, `story:wasm-writer`,
   `story:x86-64-writer` and `story:native-speed-comparison` are implemented.
-- One JavaScript benchmark file goes from source to a result line on the build node with
-  one command each for read, write, build and run, and the committed report names the commit,
-  the tool versions, the node and every engine's version.
+- One JavaScript benchmark file `k.js` goes from source to a result line on the build node with
+  four commands, each named by a story: `codespec read --lang ecmascript k.js` (the module),
+  `codespec write --lang wasm` on it (the WAT), `codespec-bench build k.js --target wasm --out d`
+  (assembly with `wasm-tools`, the `.wasm` and `artifact.json`) and `codespec-bench run
+  d/artifact.json` (one run in the container, the line `codespec-bench-result/1 <name> <target>
+  exit=<n> out=<sha256>` and `match` or `differs` against `node`). A script the reader refuses
+  gives a row with the reason and `file:line` instead of an artifact.
 - Every gate step of the stories ends within 2 minutes, no test over 60 s. Benchmarks are not tests
   and never run in the gate.
 
@@ -88,5 +94,7 @@ close does typed code written as JavaScript get to a JIT, when nothing is left t
 - A microVM step (Firecracker needs `/dev/kvm`, which the build node lacks); `story:native-run-harness`
   names where it would go.
 - An LLVM IR writer, the other route to native code.
-- Work inside swell: its syntax surface, its release and its corpus are swell's stories; this epic
-  names what it needs from them (`story:ecmascript-swell-surface`).
+- Work inside swell: its syntax surface, its release and its corpus, and its `bench/` (the pinned
+  engines, the method, the measuring, the data file and the comparison page) are swell's stories;
+  this epic names what it needs from them (`story:ecmascript-swell-surface`,
+  `story:native-speed-comparison`).

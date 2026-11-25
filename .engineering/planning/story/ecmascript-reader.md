@@ -17,20 +17,26 @@ scope:
 - confidence: inferred
   path: CHANGELOG.md
 - confidence: inferred
-  path: adapters/ecmascript-read/src
+  path: adapters/ecmascript-read/src/body.rs
 - confidence: inferred
-  path: adapters/ecmascript-read/tests
+  path: adapters/ecmascript-read/src/lib.rs
+- confidence: inferred
+  path: adapters/ecmascript-read/src/main.rs
+- confidence: inferred
+  path: adapters/ecmascript-read/src/types.rs
+- confidence: inferred
+  path: adapters/ecmascript-read/tests/data
+- confidence: inferred
+  path: adapters/ecmascript-read/tests/main.rs
+- confidence: inferred
+  path: adapters/ecmascript-read/tests/reader.rs
 - confidence: inferred
   path: conformance/reader/ecmascript
 - confidence: inferred
   path: crates/cli
 - confidence: inferred
   path: crates/conformance
-- confidence: inferred
-  path: crates/docs
-- confidence: inferred
-  path: website/data/conformance
-revision: 2
+revision: 4
 ---
 # Story: An ECMAScript reader for a typed subset, on swell's parser
 
@@ -112,17 +118,22 @@ one a later story could take, none is guessed. The kit's rule applies (`AGENTS.m
   loop `let` (refused), a function called with a `number` here and a `string` there (refused as
   polymorphic), a `"use strict"` after the first statement (refused), the same script read twice
   (byte-equal).
-- Conformance: the corpus `conformance/reader/ecmascript/<case>/{case.js, calls.json}` has one case
-  for each kit case whose subject the subset can write; the reader's report
-  `website/data/conformance/reader-ecmascript.json` has `conforms: true` and `summary.pass` of at
-  least 25, and every kit case not claimed is named in the crate doc with the reason. That each
-  `case.js` means what the Go reference means is checked by `story:ecmascript-run-oracle`, which
-  runs after this story; until it is implemented the report says so in its notes.
+- The command is wired: `codespec read --lang ecmascript tests/data/fib.js` prints the module equal
+  to the checked-in `fib.read.cir.json` and exits 0; on `tests/data/eval.js` (the `eval` call on
+  line 3) it prints a module whose `refusals` holds an entry at `eval.js:3` naming `eval`, the
+  function holding the call a `foreign` statement, and exits 0, as the other readers do; on a script
+  without the `"use strict"` directive, or one swell's parser rejects, it exits 1 with a message
+  naming the directive or swell's error and its line. A test in `crates/cli` runs the three.
+- Corpus: `conformance/reader/ecmascript/<case>/{case.js, calls.json}` has one case for each kit
+  case whose subject the subset can write, at least 25 of them, each read by the reader without an
+  error, and every kit case not claimed is named in the crate doc with the reason. The report
+  `website/data/conformance/reader-ecmascript.json` (`conforms: true`, `summary.pass` of at least
+  25) needs the runner `codespec-run-ecmascript`, which `story:ecmascript-run-oracle` creates, so
+  that story checks it and registers the reader's report in `crates/docs`; this story does not.
 - The reader is deterministic (the same bytes on a second read), bounded against untrusted input as
   `story:readers-bound-untrusted-input` states (a nesting limit through swell's `ParseOptions`, a
   source size limit), and reads no file but the one named.
-- `--describe` prints a manifest `task adapters` reads strictly, with the features it claims; the
-  support matrix lists the reader.
+- `--describe` prints a manifest `task adapters` reads strictly, with the features it claims.
 - The reader takes swell through `story:ecmascript-swell-surface` and uses no other third-party
   crate. `task check` exits 0; each test under 60 s, the test step under 120 s; the time of the new
   test binary is stated in the report.
@@ -131,12 +142,12 @@ one a later story could take, none is guessed. The kit's rule applies (`AGENTS.m
 
 ## Scope
 
-- Own: `adapters/ecmascript-read` (new, apart from `Cargo.toml` and `swell-surface.txt`, which are
-  `story:ecmascript-swell-surface`'s), `conformance/reader/ecmascript` (new),
-  `crates/cli` (the `--lang` value), `crates/conformance` (`CORPUS_LANGS`, the corpus builder),
-  `crates/docs`, `website/data/conformance/reader-ecmascript.json`, one site page, `AGENTS.md`,
-  `CHANGELOG.md`.
-- Shares `crates/conformance`, `crates/cli`, `crates/docs` and `Taskfile.yml` with
-  `story:reader-asm` and `story:reader-llvm-ir` (draft): they run one after another.
+- Own: `adapters/ecmascript-read` (new: `src/lib.rs`, `src/main.rs`, `src/types.rs`, `src/body.rs`,
+  `tests/main.rs`, `tests/reader.rs`, `tests/data`; the rest, `Cargo.toml`, `swell-surface.txt`,
+  `src/swell.rs` and `tests/swell.rs`, is `story:ecmascript-swell-surface`'s and is used, not
+  rewritten), `conformance/reader/ecmascript` (new), `crates/cli` (the `--lang` value),
+  `crates/conformance` (`CORPUS_LANGS`, the corpus builder), `AGENTS.md`, `CHANGELOG.md`.
+- Shares `crates/conformance` and `crates/cli` with `story:ecmascript-run-oracle` (after this
+  story) and with `story:reader-asm` and `story:reader-llvm-ir` (draft): they run one after another.
 - Inferred by the planner, not said by the owner: JSDoc tags as the source of entry types (D1), and
   `number` as `float` 64 (D2).

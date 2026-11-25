@@ -10,6 +10,7 @@ relations:
 - depends_on: story:native-run-harness
 - depends_on: story:ecmascript-reader
 - depends_on: story:ecmascript-number-semantics
+- depends_on: story:ecmascript-run-oracle
 scope:
 - confidence: inferred
   path: AGENTS.md
@@ -26,7 +27,7 @@ scope:
 - confidence: inferred
   path: adapters/wasm-run
 - confidence: inferred
-  path: containers
+  path: containers/wasm
 - confidence: inferred
   path: crates/cli
 - confidence: inferred
@@ -35,7 +36,7 @@ scope:
   path: crates/docs
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 2
+revision: 4
 ---
 # Story: A WebAssembly writer: cir/1 to WAT with WasmGC, run by wasmtime and node
 
@@ -86,14 +87,21 @@ decided by the tests, not here.
   runner's crate doc; a node whose V8 needs a flag for WasmGC is not used.
 - The writer's manifest claims: the integer, float (`story:ecmascript-number-semantics`), bool,
   string, struct, slice, array, `if`, `for`, `switch`, call, `lambda` and `call_value` features and
-  `sem.int.wrap`, `sem.rem.sign`, `sem.switch.break`, `sem.continue.post`, `sem.multi_assign.order`;
+  `sem.int.wrap`, `sem.rem.sign`, `sem.switch.break`, `sem.continue.post`, `sem.multi_assign.order`,
+  and the number features `sem.float.ieee`, `sem.float.to_int`, `sem.int.to_float` and
+  `intrinsic.math`, mapped as: float operations to the `f32`/`f64` instructions, `math.Sqrt` to
+  `f64.sqrt`, `math.Abs` to `f64.abs`, `math.Floor` to `f64.floor`, `math.Trunc` to `f64.trunc`,
+  `math.Mod` to a runtime function in WAT (Wasm has no `fmod`), a float to `int` conversion in the
+  defined range to `i64.trunc_f64_s`, and `int` to float to `f64.convert_i64_s` (and the `i32`
+  forms); each has the kit case of that story passing on both engines, printed in its float
+  encoding;
   every other kit case is a refusal with a reason, and the support matrix lists the writer with
   `claimed` and `refused_unclaimed` counts that `codespec conform` computes.
 - Checked against the oracle: for every module of `examples/series` and `examples/inventory`
   that the writer claims, and for every case of the ECMAScript reader's corpus, the evaluator
   (`codespec eval --calls`) and both Wasm engines print the same bytes on the same
-  `calls.json`; and `codespec harness` runs 200 seeds of 300 commands byte-equal where a driver
-  exists. The refused ones are listed in the report.
+  `calls.json`. No `codespec harness` driver for Wasm exists under `examples/*/drivers` and this
+  story adds none: the harness is not claimed. The refused ones are listed in the report.
 - Near misses held by tests: an `int` 8 that overflows (`127 + 1`), a `uint` 32 division, a negative
   `%`, a shift by 32 or more, `-0.0` written and printed, a slice whose `append` reallocates while
   another slice still points at the old array, a struct value assigned to a second variable and
@@ -103,8 +111,8 @@ decided by the tests, not here.
   writes no file.
 - Stopping: the conformance run gives wasmtime a fuel limit (decision D4), so a loop that does not
   end stops with a named verdict like the evaluator's step budget; a test holds it with `for {}`.
-  Nothing is emitted for a budget into the written code, so the speed runs measure the code and
-  not a counter.
+  Nothing is emitted for a budget into the written code, so the artifacts swell's bench measures
+  run the code and not a counter.
 - The writer is deterministic (the same module gives the same bytes); its output is read back by
   `wasm-tools print` and the printed text parses to the same binary (a round trip held by a test).
   No reader of Wasm exists and none is planned here.
@@ -114,12 +122,14 @@ decided by the tests, not here.
 
 ## Scope
 
-- Own: `adapters/wasm` (new), `adapters/wasm-run` (new), `containers/` (the Wasm tool image, a
-  file of `story:native-run-harness`'s directory), `crates/cli` (the `--lang` value),
+- Own: `adapters/wasm` (new), `adapters/wasm-run` (new), `containers/wasm` (new: the image with
+  `wasm-tools`, `wasmtime` and `node`, built by the mechanism of `story:native-run-harness`),
+  `crates/cli` (the `--lang` value),
   `crates/conformance` (the manifest and runner registration), `crates/docs` (support matrix),
   root `Cargo.toml` `members`, `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`,
   `AGENTS.md`, `CHANGELOG.md`, one site page.
 - Shares `crates/cli`, `crates/conformance`, `crates/docs` and `Taskfile.yml` with
-  `story:x86-64-writer` (after this story) and with the reader stories.
+  `story:x86-64-writer` (after this story), `story:ecmascript-run-oracle` (before this story, which
+  depends on it for that reason and for the corpus it checks against) and the reader stories.
 - Inferred by the planner: WasmGC as the target (given by the owner), the first-cut refusals, the
   engine-side fuel.

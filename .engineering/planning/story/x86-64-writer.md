@@ -26,7 +26,7 @@ scope:
 - confidence: inferred
   path: adapters/x86-64-run
 - confidence: inferred
-  path: containers
+  path: containers/x86-64
 - confidence: inferred
   path: crates/cli
 - confidence: inferred
@@ -35,7 +35,7 @@ scope:
   path: crates/docs
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 2
+revision: 4
 ---
 # Story: An x86-64 assembly writer: cir/1 to GNU assembly, System V, Linux
 
@@ -56,7 +56,7 @@ program owns its memory. Written code that never frees is what the C runtime doe
 (`conformance/c/codespec_rt.h`), and short-lived benchmark programs run under it, so the first
 cut states the limit instead of hiding it: an allocation past the arena stops the program with
 exit 4 and a message. The C and Rust writers refuse floats and function values; this one takes
-floats from the start, because every benchmark of `story:native-speed-comparison` needs them.
+floats from the start, because every kernel of `story:native-speed-comparison` needs them.
 
 ## Done When
 
@@ -74,9 +74,17 @@ floats from the start, because every benchmark of `story:native-speed-comparison
   `+` and any string built at run time, `raise`, `foreign`.
 - Checked by running both: for every case the writer claims, and for every module of
   `examples/series` and `examples/inventory` it claims, the evaluator (`codespec eval --calls`)
-  and the linked binary print the same bytes on the same `calls.json`; `codespec harness` runs 200
-  seeds of 300 commands byte-equal where a driver exists. `codespec conform --lang x86-64
-  --role writer` has `conforms: true`; refused kit cases are listed.
+  and the linked binary print the same bytes on the same `calls.json`. No `codespec harness` driver
+  for x86-64 exists under `examples/*/drivers` and this story adds none: the harness is not
+  claimed. `codespec conform --lang x86-64 --role writer` has `conforms: true`; refused kit cases
+  are listed.
+- The float and number features are claimed and mapped: `sem.float.ieee` (`addsd`, `subsd`, `mulsd`,
+  `divsd` and their single forms, comparisons through `ucomisd` with NaN false), `sem.float.to_int`
+  and `sem.int.to_float` (`cvttsd2si`, `cvtsi2sd`, in the range
+  `story:ecmascript-number-semantics` defines), and `intrinsic.math`: `math.Sqrt` as `sqrtsd`,
+  `math.Abs` as a mask of the sign bit, `math.Floor` and `math.Trunc` as `roundsd` (SSE4.1; the
+  story names the baseline it assumes), `math.Mod` as a loop of `fprem` or a runtime function; each
+  has the kit case of that story passing, printed in its float encoding.
 - Near misses held by tests: `MinInt64 / -1`, a shift by 64 or more, `uint8` 255 + 1, a negative `%`,
   `-0.0` and NaN comparisons, a struct of three eightbytes returned by value, a call with seven
   integer arguments and nine float arguments (stack-passed), an unaligned stack at a call (the
@@ -100,8 +108,8 @@ floats from the start, because every benchmark of `story:native-speed-comparison
 
 ## Scope
 
-- Own: `adapters/x86-64` (new), `adapters/x86-64-run` (new), `containers/` (the `as`, `ld`, `cc`
-  image, a file of `story:native-run-harness`'s directory), `crates/cli` (the `--lang` value),
+- Own: `adapters/x86-64` (new), `adapters/x86-64-run` (new), `containers/x86-64` (new: the `as`,
+  `ld`, `cc` image, built by the mechanism of `story:native-run-harness`), `crates/cli` (the `--lang` value),
   `crates/conformance`, `crates/docs`, root `Cargo.toml` `members`, `Cargo.lock`, `Taskfile.yml`,
   `scripts/check-parts.txt`, `AGENTS.md`, `CHANGELOG.md`, one site page.
 - Shares `crates/cli`, `crates/conformance`, `crates/docs` and `Taskfile.yml` with

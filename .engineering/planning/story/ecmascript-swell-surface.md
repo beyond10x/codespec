@@ -7,6 +7,7 @@ title: The reader holds swell's syntax surface at a pinned release
 summary: A Git dependency on swell-syntax at a release tag, the list of public items the reader uses, a check against swell's promised surface, and span to position conversion.
 relations:
 - decomposes: epic:ecmascript-to-native
+- depends_on: story:native-run-harness
 scope:
 - confidence: inferred
   path: Cargo.lock
@@ -17,20 +18,27 @@ scope:
 - confidence: inferred
   path: adapters/ecmascript-read/Cargo.toml
 - confidence: inferred
+  path: adapters/ecmascript-read/src/swell.rs
+- confidence: inferred
   path: adapters/ecmascript-read/swell-surface.txt
 - confidence: inferred
+  path: adapters/ecmascript-read/tests/swell.rs
+- confidence: inferred
   path: scripts
-revision: 2
+revision: 5
 ---
 # Story: The reader holds swell's syntax surface at a pinned release
 
 ## Outcome
 
 `adapters/ecmascript-read` depends on `swell-syntax` at one release tag of `beyond10x/swell`, and
-codespec knows exactly which public items of it the reader uses: a committed list of them, a check
-that the pinned swell still has them with the same shape, and one function that turns a swell span
-into codespec's position form. A swell release that changes what the reader uses fails a fast
-check before it fails a build.
+every use of it goes through one module, `src/swell.rs`: the only file of the crate that names
+`swell_syntax::`. That module re-exports the items the reader maps, holds `position(file, span)`
+(a swell span as codespec's `<file>:<line>`) and the mapping of a swell `SyntaxError` to a refusal
+(with the slice swell names). A committed list of the public swell items `swell.rs` names, a check
+that the pinned swell still has them with the same shape, and a check that no other file names
+`swell_syntax::` complete it. A swell release that changes what the reader uses fails a fast check
+before it fails a build.
 
 ## Why
 
@@ -38,12 +46,14 @@ The reader is built on swell's parser (agreed with swell, 2026-11-25) and swell'
 own: arenas `Ast` with `ExprId`, `StmtId` and `FunctionId`, accessors `Ast::expr`, `Ast::stmt`, a
 `Span` of UTF-16 code unit offsets `start..end` plus `line` and `column` from 1
 (`crates/syntax/src/ast.rs` in swell). codespec positions are `<file>:<line>`. swell is a library
-with no binary and no published crate, so the dependency is a Git dependency on a tag.
+with no binary and no published crate, so the dependency is a Git dependency on a tag. One module
+holding every name of swell keeps the dependency's size one list.
 
 ## What codespec needs from swell
 
 Not a story here: swell's work is swell's. The promise this story relies on is swell's draft
-`story:syntax-surface-is-promised` (branch `plan/native-code` in `beyond10x/swell`):
+`story:syntax-surface-is-promised` (beyond10x/swell#9, branch `plan/native-code` in
+`beyond10x/swell`):
 
 - the public items of `swell-syntax` listed in `conformance/syntax/surface.txt`, checked by
   `syntax-surface-check`; any public-item change is a minor version bump before 1.0;
@@ -58,27 +68,32 @@ Not a story here: swell's work is swell's. The promise this story relies on is s
 
 ## Done When
 
-- A failing check first: `ecmascript-read-surface` reports a name the pinned swell lacks (a test
-  copy of the list with one invented item) and exits non-zero naming the item.
+- A failing check first: `ecmascript-read-surface` reads a test copy of the item list with one
+  invented item and exits non-zero naming it; it fails until the check exists.
 - `adapters/ecmascript-read/Cargo.toml` names `swell-syntax` by Git URL and tag, never a branch or
   a revision alone; a check refuses any other form. `Cargo.lock` holds the resolved commit.
-- `adapters/ecmascript-read/swell-surface.txt` lists every swell public item the reader names (types,
-  variants, fields, functions), generated from the crate's use of `swell_syntax::` paths; the
-  check compares it with swell's `surface.txt` at the pinned tag (fetched once per run and cached
-  under `target/`, no network in a test) and fails on an item that is not in swell's list.
+- The one data source of the surface check is the checkout Cargo made of the pinned tag (the git
+  checkout under `CARGO_HOME`, read offline after the build), whose `conformance/syntax/surface.txt`
+  is compared with `adapters/ecmascript-read/swell-surface.txt`. Nothing is fetched by the check and
+  no copy of swell's list is cached under `target/`.
+- `swell-surface.txt` lists every swell public item `src/swell.rs` names (types, variants, fields,
+  functions), generated from that file's `swell_syntax::` paths; the check fails on an item that
+  is not in swell's list, and on a `swell_syntax::` path in any other source file of the crate.
 - `position(file, span)` gives `<file>:<line>` for a span, and a test holds the cases that go wrong:
   a span after a surrogate pair (the column counts UTF-16 units, the offset too), a CRLF file, a
   file without a final newline, a span of length 0.
 - A swell tag whose parser refuses a construct names its slice (`<construct> is not supported
-  before slice <n>`); the reader reports it as a refusal at the position the error gives, naming
-  the slice. A test holds one such error (a class declaration, slice 8 at the time of writing).
-- The check runs within the step budget, with no network: the swell sources it reads come from
-  the Cargo checkout, not a download.
+  before slice <n>`); `src/swell.rs` maps that error to a refusal at the position the error gives,
+  naming the slice. A test holds one such error (a class declaration, slice 8 at the time of
+  writing).
+- The checks run within the step budget with no network.
 
 ## Scope
 
-- Own: `adapters/ecmascript-read/Cargo.toml` and `swell-surface.txt` (new files; the crate itself
-  is `story:ecmascript-reader`'s), `scripts/`, `Taskfile.yml`, `scripts/check-parts.txt`, root
-  `Cargo.toml` `members` and `Cargo.lock`.
-- Shares the crate directory, the root `Cargo.toml` and `Taskfile.yml` with
-  `story:ecmascript-reader`: this story first.
+- Own: `adapters/ecmascript-read/Cargo.toml`, `adapters/ecmascript-read/swell-surface.txt`,
+  `adapters/ecmascript-read/src/swell.rs`, `adapters/ecmascript-read/tests/swell.rs` (new files;
+  the rest of the crate is `story:ecmascript-reader`'s), `scripts/`, root `Cargo.toml` and
+  `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`.
+- Shares root `Cargo.toml`, `Cargo.lock`, `Taskfile.yml` and `scripts/check-parts.txt` with
+  `story:native-run-harness`, which comes first; this story is before `story:ecmascript-reader`,
+  which shares the crate directory.

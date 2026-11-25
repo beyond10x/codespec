@@ -3,14 +3,16 @@ format: aep.planning-md/3
 id: story:native-speed-comparison
 kind: story
 status: draft
-title: A speed comparison with the fastest ECMAScript engines, measured on the build node
-summary: codespec-bench runs public numeric benchmarks under V8, JavaScriptCore, SpiderMonkey, QuickJS, swell where it runs, and the written Wasm and x86-64 code, on the build node only, into a committed report.
+title: 'AOT rows for swell''s speed comparison: a runnable artifact per benchmark script'
+summary: codespec-bench builds a .wasm artifact and a runner command per benchmark script from a pinned codespec release and writes the ahead-of-time rows in swell's bench schema; swell's bench measures.
 relations:
 - decomposes: epic:ecmascript-to-native
 - depends_on: story:wasm-writer
 - depends_on: story:ecmascript-run-oracle
 - informed_by: story:x86-64-writer
 scope:
+- confidence: inferred
+  path: .github/workflows/release-build.yml
 - confidence: inferred
   path: AGENTS.md
 - confidence: inferred
@@ -22,97 +24,99 @@ scope:
 - confidence: inferred
   path: Taskfile.yml
 - confidence: inferred
-  path: benchmarks/ecmascript-native
+  path: benchmarks/ecmascript-native/kernels
 - confidence: inferred
-  path: containers
+  path: benchmarks/ecmascript-native/schema
 - confidence: inferred
   path: crates/bench
 - confidence: inferred
   path: scripts/check-parts.txt
-- confidence: inferred
-  path: website
-revision: 2
+revision: 6
 ---
-# Story: A speed comparison with the fastest ECMAScript engines, measured on the build node
+# Story: AOT rows for swell's speed comparison: a runnable artifact per benchmark script
 
 ## Outcome
 
-`codespec-bench`, a Rust crate `crates/bench`, runs a set of public benchmark programs, each written
-in the ECMAScript subset, under every engine and every written target, on the build node only, and
-writes one committed report (`benchmarks/ecmascript-native/report.json` and the page generated from
-it) with medians, spread and the versions of everything that took part. The report answers one
-question: how far is code written through `cir/1` from the fastest engines on typed numeric
-JavaScript.
+`codespec-bench`, a Rust crate `crates/bench`, turns a benchmark script into a runnable artifact and
+into rows of swell's speed comparison, and measures nothing. swell's `bench/` measures every engine
+(pinned engines in a container image, bench-v8 v7 and are-we-fast-yet, through `slot` on the build
+node) and holds the data file and the comparison page; codespec supplies the ahead-of-time rows.
+
+- `codespec-bench build <file.js> --target wasm --out <dir>` reads the script, writes it as
+  WebAssembly, assembles it with `wasm-tools`, and writes `<name>.wasm` and `artifact.json`
+  (`codespec-bench-artifact/1`): the codespec version, the sha256 of the source and of the `.wasm`,
+  the entry function, the encoding of its arguments, the tool versions, and the runner command as an
+  argument list (`wasmtime run --invoke <entry> <dir>/<name>.wasm <args>`, with the flags the pinned
+  `wasmtime` needs for the GC proposal). A second target, `x86-64`, an ELF with its own runner
+  command, is added when `story:x86-64-writer` is implemented; it is not part of this story's
+  outcome.
+- `codespec-bench rows <dir>...` writes the AOT rows in swell's bench schema `swell-bench/1`
+  (swell's `story:bench-runner-and-data-file`, beyond10x/swell#9): one row per script and target,
+  carrying the artifact, its runner command and its digests. A script the reader refuses is a row
+  with `status: refused`, the refusal's reason and `file:line`; it is not rewritten to pass.
+- `codespec-bench run <dir>/artifact.json` runs the artifact once, in the container of
+  `story:native-run-harness`, and prints one result line
+  `codespec-bench-result/1 <name> <target> exit=<n> out=<sha256 of stdout>`, then compares the output
+  with what `story:ecmascript-run-oracle` gets from `node` for the same script: `match` or
+  `differs`. It is a correctness run: it prints no time.
 
 ## Why
 
-Requested by the owner with the path itself. A number without its method is not a comparison, and a
-benchmark that runs on a busy workstation or a shared node measures the neighbours. The method is
-fixed here before the first result exists, so a result cannot choose it.
+Requested by the owner with the path itself: compare speed with the fastest ECMAScript engines. The
+division is agreed with swell (option a): one place holds the method, the pinned engines and the data
+file, so a comparison has one method and codespec does not pin a second set of engines. codespec's
+part is what only it can make: the artifact, and an honest row for what it cannot read.
 
-## The set
+The set is swell's. Most of bench-v8 v7 and are-we-fast-yet use classes, `try` and prototypes, which
+the reader refuses; the rows for them say so, and the share of the set that is read is itself a
+result. The kernels below exist so that some rows are artifacts.
 
-- Programs, public and licensed, each file keeping its licence header and source URL: the numeric
-  kernels of the Computer Language Benchmarks Game (`nbody`, `spectral-norm`, `mandelbrot`,
-  `fannkuch-redux`; 3-clause BSD as that site states, to be verified per file before it is
-  committed), adapted to the subset (typed arrays, tagged entry functions, no output formatting),
-  plus kernels written for this repository (`fib`, `sieve`, `matmul`, `collatz`) under the
-  repository's licence. Each adaptation is a diff against the original, committed beside it. A
-  program the reader refuses is listed with its refusal and is not rewritten to pass.
-- Engines, each with a public source and a version pinned in the container image: V8 through `node`,
-  JavaScriptCore through `bun`, SpiderMonkey through its `js` shell, QuickJS (the quickjs-ng fork or
-  Bellard's, one named), and swell where it has a runnable binary at its pinned tag (a library with
-  no binary gives a row of `not measured: no binary at <tag>`, never a driver written here).
-- Written targets: the `wasm` output on `wasmtime` and on `node`, the `x86-64` output linked and run
-  natively. Where the x86-64 writer does not yet exist the column is absent and says so.
+## What codespec needs from swell
 
-## Method
-
-- Only on the build node, through `story:native-run-harness` (a `slot` job, the container
-  with `--cpus 1` and a pinned cpu set); `codespec-bench` refuses to run where the node's CPU model
-  is not the recorded one and refuses to run on the workstation at all, by a check of the host
-  name against the recorded node.
-- Cold: a fresh process per run, wall time from `exec` to exit, including start-up and
-  compile; 11 runs, the median, the minimum and the maximum are reported. An empty program gives
-  the start-up floor of each engine, printed beside every row.
-- Warm: the kernel's entry is called `K` times in one process after `W` warm-up calls, timed inside the
-  process by the engine's monotonic clock; 11 processes, the median of the per-process median.
-  `K` and `W` are chosen so the slowest engine's run is at least one second and written beside
-  each result. Wasm and native code have no warm-up, so for them warm equals cold minus start-up,
-  reported once and marked.
-- Every run's output is checked against the oracle's (`story:ecmascript-run-oracle`) before its
-  time is kept; a result that differs is a failure of that cell, shown as such, never timed.
-- A run is discarded and repeated when another slot job overlapped it (read from the node's job
-  log); a cell with three discards is reported as `noisy`.
-- Results are in time and as a ratio to V8 (`node`), both columns.
+Not a story here: swell's work is swell's. `story:native-speed-comparison` cannot be implemented
+before swell's `story:bench-runner-and-data-file` (beyond10x/swell#9) is delivered: the schema
+`swell-bench/1` as a file at a swell release tag (compared here by digest) and the entry convention
+for a script (how the script names the function to call and its arguments). It pins a swell release tag for the schema as `story:ecmascript-swell-surface` does for
+the syntax crate.
 
 ## Done When
 
-- A failing check first: `report_cell_without_version_fails` loads a report fixture whose engine
-  row has no version and expects the schema check to name the cell; it fails until the check exists.
-- The report schema (`codespec-bench-report/1`) is checked in the gate, fast and with no run:
-  every cell has the engine version, the image digest, the commit, the node's CPU model, the raw
-  samples, the median, the minimum and the maximum; a median that is not the median of the samples
-  fails; the page is regenerated from the JSON and compared byte for byte.
-- A run (`task bench`, not in the gate, a slot job on the node of at most 30 minutes, split per
-  program when it would be longer) writes the report; the report is committed with the run's
-  commit and the log of the node's jobs that ran during it.
-- The gate never runs a benchmark: a test that did would fail the budget rule; a test holds that
-  `task check` and every part of `scripts/check-parts.txt` name no `bench` command.
-- Near misses: an engine that prints the right answer but starts a second thread (counted, the
-  report states `--cpus 1`), a kernel whose result is optimised away in one engine (each kernel's
-  result feeds a printed checksum), a warm-up that is too short (`W` is shown against the point
-  where the median stops falling), an engine whose version differs between two runs (the report
-  refuses to merge them).
-- Not a ratchet in this story. A KPI over the ratio to V8, held by a `ratchet/1` document in the way
-  `epic:reader-self-improvement-loop` (draft, open pull request 66) holds the reader KPIs, is named
-  as the next step and is the owner's decision.
+- A failing test first: `refused_script_is_a_row_with_reason` builds the rows of a directory holding
+  `eval.js` (a call to `eval` on line 3) and expects one row, `status: refused`, `at: eval.js:3`,
+  naming `eval`; it fails until `rows` exists.
+- `build` is deterministic: the same script and the same tool versions give a byte-equal `.wasm` and
+  `artifact.json`. It refuses to run when `wasm-tools` is not the version the codespec release pins,
+  naming both versions; a test holds it with a stub that prints another version.
+- The rows validate against the schema file of the pinned swell release (compared by digest, no
+  network); a row that does not is refused naming the field. Rows hold no time, no count of runs and
+  no engine other than the artifact's own runner: a test greps the rows for such fields, since the
+  measuring is swell's.
+- The kernels `benchmarks/ecmascript-native/kernels/` (`fib`, `sieve`, `matmul`, `collatz`, `nbody`),
+  written for the subset under this repository's licence and offered to swell as an input set: at
+  least four of the five build, and each of the five has a row, built or refused with its reason.
+  Every script swell's set holds at the pinned tag gets a row the same way; the report of
+  `rows` prints `read N of M`.
+- `run` prints the result line for every built kernel, `match` against `node`; a kernel changed by one
+  float bit (`0.1 + 0.2` against `0.3`) prints `differs` and exits 1; a test holds it.
+- The release workflow ships `codespec-bench` in the release archive beside the readers and writers it
+  calls, so swell's bench builds artifacts from a pinned codespec release, never from a checkout; a
+  check of the release workflow's program list names it.
+- The gate never builds a benchmark artifact beyond the kernels' own build test, runs no engine
+  but the container's `wasmtime` and `node` on tiny inputs, and `task check` and every part of
+  `scripts/check-parts.txt` name no timing command. Each test under 60 s, the step under 120 s; the
+  time of the new test binary is stated.
+- Near misses: a script whose entry the schema's convention does not name (a row `refused`, reason
+  `no entry`), a script with two top-level functions of the same name, an artifact directory with a
+  `.wasm` that does not match `artifact.json`'s digest (`run` refuses), a refused script that still
+  has a source digest in its row.
 
 ## Scope
 
-- Own: `crates/bench` (new), `benchmarks/ecmascript-native/` (new: programs, adaptations,
-  report), `containers/` (the engine image, a file of `story:native-run-harness`'s directory),
-  root `Cargo.toml` `members`, `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`,
-  `website/` (one page), `AGENTS.md`, `CHANGELOG.md`.
-- Shares `Taskfile.yml`, `scripts/check-parts.txt` and `containers/` with every other story of the
-  epic; this story last.
+- Own: `crates/bench` (new), `benchmarks/ecmascript-native/kernels` (new),
+  `benchmarks/ecmascript-native/schema` (new: the digest of swell's schema file),
+  `.github/workflows/release-build.yml` (the program list), root `Cargo.toml` `members`,
+  `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`, `AGENTS.md`, `CHANGELOG.md`.
+- Shares root `Cargo.toml`, `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`, `AGENTS.md` and
+  `CHANGELOG.md` with every other story of the epic; this story last. It depends on
+  `story:wasm-writer` and `story:ecmascript-run-oracle`; `story:x86-64-writer` adds its target
+  afterwards.
