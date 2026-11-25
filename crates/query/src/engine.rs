@@ -86,14 +86,16 @@ impl Cond {
 impl Wild {
     /// Whether the site could hold `v` here, a value without a wild field. A field naming a node
     /// nothing read is the node it sits in or one inside that: the foreign statement itself or a
-    /// node under it (`<statement>.…`), a node of the opaque function (`<function>#…`).
+    /// node under it (`<function>#<path>.…`), a node of the opaque function (`<function>#…`; a
+    /// method `<function>.<name>` is no node of it).
     fn admits(&self, v: &V) -> bool {
         let inside = match (&self.unread, v) {
             (None, _) => true,
             (Some(root), V::Str(s)) => {
+                let under = if root.contains('#') { '.' } else { '#' };
                 **s == **root
                     || s.strip_prefix(&**root)
-                        .is_some_and(|rest| rest.starts_with('.') || rest.starts_with('#'))
+                        .is_some_and(|r| r.starts_with(under))
             }
             (Some(_), _) => false,
         };
@@ -3725,6 +3727,10 @@ impl<'a> Eval<'a> {
                         Op::Ge => Op::Le,
                         op => op,
                     };
+                    // `==` admits what `=` admits: a node nothing read only under its site.
+                    if *op == Op::Eq && !eqv(&p, &q, mode) {
+                        return none();
+                    }
                     match (&p, &q) {
                         (V::Wild(w), v) if !v.has_top() => {
                             return narrow(x, w, Cond::Cmp(*op, v.clone()), ann);

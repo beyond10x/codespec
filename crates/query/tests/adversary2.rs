@@ -532,3 +532,63 @@ fn run_within_does_not_return_a_peak_over_its_limit() {
         Err(e) => assert_eq!(e.limit, 1),
     }
 }
+
+// --- 4. Unread nodes sit in their site's node (PR #67, second pass) -----------------------------
+
+/// A Rust module: `struct Foo {}`, its method `Foo.bar` with one statement, and an opaque
+/// function `Foo` (Rust keeps a function and a braced struct of one name apart), declared
+/// without a body. The opaque function's id is `example.com/m.Foo`, the method's
+/// `example.com/m.Foo.bar`; `walk` is a function of its own with one statement.
+fn opaque_beside_method() -> Module {
+    let ret = |line: usize| serde_json::json!({"k": "return", "results": [], "pos": format!("m.rs:{line}")});
+    module_of(&serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "rust", "name": "hand-written", "version": "0"},
+        "types": [{"k": "struct", "name": "Foo", "exported": false, "fields": [], "pos": "m.rs:1"}],
+        "funcs": [
+            {"name": "bar", "exported": false,
+             "recv": {"name": "s", "t": {"k": "named", "name": "Foo"}},
+             "params": [], "results": [], "body": [ret(3)], "pos": "m.rs:2"},
+            {"name": "walk", "exported": false, "params": [], "results": [],
+             "body": [ret(6)], "pos": "m.rs:5"},
+        ],
+        "opaque": [{"name": "Foo", "pos": "m.rs:8", "reason": "declared without a body",
+                    "no_body": true, "calls": []}],
+        "layout": ["type:Foo", "func:Foo.bar", "func:walk", "func:Foo"],
+    }))
+}
+
+/// A node the opaque function `Foo` holds is `example.com/m.Foo` or a node under it
+/// (`example.com/m.Foo#…`), never a node of the method `Foo.bar`, whose id only starts with
+/// the same text and a dot. "The statement of `bar` lies in no opaque function" is definite.
+#[test]
+fn a_node_of_an_opaque_function_is_no_node_of_a_method_whose_id_extends_its_id() {
+    let a = answer(
+        "in_opaque(S) :- func{id: O, kind: \"opaque\"}, contains(O, S).\n\
+         ?- func{id: G, name: \"bar\"}, stmt{func: G, id: S}, !in_opaque(S).",
+        &[opaque_beside_method()],
+    );
+    let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+    assert_eq!(certainty, ["definite"], "{}", a.to_text());
+}
+
+/// An open expression id of the opaque function is a node under `example.com/m.Foo`, so it is
+/// not `walk`'s statement: `walk`'s statement is definitely no expression's id, whether the rule
+/// compares with `=` or with `==`, and the two must agree.
+#[test]
+fn an_open_id_compared_with_eq_or_bind_matches_only_nodes_under_its_site() {
+    let m = opaque_beside_method();
+    let mut got = Vec::new();
+    for op in ["=", "=="] {
+        let a = answer(
+            &format!(
+                "hit(S) :- stmt{{id: S}}, expr{{id: E}}, E {op} S.\n\
+                 ?- func{{id: G, name: \"walk\"}}, stmt{{func: G, id: S}}, !hit(S)."
+            ),
+            std::slice::from_ref(&m),
+        );
+        let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+        got.push(format!("{op}: {certainty:?}"));
+    }
+    assert_eq!(got, ["=: [\"definite\"]", "==: [\"definite\"]"]);
+}
