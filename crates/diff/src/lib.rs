@@ -157,7 +157,10 @@ pub fn read_dir(dir: &Path) -> Result<Vec<Module>, String> {
     }
     paths.sort();
     if paths.is_empty() {
-        return Err(format!("{}: no *.cir.json document", dir.display()));
+        return Err(format!(
+            "{}: no supported source: no *.cir.json document, nothing was compared",
+            dir.display()
+        ));
     }
     let mut seen: BTreeMap<String, &Path> = BTreeMap::new();
     let mut modules = Vec::with_capacity(paths.len());

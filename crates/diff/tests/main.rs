@@ -265,6 +265,7 @@ fn an_empty_directory_is_refused_naming_it() {
     let dir = scratch("empty");
     let e = read_dir(&dir).unwrap_err();
     assert!(e.contains(&dir.display().to_string()), "{e}");
+    assert!(e.contains("no supported source"), "{e}");
     assert!(e.contains("no *.cir.json document"), "{e}");
 }
 
