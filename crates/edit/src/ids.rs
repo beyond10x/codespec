@@ -11,9 +11,11 @@
 //! | the name of field `j` of a struct literal | the literal's node id and `j` | `funcs.<i>.body.<index path>.fields.<j>.name` |
 //!
 //! `<module>` is the module's `path`, or its `name` when it has none; `<key>` is the function's
-//! `name`, or `<receiver type>.<name>` for a method. Below `funcs.<i>.body` the path is cq's index
-//! path, which names a struct literal's field `j` by its value (`fields.<j>`): the token naming
-//! the field is `fields.<j>.name`, so a value that is itself a call keeps a `name` span of its own.
+//! `name`, or `<receiver type>.<name>` for a method, and `<key>~<k>` for the `k`-th function of
+//! one key in `funcs` from the second on (Go's several `init` functions of a package). Below
+//! `funcs.<i>.body` the path is cq's index path, which names a struct literal's field `j` by its
+//! value (`fields.<j>`): the token naming the field is `fields.<j>.name`, so a value that is
+//! itself a call keeps a `name` span of its own.
 //!
 //! [`source_names`] gives the `source_name(node, text)` records of the fact base: the `text` of
 //! each `name` span under [`Id::key`].
@@ -115,6 +117,8 @@ struct Node {
 pub struct Ids<'m> {
     module: &'m Module,
     label: String,
+    /// The id of each function of `funcs`, in order ([`codespec_query::func_ids`]).
+    func_ids: Vec<String>,
     /// Function id to its index in `funcs`, and the same for `opaque`.
     funcs: HashMap<String, usize>,
     opaque: HashMap<String, usize>,
@@ -129,6 +133,11 @@ pub fn label(m: &Module) -> &str {
     if m.path.is_empty() { &m.name } else { &m.path }
 }
 
+/// The id of function `i` of `m.funcs` ([`codespec_query::func_ids`]).
+pub fn func_id(m: &Module, i: usize) -> String {
+    codespec_query::func_ids(m).swap_remove(i)
+}
+
 impl<'m> Ids<'m> {
     /// The mapping of `module`, its body nodes from a fact base built over it alone.
     pub fn new(module: &'m Module) -> Ids<'m> {
@@ -139,10 +148,12 @@ impl<'m> Ids<'m> {
     /// The mapping of `module`, its body nodes from `facts`, a fact base over a set holding it.
     pub fn from_facts(module: &'m Module, facts: &FactBase) -> Ids<'m> {
         let label = label(module).to_string();
-        let mut funcs = HashMap::new();
-        for (i, f) in module.funcs.iter().enumerate() {
-            funcs.entry(format!("{label}.{}", f.key())).or_insert(i);
-        }
+        let func_ids = codespec_query::func_ids(module);
+        let funcs: HashMap<String, usize> = func_ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.clone(), i))
+            .collect();
         let mut opaque = HashMap::new();
         for (i, o) in module.opaque.iter().enumerate() {
             opaque.entry(format!("{label}.{}", o.key())).or_insert(i);
@@ -183,6 +194,7 @@ impl<'m> Ids<'m> {
         Ids {
             module,
             label,
+            func_ids,
             funcs,
             opaque,
             types,
@@ -239,7 +251,7 @@ impl<'m> Ids<'m> {
     pub fn id(&self, at: &str) -> Option<Id> {
         let (place, _) = self.resolve(at)?;
         Some(match place {
-            Place::Func(i) => Id::Func(format!("{}.{}", self.label, self.module.funcs[i].key())),
+            Place::Func(i) => Id::Func(self.func_ids[i].clone()),
             Place::Opaque(i) => Id::Func(format!("{}.{}", self.label, self.module.opaque[i].key())),
             Place::Type(i) => Id::Type(self.type_id(i)),
             Place::Field(i, j) => {
@@ -305,7 +317,7 @@ impl<'m> Ids<'m> {
     }
 
     fn node_id(&self, i: usize, path: &str) -> String {
-        format!("{}.{}#{path}", self.label, self.module.funcs[i].key())
+        format!("{}#{path}", self.func_ids[i])
     }
 
     fn node_place(&self, id: &str) -> Option<(usize, String)> {

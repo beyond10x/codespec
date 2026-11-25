@@ -15,7 +15,7 @@ use codespec_model::{CallRef, Module, TypeDecl};
 
 use crate::change::{Input, Options, Planned, Refusal, Source, TextEdit};
 use crate::checks::{Text, pos_names};
-use crate::ids::label;
+use crate::ids::{func_id, label};
 use crate::lang::{check_name, go_exported, has_word};
 use crate::refs::{Ctx, Item, Owner, walk};
 use crate::spans::{Form, Role, Span};
@@ -529,7 +529,7 @@ impl<'a> Cx<'a> {
                 && locals.get(&(k, f)).is_some_and(|l| l.contains(new))
             {
                 let m = &self.inputs[k].module;
-                let fid = format!("{}.{}", label(m), m.funcs[f].key());
+                let fid = func_id(m, f);
                 if captured.insert(fid.clone()) {
                     refuse(
                         out,
@@ -618,7 +618,7 @@ impl<'a> Cx<'a> {
             let Some(key) = id.strip_prefix(label(m)).and_then(|r| r.strip_prefix('.')) else {
                 continue;
             };
-            if let Some(i) = m.funcs.iter().position(|f| f.key() == key) {
+            if let Some(i) = codespec_query::func_ids(m).iter().position(|f| f == id) {
                 return Some((k, false, i));
             }
             if let Some(i) = m.opaque.iter().position(|o| o.key() == key) {
@@ -698,6 +698,7 @@ impl<'a> Cx<'a> {
         };
         let named =
             |k: usize, at: String, name: &str| name == new || self.text(k, &at) == Some(new);
+        let fids = codespec_query::func_ids(m);
         for (j, f) in m.funcs.iter().enumerate() {
             let recv = f
                 .recv
@@ -707,7 +708,7 @@ impl<'a> Cx<'a> {
                 && recv == t.recv.as_deref()
                 && named(t.module, format!("funcs.{j}"), &f.name)
             {
-                hit(format!("{l}.{}", f.key()), "a function");
+                hit(fids[j].clone(), "a function");
             }
         }
         for (j, o) in m.opaque.iter().enumerate() {
@@ -842,7 +843,7 @@ impl<'a> Cx<'a> {
                     refuse(
                         out,
                         "collision",
-                        &format!("{}.{}", label(m), f.key()),
+                        &func_id(m, j),
                         format!("{new} is the name of a method of {ty_name}"),
                     );
                 }

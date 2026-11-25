@@ -1,0 +1,97 @@
+{
+  "files": [
+    {
+      "generated": false,
+      "len": 103,
+      "path": "a.go",
+      "sha256": "7aa1315c107e463965166785a1b202e47c5cdfd0e91248e39550f9d179f93786"
+    },
+    {
+      "generated": false,
+      "len": 45,
+      "path": "b.go",
+      "sha256": "4ee7c9eea0ce703e6b90205d68a38ef2d6956878abd2e62c8e74d1981a8ba55f"
+    }
+  ],
+  "refs": [],
+  "spans": [
+    {
+      "at": "funcs.0",
+      "end": 67,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "decl",
+      "start": 40
+    },
+    {
+      "at": "funcs.0",
+      "end": 48,
+      "end_line": 5,
+      "file": 0,
+      "line": 5,
+      "role": "name",
+      "start": 45,
+      "text": "one"
+    },
+    {
+      "at": "funcs.1",
+      "end": 102,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "decl",
+      "start": 69
+    },
+    {
+      "at": "funcs.1",
+      "end": 78,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 74,
+      "text": "init"
+    },
+    {
+      "at": "funcs.1.body.0.rhs.0",
+      "end": 98,
+      "end_line": 7,
+      "file": 0,
+      "line": 7,
+      "role": "name",
+      "start": 95,
+      "text": "one"
+    },
+    {
+      "at": "funcs.2",
+      "end": 44,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "decl",
+      "start": 11
+    },
+    {
+      "at": "funcs.2",
+      "end": 20,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "name",
+      "start": 16,
+      "text": "init"
+    },
+    {
+      "at": "funcs.2.body.0.rhs.0",
+      "end": 40,
+      "end_line": 3,
+      "file": 1,
+      "line": 3,
+      "role": "name",
+      "start": 37,
+      "text": "one"
+    }
+  ],
+  "unspanned": []
+}

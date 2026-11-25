@@ -217,6 +217,9 @@ fn run(cmd: Cmd) -> Result<(), String> {
             let prog = adapter(&adapters, "read", &lang)?;
             if let Some(spans) = spans {
                 let read = codespec_edit::run::read_spanned(&prog, &source)?;
+                for d in &read.dropped {
+                    eprintln!("{d}");
+                }
                 std::fs::write(&out, read.cir_json())
                     .map_err(|e| format!("{}: {e}", out.display()))?;
                 std::fs::write(&spans, read.spans_json())
