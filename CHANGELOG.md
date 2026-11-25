@@ -6,6 +6,9 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec effects`: each `syscalls` and `effect_sites` entry has `sites`, the ids `{callee, n}`
+  of the function's own calls that lead there, which stay the same when lines move (defined in
+  the crate doc of `b10x-codespec-effects`).
 - `codespec read --spans <out>` also writes a `codespec-spans/1` document: where the module's
   functions, struct fields, calls, field accesses and struct literal fields are in the source
   files, by byte range and line. It is checked strictly against the module and the files; the

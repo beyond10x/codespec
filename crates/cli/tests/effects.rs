@@ -139,3 +139,140 @@ fn effects_reads_several_documents_as_one_program_the_same_bytes_twice() {
     assert_eq!(report["funcs"].as_array().unwrap().len(), 1);
     assert_eq!(report["funcs"][0]["path"], "example.com/b");
 }
+
+fn text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+/// A directory holding `codespec-read-go`, built once per test binary.
+fn go_adapters() -> &'static Path {
+    static ADAPTERS: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    ADAPTERS.get_or_init(|| {
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("effects-adapters");
+        std::fs::create_dir_all(&dir).unwrap();
+        let built = Command::new("go")
+            .args(["build", "-o"])
+            .arg(format!("{}/", dir.display()))
+            .arg("./cmd/codespec-read-go")
+            .current_dir(root().join("adapters/go"))
+            .output()
+            .unwrap();
+        assert!(built.status.success(), "{}", text(&built));
+        dir
+    })
+}
+
+/// The effects report of revision `rev` of `crates/cli/tests/fixtures/moved-lines`, read with
+/// `codespec-read-go`.
+fn moved_lines_report(rev: &str) -> serde_json::Value {
+    let doc = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("moved-lines-{rev}.cir.json"));
+    let read = Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .args(["read", "--lang", "go"])
+        .arg(
+            root()
+                .join("crates/cli/tests/fixtures/moved-lines")
+                .join(rev),
+        )
+        .arg("--out")
+        .arg(&doc)
+        .arg("--adapters")
+        .arg(go_adapters())
+        .output()
+        .unwrap();
+    assert!(read.status.success(), "{rev}: {}", text(&read));
+    let out = codespec(&["effects", doc.to_str().unwrap(), "--summaries", STD]);
+    assert!(out.status.success(), "{rev}: {}", text(&out));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// The `sites` of every `syscalls` and `effect_sites` entry of every function of `report`, each
+/// with the function and the entry it belongs to.
+fn site_lists(report: &serde_json::Value) -> Vec<(String, String, serde_json::Value)> {
+    let mut out = Vec::new();
+    for f in report["funcs"].as_array().unwrap() {
+        for list in ["syscalls", "effect_sites"] {
+            for e in f[list].as_array().into_iter().flatten() {
+                out.push((
+                    format!("{}.{}", f["path"].as_str().unwrap_or(""), f["name"]),
+                    format!("{list}.{}", e["name"]),
+                    e["sites"].clone(),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Every `funcs` entry without `pos` and without the `at` of its site entries.
+fn without_positions(report: &serde_json::Value) -> serde_json::Value {
+    let mut funcs = report["funcs"].clone();
+    for f in funcs.as_array_mut().unwrap() {
+        let f = f.as_object_mut().unwrap();
+        f.remove("pos");
+        for list in ["syscalls", "effect_sites"] {
+            if let Some(entries) = f.get_mut(list).and_then(|l| l.as_array_mut()) {
+                for e in entries {
+                    e.as_object_mut().unwrap().remove("at");
+                }
+            }
+        }
+    }
+    funcs
+}
+
+fn load_env(r: &serde_json::Value) -> serde_json::Value {
+    let load = r["funcs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "Load")
+        .unwrap_or_else(|| panic!("no Load in {r}"));
+    load["effect_sites"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no effect_sites in {load}"))
+        .iter()
+        .find(|e| e["name"] == "env")
+        .unwrap_or_else(|| panic!("no env in {load}"))
+        .clone()
+}
+
+/// Revision `b` of the fixture only adds lines above `Load`: the positions move, the call-site ids
+/// of the `env` entry stay `os.Getenv@1` and `os.Getenv@2`.
+#[test]
+fn a_change_that_only_moves_lines_keeps_every_call_site_id() {
+    let a = moved_lines_report("a");
+    let b = moved_lines_report("b");
+    let sites = serde_json::json!([
+        {"callee": "os.Getenv", "n": 1},
+        {"callee": "os.Getenv", "n": 2}
+    ]);
+    assert_eq!(load_env(&a)["sites"], sites, "{a}");
+    assert_eq!(load_env(&b)["sites"], sites, "{b}");
+    assert_eq!(
+        load_env(&a)["at"],
+        serde_json::json!(["probe.go:6", "probe.go:8"])
+    );
+    assert_eq!(
+        load_env(&b)["at"],
+        serde_json::json!(["probe.go:10", "probe.go:12"])
+    );
+}
+
+/// The consumer's check: a fixture whose only change moves lines yields no delta. Every `sites`
+/// list of the two reports is equal, and every `funcs` entry is equal once `pos` and `at` are
+/// dropped.
+#[test]
+fn a_change_that_only_moves_lines_yields_no_delta() {
+    let a = moved_lines_report("a");
+    let b = moved_lines_report("b");
+    assert_ne!(a, b, "the positions differ");
+    let lists = site_lists(&a);
+    assert!(!lists.is_empty(), "{a}");
+    assert!(lists.iter().all(|(_, _, s)| s.is_array()), "{lists:?}");
+    assert_eq!(lists, site_lists(&b));
+    assert_eq!(without_positions(&a), without_positions(&b));
+}

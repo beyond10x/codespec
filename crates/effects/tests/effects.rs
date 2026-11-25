@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use codespec_effects::{
@@ -1255,4 +1256,570 @@ fn a_summary_of_another_language_does_not_apply() {
     assert!(f.effects.is_empty(), "{:?}", f.effects);
     let reasons: Vec<&str> = f.unknown.iter().map(|u| u.reason.as_str()).collect();
     assert_eq!(reasons, ["extern without summary: net.Conn.Write"]);
+}
+
+// --- call-site ids: `{callee, n}` per function ---
+
+/// The call-site ids, `<callee>@<n>`, of the `list` entry (`syscalls` or `effect_sites`) named
+/// `name` of the function `func`, as the report encodes them.
+fn ids(r: &Report, func: &str, list: &str, name: &str) -> Vec<String> {
+    let v = serde_json::to_value(r).unwrap();
+    let f = v["funcs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == func)
+        .unwrap_or_else(|| panic!("no {func} in {v}"))
+        .clone();
+    let e = f[list]
+        .as_array()
+        .unwrap_or_else(|| panic!("{func}: no {list} in {f}"))
+        .iter()
+        .find(|e| e["name"] == name)
+        .unwrap_or_else(|| panic!("{func}: no {list} entry {name} in {f}"))
+        .clone();
+    e["sites"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|s| format!("{}@{}", s["callee"].as_str().unwrap_or("?"), s["n"]))
+        .collect()
+}
+
+/// Every call-site id of every entry of every function of `r`: `F effect_sites.env os.Getenv@1`.
+fn all_ids(r: &Report) -> Vec<String> {
+    let v = serde_json::to_value(r).unwrap();
+    let mut out = Vec::new();
+    for f in v["funcs"].as_array().unwrap() {
+        for list in ["syscalls", "effect_sites"] {
+            for e in f[list].as_array().into_iter().flatten() {
+                for s in e["sites"].as_array().into_iter().flatten() {
+                    out.push(format!(
+                        "{} {list}.{} {}@{}",
+                        f["name"].as_str().unwrap(),
+                        e["name"].as_str().unwrap(),
+                        s["callee"].as_str().unwrap_or("?"),
+                        s["n"]
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The positions of every entry of every function of `r`, in the same order as [`all_ids`].
+fn all_positions(r: &Report) -> Vec<Vec<String>> {
+    r.funcs
+        .iter()
+        .flat_map(|f| f.syscalls.iter().chain(&f.effect_sites))
+        .map(|e| e.at.clone())
+        .collect()
+}
+
+fn int() -> Value {
+    json!({"k": "int", "width": "platform", "signed": true})
+}
+
+/// `syscall.Syscall6(<number>, n)`: the barrier's numbered function, its number a literal when
+/// given, else the variable `n`.
+fn syscall6(number: Option<&str>) -> Value {
+    let n = match number {
+        Some(v) => json!({"k": "lit", "value": v, "t": int()}),
+        None => json!({"k": "var", "name": "n", "t": int()}),
+    };
+    let arg = json!({"k": "var", "name": "n", "t": int()});
+    json!({"k": "extern", "path": "syscall", "name": "Syscall6", "args": [n, arg], "t": int()})
+}
+
+fn syscall6_decl() -> Value {
+    json!({"path": "syscall", "name": "Syscall6", "params": [int(), int()], "results": [int()]})
+}
+
+/// `os.Getenv("HOME")`.
+fn getenv() -> Value {
+    json!({"k": "extern", "path": "os", "name": "Getenv",
+        "args": [{"k": "lit", "value": "\"HOME\"", "t": s()}], "t": s()})
+}
+
+/// An expression statement at `m.go:<line>`.
+fn stmt(x: Value, line: u32) -> Value {
+    json!({"k": "expr", "x": x, "pos": format!("m.go:{line}")})
+}
+
+/// A function of one parameter `n int` and no results.
+fn nfunc(name: &str, line: u32, body: Vec<Value>) -> Value {
+    json!({"name": name, "exported": true, "params": [{"name": "n", "t": int()}], "results": [],
+        "body": body, "pos": format!("m.go:{line}")})
+}
+
+/// The module `example.com/p` of `funcs`, with the externs `os.Getenv` and `syscall.Syscall6`.
+fn site_module(funcs: Vec<Value>) -> Module {
+    doc(
+        "p",
+        "example.com/p",
+        funcs,
+        json!({"externs": [decl("os", "Getenv"), syscall6_decl()]}),
+    )
+}
+
+/// The report of `m` with the standard summary and the test barrier.
+fn with_barrier(modules: &[Module]) -> Report {
+    let b = barrier();
+    let opts = Options {
+        barrier: Some(&b),
+        ..Options::default()
+    };
+    analyze_set(modules, &[std_summary()], &opts)
+}
+
+/// `f(f(x))`: two sites of one callee at one position, the outer first (pre-order): the outer
+/// call's number makes `openat`, the inner's `read`.
+#[test]
+fn a_call_inside_a_call_of_the_same_callee_is_its_second_site_at_the_same_position() {
+    let inner = getenv();
+    let outer = json!({"k": "extern", "path": "os", "name": "Getenv", "args": [inner], "t": s()});
+    let m = module(
+        vec![func("f", 1, vec![ret(outer, 2)])],
+        vec![decl("os", "Getenv")],
+    );
+    let r = analyze(&m, &[std_summary()]);
+    assert_eq!(
+        ids(&r, "f", "effect_sites", "env"),
+        ["os.Getenv@1", "os.Getenv@2"]
+    );
+    assert_eq!(entry(&r, "f").effect_sites[0].at, ["m.go:2"]);
+
+    let mut outer = syscall6(Some("257"));
+    let mut inner = syscall6(Some("0"));
+    inner["args"][1] = json!({"k": "var", "name": "n", "t": int()});
+    outer["args"][1] = inner;
+    let r = with_barrier(&[site_module(vec![nfunc("f", 1, vec![stmt(outer, 2)])])]);
+    assert_eq!(ids(&r, "f", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    assert_eq!(ids(&r, "f", "syscalls", "read"), ["syscall.Syscall6@2"]);
+}
+
+#[test]
+fn two_calls_of_one_callee_in_two_statements_on_one_line_are_two_sites_at_one_position() {
+    let r = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(getenv(), 2), stmt(getenv(), 2)],
+    )])]);
+    assert_eq!(
+        ids(&r, "f", "effect_sites", "env"),
+        ["os.Getenv@1", "os.Getenv@2"]
+    );
+    assert_eq!(entry(&r, "f").effect_sites[0].at, ["m.go:2"]);
+}
+
+/// Each call a `foreign` statement or an opaque function lists is a site, in the order listed,
+/// its callee spelled by the table of the crate doc; a `ref`, a `new` and a `named` call ref are
+/// none, and a lambda's own calls are the literal's.
+#[test]
+fn each_call_a_foreign_statement_lists_is_a_site_spelled_by_the_table_in_the_order_listed() {
+    let syscall = |number: &str| {
+        json!({"k": "func", "path": "syscall", "name": "Syscall6",
+            "consts": [{"index": 0, "value": number}], "pos": "m.go:2"})
+    };
+    let calls = vec![
+        cfunc("", "Read", 2),
+        cfunc("os", "Getenv", 2),
+        json!({"k": "method", "recv": "T", "name": "M", "pos": "m.go:2"}),
+        speak_iface(2),
+        json!({"k": "lambda", "sig": "func() error", "calls": [cfunc("os", "Getenv", 2)], "pos": "m.go:2"}),
+        json!({"k": "value", "sig": "func() error", "pos": "m.go:2"}),
+        json!({"k": "ref", "name": "Read", "sig": "func()", "pos": "m.go:2"}),
+        json!({"k": "new", "name": "T", "pos": "m.go:2"}),
+        json!({"k": "named", "form": "func", "name": "mystery", "pos": "m.go:2"}),
+        syscall("257"),
+        syscall("0"),
+        cfunc("os", "Getenv", 2),
+    ];
+    let p = doc(
+        "p",
+        "example.com/p",
+        vec![
+            unit_func("F", 1, vec![foreign(2, calls)]),
+            unit_func("Read", 3, vec![stmt(getenv(), 4)]),
+            method_func("T", "M", 5, vec![stmt(getenv(), 6)]),
+        ],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:5"}],
+            "externs": [decl("os", "Getenv")],
+            "opaque": [opaque("Raw", 7, vec![cfunc("os", "Getenv", 8), cfunc("os", "Getenv", 9)])],
+            "layout": ["func:F", "func:Read", "type:T", "func:T.M"]
+        }),
+    );
+    let r = with_barrier(&[p, impls(false)]);
+    assert_eq!(
+        ids(&r, "F", "effect_sites", "env"),
+        [
+            "example.com/p.Read@1",
+            "example.com/p.T.M@1",
+            "iface:example.com/h.Speaker.Speak@1",
+            "lambda:func() error@1",
+            "os.Getenv@1",
+            "os.Getenv@2",
+            "value:func() error@1",
+        ]
+    );
+    assert_eq!(
+        ids(&r, "F", "effect_sites", "stdout"),
+        ["iface:example.com/h.Speaker.Speak@1"]
+    );
+    assert_eq!(ids(&r, "F", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    assert_eq!(ids(&r, "F", "syscalls", "read"), ["syscall.Syscall6@2"]);
+    let reasons: Vec<&str> = entry(&r, "F")
+        .unknown
+        .iter()
+        .map(|u| u.reason.as_str())
+        .collect();
+    assert_eq!(
+        reasons,
+        ["call of a name the reader did not resolve: mystery"]
+    );
+    assert_eq!(
+        ids(&r, "Raw", "effect_sites", "env"),
+        ["os.Getenv@1", "os.Getenv@2"]
+    );
+    assert_eq!(entry(&r, "Raw").effect_sites[0].at, ["m.go:8", "m.go:9"]);
+}
+
+/// Each call `cir/1` spells as an expression, by the table of the crate doc.
+#[test]
+fn each_cir1_call_is_a_site_spelled_by_the_table() {
+    let unit = json!({"k": "func", "params": [], "results": []});
+    let t = json!({"k": "named", "name": "T"});
+    let speaker = json!({"k": "named", "name": "Speaker"});
+    let conn = json!({"k": "extern", "path": "net", "name": "Conn"});
+    let f = json!({
+        "name": "F", "exported": true,
+        "params": [{"name": "t", "t": t}, {"name": "s", "t": speaker}, {"name": "c", "t": conn}],
+        "results": [],
+        "body": [
+            json!({"k": "let", "names": ["g"], "rhs": [{"k": "func_ref", "name": "Env", "t": unit}], "pos": "m.go:2"}),
+            stmt(json!({"k": "call", "name": "Env", "args": [], "t": {"k": "unit"}}), 3),
+            stmt(json!({"k": "method", "x": {"k": "var", "name": "t", "t": t}, "name": "Speak", "args": [], "t": {"k": "unit"}}), 4),
+            stmt(json!({"k": "extern_method", "path": "net", "type": "Conn", "name": "Close",
+                "recv": {"k": "var", "name": "c", "t": conn}, "args": [], "t": {"k": "unit"}}), 5),
+            stmt(json!({"k": "iface_call", "path": "", "iface": "Speaker", "name": "Speak",
+                "recv": {"k": "var", "name": "s", "t": speaker}, "args": [], "t": {"k": "tuple", "elems": []}}), 6),
+            stmt(json!({"k": "call_value", "f": {"k": "var", "name": "g", "t": unit}, "args": [], "t": {"k": "unit"}}), 7),
+            println_body(8),
+        ],
+        "pos": "m.go:1"
+    });
+    let p = doc(
+        "p",
+        "example.com/p",
+        vec![
+            f,
+            unit_func("Env", 9, vec![stmt(getenv(), 10)]),
+            method_func("T", "Speak", 11, vec![stmt(getenv(), 12)]),
+        ],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:11"}],
+            "interfaces": [{"name": "Speaker", "exported": true, "pos": "m.go:13",
+                "methods": [{"name": "Speak", "params": [], "results": []}]}],
+            "externs": [{"path": "net", "name": "Close", "recv": conn, "params": [], "results": []},
+                decl("os", "Getenv")],
+            "methods": [method_set("T", "Speak", "func()")],
+            "layout": ["func:F", "func:Env", "type:T", "func:T.Speak", "type:Speaker"]
+        }),
+    );
+    let net = summary(&[("net", "Conn.Close", &["net"]), ("os", "Getenv", &["env"])]);
+    let r = analyze_set(&[p], &[net], &Options::default());
+    assert_eq!(
+        ids(&r, "F", "effect_sites", "env"),
+        [
+            "example.com/p.Env@1",
+            "example.com/p.T.Speak@1",
+            "iface:Speaker.Speak@1",
+            "value:func()@1",
+        ]
+    );
+    assert_eq!(ids(&r, "F", "effect_sites", "net"), ["net.Conn.Close@1"]);
+    assert_eq!(ids(&r, "F", "effect_sites", "stdout"), ["println@1"]);
+}
+
+/// The calls in a function literal are its holder's sites, numbered after the holder's own
+/// statements; the literal and a function used as a value (`func_ref`) are no site and take no
+/// number.
+#[test]
+fn a_call_inside_a_lambda_is_its_holders_after_its_own_statements_and_a_lambda_or_func_ref_is_none()
+{
+    let unit = json!({"k": "func", "params": [], "results": []});
+    let lambda = json!({"k": "lambda", "params": [], "results": [], "captures": ["n"],
+        "body": [stmt(syscall6(Some("0")), 4)], "t": unit});
+    let r = with_barrier(&[site_module(vec![
+        unit_func("Other", 1, vec![stmt(getenv(), 2)]),
+        nfunc(
+            "F",
+            3,
+            vec![
+                json!({"k": "let", "names": ["g"], "rhs": [lambda], "pos": "m.go:3"}),
+                json!({"k": "let", "names": ["h"], "rhs": [{"k": "func_ref", "name": "Other", "t": unit}], "pos": "m.go:5"}),
+                stmt(
+                    json!({"k": "call", "name": "Other", "args": [], "t": {"k": "unit"}}),
+                    6,
+                ),
+                stmt(syscall6(Some("257")), 7),
+            ],
+        ),
+    ])]);
+    assert_eq!(
+        ids(&r, "F", "effect_sites", "env"),
+        ["example.com/p.Other@1"]
+    );
+    assert_eq!(ids(&r, "F", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    assert_eq!(ids(&r, "F", "syscalls", "read"), ["syscall.Syscall6@2"]);
+    let callees: BTreeSet<String> = all_ids(&r)
+        .iter()
+        .filter(|l| l.starts_with("F "))
+        .map(|l| l.rsplit(' ').next().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        callees.into_iter().collect::<Vec<_>>(),
+        [
+            "example.com/p.Other@1",
+            "syscall.Syscall6@1",
+            "syscall.Syscall6@2"
+        ]
+    );
+}
+
+/// `err.Error()` on a value of type `error` dispatches through the interface `error`.
+#[test]
+fn err_error_on_a_value_of_type_error_is_the_site_iface_error_error() {
+    let e = json!({"name": "Error", "exported": true,
+        "recv": {"name": "r", "t": {"k": "named", "name": "E"}},
+        "params": [], "results": [s()], "body": [ret(getenv(), 3)], "pos": "m.go:2"});
+    let call = json!({"k": "method", "x": {"k": "var", "name": "err", "t": {"k": "error"}},
+        "name": "Error", "args": [], "t": s()});
+    let f = json!({"name": "F", "exported": true, "params": [{"name": "err", "t": {"k": "error"}}],
+        "results": [s()], "body": [ret(call, 5)], "pos": "m.go:4"});
+    let p = doc(
+        "p",
+        "example.com/p",
+        vec![f, e],
+        json!({
+            "types": [{"k": "struct", "name": "E", "exported": true, "fields": [], "pos": "m.go:1"}],
+            "externs": [decl("os", "Getenv")],
+            "methods": [method_set("E", "Error", "func() string")],
+            "layout": ["func:F", "type:E", "func:E.Error"]
+        }),
+    );
+    let r = analyze_set(&[p], &[std_summary()], &Options::default());
+    assert_eq!(ids(&r, "F", "effect_sites", "env"), ["iface:error.Error@1"]);
+}
+
+/// A call the analysis records as `unknown` is no site and takes no number: an extern no summary
+/// names keeps its `unknown` entry as it was, and a barrier call with a number that is not a
+/// constant leaves the next call of the same callee `@1`.
+#[test]
+fn a_call_recorded_as_unknown_is_no_site_and_its_unknown_entry_is_unchanged() {
+    let m = module(
+        vec![func("f", 1, vec![ret(ext("example.com/lib", "Shout"), 2)])],
+        vec![decl("example.com/lib", "Shout")],
+    );
+    let r = analyze(&m, &[std_summary()]);
+    let f = entry(&r, "f");
+    let unknown: Vec<(&str, &str)> = f
+        .unknown
+        .iter()
+        .map(|u| (u.pos.as_str(), u.reason.as_str()))
+        .collect();
+    assert_eq!(
+        unknown,
+        [("m.go:2", "extern without summary: example.com/lib.Shout")]
+    );
+    assert!(all_ids(&r).is_empty(), "{:?}", all_ids(&r));
+    let v = serde_json::to_value(&r).unwrap();
+    assert_eq!(
+        v["funcs"][0]["unknown"],
+        json!([{"pos": "m.go:2", "reason": "extern without summary: example.com/lib.Shout"}])
+    );
+
+    let r = with_barrier(&[site_module(vec![nfunc(
+        "g",
+        1,
+        vec![stmt(syscall6(None), 2), stmt(syscall6(Some("257")), 3)],
+    )])]);
+    assert_eq!(ids(&r, "g", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    let reasons: Vec<&str> = entry(&r, "g")
+        .unknown
+        .iter()
+        .map(|u| u.reason.as_str())
+        .collect();
+    assert_eq!(reasons, ["syscall number not constant: syscall.Syscall6"]);
+}
+
+/// The near miss of a method call: `t.M()` on a declared method is a site, `t.N()` (no such
+/// method) and `err.Foo()` (no type of the set has it) are `unknown` and no site.
+#[test]
+fn a_method_on_an_undeclared_type_is_unknown_and_no_site() {
+    let t = json!({"k": "named", "name": "T"});
+    let method = |name: &str, x: Value, line: u32| {
+        stmt(
+            json!({"k": "method", "x": x, "name": name, "args": [], "t": {"k": "unit"}}),
+            line,
+        )
+    };
+    let f = json!({"name": "F", "exported": true,
+        "params": [{"name": "t", "t": t}, {"name": "err", "t": {"k": "error"}}], "results": [],
+        "body": [
+            method("M", json!({"k": "var", "name": "t", "t": t}), 2),
+            method("N", json!({"k": "var", "name": "t", "t": t}), 3),
+            method("Foo", json!({"k": "var", "name": "err", "t": {"k": "error"}}), 4),
+        ],
+        "pos": "m.go:1"});
+    let p = doc(
+        "p",
+        "example.com/p",
+        vec![f, method_func("T", "M", 5, vec![stmt(getenv(), 6)])],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:5"}],
+            "externs": [decl("os", "Getenv")],
+            "layout": ["func:F", "type:T", "func:T.M"]
+        }),
+    );
+    let r = analyze_set(&[p], &[std_summary()], &Options::default());
+    assert_eq!(ids(&r, "F", "effect_sites", "env"), ["example.com/p.T.M@1"]);
+    assert_eq!(all_ids(&r).len(), 2, "{:?}", all_ids(&r));
+    let unknown: Vec<(&str, &str)> = entry(&r, "F")
+        .unknown
+        .iter()
+        .map(|u| (u.pos.as_str(), u.reason.as_str()))
+        .collect();
+    assert_eq!(
+        unknown,
+        [
+            ("m.go:3", "method on undeclared type: T.N"),
+            ("m.go:4", "method on undeclared type: error.Foo"),
+        ]
+    );
+}
+
+/// `f` of the module, its positions in the file `file`.
+fn moved(file: &str, body: Vec<Value>) -> Module {
+    let text = site_module(vec![nfunc("f", 1, body)])
+        .to_json()
+        .replace("\"m.go:", &format!("\"{file}:"));
+    Module::from_json(text.as_bytes()).expect("a valid module")
+}
+
+#[test]
+fn a_function_moved_to_another_file_of_the_same_module_keeps_its_sites() {
+    let body = || {
+        vec![
+            stmt(getenv(), 2),
+            stmt(syscall6(Some("257")), 3),
+            stmt(getenv(), 4),
+        ]
+    };
+    let a = with_barrier(&[moved("m.go", body())]);
+    let b = with_barrier(&[moved("n.go", body())]);
+    assert!(!all_ids(&a).is_empty());
+    assert_eq!(all_ids(&a), all_ids(&b));
+    assert_ne!(all_positions(&a), all_positions(&b));
+}
+
+#[test]
+fn two_calls_of_different_callees_swapped_keep_their_sites() {
+    let a = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(getenv(), 2), stmt(syscall6(Some("257")), 3)],
+    )])]);
+    let b = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(syscall6(Some("257")), 2), stmt(getenv(), 3)],
+    )])]);
+    assert_eq!(ids(&a, "f", "effect_sites", "env"), ["os.Getenv@1"]);
+    assert_eq!(ids(&a, "f", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    assert_eq!(all_ids(&a), all_ids(&b));
+    assert_ne!(all_positions(&a), all_positions(&b));
+}
+
+/// The limit of the ordinal, pinned: two calls of one callee swapped exchange `@1` and `@2`.
+#[test]
+fn two_calls_of_the_same_callee_swapped_exchange_what_their_ordinals_reach() {
+    let a = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(syscall6(Some("257")), 2), stmt(syscall6(Some("0")), 3)],
+    )])]);
+    assert_eq!(ids(&a, "f", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    assert_eq!(ids(&a, "f", "syscalls", "read"), ["syscall.Syscall6@2"]);
+    let b = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(syscall6(Some("0")), 2), stmt(syscall6(Some("257")), 3)],
+    )])]);
+    assert_eq!(ids(&b, "f", "syscalls", "openat"), ["syscall.Syscall6@2"]);
+    assert_eq!(ids(&b, "f", "syscalls", "read"), ["syscall.Syscall6@1"]);
+}
+
+/// The limit of the ordinal, pinned: a call of the same callee inserted before an existing one
+/// makes the existing one `@2`.
+#[test]
+fn a_call_of_the_same_callee_inserted_before_an_existing_one_makes_it_the_second() {
+    let a = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(syscall6(Some("257")), 2)],
+    )])]);
+    assert_eq!(ids(&a, "f", "syscalls", "openat"), ["syscall.Syscall6@1"]);
+    let b = with_barrier(&[site_module(vec![nfunc(
+        "f",
+        1,
+        vec![stmt(syscall6(Some("0")), 2), stmt(syscall6(Some("257")), 3)],
+    )])]);
+    assert_eq!(ids(&b, "f", "syscalls", "openat"), ["syscall.Syscall6@2"]);
+    assert_eq!(ids(&b, "f", "syscalls", "read"), ["syscall.Syscall6@1"]);
+}
+
+/// A body-less function the barrier fixes, and one a linkname links, have the one site `body@1`;
+/// a call of either is a site of its caller.
+#[test]
+fn a_body_less_function_the_barrier_fixes_or_a_linkname_links_has_the_site_body_1() {
+    let b = barrier();
+    let opts = Options {
+        barrier: Some(&b),
+        ..Options::default()
+    };
+    let poll = doc(
+        "poll",
+        "internal/poll",
+        vec![],
+        json!({"opaque": [
+            {"name": "runtime_read", "pos": "m.go:1", "reason": "function without a Go body", "no_body": true, "calls": []},
+            opaque("Read", 2, vec![cfunc("", "runtime_read", 3)])
+        ]}),
+    );
+    let runtime = doc(
+        "runtime",
+        "runtime",
+        vec![],
+        json!({
+            "opaque": [
+                {"name": "read", "pos": "r.go:1", "reason": "function without a Go body", "no_body": true, "calls": []},
+                opaque("poll_runtime_read", 2, vec![cfunc("", "read", 3)])
+            ],
+            "linknames": [{"name": "poll_runtime_read", "target": "internal/poll.runtime_read"}]
+        }),
+    );
+    let r = analyze_set(&[poll, runtime], &[], &opts);
+    assert_eq!(ids(&r, "read", "syscalls", "read"), ["body@1"]);
+    assert_eq!(ids(&r, "runtime_read", "syscalls", "read"), ["body@1"]);
+    assert_eq!(
+        ids(&r, "poll_runtime_read", "syscalls", "read"),
+        ["runtime.read@1"]
+    );
+    assert_eq!(
+        ids(&r, "Read", "syscalls", "read"),
+        ["internal/poll.runtime_read@1"]
+    );
 }

@@ -3,9 +3,10 @@
 //!
 //! `task examples-netcheck` runs `codespec effects`, `reach` and `trace` over the linked set into a
 //! work directory, then `codespec-docs netcheck --work <dir>` ([`reduce`]) writes the checked-in
-//! files: the effects reports without `effect_sites` (and, for `cha`, without syscall positions),
-//! the reach reports as printed, and the call trees, the deep ones pruned to the path that ends in
-//! one syscall. The page ([`outputs`]) and the tests read only those checked-in files.
+//! files: the effects reports without `effect_sites` and without call-site ids (and, for `cha`,
+//! without syscall positions), the reach reports as printed, and the call trees, the deep ones
+//! pruned to the path that ends in one syscall. The page ([`outputs`]) and the tests read only
+//! those checked-in files.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -130,6 +131,14 @@ fn reach_report(text: &str, what: &str) -> Result<ReachReport> {
     serde_json::from_str(text).map_err(|e| format!("{what}: {e}"))
 }
 
+/// `f` without the call-site ids of its `syscalls` and `effect_sites` entries: the reduced
+/// reports hold none.
+fn clear_sites(f: &mut FuncEffects) {
+    for s in f.syscalls.iter_mut().chain(&mut f.effect_sites) {
+        s.sites.clear();
+    }
+}
+
 /// Write the checked-in files of `examples/netcheck` from the full outputs in `work`:
 /// `effects.json`, `effects-cha.json`, `reach.json`, `reach-cha.json`, `client.trace.json`,
 /// `client-deep.trace.json` and `server-deep.trace.json`.
@@ -139,6 +148,7 @@ pub fn reduce(root: &Path, work: &Path) -> Result<()> {
     };
     let mut rta = report(&read_file(&work.join("effects.json"))?, "effects.json")?;
     for f in &mut rta.funcs {
+        clear_sites(f);
         f.effect_sites.clear();
     }
     write(EFFECTS, rta.to_json())?;
@@ -147,6 +157,7 @@ pub fn reduce(root: &Path, work: &Path) -> Result<()> {
         "effects-cha.json",
     )?;
     for f in &mut cha.funcs {
+        clear_sites(f);
         f.effect_sites.clear();
         for s in &mut f.syscalls {
             s.at.clear();
@@ -492,6 +503,62 @@ mod tests {
             own.iter()
                 .all(|l| l.contains("| ok |") && l.ends_with("refusals 0"))
         );
+    }
+
+    /// A work directory whose effects reports carry call-site ids in every `syscalls` and
+    /// `effect_sites` entry reduces to the checked-in files byte for byte: [`reduce`] clears them.
+    #[test]
+    fn reduce_clears_every_call_site_id_and_writes_the_checked_in_files() {
+        let root = root();
+        let base = root.join("target/netcheck-reduce");
+        if base.exists() {
+            fs::remove_dir_all(&base).unwrap();
+        }
+        let work = base.join("work");
+        let out = base.join("out");
+        fs::create_dir_all(&work).unwrap();
+        fs::create_dir_all(out.join(DIR)).unwrap();
+        let with_sites = |rel: &str| {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&read(&root, rel).unwrap()).unwrap();
+            let mut added = 0;
+            for f in v["funcs"].as_array_mut().unwrap() {
+                f["effect_sites"] = serde_json::json!([{"name": "env", "at": ["m.go:1"]}]);
+                for list in ["syscalls", "effect_sites"] {
+                    for e in f
+                        .get_mut(list)
+                        .and_then(|l| l.as_array_mut())
+                        .into_iter()
+                        .flatten()
+                    {
+                        e["sites"] = serde_json::json!([{"callee": "os.Getenv", "n": 1}]);
+                        added += 1;
+                    }
+                }
+            }
+            assert!(added > 0, "{rel}");
+            v.to_string()
+        };
+        let copy = |from: &str, to: &str| fs::write(work.join(to), read(&root, from).unwrap());
+        fs::write(work.join("effects.json"), with_sites(EFFECTS)).unwrap();
+        fs::write(work.join("effects-cha.json"), with_sites(EFFECTS_CHA)).unwrap();
+        copy(REACH, "reach.json").unwrap();
+        copy(REACH_CHA, "reach-cha.json").unwrap();
+        copy(CLIENT_TRACE, "client.trace.json").unwrap();
+        copy(CLIENT_CONNECT, "client-deep.trace.json").unwrap();
+        copy(SERVER_ACCEPT, "server-deep.trace.json").unwrap();
+        reduce(&out, &work).unwrap();
+        for f in [
+            EFFECTS,
+            EFFECTS_CHA,
+            REACH,
+            REACH_CHA,
+            CLIENT_TRACE,
+            CLIENT_CONNECT,
+            SERVER_ACCEPT,
+        ] {
+            assert_eq!(read(&out, f).unwrap(), read(&root, f).unwrap(), "{f}");
+        }
     }
 
     #[test]

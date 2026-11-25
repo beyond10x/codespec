@@ -15,9 +15,9 @@ mod trace;
 pub(crate) use trace::trace;
 
 use crate::{
-    Counts, Dispatch, DispatchMode, EFFECTS, FuncEffects, ModuleReach, Options, REACH_FORMAT,
-    REPORT_FORMAT, ReachReport, ReasonCount, Report, Site, Summary, Unknown, position_key,
-    sorted_positions,
+    CallSite, Counts, Dispatch, DispatchMode, EFFECTS, FuncEffects, ModuleReach, Options,
+    REACH_FORMAT, REPORT_FORMAT, ReachReport, ReasonCount, Report, Site, Summary, Unknown,
+    position_key, sorted_positions,
 };
 
 /// Bit 0 of a node's bits: it, or something it reaches, has an `unknown` entry.
@@ -62,6 +62,20 @@ struct Node {
     makes: Vec<usize>,
     /// The nodes it uses as values: reached when it is.
     refs: Vec<usize>,
+    /// Each effect or syscall bit a call of the node sets directly, with the call's site.
+    bit_calls: Vec<(usize, CallSite)>,
+    /// The call site of each edge, by index; `None` for an edge no call of the node makes.
+    edge_calls: Vec<Option<CallSite>>,
+}
+
+/// The call being resolved: what `set` and `edge` record on its holder belongs to it.
+struct Call {
+    holder: usize,
+    callee: String,
+    /// Its id, once it has one: taken at its first effect or edge, or at its end when the
+    /// analysis recorded no `unknown` for it.
+    id: Option<CallSite>,
+    unknown: bool,
 }
 
 struct Graph<'a> {
@@ -98,6 +112,10 @@ struct Graph<'a> {
     lambda_calls: HashMap<usize, &'a [CallRef]>,
     /// The node of each `lambda` call ref, by the address of the call ref.
     lambda_of_ref: HashMap<usize, usize>,
+    /// The call being resolved, if any.
+    call: Option<Call>,
+    /// How many sites of each callee each node has so far.
+    ordinals: HashMap<(usize, String), u32>,
 }
 
 fn effect_bit(name: &str) -> usize {
@@ -335,6 +353,8 @@ impl<'a> Graph<'a> {
             lambda_bodies: HashMap::new(),
             lambda_calls: HashMap::new(),
             lambda_of_ref: HashMap::new(),
+            call: None,
+            ordinals: HashMap::new(),
         }
     }
 
@@ -348,8 +368,62 @@ impl<'a> Graph<'a> {
             guards: Vec::new(),
             makes: Vec::new(),
             refs: Vec::new(),
+            bit_calls: Vec::new(),
+            edge_calls: Vec::new(),
         });
         self.nodes.len() - 1
+    }
+
+    /// Start resolving a call of `callee` (none: not a call site) made by `holder`; the call
+    /// before is returned, for [`Graph::end_call`].
+    fn begin_call(&mut self, holder: usize, callee: Option<String>) -> Option<Call> {
+        let call = callee.map(|callee| Call {
+            holder,
+            callee,
+            id: None,
+            unknown: false,
+        });
+        std::mem::replace(&mut self.call, call)
+    }
+
+    /// Start the one site `body@1` of `holder`, a function without a body.
+    fn begin_body(&mut self, holder: usize) -> Option<Call> {
+        let id = CallSite {
+            callee: "body".into(),
+            n: 1,
+        };
+        self.call.replace(Call {
+            holder,
+            callee: id.callee.clone(),
+            id: Some(id),
+            unknown: false,
+        })
+    }
+
+    /// End the call being resolved: a call the analysis recorded no `unknown` for is a site even
+    /// when it sets nothing (a pure extern), so it takes its number. Then resume `before`.
+    fn end_call(&mut self, before: Option<Call>) {
+        if let Some(c) = &self.call
+            && c.id.is_none()
+            && !c.unknown
+        {
+            self.call_site(c.holder);
+        }
+        self.call = before;
+    }
+
+    /// The site of the call being resolved, when `n` makes it; numbered at its first use.
+    fn call_site(&mut self, n: usize) -> Option<CallSite> {
+        let c = self.call.as_mut().filter(|c| c.holder == n)?;
+        if c.id.is_none() {
+            let count = self.ordinals.entry((n, c.callee.clone())).or_default();
+            *count += 1;
+            c.id = Some(CallSite {
+                callee: c.callee.clone(),
+                n: *count,
+            });
+        }
+        c.id.clone()
     }
 
     /// The index of the named type `name` of module `mi`.
@@ -423,10 +497,17 @@ impl<'a> Graph<'a> {
         self.nodes[n].direct[bit / 64] |= 1 << (bit % 64);
         if bit != INCOMPLETE {
             self.nodes[n].sites.push((bit, pos.clone()));
+            if let Some(id) = self.call_site(n) {
+                self.nodes[n].bit_calls.push((bit, id));
+            }
         }
     }
 
+    /// An `unknown` entry of `n`; the call being resolved is no site.
     fn unknown(&mut self, n: usize, pos: &Pos, reason: String) {
+        if let Some(c) = self.call.as_mut().filter(|c| c.holder == n) {
+            c.unknown = true;
+        }
         self.set(n, INCOMPLETE, pos);
         self.nodes[n].unknown.push(Unknown {
             pos: pos.clone(),
@@ -439,8 +520,10 @@ impl<'a> Graph<'a> {
     }
 
     fn guarded(&mut self, from: usize, to: usize, pos: &Pos, guard: Guard) {
+        let id = self.call_site(from);
         self.nodes[from].edges.push((to, pos.clone()));
         self.nodes[from].guards.push(guard);
+        self.nodes[from].edge_calls.push(id);
     }
 
     fn syscall(&mut self, n: usize, bit: usize, pos: &Pos) {
@@ -561,7 +644,40 @@ impl<'a> Graph<'a> {
         n
     }
 
+    /// The callee a call ref of module `mi` names as a call site; `None` for one that is no site.
+    fn callref_callee(&self, mi: usize, c: &CallRef) -> Option<String> {
+        Some(match c {
+            CallRef::Func { path, name, .. } => {
+                format!("{}.{name}", self.path_or_label(mi, path))
+            }
+            CallRef::Method {
+                path, recv, name, ..
+            } => format!("{}.{recv}.{name}", self.path_or_label(mi, path)),
+            CallRef::Iface { iface, name, .. } => format!("iface:{iface}.{name}"),
+            CallRef::Value { sig, .. } => format!("value:{sig}"),
+            CallRef::Lambda { sig, .. } => format!("lambda:{sig}"),
+            CallRef::Ref { .. } | CallRef::New { .. } | CallRef::Named { .. } => return None,
+        })
+    }
+
+    /// `path`, or the label of module `mi` when it is empty.
+    fn path_or_label<'p>(&'p self, mi: usize, path: &'p str) -> &'p str {
+        if path.is_empty() {
+            self.label(mi)
+        } else {
+            path
+        }
+    }
+
+    /// A call ref of module `mi` that `holder` makes, a call site of `holder` as the crate doc's
+    /// table spells it.
     fn callref(&mut self, holder: usize, mi: usize, c: &'a CallRef) {
+        let before = self.begin_call(holder, self.callref_callee(mi, c));
+        self.resolve_callref(holder, mi, c);
+        self.end_call(before);
+    }
+
+    fn resolve_callref(&mut self, holder: usize, mi: usize, c: &'a CallRef) {
         match c {
             CallRef::Func {
                 path,
@@ -730,6 +846,40 @@ impl<'a> Graph<'a> {
         }
     }
 
+    /// The callee an expression of module `mi` names as a call site, as the crate doc's table
+    /// spells it; `None` for an expression that is no call, or a call the analysis can only
+    /// record as `unknown`.
+    fn expr_callee(&self, mi: usize, e: &Expr) -> Option<String> {
+        let m = &self.modules[mi];
+        Some(match e {
+            Expr::Call { name, .. } => format!("{}.{name}", self.label(mi)),
+            Expr::Method { x, name, .. } => {
+                if matches!(x.t(), Type::Error) {
+                    format!("iface:error.{name}")
+                } else {
+                    let t = receiver_type_name(x.t());
+                    if t.is_empty() {
+                        return None;
+                    }
+                    format!("{}.{t}.{name}", self.label(mi))
+                }
+            }
+            Expr::Extern { path, name, .. } => format!("{path}.{name}"),
+            Expr::ExternMethod {
+                path,
+                type_name,
+                name,
+                ..
+            } => format!("{path}.{type_name}.{name}"),
+            Expr::IfaceCall {
+                path, iface, name, ..
+            } => format!("iface:{}.{name}", m.interface_decl(path, iface)?.key()),
+            Expr::CallValue { f, .. } => format!("value:{}", value_sig(m, f.t())),
+            Expr::Intrinsic { name, .. } if name == "println" => "println".into(),
+            _ => return None,
+        })
+    }
+
     /// The calls of the expressions `exprs`, each already one node (a lambda's body is not
     /// entered), made at `pos`.
     fn exprs(&mut self, holder: usize, mi: usize, exprs: &[&'a Expr], pos: &Pos) {
@@ -763,6 +913,7 @@ impl<'a> Graph<'a> {
                 Expr::ToError { x, .. } => self.makes(holder, mi, x.t()),
                 _ => {}
             }
+            let before = self.begin_call(holder, self.expr_callee(mi, e));
             match e {
                 Expr::Extern {
                     path, name, args, ..
@@ -797,17 +948,14 @@ impl<'a> Graph<'a> {
                         let empty = format!("method on undeclared type: error.{name}");
                         let n = self.iface_node("error", name, &sig, empty);
                         self.edge(holder, n, pos);
-                        continue;
-                    }
-                    let t = receiver_type_name(x.t());
-                    if t.is_empty() {
+                    } else if receiver_type_name(x.t()).is_empty() {
                         self.unknown(
                             holder,
                             pos,
                             format!("method on undeclared type: {}.{name}", type_text(x.t())),
                         );
                     } else {
-                        self.method(holder, mi, "", t, name, pos);
+                        self.method(holder, mi, "", receiver_type_name(x.t()), name, pos);
                     }
                 }
                 // A call through an interface `cir/1` declares dispatches as an `iface` call
@@ -869,17 +1017,17 @@ impl<'a> Graph<'a> {
                 }
                 Expr::Lambda { body, t, .. } => {
                     let at = e as *const Expr as usize;
-                    if self.lambdas.contains_key(&at) {
-                        continue;
+                    if !self.lambdas.contains_key(&at) {
+                        let l = self.add(Kind::Lambda(mi, pos.clone()));
+                        self.lambdas.insert(at, l);
+                        self.lambda_bodies.insert(l, body);
+                        self.body(l, mi, body);
+                        self.uses(holder, value_sig(m, t), Ok(l));
                     }
-                    let l = self.add(Kind::Lambda(mi, pos.clone()));
-                    self.lambdas.insert(at, l);
-                    self.lambda_bodies.insert(l, body);
-                    self.body(l, mi, body);
-                    self.uses(holder, value_sig(m, t), Ok(l));
                 }
                 _ => {}
             }
+            self.end_call(before);
         }
     }
 
@@ -1078,13 +1226,17 @@ impl<'a> Graph<'a> {
                 continue;
             }
             let mut seen = HashSet::new();
-            let (edges, guards): (Vec<_>, Vec<_>) = std::mem::take(&mut node.edges)
+            let kept: Vec<_> = std::mem::take(&mut node.edges)
                 .into_iter()
                 .zip(std::mem::take(&mut node.guards))
-                .filter(|((to, _), g)| keep(*g) && seen.insert(*to))
-                .unzip();
-            node.edges = edges;
-            node.guards = guards;
+                .zip(std::mem::take(&mut node.edge_calls))
+                .filter(|(((to, _), g), _)| keep(*g) && seen.insert(*to))
+                .collect();
+            for ((edge, guard), call) in kept {
+                node.edges.push(edge);
+                node.guards.push(guard);
+                node.edge_calls.push(call);
+            }
         }
     }
 
@@ -1126,10 +1278,16 @@ impl<'a> Graph<'a> {
                     .and_then(|&tm| self.keys[tm].get(tname).copied());
                 let local_pos = self.node_pos(local);
                 match target {
-                    Some(t) if self.no_body(local) => self.edge(local, t, &local_pos),
+                    Some(t) if self.no_body(local) => {
+                        let before = self.begin_body(local);
+                        self.edge(local, t, &local_pos);
+                        self.end_call(before);
+                    }
                     Some(t) if self.no_body(t) => {
                         let pos = self.node_pos(t);
-                        self.edge(t, local, &pos)
+                        let before = self.begin_body(t);
+                        self.edge(t, local, &pos);
+                        self.end_call(before);
                     }
                     _ => {}
                 }
@@ -1171,9 +1329,11 @@ impl<'a> Graph<'a> {
                     continue;
                 }
                 if let Some(bits) = self.fixed.get(&(p, key.as_str())).cloned() {
+                    let before = self.begin_body(n);
                     for b in bits {
                         self.syscall(n, b, &o.pos);
                     }
+                    self.end_call(before);
                     continue;
                 }
                 if self.pure.contains(p) {
@@ -1634,19 +1794,27 @@ pub(crate) fn analyze(modules: &[Module], summaries: &[Summary], opts: &Options)
         dispatch.dedup();
 
         let mut sites: BTreeMap<usize, BTreeSet<Pos>> = BTreeMap::new();
+        let mut calls: BTreeMap<usize, BTreeSet<CallSite>> = BTreeMap::new();
         for (b, at) in &node.sites {
             sites.entry(*b).or_default().insert(at.clone());
         }
-        for (t, at) in &node.edges {
+        for (b, id) in &node.bit_calls {
+            calls.entry(*b).or_default().insert(id.clone());
+        }
+        for ((t, at), id) in node.edges.iter().zip(&node.edge_calls) {
             for b in ones(reach_of(*t)) {
                 if b != INCOMPLETE {
                     sites.entry(b).or_default().insert(at.clone());
+                    if let Some(id) = id {
+                        calls.entry(b).or_default().insert(id.clone());
+                    }
                 }
             }
         }
         let site = |b: usize, at: BTreeSet<Pos>| Site {
             name: g.names[b].clone(),
             at: sorted_positions(at),
+            sites: calls.get(&b).into_iter().flatten().cloned().collect(),
         };
         let mut effect_sites = Vec::new();
         let mut syscalls = Vec::new();
