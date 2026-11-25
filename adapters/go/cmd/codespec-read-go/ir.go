@@ -20,12 +20,14 @@ type Module struct {
 	Layout   []string    `json:"layout"`            // source declaration order, for emitters that keep it
 	Refusals []Refusal   `json:"refusals,omitempty"`
 	// For a whole-program analysis: the import path, every function not in Funcs, the method set of
-	// each named type, and every //go:linkname of a function (calls.go).
+	// each named type, every //go:linkname of a function (calls.go), and every import path of the
+	// package's files, sorted, once each (front.go).
 	Path      string      `json:"path,omitempty"`
 	Opaque    []Opaque    `json:"opaque,omitempty"`
 	Methods   []MethodSet `json:"methods,omitempty"`
 	Linknames []Linkname  `json:"linknames,omitempty"`
 	Inits     []CallRef   `json:"inits,omitempty"`
+	Imports   []string    `json:"imports,omitempty"`
 	// Interface types: the package's own in source order, then those of other packages a call
 	// goes through (candidates; the encoder emits those an interface call uses).
 	Interfaces []Interface `json:"interfaces,omitempty"`

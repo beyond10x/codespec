@@ -15,9 +15,9 @@ mod trace;
 pub(crate) use trace::trace;
 
 use crate::{
-    Counts, Dispatch, DispatchMode, EFFECTS, FuncEffects, ModuleReach, Options, REACH_FORMAT,
-    REPORT_FORMAT, ReachReport, ReasonCount, Report, Site, Summary, Unknown, position_key,
-    sorted_positions,
+    Counts, Dispatch, DispatchMode, EFFECTS, EntryRoots, FuncEffects, ModuleReach, Options,
+    REACH_FORMAT, REPORT_FORMAT, ReachReport, ReasonCount, Report, Site, Summary, Unknown,
+    position_key, sorted_positions,
 };
 
 /// Bit 0 of a node's bits: it, or something it reaches, has an `unknown` entry.
@@ -1088,20 +1088,78 @@ impl<'a> Graph<'a> {
         }
     }
 
-    /// The nodes of the entry functions `entries` names, of every `init` function and of every
-    /// module's variable initializers: they run when the program does.
+    /// The modules of the program `main` (a Go module named `main` that declares `main`): it,
+    /// `runtime` (which the Go linker puts into every program), and every module of the set
+    /// their `imports` name, to a fixed point.
+    fn closure(&self, main: usize) -> BTreeSet<usize> {
+        let mut out = BTreeSet::from([main]);
+        let mut work = vec![main];
+        if let Some(&rt) = self.by_path.get("runtime")
+            && out.insert(rt)
+        {
+            work.push(rt);
+        }
+        while let Some(mi) = work.pop() {
+            for p in &self.modules[mi].imports {
+                if let Some(&t) = self.by_path.get(p.as_str())
+                    && out.insert(t)
+                {
+                    work.push(t);
+                }
+            }
+        }
+        out
+    }
+
+    /// For each entry of `entries`, the modules whose initializers run with it: the union of the
+    /// closures of the programs that hold it, a program holding an entry whose module is in its
+    /// closure; `None`, every module, for an entry no program holds and for every entry of a set
+    /// no module of which records `imports`.
+    fn init_scopes(&self, entries: &[(usize, String)]) -> Vec<Option<BTreeSet<usize>>> {
+        if self.modules.iter().all(|m| m.imports.is_empty()) {
+            return vec![None; entries.len()];
+        }
+        let programs: Vec<BTreeSet<usize>> = self
+            .modules
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| {
+                m.reader.language == "go"
+                    && m.name == "main"
+                    && func_keys(m).any(|(k, _)| k == "main")
+            })
+            .map(|(mi, _)| self.closure(mi))
+            .collect();
+        entries
+            .iter()
+            .map(|(mi, _)| {
+                let holders: Vec<&BTreeSet<usize>> =
+                    programs.iter().filter(|c| c.contains(mi)).collect();
+                (!holders.is_empty()).then(|| holders.into_iter().flatten().copied().collect())
+            })
+            .collect()
+    }
+
+    /// The nodes of the entry functions `entries` names, and of the `init` functions and
+    /// variable initializers that run with them: those of the modules of each entry's scope
+    /// ([`Graph::init_scopes`]), of every module when an entry has none or there is no entry.
     fn roots(&self, entries: &[(usize, String)]) -> Vec<usize> {
         let mut out: Vec<usize> = entries
             .iter()
             .filter_map(|(mi, key)| self.keys[*mi].get(key).copied())
             .collect();
+        let scopes = self.init_scopes(entries);
+        let every = entries.is_empty() || scopes.iter().any(Option::is_none);
+        let runs: BTreeSet<usize> = scopes.into_iter().flatten().flatten().collect();
+        let runs = |mi: usize| every || runs.contains(&mi);
         // A Go package may declare several `init` functions: each is a node, the key names only
         // the first, and every one of them runs.
         for (n, node) in self.nodes.iter().enumerate() {
-            let init =
-                |mi: usize, key: String| self.modules[mi].reader.language == "go" && key == "init";
+            let init = |mi: usize, key: String| {
+                runs(mi) && self.modules[mi].reader.language == "go" && key == "init"
+            };
             match node.kind {
-                Kind::Init(_) => out.push(n),
+                Kind::Init(mi) if runs(mi) => out.push(n),
                 Kind::Func(mi, i) if init(mi, self.modules[mi].funcs[i].key()) => out.push(n),
                 Kind::Opaque(mi, i) if init(mi, self.modules[mi].opaque[i].key()) => out.push(n),
                 _ => {}
@@ -1474,6 +1532,14 @@ pub(crate) fn reach(modules: &[Module], opts: &Options) -> ReachReport {
     }
     let named = entries(modules, opts).unwrap_or_default();
     let label = |mi: usize| g.label(mi).to_string();
+    let roots = named
+        .iter()
+        .zip(g.init_scopes(&named))
+        .map(|((mi, k), scope)| EntryRoots {
+            entry: format!("{}.{k}", label(*mi)),
+            roots: if scope.is_some() { "program" } else { "all" }.into(),
+        })
+        .collect();
     ReachReport {
         format: REACH_FORMAT.into(),
         dispatch: match opts.dispatch {
@@ -1489,6 +1555,7 @@ pub(crate) fn reach(modules: &[Module], opts: &Options) -> ReachReport {
             opts.entries.clone()
         },
         exported: opts.exported.clone(),
+        roots,
         modules: out
             .into_iter()
             .zip(modules)

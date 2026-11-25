@@ -3712,6 +3712,7 @@ impl Reader {
             transactional: vec![],
             persistence: vec![],
             left_out: vec![],
+            imports: vec![],
         }
     }
 

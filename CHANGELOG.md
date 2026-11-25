@@ -15,6 +15,15 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Changed
 
+- `codespec reach` (and the rapid type analysis of `codespec effects` and `codespec trace`) takes
+  as roots of an entry the Go `init` functions and variable initializers of the packages in the
+  import closure of the programs (`main` packages) that hold it, not those of every package of
+  the set; an entry no program holds, or a set without `imports`, keeps every one. The reach
+  report says which per entry (`roots`: `{entry, roots}`, `program` or `all`). For this
+  `cir/1` `Module` has an optional `imports` field, every import path of the package's files
+  (blank and dot imports included), sorted, once each; the Go reader fills it for a package
+  with an import path.
+
 - The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
   the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
   a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read

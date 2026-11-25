@@ -84,6 +84,9 @@ func encode(m *Module) (node, error) {
 			return node{"name": m.Linknames[i].Name, "target": m.Linknames[i].Target}
 		})
 	}
+	if len(m.Imports) > 0 {
+		doc["imports"] = m.Imports
+	}
 	return doc, e.err
 }
 

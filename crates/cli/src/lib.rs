@@ -196,9 +196,12 @@ pub enum Cmd {
     ///
     /// A function is reached by a call, by being used as a value, or as a candidate of a call
     /// through an interface or a function value. The entries are every --entry, every exported
-    /// function of each --exported module, or when neither is given `main.main`; every Go init
-    /// function and every module's variable initializers are entries too. An entry naming no
-    /// function of the set is refused. The same modules give the same bytes.
+    /// function of each --exported module, or when neither is given `main.main`. The Go init
+    /// functions and variable initializers of the packages a program imports, directly or
+    /// through other packages of the set (its recorded `imports`), are entries too, for each
+    /// entry that program holds; an entry no program holds, or a set without `imports`, takes
+    /// those of every module. The report's `roots` says which, per entry: `program` or `all`.
+    /// An entry naming no function of the set is refused. The same modules give the same bytes.
     Reach {
         /// The modules to analyse, cir/1 documents, read as one program.
         #[arg(required = true)]
