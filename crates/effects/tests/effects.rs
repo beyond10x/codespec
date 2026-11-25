@@ -1823,3 +1823,84 @@ fn a_body_less_function_the_barrier_fixes_or_a_linkname_links_has_the_site_body_
         ["internal/poll.runtime_read@1"]
     );
 }
+
+/// The other direction of a linkname (the body-less function names the target, as
+/// `//go:linkname now runtime.walltime` in the package declaring `now`): the body-less local
+/// function has the one site `body@1` too. The test above covers only the direction where the
+/// body-less function is the target.
+#[test]
+fn adv_a_body_less_function_that_names_its_linkname_target_has_the_site_body_1() {
+    let b = barrier();
+    let opts = Options {
+        barrier: Some(&b),
+        ..Options::default()
+    };
+    let clock = doc(
+        "clock",
+        "example.com/clock",
+        vec![],
+        json!({
+            "opaque": [
+                {"name": "now", "pos": "c.go:1", "reason": "function without a Go body", "no_body": true, "calls": []}
+            ],
+            "linknames": [{"name": "now", "target": "runtime.walltime"}]
+        }),
+    );
+    let runtime = doc(
+        "runtime",
+        "runtime",
+        vec![],
+        json!({"opaque": [
+            {"name": "read", "pos": "r.go:1", "reason": "function without a Go body", "no_body": true, "calls": []},
+            opaque("walltime", 2, vec![cfunc("", "read", 3)])
+        ]}),
+    );
+    let r = analyze_set(&[clock, runtime], &[], &opts);
+    assert_eq!(ids(&r, "walltime", "syscalls", "read"), ["runtime.read@1"]);
+    assert_eq!(ids(&r, "now", "syscalls", "read"), ["body@1"]);
+}
+
+/// A `method` call ref that names the path of another module of the set is spelled
+/// `<path>.<recv>.<name>` with that path, not the holder's: the table's row for call refs. The
+/// foreign-statement test above lists a `method` call ref only with an empty path.
+#[test]
+fn adv_a_method_call_ref_naming_another_module_is_spelled_with_that_modules_path() {
+    let p = doc(
+        "p",
+        "example.com/p",
+        vec![unit_func(
+            "F",
+            1,
+            vec![foreign(
+                2,
+                vec![
+                    json!({"k": "method", "path": "example.com/q", "recv": "T", "name": "M", "pos": "m.go:2"}),
+                ],
+            )],
+        )],
+        json!({}),
+    );
+    let q = doc(
+        "q",
+        "example.com/q",
+        vec![method_func("T", "M", 1, vec![stmt(getenv(), 2)])],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:1"}],
+            "externs": [decl("os", "Getenv")],
+            "layout": ["type:T", "func:T.M"]
+        }),
+    );
+    let r = analyze_set(&[p, q], &[std_summary()], &Options::default());
+    assert_eq!(ids(&r, "F", "effect_sites", "env"), ["example.com/q.T.M@1"]);
+}
+
+/// The text form of a call-site id is `<callee>@<n>` (crate doc, § Call sites), the form
+/// `CallSite`'s `Display` gives.
+#[test]
+fn adv_a_call_site_displays_as_callee_at_n() {
+    let id = codespec_effects::CallSite {
+        callee: "iface:error.Error".into(),
+        n: 12,
+    };
+    assert_eq!(id.to_string(), "iface:error.Error@12");
+}
