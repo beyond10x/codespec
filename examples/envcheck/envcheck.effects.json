@@ -14,6 +14,12 @@
           "name": "env",
           "at": [
             "envcheck.go:13"
+          ],
+          "sites": [
+            {
+              "callee": "os.Getenv",
+              "n": 1
+            }
           ]
         }
       ]
@@ -36,6 +42,12 @@
           "name": "env",
           "at": [
             "envcheck.go:27"
+          ],
+          "sites": [
+            {
+              "callee": "envcheck.Mode",
+              "n": 1
+            }
           ]
         }
       ]
@@ -53,12 +65,24 @@
           "name": "env",
           "at": [
             "envcheck.go:32"
+          ],
+          "sites": [
+            {
+              "callee": "envcheck.Banner",
+              "n": 1
+            }
           ]
         },
         {
           "name": "stdout",
           "at": [
             "envcheck.go:32"
+          ],
+          "sites": [
+            {
+              "callee": "println",
+              "n": 1
+            }
           ]
         }
       ]
@@ -76,12 +100,24 @@
           "name": "env",
           "at": [
             "envcheck.go:37"
+          ],
+          "sites": [
+            {
+              "callee": "envcheck.Banner",
+              "n": 1
+            }
           ]
         },
         {
           "name": "fs.write",
           "at": [
             "envcheck.go:37"
+          ],
+          "sites": [
+            {
+              "callee": "os.WriteFile",
+              "n": 1
+            }
           ]
         }
       ]

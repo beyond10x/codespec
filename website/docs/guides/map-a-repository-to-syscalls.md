@@ -108,17 +108,19 @@ $ jq -r .module work/readfile.report.json
 $ jq -c '.funcs[] | {name, effects, syscalls: (.syscalls | length)}' work/readfile.report.json
 {"name":"Load","effects":["env","fs.read","fs.write","io","proc","time"],"syscalls":55}
 $ jq -c '.funcs[0].syscalls[] | select(.name == "openat" or .name == "read")' work/readfile.report.json
-{"name":"openat","at":["readfile.go:8"]}
-{"name":"read","at":["readfile.go:8"]}
+{"name":"openat","at":["readfile.go:8"],"sites":[{"callee":"os.ReadFile","n":1}]}
+{"name":"read","at":["readfile.go:8"],"sites":[{"callee":"os.ReadFile","n":1}]}
 ```
 
 This ran in 0.2 s. `at` is the line of `Load` that leads to the syscall: `readfile.go:8`, the
-`os.ReadFile` call. `crates/cli/tests/barrier.rs` checks this line.
+`os.ReadFile` call. `crates/cli/tests/barrier.rs` checks this line. `sites` names the same call
+without its line: `os.ReadFile@1`, the first call of `os.ReadFile` in `Load`. A line added above
+`Load` changes `at` and leaves `sites` as it is.
 
 | report field | what it says |
 |---|---|
 | `effects` | the effects of every syscall reached (per the barrier), every summarised extern and every function called |
-| `syscalls` | each syscall reached, with the function's own call positions that lead there |
+| `syscalls` | each syscall reached, with the function's own call positions that lead there (`at`) and the ids of those calls (`sites`, `{callee, n}`: the n-th call of that callee in the function, the same when lines move) |
 | `effect_sites` | the same per effect |
 | `unknown` | why the sets may be incomplete, with a position; here `calls os.ReadFile which is incomplete` |
 | `dispatch` | per call through an interface or a function value, how many functions of the set it may reach |
@@ -166,7 +168,7 @@ $ codespec effects work/readfile/*.cir.json \
 $ jq -c '.funcs[] | select(.name == "SyscallError.Error") | {name, dispatch, syscalls: (.syscalls | length)}' work/os.report.json
 {"name":"SyscallError.Error","dispatch":[{"pos":"error.go:54","call":"error.Error","candidates":24}],"syscalls":32}
 $ jq -c '.funcs[] | select(.name == "Getpid") | {name, effects, syscalls}' work/os.report.json
-{"name":"Getpid","effects":[],"syscalls":[{"name":"getpid","at":["exec.go:240"]}]}
+{"name":"Getpid","effects":[],"syscalls":[{"name":"getpid","at":["exec.go:240"],"sites":[{"callee":"syscall.Getpid","n":1}]}]}
 ```
 
 The `error.Error` call may reach 24 `Error` methods of the 54 packages, so formatting an error
@@ -202,8 +204,8 @@ $ jq -r '.funcs[] | select(.name == "main") | "\(.path) \(.syscalls | length)"' 
 example.com/netcheck/cmd/client 49
 example.com/netcheck/cmd/server 50
 $ jq -c '.funcs[] | select(.name == "main" and (.path | endswith("server"))) | .syscalls[] | select(.name == "listen" or .name == "accept4")' work/netcheck.effects.json
-{"name":"accept4","at":["main.go:20"]}
-{"name":"listen","at":["main.go:14"]}
+{"name":"accept4","at":["main.go:20"],"sites":[{"callee":"iface:net.Listener.Accept","n":1}]}
+{"name":"listen","at":["main.go:14"],"sites":[{"callee":"net.Listen","n":1}]}
 $ jq -c '.funcs[] | select(.name == "Answer") | {name, effects, unknown}' work/netcheck.effects.json
 {"name":"Answer","effects":[],"unknown":[]}
 ```

@@ -155,6 +155,8 @@ impl<'a> Walker<'_, 'a> {
             n.guards.clear();
             n.makes.clear();
             n.refs.clear();
+            n.bit_calls.clear();
+            n.edge_calls.clear();
         }
         f(self.g, s);
         let n = &mut self.g.nodes[s];

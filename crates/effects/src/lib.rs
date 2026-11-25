@@ -52,10 +52,12 @@
 //! `name` is the function's key (`F` or `T.m`). `effects` is the sorted union of the effects of
 //! every extern it calls (per its summary), of `println` (`stdout`), of every syscall it reaches
 //! (per the barrier) and of every function it calls, to a fixed point over the call graph of the
-//! whole set. `syscalls` and `effect_sites` are `{name, at}`: each syscall and effect it reaches,
-//! with the positions of its own calls that lead there. `dispatch` is `{pos, call, candidates}`
-//! for each call through an interface or a function value: how many functions of the set it may
-//! reach. `unknown_roots` (only when asked for) counts every `unknown` reason of every function
+//! whole set. `syscalls` and `effect_sites` are `{name, at, sites}`: each syscall and effect it
+//! reaches, with the positions of its own calls that lead there (`at`, for people) and the ids of
+//! those calls (`sites`, § Call sites; omitted when empty). `sites` is a list of its own, not
+//! parallel to `at`: two calls on one line are one position and two ids. `dispatch` is
+//! `{pos, call, candidates}` for each call through an interface or a function value: how many
+//! functions of the set it may reach. `unknown_roots` (only when asked for) counts every `unknown` reason of every function
 //! it reaches, itself included, most frequent first. `unknown` lists every reason `effects` and
 //! `syscalls` may be incomplete, each `{pos, reason}`, sorted by file, line and reason:
 //!
@@ -80,6 +82,44 @@
 //! (`func([]byte) (int, error)`, named types by import path). An `extern_method` is the extern
 //! `<path>.<type>.<method>`: a summary names it `<type>.<method>`, and in a set the method of that
 //! type in the document with that path.
+//!
+//! ## Call sites
+//!
+//! This section is the definition of a call-site id; a tool outside this repository that reads
+//! `cir/1` follows it. A site is `{"callee": <callee>, "n": <n>}` ([`CallSite`]) inside the
+//! report entry of the function that holds it (the entry names the function by `path` and
+//! `name`); in text, `<callee>@<n>`. No part holds a file or a line, so a change that only moves
+//! lines, or moves the function to another file of its module, keeps every id.
+//!
+//! The sites of a function are the nodes in the table below, in this order: the body's statements
+//! in pre-order (`walk_stmts` of `codespec_model::walk`), within a statement its expressions in
+//! `stmt_exprs` order and each expression tree in pre-order (the outer call of `f(f(x))` before
+//! the inner), then the statements of each lambda body the function holds, in the order found (a
+//! lambda's sites are its holder's). `n` counts from 1 per callee within the function.
+//!
+//! | node | `callee` |
+//! |---|---|
+//! | `call` | `<module path>.<name>`, the holder's module |
+//! | `method` | `<module path>.<type>.<name>`, the holder's module and the name of the receiver's named type; on a receiver of type `error`, `iface:error.<name>` (dispatched as a call through the interface `error`) |
+//! | `extern` | `<path>.<name>` |
+//! | `extern_method` | `<path>.<type>.<name>` |
+//! | `iface_call` | `iface:<interface key>.<name>`, the key `Interface::key` gives |
+//! | `call_value` | `value:<signature>`, the signature spelled as above (`func([]byte) (int, error)`) |
+//! | `intrinsic` `println` | `println` |
+//! | a call ref of a `foreign` statement's or an opaque function's `calls`, in the order listed | `func`: `<path>.<name>`, `path` the holder's module path when empty; `method`: `<path>.<recv>.<name>`, the same; `iface`: `iface:<iface>.<name>`; `value`: `value:<sig>`; `lambda`: `lambda:<sig>` (the literal's own calls are sites of the literal, which the holder calls); `ref`, `new` and `named` are no site |
+//! | a function without a body whose syscalls the barrier fixes, or which a linkname links | `body`, `n` 1 |
+//!
+//! The module path is the module's `path`, or its `name` when it has none. Every other node is no
+//! site: a function used as a value (`func_ref`, a `ref` call ref) or a function literal in a body
+//! (`lambda`) is not called there, and the calls inside such a literal are its holder's sites as
+//! above. A call the analysis records as `unknown` instead of an edge or an effect (an extern
+//! without a summary, a method on an undeclared type, a `named` call ref, a call of an undeclared
+//! function, a barrier call whose number is not a constant) is no site either and takes no
+//! number: its `unknown` entry keeps its position and reason.
+//!
+//! The limit of the ordinal: two calls of one callee that swap places exchange `@1` and `@2`,
+//! and a call of a callee inserted before an existing call of it makes the existing one `@2`. A
+//! call of another callee, before or after, changes no id.
 //!
 //! # Dispatch and reachability
 //!
@@ -400,12 +440,32 @@ pub struct Unknown {
     pub reason: String,
 }
 
-/// A syscall or effect a function reaches, with the positions of its calls that lead there.
+/// A syscall or effect a function reaches, with the positions of its calls that lead there and
+/// the ids of those calls.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Site {
     pub name: String,
     pub at: Vec<Pos>,
+    /// The function's own call sites that lead there, sorted by `callee`, then `n`, each once.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sites: Vec<CallSite>,
+}
+
+/// A call site of a function, the same in two revisions of the code when the function, the
+/// callee and the sites of that callee before it are: in text `<callee>@<n>`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallSite {
+    pub callee: String,
+    /// Counts from 1 per callee within the function.
+    pub n: u32,
+}
+
+impl std::fmt::Display for CallSite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.callee, self.n)
+    }
 }
 
 /// A call through an interface or a function value and how many functions it may reach.
