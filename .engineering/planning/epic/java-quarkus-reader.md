@@ -7,7 +7,7 @@ title: Java applications and Quarkus
 summary: Read whole Maven/Gradle Java projects against their jars, with Quarkus entry points, beans and effects in cir/1.
 relations:
 - depends_on: epic:java-reader
-revision: 16
+revision: 17
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-09T04:51:11Z", actor: "human:timo", revision: 3}
@@ -191,17 +191,18 @@ through to the next stays a refusal.
 ## Release-review gaps
 
 Gaps a release review of a Quarkus service named after running `codespec diff` over two revisions,
-each with a generic reproducer; all draft except the line added to an existing story:
+each with a generic reproducer; all draft:
 
 - `story:java-reader-jdk-typed-values-in-call-chains`: a builder chain passing a `ClassLoader` is
-  refused, so a change in the chain gives no delta (after `story:java-reader-static-jdk-calls`).
-- `story:java-reader-jaxrs-inherited-entries`: class-path-only interfaces in a jar and
-  sub-interfaces, added as a Done When line; no new story.
+  refused, so a change in the chain gives no delta (after `story:java-reader-static-jdk-calls`,
+  which has a Done When line for the static call).
+- `story:java-reader-jaxrs-classpath-interface-entries`: `@Path` on an interface that exists only in
+  a jar, a sub-interface, `@Path` on the type only (after `story:java-reader-jaxrs-inherited-entries`).
 - `story:java-reader-cdi-container-invoked-methods`: producers, interceptors, messaging consumers
   and injected-interface calls (after `story:java-reader-scheduled-startup-entries`).
 - `story:java-reader-javac-crash-refusal`: a javac crash becomes a refusal naming the missing types
   or the JDK.
-- `story:jvm-library-effect-summaries`: effect summaries for common JVM libraries; the diff of an
-  unsummarised extern is a Done When line of `story:diff-command`.
+- `story:jvm-library-effect-summaries`: effect summaries for common JVM libraries; its Done When
+  also holds the diff of an unsummarised extern (`unknown-added`).
 
 Each shares the three Lane A files except the last, and the typed scope keeps them out of one wave.

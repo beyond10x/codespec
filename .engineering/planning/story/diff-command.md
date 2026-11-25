@@ -34,7 +34,7 @@ scope:
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 11
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 9}
 - {from: "proposed", to: "active", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 10}
@@ -140,10 +140,6 @@ Not run on main `5f82fff9`: `crates/cli/src/lib.rs` has no `diff` command.
   otherwise) and with a public `description` naming no private name; a row for `crates/diff` in
   `AGENTS.md`'s table of what the repository owns; `task check` green; each
   new test under 60 s and the crate's test step within the 120 s budget.
-- The consumer's check for a Java service (added): two revisions of a Java package whose second
-  revision starts calling an extern no summary names (a jar method) give exactly one `unknown-added`
-  with the value `extern without summary: <path>.<name>` and no effect delta; with a summary for it
-  (`story:jvm-library-effect-summaries`) the same pair gives its `effect-added` instead.
 
 ## Scope
 

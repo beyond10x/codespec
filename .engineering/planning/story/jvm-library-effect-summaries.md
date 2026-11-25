@@ -21,7 +21,7 @@ scope:
   path: summaries/jvm-std.effects.json
 - confidence: inferred
   path: website/docs/guides/read-a-quarkus-project.md
-revision: 3
+revision: 4
 ---
 # Story: effect summaries for common JVM libraries, so a jar call gives an effect delta
 
@@ -97,6 +97,10 @@ and `Objects.hash` and no `effect-added`.
 - `docs/static-analysis.md` and `website/docs/guides/read-a-quarkus-project.md` name the file, the
   groups and how to extend it.
 - `task check` green for the parts touched; each test under 60 s.
+- The review case, the diff half (added): two revisions of a Java package whose second revision
+  starts calling an extern no summary names (a jar method) give, in `codespec diff`, exactly one
+  `unknown-added` with the value `extern without summary: <path>.<name>` and no effect delta; with
+  a summary entry for it the same pair gives its `effect-added` instead.
 
 ## Scope
 
