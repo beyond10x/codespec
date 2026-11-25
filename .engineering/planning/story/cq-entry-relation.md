@@ -8,6 +8,7 @@ summary: cq relation entry_point over Module.entries (kind, on, method), so a ru
 relations:
 - decomposes: epic:codebase-transformations
 - depends_on: story:query-recursion-bounded-by-comparison
+- depends_on: story:go-http-entries
 scope:
 - confidence: inferred
   path: crates/query/src/facts.rs
