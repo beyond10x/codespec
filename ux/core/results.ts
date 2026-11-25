@@ -65,6 +65,26 @@ export function readResults(outDir: string): Result[] {
     .map((f) => JSON.parse(readFileSync(join(d, f), 'utf8')) as Result);
 }
 
+/**
+ * The units of a gate run that left no result: every page scenario × gating viewport × theme as
+ * `scenario viewport theme`, and every task scenario by name. CI runs the L2 and L3 specs in shards
+ * and merges their result files; a unit lost on the way would otherwise lower a sum the ratchet reads.
+ */
+export function missingGateUnits(
+  pageScenarios: string[],
+  taskScenarios: string[],
+  gating: string[],
+  themes: string[],
+  have: Pick<Result, 'kind' | 'scenario' | 'viewport' | 'theme'>[],
+): string[] {
+  const pages = new Set(have.filter((r) => r.kind === 'page').map((r) => `${r.scenario} ${r.viewport} ${r.theme}`));
+  const tasks = new Set(have.filter((r) => r.kind === 'task').map((r) => r.scenario));
+  return [
+    ...pageScenarios.flatMap((s) => gating.flatMap((v) => themes.map((t) => `${s} ${v} ${t}`))).filter((k) => !pages.has(k)),
+    ...taskScenarios.filter((s) => !tasks.has(s)),
+  ];
+}
+
 const IMPACTS = ['critical', 'serious', 'moderate', 'minor'];
 
 /** Ratchet values from the gating results. All lower is better. */
