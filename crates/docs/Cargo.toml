@@ -18,4 +18,6 @@ b10x-codespec-conformance = { path = "../conformance" }
 b10x-codespec-effects = { path = "../effects" }
 b10x-codespec-eval = { path = "../eval" }
 clap.workspace = true
+schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true

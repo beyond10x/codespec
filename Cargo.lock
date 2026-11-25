@@ -238,6 +238,8 @@ dependencies = [
  "b10x-codespec-eval",
  "b10x-codespec-model",
  "clap",
+ "schemars",
+ "serde",
  "serde_json",
 ]
 
