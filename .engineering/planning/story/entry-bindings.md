@@ -7,7 +7,29 @@ title: An entry says where its parameters come from and how its results become r
 relations:
 - decomposes: epic:slice-to-service
 - depends_on: story:slice-command
-revision: 1
+- depends_on: story:go-http-entries
+- depends_on: story:diff-command
+- depends_on: story:reach-entry-file
+scope:
+- confidence: inferred
+  path: adapters/java/src/codespec/read
+- confidence: inferred
+  path: adapters/java/testdata/quarkus.read.cir.json
+- confidence: inferred
+  path: crates/cli/src/lib.rs
+- confidence: inferred
+  path: crates/edit/tests/change_sets/delete_retarget.rs
+- confidence: inferred
+  path: crates/model/src/lib.rs
+- confidence: inferred
+  path: crates/model/tests/model.rs
+- confidence: inferred
+  path: docs/design.md
+- confidence: inferred
+  path: schemas/cir-1.schema.json
+- confidence: inferred
+  path: website/docs/reference/cir-1.md
+revision: 3
 ---
 # Story: an entry says where its parameters come from and how its results become responses
 
@@ -47,7 +69,15 @@ status per error and the response encoding itself.
 
 ## Scope
 
-- `crates/model/src/lib.rs`, `schemas/cir-1.schema.json`, `adapters/java/src/codespec/read/`,
-  `crates/cli/src/lib.rs`, `website/docs/reference/cir-1.md`, `CHANGELOG.md`. Inferred.
+- `crates/model/src/lib.rs`, `crates/model/tests/model.rs`, `schemas/cir-1.schema.json`,
+  `adapters/java/src/codespec/read/`, `adapters/java/testdata/quarkus.read.cir.json` (regenerated
+  with `params`), `crates/cli/src/lib.rs`, `crates/edit/tests/change_sets/delete_retarget.rs`
+  (its `Entry` literal gets `params` and `responses`), `docs/design.md` (the row of the additive
+  fields), `website/docs/reference/cir-1.md`. Inferred; recorded as typed scope. `CHANGELOG.md`
+  gets one line, outside the typed scope; conflicts there are resolved at merge.
 - Whether added optional fields are within `cir/1` or need `cir/2` is decided by the rules for
   `cir/1` in `AGENTS.md` before work starts.
+- Runs after `story:go-http-entries` (the same `Entry`, schema, `cir-1.md` and test literal; a
+  binding of an entry with `path` names a parameter of the function in the module at `path`),
+  after `story:diff-command` (`crates/cli/src/lib.rs`) and after `story:reach-entry-file`, whose
+  `codespec-entries/1` this story extends: `depends_on` edges.
