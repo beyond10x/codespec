@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T23:09:11Z",
+  "actor": "human:timo",
+  "artifact": "story:asm-ir-lower-slices-strings-errors",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:asmir-parallel-safety-round-2",
+    "reference": "round-2-parallel-safety-finding-3",
+    "review": "review-result:asmir-parallel-safety-round-2",
+    "outcome": "fixed"
+  }
+}
