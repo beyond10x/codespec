@@ -10,6 +10,7 @@ relations:
 - depends_on: story:wasm-writer
 - depends_on: story:native-run-harness
 - informed_by: story:reader-asm
+- depends_on: story:native-speed-comparison
 scope:
 - confidence: inferred
   path: AGENTS.md
@@ -28,6 +29,8 @@ scope:
 - confidence: inferred
   path: containers/x86-64
 - confidence: inferred
+  path: crates/bench
+- confidence: inferred
   path: crates/cli
 - confidence: inferred
   path: crates/conformance
@@ -35,7 +38,7 @@ scope:
   path: crates/docs
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 4
+revision: 6
 ---
 # Story: An x86-64 assembly writer: cir/1 to GNU assembly, System V, Linux
 
@@ -82,8 +85,8 @@ floats from the start, because every kernel of `story:native-speed-comparison` n
   `divsd` and their single forms, comparisons through `ucomisd` with NaN false), `sem.float.to_int`
   and `sem.int.to_float` (`cvttsd2si`, `cvtsi2sd`, in the range
   `story:ecmascript-number-semantics` defines), and `intrinsic.math`: `math.Sqrt` as `sqrtsd`,
-  `math.Abs` as a mask of the sign bit, `math.Floor` and `math.Trunc` as `roundsd` (SSE4.1; the
-  story names the baseline it assumes), `math.Mod` as a loop of `fprem` or a runtime function; each
+  `math.Abs` as a mask of the sign bit, `math.Floor` and `math.Trunc` as `roundsd` (the
+  baseline is x86-64-v2, SSE4.2, stated in the crate doc and in the artifact), `math.Mod` as a loop of `fprem` or a runtime function; each
   has the kit case of that story passing, printed in its float encoding.
 - Near misses held by tests: `MinInt64 / -1`, a shift by 64 or more, `uint8` 255 + 1, a negative `%`,
   `-0.0` and NaN comparisons, a struct of three eightbytes returned by value, a call with seven
@@ -91,6 +94,14 @@ floats from the start, because every kernel of `story:native-speed-comparison` n
   16-byte rule, checked by a libc call that needs it), an array index at `len`, `len - 1` and
   `-1` (trap, with the same exit code as the evaluator's stop mapped by the runner), an arena
   exhausted by a loop (exit 4), a refused module that writes no file.
+- The target of `codespec-bench` (`story:native-speed-comparison`): `codespec-bench build <file.js>
+  --target x86-64 --out <dir>` reads the script, writes it, assembles and links it with `as` and
+  `ld` of the pinned image (refusing another version, naming both), and writes the ELF and an
+  `artifact.json` with the runner command (the ELF run directly in the container); `rows` writes the
+  row for the target, in `swell-bench/1` like the Wasm rows; `run` prints the result line and
+  `match` or `differs` against `node`. A script that uses a closure, a map or a run-time string is a
+  row `refused` with this writer's refusal and its `file:line`, no artifact. A test holds the
+  `fib` kernel through all three commands and one refused script (a closure).
 - Round trip, as far as it goes: the written assembly is read back by `story:reader-asm`
   (`codespec read --lang asm`) and the number of functions it reads against the number written is
   reported. That reader targets `cc -S -O0` output, so this writer's output may not be inside its
@@ -108,11 +119,15 @@ floats from the start, because every kernel of `story:native-speed-comparison` n
 
 ## Scope
 
-- Own: `adapters/x86-64` (new), `adapters/x86-64-run` (new), `containers/x86-64` (new: the `as`,
+- Own: `adapters/x86-64` (new), `adapters/x86-64-run` (new), `crates/bench` (the `x86-64` target
+  of `build`, `rows` and `run`), `containers/x86-64` (new: the `as`,
   `ld`, `cc` image, built by the mechanism of `story:native-run-harness`), `crates/cli` (the `--lang` value),
   `crates/conformance`, `crates/docs`, root `Cargo.toml` `members`, `Cargo.lock`, `Taskfile.yml`,
   `scripts/check-parts.txt`, `AGENTS.md`, `CHANGELOG.md`, one site page.
 - Shares `crates/cli`, `crates/conformance`, `crates/docs` and `Taskfile.yml` with
-  `story:wasm-writer` (first) and `story:reader-asm`.
+  `story:wasm-writer` (first) and `story:reader-asm`, and root `Cargo.toml`, `Cargo.lock`,
+  `Taskfile.yml`, `scripts/check-parts.txt`, `AGENTS.md`, `CHANGELOG.md` and `crates/bench` with
+  `story:native-speed-comparison`, which comes first: this story depends on it for that reason and
+  extends `codespec-bench` with the x86-64 target.
 - Inferred by the planner: AT&T syntax (the dialect of `story:reader-asm`), `-O0` shape, no
   collector.

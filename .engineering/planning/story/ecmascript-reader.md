@@ -36,7 +36,7 @@ scope:
   path: crates/cli
 - confidence: inferred
   path: crates/conformance
-revision: 4
+revision: 5
 ---
 # Story: An ECMAScript reader for a typed subset, on swell's parser
 
@@ -142,10 +142,11 @@ one a later story could take, none is guessed. The kit's rule applies (`AGENTS.m
 
 ## Scope
 
-- Own: `adapters/ecmascript-read` (new: `src/lib.rs`, `src/main.rs`, `src/types.rs`, `src/body.rs`,
-  `tests/main.rs`, `tests/reader.rs`, `tests/data`; the rest, `Cargo.toml`, `swell-surface.txt`,
-  `src/swell.rs` and `tests/swell.rs`, is `story:ecmascript-swell-surface`'s and is used, not
-  rewritten), `conformance/reader/ecmascript` (new), `crates/cli` (the `--lang` value),
+- Own: `adapters/ecmascript-read` (`src/main.rs`, `src/types.rs`, `src/body.rs`, `tests/reader.rs`,
+  `tests/data` are new; `src/lib.rs` and `tests/main.rs` are created by
+  `story:ecmascript-swell-surface` and extended here with the new modules; `Cargo.toml` gains the
+  `[[bin]]` target; `swell-surface.txt`, `src/swell.rs` and `tests/swell.rs` are that story's and
+  are used, not rewritten), `conformance/reader/ecmascript` (new), `crates/cli` (the `--lang` value),
   `crates/conformance` (`CORPUS_LANGS`, the corpus builder), `AGENTS.md`, `CHANGELOG.md`.
 - Shares `crates/conformance` and `crates/cli` with `story:ecmascript-run-oracle` (after this
   story) and with `story:reader-asm` and `story:reader-llvm-ir` (draft): they run one after another.

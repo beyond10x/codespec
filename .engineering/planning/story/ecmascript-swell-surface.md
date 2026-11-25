@@ -18,14 +18,16 @@ scope:
 - confidence: inferred
   path: adapters/ecmascript-read/Cargo.toml
 - confidence: inferred
+  path: adapters/ecmascript-read/src/lib.rs
+- confidence: inferred
   path: adapters/ecmascript-read/src/swell.rs
 - confidence: inferred
   path: adapters/ecmascript-read/swell-surface.txt
 - confidence: inferred
-  path: adapters/ecmascript-read/tests/swell.rs
+  path: adapters/ecmascript-read/tests/main.rs
 - confidence: inferred
-  path: scripts
-revision: 5
+  path: adapters/ecmascript-read/tests/swell.rs
+revision: 7
 ---
 # Story: The reader holds swell's syntax surface at a pinned release
 
@@ -90,10 +92,13 @@ Not a story here: swell's work is swell's. The promise this story relies on is s
 
 ## Scope
 
-- Own: `adapters/ecmascript-read/Cargo.toml`, `adapters/ecmascript-read/swell-surface.txt`,
-  `adapters/ecmascript-read/src/swell.rs`, `adapters/ecmascript-read/tests/swell.rs` (new files;
-  the rest of the crate is `story:ecmascript-reader`'s), `scripts/`, root `Cargo.toml` and
-  `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`.
+- Own: `adapters/ecmascript-read/Cargo.toml` (a library target only), `swell-surface.txt`,
+  `src/lib.rs` (minimal: `mod swell;` and its re-exports, so the crate builds and its tests run
+  alone), `src/swell.rs`, `tests/main.rs` (one integration-test binary, declaring `mod swell;`),
+  `tests/swell.rs` (all under `adapters/ecmascript-read/`, new files), `scripts/check-parts.txt`,
+  root `Cargo.toml` and `Cargo.lock`, `Taskfile.yml`. `story:ecmascript-reader` extends `src/lib.rs`
+  and `tests/main.rs`, adds `src/main.rs` and the other modules, and rewrites none of this
+  story's files.
 - Shares root `Cargo.toml`, `Cargo.lock`, `Taskfile.yml` and `scripts/check-parts.txt` with
   `story:native-run-harness`, which comes first; this story is before `story:ecmascript-reader`,
   which shares the crate directory.

@@ -9,7 +9,6 @@ relations:
 - decomposes: epic:ecmascript-to-native
 - depends_on: story:wasm-writer
 - depends_on: story:ecmascript-run-oracle
-- informed_by: story:x86-64-writer
 scope:
 - confidence: inferred
   path: .github/workflows/release-build.yml
@@ -31,7 +30,7 @@ scope:
   path: crates/bench
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 6
+revision: 7
 ---
 # Story: AOT rows for swell's speed comparison: a runnable artifact per benchmark script
 
@@ -48,8 +47,8 @@ node) and holds the data file and the comparison page; codespec supplies the ahe
   the entry function, the encoding of its arguments, the tool versions, and the runner command as an
   argument list (`wasmtime run --invoke <entry> <dir>/<name>.wasm <args>`, with the flags the pinned
   `wasmtime` needs for the GC proposal). A second target, `x86-64`, an ELF with its own runner
-  command, is added when `story:x86-64-writer` is implemented; it is not part of this story's
-  outcome.
+  command, is added by `story:x86-64-writer`, which depends on this story and owns that target in
+  its scope and Done When; it is not part of this story's outcome.
 - `codespec-bench rows <dir>...` writes the AOT rows in swell's bench schema `swell-bench/1`
   (swell's `story:bench-runner-and-data-file`, beyond10x/swell#9): one row per script and target,
   carrying the artifact, its runner command and its digests. A script the reader refuses is a row
@@ -106,7 +105,8 @@ the syntax crate.
   `scripts/check-parts.txt` name no timing command. Each test under 60 s, the step under 120 s; the
   time of the new test binary is stated.
 - Near misses: a script whose entry the schema's convention does not name (a row `refused`, reason
-  `no entry`), a script with two top-level functions of the same name, an artifact directory with a
+  `no entry`), a script with two top-level functions of the same name (a row `refused`, reason `duplicate
+  function <name>`, at the file and line of the second declaration, no artifact), an artifact directory with a
   `.wasm` that does not match `artifact.json`'s digest (`run` refuses), a refused script that still
   has a source digest in its row.
 
@@ -117,6 +117,6 @@ the syntax crate.
   `.github/workflows/release-build.yml` (the program list), root `Cargo.toml` `members`,
   `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`, `AGENTS.md`, `CHANGELOG.md`.
 - Shares root `Cargo.toml`, `Cargo.lock`, `Taskfile.yml`, `scripts/check-parts.txt`, `AGENTS.md` and
-  `CHANGELOG.md` with every other story of the epic; this story last. It depends on
-  `story:wasm-writer` and `story:ecmascript-run-oracle`; `story:x86-64-writer` adds its target
-  afterwards.
+  `CHANGELOG.md` with every other story of the epic; it comes after `story:wasm-writer` and
+  `story:ecmascript-run-oracle`, which it depends on, and before `story:x86-64-writer`, which
+  depends on it and adds the x86-64 target to `crates/bench`.

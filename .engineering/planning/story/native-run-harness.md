@@ -25,15 +25,16 @@ scope:
   path: crates/native-run
 - confidence: inferred
   path: scripts/check-parts.txt
-revision: 4
+revision: 5
 ---
 # Story: A deterministic container run harness on the build node
 
 ## Outcome
 
 `codespec-native-run`, a Rust crate `crates/native-run`, builds and runs a command in a container
-on the build node and returns its standard output, exit code, wall time and the digest of
-everything that decided the result. The WebAssembly runner, the x86-64 runner, the ECMAScript
+on the build node and returns its standard output, exit code, wall time and `inputs_sha256`, the
+digest of everything that decided the result: the sha256 of the canonical JSON of the image digest,
+the command, the limits and the sha256 of the mounted work directory's file list and contents. The WebAssembly runner, the x86-64 runner, the ECMAScript
 oracle and the speed comparison call it; none of them starts a container itself.
 
 ```console
@@ -79,9 +80,11 @@ network, the host's files or the host's clock, and must end.
   `slot` prefix (`~/beyond10x/AGENTS.md`, "Scripts that do not build stay off slot"; a build of an
   image takes the prefix). A job longer than 10 minutes names its time (at most 30).
 - The record (`codespec-native-run/1`, JSON, canonical) holds: image digest, command, limits,
-  exit code, verdict, stdout digest, the stdout, `wall_ns` (wall time in nanoseconds) and the
-  node's CPU model. `wall_ns` is the only field excluded when two records are compared, and it is
-  not in the digest of the output.
+  exit code, verdict, `stdout_sha256` (the digest of the stdout), the stdout, `inputs_sha256` (as in
+  the Outcome) and `wall_ns` (wall time in nanoseconds) and the node's CPU model. `wall_ns` is the
+  only field excluded when two records are compared, and it is in neither `stdout_sha256` nor
+  `inputs_sha256`. A test changes one byte of a mounted file and expects a different
+  `inputs_sha256`, and changes only the wall time and expects the same one.
 - The microVM step is named, not built: the harness has one `Isolation` value, `container`, and a
   test refuses `microvm` with the message `microvm is a later step of epic:ecmascript-to-native; no
   /dev/kvm on this node`. No story for it exists yet, so none is named. Nothing else is stubbed.
