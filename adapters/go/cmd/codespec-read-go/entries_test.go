@@ -152,3 +152,41 @@ func TestRoutesTheReaderCannotFollowAreListedAsNotDiscovered(t *testing.T) {
 		t.Errorf("opaque functions %v", m.Opaque)
 	}
 }
+
+// Every echo registration: CONNECT and TRACE like GET, Add with a constant method, Match with
+// constant methods one entry per method. A method that is not a constant, and a route on a
+// receiver that is not an *echo.Echo or *echo.Group (a struct embedding one), are not discovered.
+func TestEchoAddMatchConnectTraceAndReceiversTheReaderCannotFollow(t *testing.T) {
+	m := loadModule(t, filepath.Join("testdata", "entries", "shop", "more"))
+	sameLines(t, "entries", entryLines(t, m), []string{
+		"http PUT /added one -",
+		"http GET /matched two -",
+		"http HEAD /matched two -",
+		"http CONNECT /tunnel three -",
+		"http TRACE /g/trace four -",
+	})
+	want := []string{
+		"main.go:30 the method is not a constant",
+		"main.go:32 the methods are not a list of constants",
+		"main.go:33 the methods are not a list of constants",
+		"main.go:35 the route's receiver is not an *echo.Echo or *echo.Group: its prefix is not known",
+		"main.go:37 the route's receiver is not an *echo.Echo or *echo.Group: its prefix is not known",
+	}
+	sort.Strings(want)
+	sameLines(t, "route refusals", routeRefusals(m), want)
+}
+
+// Handle with a value of a named function type that has its own ServeHTTP starts that ServeHTTP;
+// only http.HandlerFunc(f) starts f. A mounted ServeMux is no entry: its own routes are.
+func TestHandleOfAFunctionTypeWithItsOwnServeHTTPAndAMountedServeMux(t *testing.T) {
+	m := loadModule(t, filepath.Join("testdata", "entries", "web", "mount"))
+	sameLines(t, "entries", entryLines(t, m), []string{
+		"http - /view appHandler.ServeHTTP -",
+		"http - /held appHandler.ServeHTTP -",
+		"http - /plain plain -",
+	})
+	sameLines(t, "route refusals", routeRefusals(m), []string{
+		"main.go:18 the handler is a mounted ServeMux: the routes registered on it are the entries",
+		"main.go:19 the handler is a mounted ServeMux: the routes registered on it are the entries",
+	})
+}

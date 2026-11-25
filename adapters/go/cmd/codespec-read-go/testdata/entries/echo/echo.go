@@ -50,3 +50,19 @@ func (g *Group) PATCH(path string, h HandlerFunc, m ...MiddlewareFunc) *Route   
 func (g *Group) HEAD(path string, h HandlerFunc, m ...MiddlewareFunc) *Route    { return nil }
 func (g *Group) OPTIONS(path string, h HandlerFunc, m ...MiddlewareFunc) *Route { return nil }
 func (g *Group) Any(path string, h HandlerFunc, m ...MiddlewareFunc) []*Route   { return nil }
+
+func (e *Echo) CONNECT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route  { return nil }
+func (e *Echo) TRACE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route    { return nil }
+func (g *Group) CONNECT(path string, h HandlerFunc, m ...MiddlewareFunc) *Route { return nil }
+func (g *Group) TRACE(path string, h HandlerFunc, m ...MiddlewareFunc) *Route   { return nil }
+
+func (e *Echo) Add(method, path string, h HandlerFunc, m ...MiddlewareFunc) *Route  { return nil }
+func (g *Group) Add(method, path string, h HandlerFunc, m ...MiddlewareFunc) *Route { return nil }
+
+func (e *Echo) Match(methods []string, path string, h HandlerFunc, m ...MiddlewareFunc) []*Route {
+	return nil
+}
+
+func (g *Group) Match(methods []string, path string, h HandlerFunc, m ...MiddlewareFunc) []*Route {
+	return nil
+}

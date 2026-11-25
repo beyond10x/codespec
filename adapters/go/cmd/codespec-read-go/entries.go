@@ -27,10 +27,11 @@ type Entry struct {
 
 const echoPath = "github.com/labstack/echo/v4"
 
-// echoRoutes maps echo's route methods to the HTTP method each registers; "" is any method.
+// echoRoutes maps echo's route methods to the HTTP method each registers; "" is any method. Add
+// (a method argument) and Match (a list of them) are read apart.
 var echoRoutes = map[string]string{
 	"GET": "GET", "POST": "POST", "PUT": "PUT", "DELETE": "DELETE", "PATCH": "PATCH",
-	"HEAD": "HEAD", "OPTIONS": "OPTIONS", "Any": "",
+	"HEAD": "HEAD", "OPTIONS": "OPTIONS", "CONNECT": "CONNECT", "TRACE": "TRACE", "Any": "",
 }
 
 const routeWhat = "http route"
@@ -96,14 +97,22 @@ func (f *front) route(fd *ast.FuncDecl, call *ast.CallExpr, loop bool, read map[
 		(recv == nil || isNamed(recv.Type(), "net/http", "ServeMux")):
 		handle = fn.Name() == "Handle"
 	case fn.Pkg().Path() == echoPath && recv != nil && isEchoRouter(recv.Type()):
-		if _, ok := echoRoutes[fn.Name()]; !ok {
+		if _, ok := echoRoutes[fn.Name()]; !ok && fn.Name() != "Add" && fn.Name() != "Match" {
 			return
 		}
 		echo = true
 	default:
 		return
 	}
-	if len(call.Args) < 2 {
+	// Add and Match take the method or methods first.
+	args := call.Args
+	if echo && (fn.Name() == "Add" || fn.Name() == "Match") {
+		if len(args) < 3 {
+			return
+		}
+		args = args[1:]
+	}
+	if len(args) < 2 {
 		return
 	}
 	refuse := func(reason string) { f.refuse(call, routeWhat, reason) }
@@ -111,17 +120,35 @@ func (f *front) route(fd *ast.FuncDecl, call *ast.CallExpr, loop bool, read map[
 		refuse("registered in a loop: the reader does not run the loop")
 		return
 	}
-	var method, prefix string
+	var methods []string
+	var prefix string
 	if echo {
-		method = echoRoutes[fn.Name()]
 		p, why := f.groupPrefix(fd, sel.X, map[*types.Var]bool{})
 		if why != "" {
 			refuse(why)
 			return
 		}
 		prefix = p
+		switch fn.Name() {
+		case "Add":
+			m, ok := f.constString(call.Args[0])
+			if !ok {
+				refuse("the method is not a constant")
+				return
+			}
+			methods = []string{m}
+		case "Match":
+			ms, ok := f.constStrings(call.Args[0])
+			if !ok {
+				refuse("the methods are not a list of constants")
+				return
+			}
+			methods = ms
+		default:
+			methods = []string{echoRoutes[fn.Name()]}
+		}
 	}
-	pattern, ok := f.constString(call.Args[0])
+	pattern, ok := f.constString(args[0])
 	if !ok {
 		refuse("the path is not a constant")
 		return
@@ -133,13 +160,13 @@ func (f *front) route(fd *ast.FuncDecl, call *ast.CallExpr, loop bool, read map[
 			refuse(why)
 			return
 		}
-		method, path = m, rest
+		methods, path = []string{m}, rest
 	}
 	var key, pkg, why string
 	if handle {
-		key, pkg, why = f.handlerValue(call.Args[1])
+		key, pkg, why = f.handlerValue(args[1])
 	} else {
-		key, pkg, why = f.handlerFunc(call.Args[1])
+		key, pkg, why = f.handlerFunc(args[1])
 	}
 	if why != "" {
 		refuse(why)
@@ -149,7 +176,26 @@ func (f *front) route(fd *ast.FuncDecl, call *ast.CallExpr, loop bool, read map[
 		refuse("the handler " + key + " is not a function the reader read")
 		return
 	}
-	f.mod.Entries = append(f.mod.Entries, Entry{Kind: "http", Func: key, Method: method, On: path, Path: pkg})
+	for _, method := range methods {
+		f.mod.Entries = append(f.mod.Entries, Entry{Kind: "http", Func: key, Method: method, On: path, Path: pkg})
+	}
+}
+
+// constStrings is the list a composite literal of string constants holds, `[]string{"GET", …}`.
+func (f *front) constStrings(e ast.Expr) ([]string, bool) {
+	lit, ok := ast.Unparen(e).(*ast.CompositeLit)
+	if !ok {
+		return nil, false
+	}
+	var out []string
+	for _, x := range lit.Elts {
+		s, ok := f.constString(x)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, s)
+	}
+	return out, true
 }
 
 // splitPattern splits a net/http pattern, `[METHOD ][HOST]/[PATH]`, into its method ("" for any)
@@ -192,8 +238,12 @@ func isEchoRouter(t types.Type) bool {
 // local variable of fd assigned once, by such a call; seen holds the variables being followed.
 func (f *front) groupPrefix(fd *ast.FuncDecl, x ast.Expr, seen map[*types.Var]bool) (string, string) {
 	x = ast.Unparen(x)
-	if !isNamed(f.info.TypeOf(x), echoPath, "Group") {
+	switch t := f.info.TypeOf(x); {
+	case isNamed(t, echoPath, "Echo"):
 		return "", ""
+	case !isNamed(t, echoPath, "Group"):
+		// A struct embedding a group or the router: the reader does not follow what it holds.
+		return "", "the route's receiver is not an *echo.Echo or *echo.Group: its prefix is not known"
 	}
 	switch x := x.(type) {
 	case *ast.CallExpr:
@@ -330,12 +380,17 @@ func assignments(info *types.Info, fd *ast.FuncDecl, v *types.Var) (values []ast
 	return values, taken
 }
 
-// handlerValue names the function a Handle registration runs: f of a conversion
-// http.HandlerFunc(f), or the ServeHTTP method of the value's named type.
+// handlerValue names the function a Handle registration runs: the ServeHTTP method of the
+// value's named type, except for http.HandlerFunc, whose ServeHTTP only calls the function: f of
+// a conversion http.HandlerFunc(f). Another named function type with its own ServeHTTP runs that
+// ServeHTTP. A mounted router (*http.ServeMux, *echo.Echo) starts no function of its own: the
+// routes registered on it are the entries.
 func (f *front) handlerValue(e ast.Expr) (key, pkg, why string) {
 	e = ast.Unparen(e)
-	if inner, ok := funcConversion(f.info, e); ok {
-		return f.handlerFunc(inner)
+	if call, ok := e.(*ast.CallExpr); ok && len(call.Args) == 1 {
+		if tv, ok := f.info.Types[call.Fun]; ok && tv.IsType() && isNamed(tv.Type, "net/http", "HandlerFunc") {
+			return f.handlerFunc(call.Args[0])
+		}
 	}
 	t := f.info.TypeOf(e)
 	if t == nil {
@@ -347,13 +402,19 @@ func (f *front) handlerValue(e ast.Expr) (key, pkg, why string) {
 		}
 		return "", "", "the handler is a value of an interface type: the function it runs is not known"
 	}
-	if _, ok := t.Underlying().(*types.Signature); ok {
-		return f.handlerFunc(e)
+	if isNamed(t, "net/http", "ServeMux") {
+		return "", "", "the handler is a mounted ServeMux: the routes registered on it are the entries"
+	}
+	if isNamed(t, echoPath, "Echo") {
+		return "", "", "the handler is a mounted echo router: the routes registered on it are the entries"
 	}
 	obj, _, _ := types.LookupFieldOrMethod(t, true, f.pkg, "ServeHTTP")
 	fn, ok := obj.(*types.Func)
 	if !ok {
 		return "", "", "the handler's type has no ServeHTTP method"
+	}
+	if isNamed(fn.Type().(*types.Signature).Recv().Type(), "net/http", "HandlerFunc") {
+		return f.handlerFunc(e)
 	}
 	return methodKey(f.pkg, fn)
 }

@@ -18,11 +18,14 @@ computed by `codespec pass` and never claimed by a reader.
 
 Every route the package registers is an `http` entry (`entries.go`): `net/http`'s `HandleFunc` and
 `Handle`, as functions and on a `*http.ServeMux` (a Go 1.22 pattern `"GET /items/{id}"` gives the
-method; none, any method), and echo's `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
-and `Any` on an `*echo.Echo` or a group, the prefixes of the `Group` calls joined. A handler of
-another package is named with that package's import path in `path`. The reader follows a constant
-path, a group made once in the same function and a handler naming a function or method; any other
-registration is a refusal at the call, `what` `http route`, with the reason. A package outside the
+method; none, any method), and echo's `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`,
+`CONNECT`, `TRACE`, `Any`, `Add` (a constant method) and `Match` (a list of constant methods, one
+entry each) on an `*echo.Echo` or `*echo.Group`, the prefixes of the `Group` calls joined. `Handle`
+names the `ServeHTTP` of the value's type, or `f` of `http.HandlerFunc(f)`; a mounted
+`*http.ServeMux` or `*echo.Echo` is no entry. A handler of another package is named with that
+package's import path in `path`. The reader follows a constant path, a group made once in the same
+function and a handler naming a function or method; any other registration (a route on a struct
+embedding a group, say) is a refusal at the call, `what` `http route`, with the reason. A package outside the
 standard library resolves through `go list` in the working directory, so run the reader in the
 repository (`scripts/read-repo.sh` does).
 
