@@ -37,7 +37,7 @@ public final class Json {
     private static void value(StringBuilder b, Object v, int depth) {
         if (v instanceof String) {
             string(b, (String) v);
-        } else if (v instanceof Boolean) {
+        } else if (v instanceof Boolean || v instanceof Long || v instanceof Integer) {
             b.append(v.toString());
         } else if (v instanceof Map) {
             Map<String, Object> m = (Map<String, Object>) v;
@@ -192,6 +192,20 @@ public final class Json {
             }
             if (c == '"') {
                 return str();
+            }
+            if (c == '-' || (c >= '0' && c <= '9')) {
+                int start = i;
+                if (c == '-') {
+                    i++;
+                }
+                int digits = i;
+                while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') {
+                    i++;
+                }
+                if (i == digits) {
+                    throw fail("unexpected " + c);
+                }
+                return Long.valueOf(s.substring(start, i));
             }
             for (String w : new String[] {"true", "false", "null"}) {
                 if (s.startsWith(w, i)) {

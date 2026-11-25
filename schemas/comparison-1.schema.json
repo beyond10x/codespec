@@ -1,0 +1,518 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Comparison",
+  "type": "object",
+  "properties": {
+    "assessed": {
+      "description": "The date the assessment was made, `YYYY-MM-DD`: every public page cited was read that day.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "behind": {
+      "description": "Where the subject is behind, each item with the cells it rests on.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      }
+    },
+    "caveats": {
+      "description": "What limits the comparison.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cells": {
+      "description": "One cell for every tool and dimension.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Cell"
+      }
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Dimension"
+      },
+      "minItems": 1
+    },
+    "format": {
+      "$ref": "#/$defs/Format"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Group"
+      },
+      "minItems": 1
+    },
+    "stands_out": {
+      "description": "Where the subject stands out, each item with the cells it rests on.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      }
+    },
+    "subject": {
+      "description": "The tool this assessment is about, at the revision its cells cite.",
+      "$ref": "#/$defs/Subject"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Tool"
+      },
+      "minItems": 2
+    },
+    "values": {
+      "description": "What each value means.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ValueRule"
+      },
+      "minItems": 6
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "assessed",
+    "subject",
+    "values",
+    "groups",
+    "dimensions",
+    "tools",
+    "cells",
+    "stands_out",
+    "behind",
+    "caveats"
+  ],
+  "$defs": {
+    "Cell": {
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "type": "string"
+        },
+        "note": {
+          "description": "One line: what the source says. The text of the cell for an informational dimension.",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "description": "Absent for `unknown` only, which may name the page read that does not say it.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Value"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "dimension",
+        "value",
+        "note"
+      ]
+    },
+    "Claim": {
+      "description": "A statement about the cells, checked.",
+      "oneOf": [
+        {
+          "description": "The tools with `yes` on `dimension` are exactly `tools`.",
+          "type": "object",
+          "properties": {
+            "dimension": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "yes_on"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "dimension",
+            "tools"
+          ]
+        },
+        {
+          "description": "The tools with `yes` on every one of `dimensions` are exactly `tools`.",
+          "type": "object",
+          "properties": {
+            "dimensions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "all_yes_on"
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "dimensions",
+            "tools"
+          ]
+        },
+        {
+          "description": "`count` tools have `yes` on `dimension`.",
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "dimension": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "yes_count"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "dimension",
+            "count"
+          ]
+        }
+      ]
+    },
+    "Decision": {
+      "description": "What makes a cell `yes`, `partial` or `no`. `partial` is absent where the dimension has no\nmiddle.",
+      "type": "object",
+      "properties": {
+        "no": {
+          "type": "string",
+          "minLength": 1
+        },
+        "partial": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "yes": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "yes",
+        "no"
+      ]
+    },
+    "Dimension": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "description": "How a cell of a status dimension is decided; absent for an informational one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "definition": {
+          "description": "The question asked of every tool, one line.",
+          "type": "string",
+          "minLength": 1
+        },
+        "group": {
+          "description": "The `id` of a group.",
+          "type": "string"
+        },
+        "id": {
+          "description": "A letter and a number, `S3`.",
+          "type": "string",
+          "pattern": "^[A-Z][0-9]+$"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "group",
+        "name",
+        "kind",
+        "definition"
+      ]
+    },
+    "Finding": {
+      "type": "object",
+      "properties": {
+        "claims": {
+          "description": "Statements of the text about who has `yes`, checked against the cells.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Claim"
+          }
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "text": {
+          "description": "Prose. `[^tool-DIM]` cites the cell of that tool and dimension; `[@path:line]` or\n`[@path:first-last]` cites a file of this repository.",
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "text"
+      ]
+    },
+    "Format": {
+      "description": "The format tag of the file.",
+      "type": "string",
+      "enum": [
+        "codespec-comparison/1"
+      ]
+    },
+    "Group": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Kind": {
+      "description": "Whether a dimension takes a verdict or holds text.",
+      "type": "string",
+      "enum": [
+        "status",
+        "info"
+      ]
+    },
+    "RepoSource": {
+      "type": "object",
+      "properties": {
+        "end": {
+          "description": "The last line cited, where more than one.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 1
+        },
+        "line": {
+          "description": "The first line cited, from 1.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 1
+        },
+        "path": {
+          "description": "A file of this repository, relative to its root.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "The branch of the file where it is not `main`; the cell is then `planned`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "line"
+      ]
+    },
+    "Source": {
+      "description": "Where a cell comes from: a public page, or a file of this repository.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UrlSource"
+        },
+        {
+          "$ref": "#/$defs/RepoSource"
+        }
+      ]
+    },
+    "Subject": {
+      "type": "object",
+      "properties": {
+        "commit": {
+          "description": "The short Git revision (12 hex digits) of `main` the cells cite.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{12}$"
+        },
+        "tool": {
+          "description": "The `id` of the tool in `tools`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "commit",
+        "version"
+      ]
+    },
+    "Tool": {
+      "type": "object",
+      "properties": {
+        "assessed": {
+          "description": "The date the tool's pages were read, `YYYY-MM-DD`.",
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "edition": {
+          "description": "The tier or product the column assesses, where the tool has more than one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Lower case, letters, digits and `-`.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "license": {
+          "description": "A short licence statement; the full one is the cell of the licence dimension.",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unread": {
+          "description": "Pages tried on that date that did not load; no cell rests on them.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vendor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "description": "The version assessed, where the sources name one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "vendor",
+        "license",
+        "assessed"
+      ]
+    },
+    "UrlSource": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "The most specific page that says it, `https`.",
+          "type": "string",
+          "pattern": "^https://\\S+$"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "url"
+      ]
+    },
+    "Value": {
+      "description": "What a cell says. `yes`, `partial` and `no` are the verdicts of a status dimension, `unknown`\nmeans no public source we could read says it (not `no`), `planned` is designed and not on\n`main` (the assessed tool only, never counted as `yes`), `info` is the text of an\ninformational dimension.",
+      "type": "string",
+      "enum": [
+        "yes",
+        "partial",
+        "no",
+        "unknown",
+        "planned",
+        "info"
+      ]
+    },
+    "ValueRule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Value"
+        },
+        "rule": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "rule"
+      ]
+    }
+  }
+}

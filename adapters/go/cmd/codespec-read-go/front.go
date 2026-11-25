@@ -396,6 +396,7 @@ func load(dir string) (*Module, error) {
 		f.inits(files)
 		f.mod.Imports = f.importPaths(files)
 	}
+	f.routes(files)
 	f.mod.Fset = fset
 	for _, file := range files {
 		f.mod.Sources = append(f.mod.Sources, Source{Path: fset.File(file.FileStart).Name(), Generated: ast.IsGenerated(file)})

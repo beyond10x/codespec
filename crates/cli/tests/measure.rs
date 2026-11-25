@@ -485,6 +485,61 @@ fn an_opaque_function_and_a_foreign_statement_in_a_closure_are_refused() {
     assert_eq!(report["total"]["share_read"], "33.3%", "{report}");
 }
 
+/// `crates/cli/tests/fixtures/go-routes`: routes the Go reader lists as not discovered (`what`
+/// `http route`) beside one it records as an entry. A route not discovered is a refusal of its
+/// file, never a refused function: `main` and `mount`, which register them, are read. The reader
+/// runs in the fixture, as `scripts/read-repo.sh` runs it in a repository, so its `go list`
+/// resolves the echo stub through the fixture's `replace`; offline.
+#[test]
+fn routes_not_discovered_leave_the_registering_functions_read() {
+    let fixture = root().join("crates/cli/tests/fixtures/go-routes");
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("go-routes.cir.json");
+    let read = Command::new(env!("CARGO_BIN_EXE_codespec"))
+        .args(["read", "--lang", "go"])
+        .arg(&fixture)
+        .arg("--out")
+        .arg(&out)
+        .arg("--adapters")
+        .arg(go_adapters())
+        .current_dir(&fixture)
+        .env("GOWORK", "off")
+        .env("GOPROXY", "off")
+        .env("GOTOOLCHAIN", "local")
+        .env("GOFLAGS", "-mod=mod")
+        .output()
+        .unwrap();
+    assert!(read.status.success(), "{}", text_of(&read));
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    assert_eq!(
+        doc["entries"],
+        serde_json::json!([{"kind": "http", "func": "ping", "method": "GET", "on": "/v1/named"}]),
+        "{doc}"
+    );
+    let routes = doc["refusals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["what"] == "http route")
+        .count();
+    assert_eq!(routes, 7, "{doc}");
+    let report: serde_json::Value = serde_json::from_str(&stdout(&codespec(&[
+        "measure",
+        "--format",
+        "json",
+        out.to_str().unwrap(),
+    ])))
+    .unwrap();
+    let file = &report["files"][0];
+    assert_eq!(file["file"], "main.go", "{report}");
+    assert_eq!(
+        file["read"],
+        serde_json::json!(["main", "mount", "ping"]),
+        "{report}"
+    );
+    assert_eq!(file["refused"], serde_json::json!([]), "{report}");
+    assert_eq!(report["total"]["share_read"], "100.0%", "{report}");
+}
+
 /// A Groovy method declaration the reader refuses (`Cart.methodMissing(…)`) and also lists as an
 /// opaque function `Cart.methodMissing` is one refused function, not two.
 #[test]
