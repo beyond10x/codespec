@@ -27,7 +27,7 @@ scope:
   path: crates/corpus/tests
 - confidence: inferred
   path: scripts/corpus-read-one.sh
-revision: 4
+revision: 5
 ---
 # Story: Read a corpus under bounds, off the workstation, and write the records
 
@@ -38,8 +38,9 @@ with the reader of the manifest's language and writes one `codespec-corpus-recor
 per repository into the output directory, plus `run.json` (the manifest digest, the `codespec`
 version, the tool versions the reader needs, the bounds in force).
 
-Per repository, one job through `slot`: `slot --timeout 20m sh scripts/corpus-read-one.sh
-<name> <url> <commit> <out>`. The job runs on the remote build node (slot's default for a
+`codespec-corpus read` is the driver: it waits and measures, so it starts without the `slot`
+prefix. Per repository it starts one read job through `slot`: `slot run --timeout 20m sh
+scripts/corpus-read-one.sh <name> <url> <commit> <out>`. The job runs on the remote build node (slot's default for a
 command it routes; no `--local`), clones the repository at the pinned commit, checks the commit,
 enumerates the units of the language, reads each, and prints the repository's records document on
 standard output (one line, the log on standard error). The job holds the clone; nothing of it
@@ -64,9 +65,10 @@ Java dependencies that cannot be resolved are `unit-skipped:unresolved-dependenc
 silent partial read; `story:java-read-dependencies` (draft) makes more of them resolvable and
 this story depends on nothing of it.
 
-The driver script measures and waits, so it starts without the `slot` prefix; each reader run
-inside it goes through `slot` (`~/beyond10x/AGENTS.md` § "Scripts that do not build stay off
-slot"). The corpus run is never a test and is not in `scripts/check-parts.txt`.
+The one rule (`~/beyond10x/AGENTS.md` § "Scripts that do not build stay off slot"): the driver
+(`codespec-corpus read`, and `scripts/corpus-run.sh` of `story:corpus-loop-lane`) starts without
+the `slot` prefix, and each read job it starts, `scripts/corpus-read-one.sh`, goes through `slot
+run --timeout`. The corpus run is never a test and is not in `scripts/check-parts.txt`.
 
 ## Why
 
@@ -91,9 +93,10 @@ reported.
   read); a repository with no unit; a deadline reached after two units (the rest
   `repo-deadline`, the two read kept); a manifest whose digest line does not match its content
   (refused before any job); the output directory not empty (refused: no mixing of two runs).
-- The job line is checked as text by a test: with a stub `slot` on `PATH` it starts with `slot
+- The job line is checked as text by a test: with a stub `slot` on `PATH` it starts with `slot run
   --timeout`, names at most 30 minutes, and has no `--local`; without one it starts with
-  `timeout`; the driver script is `shellcheck`-clean and has no Python.
+  `timeout`; the driver's own command line has no `slot` prefix; `scripts/corpus-read-one.sh` is
+  `shellcheck`-clean and neither it nor the crate has Python.
 - On the build node, one run of each committed manifest (Go, Rust, Java) completes and its output
   directory is the input of the first triage in `story:corpus-triage-report`, which commits the
   pinned triage of each language; the pull request states each run's wall time, the slowest

@@ -27,7 +27,7 @@ scope:
   path: crates/corpus/tests
 - confidence: inferred
   path: ratchet.toml
-revision: 4
+revision: 5
 ---
 # Story: Reader KPIs per language as a ratchet over the pinned corpus, with a committed baseline
 
@@ -111,9 +111,21 @@ step budget (they read committed files only).
   above 0, which `ratchet evaluate` reports as insufficient evidence, never a pass.
 - `ratchet validate` accepts `corpus/ratchet.yaml` and the assessor declaration; the names the
   evidence uses equal the declaration's outputs.
-- Planted regressions over a scratch copy of the committed files: the committed triage with one
-  more refusal gives fail naming `refusals_per_kloc`, the language and both values; with a
-  repository missing, insufficient evidence; the committed files unchanged, pass.
+- One planted regression per KPI, each over a scratch copy of the committed Go files, made by
+  changing the one headline count of the committed triage and recomputing the ratios with the
+  crate's own function, then `ratchet assess` and `ratchet evaluate --gate merge`:
+  - one function fewer read (`functions_read_share`): exit non-zero, fail naming
+    `functions_read_share`, `go`, the baseline and the observed value;
+  - one more refusal (`refusals_per_kloc`): exit non-zero, fail naming it with both values;
+  - one more failed unit (`units_failed`): exit non-zero, fail naming it with both values;
+  - one repository that was clean now has a refusal (`repos_clean_share`): exit 0, the report
+    lists the KPI as worse and report only;
+  - one new distinct code (`distinct_codes`): exit 0, the report lists the KPI as worse and
+    report only;
+  - with a repository missing, insufficient evidence and exit non-zero; the committed files
+    unchanged, pass. A trade-off record for `refusals_per_kloc` that names a better
+    `functions_read_share` turns the second case to pass; one that names no better value is
+    refused.
 - The baseline of each language is the file `corpus/baseline/<language>.reference.json` (the name
   ratchet's tracked directory gives it), and it equals what `ratchet reference adopt` writes for
   the evidence of that language's committed `corpus/<language>/triage.pinned.json`: a test compares
