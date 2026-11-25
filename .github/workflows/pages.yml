@@ -14,8 +14,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  scope:
+    name: Documentation scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      site: ${{ steps.scope.outputs.site }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: The planning-only path list's own cases
+        run: sh scripts/planning-only.sh test
+      - name: Whether this pull request changes the site or its UX gate, from scripts/planning-only.sh --site
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          site=true
+          if [ "$EVENT" = pull_request ] && git rev-parse --quiet --verify 'HEAD^2' > /dev/null; then
+            git diff --name-only 'HEAD^1' HEAD > "$RUNNER_TEMP/changed.txt"
+            cat "$RUNNER_TEMP/changed.txt"
+            if sh scripts/planning-only.sh --site < "$RUNNER_TEMP/changed.txt"; then site=false; fi
+          fi
+          echo "site=$site"
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build documentation
+    needs: scope
+    if: needs.scope.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -36,6 +66,14 @@ jobs:
         run: |
           cargo test --locked -p codespec-docs
           cargo run --locked -p codespec-docs -- provenance --site website/build --commit "$GITHUB_SHA"
+      - name: Upload the built site for the UX gate's shards
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ux-site
+          path: website/build
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
       - name: Upload the exact built site
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -46,10 +84,16 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  ux:
-    name: UX gate
+  ux-shard:
+    name: UX gate / shard ${{ matrix.shard }} of 5
+    needs: [scope, build]
+    if: needs.scope.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -58,23 +102,66 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: |
-            website/package-lock.json
-            ux/package-lock.json
-      - name: Build the Docusaurus site
-        run: npm --prefix website ci && npm --prefix website run build
+          cache-dependency-path: ux/package-lock.json
+      - name: The site the build job made
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ux-site
+          path: website/build
       - name: Install the UX harness and Chromium
         working-directory: ux
         run: |
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
-      - name: Fetch the baseline on main for the ratchet
-        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
-      - name: UX gate
+      - name: UX gate, L1 to L3, shard ${{ matrix.shard }} of 5
         working-directory: ux
         timeout-minutes: 4
+        run: npx playwright test --workers=4 --shard=${{ matrix.shard }}/5
+      - name: Upload this shard's results for the ratchet
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ux-results-${{ matrix.shard }}
+          path: ux/.out/check/results
+          retention-days: 1
+          if-no-files-found: ignore
+
+  ux:
+    name: UX gate
+    needs: [scope, ux-shard]
+    if: always() && needs.scope.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every shard passed
+        env:
+          SHARDS: ${{ needs.ux-shard.result }}
+        run: |
+          echo "shards=$SHARDS"
+          test "$SHARDS" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ux/package-lock.json
+      - name: Install the UX harness
+        working-directory: ux
+        run: npm ci --no-audit --no-fund
+      - name: Every shard's results in one directory
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: ux-results-*
+          merge-multiple: true
+          path: ux/.out/check/results
+      - name: Fetch the baseline on main for the ratchet
+        run: git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+      - name: Typecheck, findings rule, ratchet over every unit
+        working-directory: ux
+        timeout-minutes: 2
         run: |
           npx tsc --noEmit
           node cli.ts findings
-          npx playwright test --workers=4
           node cli.ts ratchet
