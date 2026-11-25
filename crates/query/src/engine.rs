@@ -33,14 +33,14 @@ enum V {
     Wild(Rc<Wild>),
 }
 
-/// A field of a wild fact that one unknown site adds: the site, whether it names a node of the
-/// code nothing read (no node of the documents is one), and the conditions the rule that bound
+/// A field of a wild fact that one unknown site adds: the site, for a field naming a node of the
+/// code nothing read the node all such nodes sit in ([`Wild::admits`]), and the conditions the rule that bound
 /// it has checked of it. Two wild fields of different sites are different values in a store, so
 /// a fact one site could add keeps resting on that site alone.
 #[derive(Debug)]
 struct Wild {
     site: u32,
-    unread_node: bool,
+    unread: Option<Rc<str>>,
     conds: Vec<Cond>,
 }
 
@@ -84,9 +84,20 @@ impl Cond {
 }
 
 impl Wild {
-    /// Whether the site could hold `v` here, a value without a wild field.
+    /// Whether the site could hold `v` here, a value without a wild field. A field naming a node
+    /// nothing read is the node it sits in or one inside that: the foreign statement itself or a
+    /// node under it (`<statement>.…`), a node of the opaque function (`<function>#…`).
     fn admits(&self, v: &V) -> bool {
-        !self.unread_node && self.conds.iter().all(|c| c.holds(v))
+        let inside = match (&self.unread, v) {
+            (None, _) => true,
+            (Some(root), V::Str(s)) => {
+                **s == **root
+                    || s.strip_prefix(&**root)
+                        .is_some_and(|rest| rest.starts_with('.') || rest.starts_with('#'))
+            }
+            (Some(_), _) => false,
+        };
+        inside && self.conds.iter().all(|c| c.holds(v))
     }
 
     /// The same field with one more condition checked.
@@ -95,15 +106,15 @@ impl Wild {
         conds.push(c);
         V::Wild(Rc::new(Wild {
             site: self.site,
-            unread_node: self.unread_node,
+            unread: self.unread.clone(),
             conds,
         }))
     }
 
-    fn key(&self) -> (u32, bool, Vec<CondKey<'_>>) {
+    fn key(&self) -> (u32, Option<&str>, Vec<CondKey<'_>>) {
         (
             self.site,
-            self.unread_node,
+            self.unread.as_deref(),
             self.conds.iter().map(Cond::key).collect(),
         )
     }
@@ -178,7 +189,7 @@ impl V {
         match self {
             V::Wild(w) => V::Wild(Rc::new(Wild {
                 site: 0,
-                unread_node: w.unread_node,
+                unread: w.unread.clone(),
                 conds: w.conds.clone(),
             })),
             V::List(l) => V::List(l.iter().map(V::unsited).collect()),
@@ -2236,6 +2247,8 @@ struct Eval<'a> {
     limit: Option<usize>,
     /// The relation whose rule was running when the evaluation went over its limit.
     over: Cell<Option<usize>>,
+    /// The relation whose rules or property rows are being derived.
+    running: Cell<usize>,
 }
 
 /// What an evaluation holds, counted in tuples: one for each fact of a relation the program
@@ -2490,7 +2503,8 @@ const GRAPH_WILD: &[&str] = &["effect", "syscall", "scc", "reached"];
 
 /// The fields of a wild fact that name a node of the code nothing read when the site leaves them
 /// open: the statement or expression itself, an expression's operands, a node an opaque
-/// function contains. None of them is a node of the documents.
+/// function contains. Each is the node the site sits in or a node inside it, no other node of the
+/// documents ([`Wild::admits`]).
 const UNREAD_NODES: &[(&str, &str)] = &[
     ("expr", "id"),
     ("expr", "x"),
@@ -2499,9 +2513,27 @@ const UNREAD_NODES: &[(&str, &str)] = &[
     ("contains", "inner"),
 ];
 
+/// The node the nodes nothing read of a wild fact of `name` sit in: the statement a foreign
+/// statement's facts fix, else the function or outer node they fix (an opaque function's).
+fn unread_root(name: &str, fields: &[(&str, Ty)], row: &[Option<Value>]) -> Option<Rc<str>> {
+    let fixed = |f: &str| {
+        let k = fields.iter().position(|(n, _)| *n == f)?;
+        match &row[k] {
+            Some(Value::Str(s)) => Some(Rc::from(s.as_str())),
+            _ => None,
+        }
+    };
+    match name {
+        "expr" => fixed("stmt").or_else(|| fixed("func")),
+        "stmt" => fixed("func"),
+        "contains" => fixed("outer"),
+        _ => None,
+    }
+}
+
 /// Whether `a` and `b` may be the same value: equal, or in the upper mode a wild field that could
-/// hold the other (a field of a site nothing read is no node of the documents, and satisfies
-/// the conditions its rule checked).
+/// hold the other (a node nothing read only the node its site sits in or one inside it, and
+/// only a value satisfying the conditions its rule checked).
 fn eqv(a: &V, b: &V, mode: Mode) -> bool {
     if a == b {
         return true;
@@ -2569,8 +2601,12 @@ impl<'a> Eval<'a> {
     fn hold(&self, before: usize, after: usize) {
         let mut c = self.cost.get();
         c.held = c.held + after - before;
-        c.peak = c.peak.max(c.held + self.pending.get());
+        let now = c.held + self.pending.get();
+        c.peak = c.peak.max(now);
         self.cost.set(c);
+        if self.limit.is_some_and(|l| now > l) && self.over.get().is_none() {
+            self.over.set(Some(self.running.get()));
+        }
     }
 
     /// One more derivation of a rule of `r`, resting on `sites` sites, waits to be added; whether
@@ -2636,6 +2672,7 @@ impl<'a> Eval<'a> {
             if upper {
                 let fields = relation(name).expect("a relation").fields;
                 for (row, site) in self.fb.wild.get(name).into_iter().flatten() {
+                    let root = unread_root(name, fields, row);
                     let t = row
                         .iter()
                         .zip(fields)
@@ -2643,7 +2680,10 @@ impl<'a> Eval<'a> {
                             Some(v) => V::of(v),
                             None => V::Wild(Rc::new(Wild {
                                 site: *site as u32,
-                                unread_node: UNREAD_NODES.contains(&(name, *field)),
+                                unread: UNREAD_NODES
+                                    .contains(&(name, *field))
+                                    .then(|| root.clone())
+                                    .flatten(),
                                 conds: Vec::new(),
                             })),
                         })
@@ -3549,6 +3589,9 @@ impl<'a> Eval<'a> {
             set: Vec::new(),
         }];
         while let Some(f) = stack.last_mut() {
+            if self.over.get().is_some() {
+                return;
+            }
             restore(&mut b, &mut f.set);
             let Some(ann) = f.take(&mut b, mode) else {
                 stack.pop();
@@ -3594,27 +3637,29 @@ impl<'a> Eval<'a> {
                 let st = self.scan_store(*rel, args, b, mode);
                 let only = delta.filter(|(j, _)| *j == k).map(|(_, d)| d);
                 let ts = self.matches(&st, args, b, only, mode);
-                // A scan that binds no variable asks whether a fact agrees: one way, resting on
-                // what the head would rest on had each agreeing fact derived it, not one way per
-                // fact (each fact of a wild field's scan would otherwise repeat the rest of the
-                // body).
+                // A scan that binds no variable asks whether a fact agrees: one way for each set
+                // of sites the solution could then rest on, a set holding another left out (the
+                // head keeps the smaller), not one way per fact (each fact of a wild field's scan
+                // would otherwise repeat the rest of the body).
                 let binds = args
                     .iter()
                     .any(|a| matches!(a, Arg::Var(x) if b[*x].is_none()));
                 if !binds {
-                    let mut acc: Option<Ann> = None;
+                    let mut least: Vec<Ann> = Vec::new();
                     for &t in &ts {
                         let mut a = ann.clone();
                         union(&mut a, &st.anns[t]);
-                        match &mut acc {
-                            None => acc = Some(a),
-                            Some(old) => merge(old, a),
+                        if least.iter().any(|l| subset(l, &a)) {
+                            continue;
                         }
-                        if acc.as_ref() == Some(ann) {
+                        least.retain(|l| !subset(&a, l));
+                        let done = a == *ann;
+                        least.push(a);
+                        if done {
                             break;
                         }
                     }
-                    return Ways::Binds(acc.map(|a| (Vec::new(), a)).into_iter().collect());
+                    return Ways::Binds(least.into_iter().map(|a| (Vec::new(), a)).collect());
                 }
                 Ways::Tuples { st, args, ts }
             }
@@ -3847,6 +3892,7 @@ impl<'a> Eval<'a> {
         let mut props = Vec::new();
         for &h in heads {
             if let Some(k) = self.c.prop_of[h] {
+                self.running.set(h);
                 props.push((h, self.property_rows(&self.c.props[k], mode)));
             }
         }
@@ -3881,6 +3927,7 @@ impl<'a> Eval<'a> {
         loop {
             let mut found: Vec<(usize, Vec<V>, Ann)> = Vec::new();
             for r in &rules {
+                self.running.set(r.head);
                 let mut out = Vec::new();
                 if first {
                     self.steps(r, None, mode, &mut out);
@@ -4011,18 +4058,6 @@ fn narrow<'s>(x: &Arg, w: &Wild, c: Cond, ann: &Ann) -> Ways<'s> {
         _ => Vec::new(),
     };
     Ways::Binds(vec![(binds, ann.clone())])
-}
-
-/// What a fact rests on once derived again resting on `new`, as [`Store::insert`] has it.
-fn merge(old: &mut Ann, new: Ann) {
-    if old.is_empty() || subset(old, &new) {
-        return;
-    }
-    if subset(&new, old) {
-        *old = new;
-    } else {
-        union(old, &new);
-    }
 }
 
 /// The tuples a builtin gives for the arguments `b` binds: every argument, inputs included.
@@ -4261,6 +4296,7 @@ fn evaluate_roots(
         pending: Cell::new(0),
         limit,
         over: Cell::new(None),
+        running: Cell::new(roots.first().copied().unwrap_or(0)),
     };
     let mut by_stratum: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for d in (0..n).filter(|&d| need[d]) {

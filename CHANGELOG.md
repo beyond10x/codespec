@@ -44,8 +44,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
   through such a field (`reaches(F, G), reaches(G, F)` with `G` open) repeated the rest of the
   body once per fact. Now a rule's condition narrows the open field (a value of the documents
   matches it only when it satisfies the condition; no value is in an empty names list), an open
-  node id matches no node of the documents, each site's facts stay apart, and an atom whose
-  variables are all bound runs once. Rows rest on fewer sites. On 40 one-file modules the three
+  node id matches only the node its site sits in and the nodes under it, each site's facts stay
+  apart, and an atom whose variables are all bound runs once per smallest set of sites. Rows rest on fewer sites. On 40 one-file modules the three
   shapes held at most 7,001, 11,240 and 2,694,881 tuples before, and 720, 480 and 640 now; time
   not measured.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a

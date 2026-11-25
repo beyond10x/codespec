@@ -65,7 +65,8 @@
 //! callee that starts with `log` only, and `!skipped("parse")` stays definite. No value, an open
 //! field neither, is in an empty names list. An open field naming a node (the id of a statement
 //! or expression nothing read, such an expression's operands, a node an opaque function
-//! contains) is no node of the documents and matches none of theirs. So a row rests on the sites
+//! contains) matches only the node its site sits in (the foreign statement, the opaque function)
+//! and the nodes under it. So a row rests on the sites
 //! that could change it, not on every site of the documents: the sites a run holds grow with the
 //! documents, not with their square.
 //!
@@ -106,8 +107,7 @@
 //! a recursion is refused. [`explain`] prints the rules, properties and edit items under the
 //! stratum of their heads.
 //! An atom whose variables are all bound when it runs asks whether a fact agrees: the rule goes
-//! on once, resting on what the agreeing facts give as a fact derived once from each would, not
-//! once per agreeing fact.
+//! on once for each smallest set of sites an agreeing fact gives it, not once per agreeing fact.
 //!
 //! A recursion must derive finitely many values: a recursive rule that puts into its head a value
 //! arithmetic or a builtin made from a value the recursion derived is refused when it is
