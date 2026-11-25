@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:stable-site-identity
 kind: story
-status: active
+status: implemented
 title: A call site is named by its function, its callee and its ordinal, never by line
 summary: A call-site id {callee, n} per function, defined in the effects crate doc (order over walk_stmts and stmt_exprs of crates/model walk.rs, which is not changed) and carried in codespec effects reports beside the positions
 relations:
@@ -26,10 +26,11 @@ scope:
   path: website/docs/examples
 - confidence: inferred
   path: website/docs/guides/map-a-repository-to-syscalls.md
-revision: 11
+revision: 12
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 10}
 - {from: "proposed", to: "active", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 11}
+- {from: "active", to: "implemented", at: "2026-11-25T02:21:35Z", actor: "human:operator", revision: 12, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: A call site is named by its function, its callee and its ordinal, never by line
 

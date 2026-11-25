@@ -77,6 +77,7 @@ const config: Config = {
         {to: '/docs/getting-started', label: 'Getting started', position: 'left'},
         {to: '/docs/reference/cir-1', label: 'Reference', position: 'left', activeBasePath: '/docs/reference'},
         {to: '/docs/status', label: 'Status', position: 'left'},
+        {to: '/docs/comparison', label: 'Comparison', position: 'left'},
         {href: 'https://github.com/beyond10x/codespec', label: 'GitHub', position: 'right'},
       ],
     },
@@ -92,6 +93,7 @@ const config: Config = {
             {label: 'cir/1 reference', to: '/docs/reference/cir-1'},
             {label: 'Language support', to: '/docs/reference/support'},
             {label: 'Status', to: '/docs/status'},
+            {label: 'Comparison with other tools', to: '/docs/comparison'},
           ],
         },
         {

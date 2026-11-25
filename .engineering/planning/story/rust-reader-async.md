@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:async-network-service-translation
 - depends_on: story:cir1-tasks-and-select
 - depends_on: story:rust-reader-externs
-revision: 2
+revision: 3
 ---
 # Story: The Rust reader reads async functions, await, spawned tasks, runtime channels and select
 
@@ -29,6 +29,9 @@ channel, a one-shot reply and a `select!` read 0 of 11 functions. Spawn gives "a
 `tokio::spawn`, outside the reader's table", `select!` "the macro select! is outside cir/1", an
 `async` block "an expression outside cir/1", an async trait method "the trait method load is
 generic, async or unsafe".
+
+Refs codesec#14 item 1: 6,897 of 75,187 refusals in the 5,087 documents of openai/codex at
+rust-v0.172.0 are "an async function is outside cir/1". This story covers that refusal.
 
 ## Acceptance
 

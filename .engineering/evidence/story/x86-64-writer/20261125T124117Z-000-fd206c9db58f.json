@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:41:17Z",
+  "actor": "human:operator",
+  "artifact": "story:x86-64-writer",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ecma-scope-round-2",
+    "reference": "round-2-scope-finding-1",
+    "review": "review-result:ecma-scope-round-2",
+    "outcome": "fixed"
+  }
+}

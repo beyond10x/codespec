@@ -967,7 +967,11 @@ fn apply_func(set: &mut [Module], t: &FuncTarget, new: &str) {
                 *l = format!("func:{new_key}");
             }
         }
-        m.entries.iter_mut().for_each(|e| rekey(&mut e.func));
+        // An entry with a `path` names a function of another module.
+        m.entries
+            .iter_mut()
+            .filter(|e| e.path.is_empty())
+            .for_each(|e| rekey(&mut e.func));
         m.transactional.iter_mut().for_each(rekey);
         m.linknames.iter_mut().for_each(|l| rekey(&mut l.name));
     }
@@ -1004,6 +1008,13 @@ fn apply_func(set: &mut [Module], t: &FuncTarget, new: &str) {
                     && x.name == t.name
                 {
                     x.name = new.to_string();
+                }
+            }
+            // An entry registering the function from another module (a route of `main` whose
+            // handler is in `handlers`).
+            for e in &mut m.entries {
+                if e.path == t.mpath && e.func == old_key {
+                    e.func = new_key.clone();
                 }
             }
             m.externs.sort_by(|a, b| {

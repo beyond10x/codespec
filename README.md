@@ -1,5 +1,15 @@
 # codespec
 
+<!-- badges: written by codespec-docs from website/data, do not edit -->
+[![release](https://img.shields.io/github/v/release/beyond10x/codespec)](https://github.com/beyond10x/codespec/releases/latest)
+[![check on main](https://img.shields.io/github/actions/workflow/status/beyond10x/codespec/check.yml?branch=main&label=check)](https://github.com/beyond10x/codespec/actions/workflows/check.yml?query=branch%3Amain)
+[![licence](https://img.shields.io/github/license/beyond10x/codespec)](LICENSE)
+[![languages read](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbeyond10x%2Fcodespec%2Fmain%2Fwebsite%2Fdata%2Fbadges%2Flanguages-read.json)](https://beyond10x.github.io/codespec/docs/reference/support)
+[![features verified](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbeyond10x%2Fcodespec%2Fmain%2Fwebsite%2Fdata%2Fbadges%2Ffeatures-verified.json)](https://beyond10x.github.io/codespec/docs/reference/support)
+[![definite or possible answers](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbeyond10x%2Fcodespec%2Fmain%2Fwebsite%2Fdata%2Fbadges%2Fanswers-definite-possible.json)](https://beyond10x.github.io/codespec/docs/comparison#dim-s3)
+<!-- slot: reader KPI badge of story:corpus-kpi-ratchet, added with its baseline -->
+<!-- /badges -->
+
 Code as typed data. codespec reads a source language into `cir/1`, a typed and canonical JSON
 model of what code does inside a module. Passes rewrite it and compute facts about it, and writers emit
 Go, Rust, C, Elixir, Gleam or Odin from it.
@@ -13,7 +23,8 @@ reader cannot express is kept verbatim as a `foreign` statement and listed as a 
 [Showcase](https://beyond10x.github.io/codespec/docs/examples/greeter) ·
 [CLI reference](https://beyond10x.github.io/codespec/docs/reference/cli) ·
 [cir/1 reference](https://beyond10x.github.io/codespec/docs/reference/cir-1) ·
-[Status](https://beyond10x.github.io/codespec/docs/status)
+[Status](https://beyond10x.github.io/codespec/docs/status) ·
+[Comparison with other tools](https://beyond10x.github.io/codespec/docs/comparison)
 
 ```
 source ──reader──▶ cir/1 ──passes──▶ cir/1 ──writer──▶ source

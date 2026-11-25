@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-25T12:41:17Z",
+  "actor": "human:operator",
+  "artifact": "story:native-speed-comparison",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ecma-design-round-2",
+    "reference": "round-2-design-finding-2",
+    "review": "review-result:ecma-design-round-2",
+    "outcome": "fixed"
+  }
+}
