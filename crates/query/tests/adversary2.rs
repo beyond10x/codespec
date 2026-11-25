@@ -371,3 +371,224 @@ fn a_never_fail_entry_starting_with_a_star_means_what_it_means_to_codespec_check
     assert!(!want.is_empty(), "codespec check reports the writes");
     assert_eq!(got, want, "cq rows vs codespec check");
 }
+
+// --- 3. Code nothing read, after the linear-memory engine (PR #67) -----------------------------
+
+/// `walk(ok bool)`: `if ok { m!() }`, the macro a foreign statement without a call list (an
+/// unknown site) inside the `if`.
+fn foreign_in_if() -> Module {
+    module_of(&serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "rust", "name": "hand-written", "version": "0"},
+        "types": [],
+        "funcs": [{
+            "name": "walk", "exported": false,
+            "params": [{"name": "ok", "t": {"k": "bool"}}], "results": [],
+            "body": [{
+                "k": "if", "cond": {"k": "var", "name": "ok", "t": {"k": "bool"}},
+                "then": [{"k": "foreign", "lang": "rust", "src": "m!()", "reason": "macro",
+                          "pos": "m.rs:3"}],
+                "pos": "m.rs:2",
+            }],
+            "pos": "m.rs:1",
+        }],
+        "layout": ["func:walk"],
+    }))
+}
+
+/// The macro the `if` holds may be a call, and that call lies inside the `if` and under its
+/// condition: "an `if` that holds no call" and "a condition that guards no call" are possible,
+/// not definite, resting on the macro's site (§ Unknown: a negated atom holds definitely only
+/// when none of the site's facts would satisfy it). An open expression id that matches no node
+/// of the documents must not make them definite: no fact says what holds or guards the unread
+/// expression, so a rule joining through `contains` or `guards` has only the documents' nodes
+/// to meet it with.
+#[test]
+fn an_if_holding_only_unread_code_possibly_holds_a_call() {
+    let m = foreign_in_if();
+    let mut wrong = Vec::new();
+    for (name, query) in [
+        (
+            "contains",
+            "has_call(I) :- stmt{id: I, kind: \"if\"}, contains(I, E), expr{id: E, kind: \"call\"}.\n\
+             ?- stmt{id: I, kind: \"if\"}, !has_call(I).",
+        ),
+        (
+            "guards",
+            "guarded(C) :- guards(C, E, true), expr{id: E, kind: \"call\"}.\n\
+             ?- guards(C, _, true), !guarded(C).",
+        ),
+    ] {
+        let a = answer(query, std::slice::from_ref(&m));
+        let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+        if certainty != ["possible"] {
+            wrong.push(format!("{name}: {certainty:?}: {}", a.to_text().trim_end()));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// Functions `f1` and `f2`, each holding one foreign statement without a call list: two unknown
+/// sites, one in each.
+fn two_foreign() -> Module {
+    let func = |name: &str, line: usize| {
+        serde_json::json!({
+            "name": name, "exported": false, "params": [], "results": [],
+            "body": [{"k": "foreign", "lang": "rust", "src": "m!()", "reason": "macro",
+                      "pos": format!("m.rs:{}", line + 1)}],
+            "pos": format!("m.rs:{line}"),
+        })
+    };
+    module_of(&serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "rust", "name": "hand-written", "version": "0"},
+        "types": [],
+        "funcs": [func("f1", 1), func("f2", 5)],
+        "layout": ["func:f1", "func:f2"],
+    }))
+}
+
+/// A condition a rule checks of an open callee narrows it to the callees that pass it, and no
+/// further: "parse" passes `!(C ~ "^log")`, `"m" < C` and `!(C in @names.none)` with `none`
+/// empty, so the unread call of `f1` could be a call of `parse` that each rule derives from, and
+/// its negation is possible. `C ~ "^log"` is the contrast the module documentation names:
+/// "parse" fails it, so that negation stays definite. Each of the three would turn definite
+/// (a possible row lost) under a mutant of the narrowing: the negation flag of a pattern
+/// dropped, the operator of a value on the left not flipped, the empty-list rule applied to a
+/// negated membership.
+#[test]
+fn a_narrowed_open_callee_still_admits_every_value_that_passes_the_condition() {
+    let m = two_foreign();
+    let mut wrong = Vec::new();
+    for (name, rule, want) in [
+        (
+            "pattern",
+            "r(C) :- call{callee: C}, C ~ \"^log\".",
+            "definite",
+        ),
+        (
+            "negated pattern",
+            "r(C) :- call{callee: C}, !(C ~ \"^log\").",
+            "possible",
+        ),
+        (
+            "value on the left",
+            "r(C) :- call{callee: C}, \"m\" < C.",
+            "possible",
+        ),
+        (
+            "negated empty list",
+            "names none = [].\nr(C) :- call{callee: C}, !(C in @names.none).",
+            "possible",
+        ),
+    ] {
+        let query = format!("{rule}\n?- func{{id: F, name: \"f1\"}}, !r(\"parse\").");
+        let a = answer(&query, std::slice::from_ref(&m));
+        let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+        if certainty != [want] {
+            wrong.push(format!(
+                "{name}: want [{want:?}], got {certainty:?}: {}",
+                a.to_text().trim_end()
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// A row rests on the sites that could change it: `q("a")` is derived through `p("a", f1)`,
+/// resting on `f1`'s site, and through `p("a", f2)`, resting on `f2`'s, and the rest of the body
+/// rests on `f1`'s site whichever it took, so the row rests on `f1`'s site alone (the base
+/// engine's answer). Running `p(X, _)` once, with the sites of both facts merged before the rest
+/// of the body, makes it rest on both.
+#[test]
+fn a_fully_bound_atom_run_once_rests_on_no_more_sites_than_each_fact_would() {
+    let query = "callsx(F) :- call{func: F, callee: \"x\"}.\n\
+                 nx(F) :- func{id: F}, !callsx(F).\n\
+                 p(X, F) :- nx(F), X = \"a\".\n\
+                 q(X) :- X = \"a\", p(X, _), nx(G), func{id: G, name: \"f1\"}.\n\
+                 ?- q(X).";
+    let a = answer(query, &[two_foreign()]);
+    let sites: Vec<usize> = a.rows.iter().map(|r| r.unknown.len()).collect();
+    assert_eq!(sites, [1], "{}", a.to_text());
+}
+
+/// `run_within` "stops an evaluation that holds more than N tuples": an evaluation whose
+/// `reaches` facts alone are over the limit, and whose query derives no row, still holds more
+/// than the limit, so it must stop (or at least not report a peak over the limit as within it).
+#[test]
+fn run_within_does_not_return_a_peak_over_its_limit() {
+    let shop = module_of(&module_json("shop/shop.cir.json"));
+    let fb = FactBase::build(&[shop]);
+    let program = parse("?- reaches(F, G), F == \"nothing\".").unwrap();
+    let (_, free) = codespec_query::run_within(&program, &fb, &Names::default(), None)
+        .unwrap()
+        .unwrap();
+    assert!(
+        free.peak > 1,
+        "the shop's reaches holds more than one fact: {free:?}"
+    );
+    match codespec_query::run_within(&program, &fb, &Names::default(), Some(1)).unwrap() {
+        Ok((_, cost)) => panic!("within 1 tuple, yet held {cost:?}"),
+        Err(e) => assert_eq!(e.limit, 1),
+    }
+}
+
+// --- 4. Unread nodes sit in their site's node (PR #67, second pass) -----------------------------
+
+/// A Rust module: `struct Foo {}`, its method `Foo.bar` with one statement, and an opaque
+/// function `Foo` (Rust keeps a function and a braced struct of one name apart), declared
+/// without a body. The opaque function's id is `example.com/m.Foo`, the method's
+/// `example.com/m.Foo.bar`; `walk` is a function of its own with one statement.
+fn opaque_beside_method() -> Module {
+    let ret = |line: usize| serde_json::json!({"k": "return", "results": [], "pos": format!("m.rs:{line}")});
+    module_of(&serde_json::json!({
+        "format": "cir/1", "name": "m", "path": "example.com/m",
+        "reader": {"language": "rust", "name": "hand-written", "version": "0"},
+        "types": [{"k": "struct", "name": "Foo", "exported": false, "fields": [], "pos": "m.rs:1"}],
+        "funcs": [
+            {"name": "bar", "exported": false,
+             "recv": {"name": "s", "t": {"k": "named", "name": "Foo"}},
+             "params": [], "results": [], "body": [ret(3)], "pos": "m.rs:2"},
+            {"name": "walk", "exported": false, "params": [], "results": [],
+             "body": [ret(6)], "pos": "m.rs:5"},
+        ],
+        "opaque": [{"name": "Foo", "pos": "m.rs:8", "reason": "declared without a body",
+                    "no_body": true, "calls": []}],
+        "layout": ["type:Foo", "func:Foo.bar", "func:walk", "func:Foo"],
+    }))
+}
+
+/// A node the opaque function `Foo` holds is `example.com/m.Foo` or a node under it
+/// (`example.com/m.Foo#…`), never a node of the method `Foo.bar`, whose id only starts with
+/// the same text and a dot. "The statement of `bar` lies in no opaque function" is definite.
+#[test]
+fn a_node_of_an_opaque_function_is_no_node_of_a_method_whose_id_extends_its_id() {
+    let a = answer(
+        "in_opaque(S) :- func{id: O, kind: \"opaque\"}, contains(O, S).\n\
+         ?- func{id: G, name: \"bar\"}, stmt{func: G, id: S}, !in_opaque(S).",
+        &[opaque_beside_method()],
+    );
+    let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+    assert_eq!(certainty, ["definite"], "{}", a.to_text());
+}
+
+/// An open expression id of the opaque function is a node under `example.com/m.Foo`, so it is
+/// not `walk`'s statement: `walk`'s statement is definitely no expression's id, whether the rule
+/// compares with `=` or with `==`, and the two must agree.
+#[test]
+fn an_open_id_compared_with_eq_or_bind_matches_only_nodes_under_its_site() {
+    let m = opaque_beside_method();
+    let mut got = Vec::new();
+    for op in ["=", "=="] {
+        let a = answer(
+            &format!(
+                "hit(S) :- stmt{{id: S}}, expr{{id: E}}, E {op} S.\n\
+                 ?- func{{id: G, name: \"walk\"}}, stmt{{func: G, id: S}}, !hit(S)."
+            ),
+            std::slice::from_ref(&m),
+        );
+        let certainty: Vec<&str> = a.rows.iter().map(|r| r.certainty()).collect();
+        got.push(format!("{op}: {certainty:?}"));
+    }
+    assert_eq!(got, ["=: [\"definite\"]", "==: [\"definite\"]"]);
+}

@@ -6,6 +6,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `codespec query --max-tuples N` stops a run that holds more than N tuples (a fact a rule
+  derives, a site such a fact rests on, a derivation not yet added) with exit 2 and
+  `query <file>: the evaluation went over N tuples (--max-tuples) in the rules of <relation>`,
+  printing no row, where a run over many documents was killed for its memory (exit 143, which
+  reads like any other end). The library has it as `run_within`, with what a run held (`Cost`).
+  No limit by default.
 - `codespec diff <old-dir> <new-dir>` prints `codespec-diff-report/1`, what changed in the code facts between two revisions (functions, signatures, effects, syscalls by call-site id, raises, reach, entries, `unknown` reasons); exit 0 with no delta, 1 with deltas, 2 on an input error; defined in the crate doc of the new crate `b10x-codespec-diff`.
 - `codespec effects`: each `syscalls` and `effect_sites` entry has `sites`, the ids `{callee, n}`
   of the function's own calls that lead there, which stay the same when lines move (defined in
@@ -22,6 +28,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
 - `codespec read --spans` drops a span or `unspanned` entry that names no node of the `cir/1`
   document, prints `dropped span <at> <role>: names no node of the cir/1 document <module>` on
   standard error for each, and reads the rest strictly; it refused the whole span document before.
+- `codespec query` holds memory linear in the documents where it grew with their square or
+  cube. A site nothing read (a foreign statement without a call list, an opaque function) in one
+  module made every row of every other module rest on it, through a negation of a relation whose
+  rule checks a pattern, a names list or a node id of the field the site leaves open; and a join
+  through such a field (`reaches(F, G), reaches(G, F)` with `G` open) repeated the rest of the
+  body once per fact. Now a rule's condition narrows the open field (a value of the documents
+  matches it only when it satisfies the condition; no value is in an empty names list), an open
+  node id matches only the node its site sits in and the nodes under it, each site's facts stay
+  apart, and an atom whose variables are all bound runs once per smallest set of sites. Rows rest on fewer sites. On 40 one-file modules the three
+  shapes held at most 7,001, 11,240 and 2,694,881 tuples before, and 720, 480 and 640 now; time
+  not measured.
 - `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
   a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
   marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
