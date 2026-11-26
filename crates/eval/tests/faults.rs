@@ -5,7 +5,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 use codespec_eval::{Fault, FaultDo, Nth, Options, Session, read_faults, read_sites, run_each};
 use codespec_eval::{run_calls, run_session};
@@ -21,25 +20,12 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-fn reader() -> &'static Path {
-    static READER: OnceLock<PathBuf> = OnceLock::new();
-    READER.get_or_init(|| {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("faults-reader");
-        std::fs::create_dir_all(&dir).unwrap();
-        let built = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .arg("./cmd/codespec-read-go")
-            .current_dir(repo("adapters/go"))
-            .output()
-            .unwrap();
-        assert!(
-            built.status.success(),
-            "{}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        dir.join("codespec-read-go")
-    })
+#[path = "../../conformance/tests/support/go_bin.rs"]
+mod go_bin;
+
+/// `codespec-read-go`, built once for each state of its sources (`go_bin.rs`).
+fn reader() -> PathBuf {
+    go_bin::go_bin().join("codespec-read-go")
 }
 
 fn read(name: &str) -> Module {

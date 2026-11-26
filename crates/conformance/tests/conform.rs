@@ -140,22 +140,99 @@ fn a_family_wildcard_less_one_id_expands_to_the_other_seventeen_statement_ids() 
     assert_eq!(all_statements, 18);
 }
 
-/// The Go writer and runner, built once with `go build`.
+#[path = "support/go_bin.rs"]
+mod go;
+
+/// The Go writer and runner (and reader), built once for each state of their sources
+/// (`support/go_bin.rs`).
 fn go_bin() -> &'static Path {
-    static B: OnceLock<PathBuf> = OnceLock::new();
-    B.get_or_init(|| {
-        let dir = root().join("target/conform-tests-go");
-        std::fs::create_dir_all(&dir).unwrap();
-        let o = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
-            .current_dir(root().join("adapters/go"))
-            .output()
-            .unwrap();
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        dir
-    })
+    go::go_bin()
+}
+
+/// `support/go_bin.rs` keeps one build of the Go programs per digest of their sources under
+/// `adapters/go`. A file `go build` reads that the digest leaves out (one a program embeds with
+/// `//go:embed`, an assembly or C file) changes the programs without changing the digest, and the
+/// tests then run the build kept for the earlier state of that file. A Go test file is left out,
+/// so that editing a test builds no new copy.
+#[test]
+fn every_file_the_go_programs_are_built_from_is_in_the_go_bin_digest() {
+    let o = Command::new("go")
+        .args([
+            "list",
+            "-f",
+            "{{range .GoFiles}}{{$.Dir}}/{{.}}\n{{end}}{{range .EmbedFiles}}{{$.Dir}}/{{.}}\n{{end}}{{range .SFiles}}{{$.Dir}}/{{.}}\n{{end}}\
+             {{range .CFiles}}{{$.Dir}}/{{.}}\n{{end}}{{range .HFiles}}{{$.Dir}}/{{.}}\n{{end}}\
+             {{range .SysoFiles}}{{$.Dir}}/{{.}}\n{{end}}",
+            "./...",
+        ])
+        .current_dir(root().join("adapters/go"))
+        .output()
+        .expect("go list");
+    assert!(
+        o.status.success(),
+        "go list: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let covered = go::source_files();
+    let dir = go::go_dir().canonicalize().expect("adapters/go");
+    let read: Vec<PathBuf> = String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| {
+            Path::new(l)
+                .strip_prefix(&dir)
+                .unwrap_or_else(|_| panic!("{l}: outside adapters/go"))
+                .to_path_buf()
+        })
+        .chain(["go.mod".into()])
+        .collect();
+    assert!(read.len() > 3, "go list named too few files: {read:?}");
+    let outside: Vec<&PathBuf> = read.iter().filter(|f| !covered.contains(f)).collect();
+    assert!(
+        outside.is_empty(),
+        "go build reads files the go_bin digest does not cover: {outside:?}"
+    );
+    let tests: Vec<&PathBuf> = covered
+        .iter()
+        .filter(|f| f.to_string_lossy().ends_with("_test.go"))
+        .collect();
+    assert!(
+        tests.is_empty(),
+        "the go_bin digest covers Go tests: {tests:?}"
+    );
+}
+
+/// Beside the build it keeps, `support/go_bin.rs` leaves no build of another digest and no build
+/// directory of a process that is gone; a build under way in a live process stays.
+#[test]
+fn go_bin_removes_the_build_of_another_digest_and_one_left_by_a_process_that_is_gone() {
+    let kept = Path::new(env!("CARGO_TARGET_TMPDIR")).join("go-bin-prune");
+    if kept.exists() {
+        std::fs::remove_dir_all(&kept).unwrap();
+    }
+    // 4294967 lies above the largest pid Linux hands out (4194304).
+    let live = format!("building-{}", std::process::id());
+    let [keep, old, gone, live] = [
+        "00112233445566aa",
+        "00112233445566bb",
+        "building-4294967",
+        live.as_str(),
+    ]
+    .map(|d| kept.join(d));
+    for d in [&keep, &old, &gone, &live] {
+        std::fs::create_dir_all(d).unwrap();
+        std::fs::write(d.join("codespec-read-go"), "").unwrap();
+    }
+    std::fs::write(kept.join("notes"), "").unwrap();
+    go::prune(&kept, &keep);
+    assert!(keep.join("codespec-read-go").is_file());
+    assert!(live.is_dir(), "the build of a live process was removed");
+    assert!(kept.join("notes").is_file());
+    assert!(!old.exists(), "the build of another digest stays");
+    assert!(
+        !gone.exists(),
+        "the build left by a process that is gone stays"
+    );
 }
 
 /// A writer that really writes programs: the Go writer, run by the Go runner, over every case.

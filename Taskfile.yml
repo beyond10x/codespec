@@ -425,7 +425,7 @@ tasks:
       - 'GROOVY_HOME="${GROOVY_HOME:-$HOME/.sdkman/candidates/groovy/2.4.10}"; JAVA_HOME="{{.JDK}}" PATH="{{.JDK}}/bin:$GROOVY_HOME/bin:$PATH" {{.CODESPEC}} harness examples/fees --seeds 200 --commands 300 --build-dir target/harness-fees'
 
   examples-go:
-    desc: Write the orders example as Go, before and after the passes, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader.
+    desc: Write the orders example as Go, before and after the passes, require it gofmt-clean, vetted, equal to the checked-in copy, and a fixed point of the reader; then the Go adapters' tests within the test budget (scripts/go-test.sh).
     deps: [build]
     cmds:
       - rm -rf target/examples-go target/examples-go-pass
@@ -439,7 +439,7 @@ tasks:
       - diff -r target/examples-go-pass examples/orders/out/go
       - test -z "$(gofmt -l target/examples-go-pass)"
       - go vet ./target/examples-go-pass/orders.go
-      - cd adapters/go && CODESPEC={{.CODESPEC}} go test -count=1 ./...
+      - CODESPEC={{.CODESPEC}} sh scripts/go-test.sh
 
   examples-rust:
     desc: Write the orders example as Rust, require it equal to the checked-in copy, Audit its one refusal, a build without warnings, and a module without facts refused.

@@ -53,21 +53,13 @@ fn codespec() -> &'static Path {
     })
 }
 
+#[path = "../../../crates/conformance/tests/support/go_bin.rs"]
+mod go;
+
+/// `codespec-write-go` and `codespec-run-go`, built once for each state of their sources
+/// (`go_bin.rs` of `crates/conformance/tests/support`).
 fn go_bin() -> &'static Path {
-    static B: OnceLock<PathBuf> = OnceLock::new();
-    B.get_or_init(|| {
-        let bin = base().join("bin/go");
-        std::fs::create_dir_all(&bin).expect("bin dir");
-        ok(
-            Command::new("go")
-                .args(["build", "-o"])
-                .arg(format!("{}/", bin.display()))
-                .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
-                .current_dir(root().join("adapters/go")),
-            "go build the Go writer and runner",
-        );
-        bin
-    })
+    go::go_bin()
 }
 
 /// A fresh source directory `target/c-read-adversary1/<name>/<name>` holding `files`.

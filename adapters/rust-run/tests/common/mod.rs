@@ -39,26 +39,13 @@ pub fn ok(cmd: &mut Command, what: &str) -> Vec<u8> {
     o.stdout
 }
 
-/// The Go adapters and runner, built once with `go build`.
+#[path = "../../../../crates/conformance/tests/support/go_bin.rs"]
+mod go;
+
+/// The Go adapters and runner, built once for each state of their sources (`go_bin.rs` of
+/// `crates/conformance/tests/support`).
 fn go_bin() -> &'static Path {
-    static B: OnceLock<PathBuf> = OnceLock::new();
-    B.get_or_init(|| {
-        let bin = base().join("bin/go");
-        std::fs::create_dir_all(&bin).expect("bin dir");
-        ok(
-            Command::new("go")
-                .args(["build", "-o"])
-                .arg(format!("{}/", bin.display()))
-                .args([
-                    "./cmd/codespec-read-go",
-                    "./cmd/codespec-write-go",
-                    "./cmd/codespec-run-go",
-                ])
-                .current_dir(root().join("adapters/go")),
-            "go build the Go adapters",
-        );
-        bin
-    })
+    go::go_bin()
 }
 
 /// The Rust writer and reader, built once with cargo.
