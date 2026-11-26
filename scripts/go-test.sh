@@ -34,7 +34,7 @@ gotest() {
       then .Output
       else empty end' "$W/test.json"
   under_way=$(jq -rs "$open"' | .[] | "\(.[0] | sub(".*/"; ""))/\(.[1])"' "$W/test.json" | tr "\n" " ")
-  if [ "$rc" -eq 124 ]; then echo "go-test: the step ran over ${STEP_SECS} s and was killed" >&2; fi
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then echo "go-test: the step ran over ${STEP_SECS} s and was killed" >&2; fi
   if [ -n "$under_way" ]; then
     echo "go-test: did not end: $under_way" >&2
     if [ "$rc" -eq 0 ]; then rc=1; fi

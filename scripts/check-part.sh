@@ -133,7 +133,9 @@ test_part() {
           endgroup
           if [ "$rc" -ne 0 ]; then
             failed=1
-            if [ "$rc" -eq 137 ] && [ "$d" -ge $(( lim * 1000 )) ]; then
+            # GNU timeout reports a kill by -s KILL as 137 on some versions and 124 on others
+            # (the CI runner gives 124, the workstation 137).
+            if { [ "$rc" -eq 137 ] || [ "$rc" -eq 124 ]; } && [ "$d" -ge $(( lim * 1000 )) ]; then
               echo "::error::$t killed after ${lim}s"
             else
               echo "::error::$t exited $rc after $(secs "$d")s"
@@ -185,7 +187,7 @@ test_part() {
       if [ -s "$W/slow" ]; then
         if [ "$rc" -eq 0 ]; then rc=1; fi
         echo "::error::$(cat "$W/slow") ran over ${TEST_SECS}s: the part was ended"
-      elif [ "$rc" -eq 124 ]; then
+      elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
         echo "::error::the part's tests ran over ${PART_SECS}s: the part was ended"
       fi
       return "$rc" ;;
