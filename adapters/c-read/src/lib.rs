@@ -62,7 +62,7 @@
 //! | `for (init; cond; inc)` | `for`: `init` a declaration (`let`) or an assignment, `inc` an assignment, `++` or `--`. `&` of a variable `init` declares is refused: C has one such variable for all iterations, Go one per iteration |
 //! | `while (c)`, `for (;;)`, `while (1)` | `for` with or without a condition |
 //! | `do { … } while (c);` | `for { …; if !c { break } }`; a `continue` in it is refused, as it would run `c` |
-//! | `switch` on an integer, `case` values constant | `switch`; stacked labels are one case; a case's trailing `break` leaves the switch, which a `cir/1` case does by ending. A case that falls through, or a `break` elsewhere in a case, is refused |
+//! | `switch` on an integer, `case` values constant | `switch`; stacked labels are one case; a case's trailing `break` leaves the switch, which a `cir/1` case does by ending. A case that falls through, a `break` elsewhere in a case, or a `case` or `default` label below a case's top level (inside an `if`, Duff's device) refuses the whole switch |
 //! | `break`, `continue` in a loop | `break`, `continue` |
 //! | `return`, `return e` | `return` |
 //! | a label | its statement: only the `goto` that jumps to it is refused |
@@ -232,6 +232,11 @@
 //! without a refusal and with its subject, and passed and written as Go runs as the reference does.
 //! Running the source as written is step 1 of `codespec conform`, with the C runner.
 //!
+//! `stmt.foreign` is held as the reader check's step 4 holds it: `stmt-foreign/c/case.c` keeps a
+//! `goto`, under a branch the calls do not take, as a `foreign` statement with a refusal at it; the
+//! Go writer refuses that C source, and `codespec-write-cir --stop-when-reached` writes the module
+//! and `codespec-run-cir` runs it to the case's `expected.txt` without reaching the statement.
+//!
 //! Where a feature's first case needs a slice, an error or a string, its C source is in a variant
 //! case that holds the same subject without them, and the first case has none: `stmt.expr` and
 //! `type.unit` in `stmt-expr-method` and `type-unit-method` (a `void` function called on a
@@ -247,7 +252,6 @@
 //! | feature | why |
 //! |---|---|
 //! | `fact.*` | computed by `codespec pass`, never by a reader |
-//! | `stmt.foreign` | the source this reader keeps as `foreign` (a `goto`, off the calls' path) is C, which the Go writer refuses, so the evaluator runs the module at step 4; the case `stmt-foreign/c/case.c` exists, the claim is not made in 0.8.0 because the case has not been run since `codespec-run-cir` resolves a call name as Go spells it |
 //! | `expr.spread` | it passes a slice as the arguments of a variadic parameter, which C cannot: a call passes each argument of `...` on its own |
 //! | `decl.interface`, `expr.iface_call`, `expr.to_iface` | C has no interface, and the runtime and the C writer no form of one |
 //! | `decl.type_params`, `expr.instantiate`, `type.param` | C has no type parameter, and the runtime and the C writer no form of one |

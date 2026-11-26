@@ -74,6 +74,7 @@ fn manifest() -> AdapterManifest {
             "stmt.expr",
             "stmt.for",
             "stmt.for_range",
+            "stmt.foreign",
             "stmt.if",
             "stmt.incr",
             "stmt.let",

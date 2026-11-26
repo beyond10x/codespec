@@ -4,6 +4,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec-read-c` and `codespec-read-java` claim `stmt.foreign`. Each has a source of the kit
+  case `stmt-foreign`, a `goto` in C and a `try` statement in Java under a branch the calls do not
+  take, which reads to a `foreign` statement with a refusal at it; the reader check's evaluator
+  step runs the module to the case's `expected.txt` without reaching the statement.
+
+### Fixed
+
+- `codespec-read-c` keeps a `switch` with a `case` or `default` label below an arm's top level
+  (inside an `if`, Duff's device) as one `foreign` statement, refused with `a case label nested
+  below an arm's top level`. Before, it read the switch without the arm and kept only the labelled
+  fragment as `foreign`, so a call dispatched to that label ran to another answer without reaching
+  a `foreign` statement.
+
 ## 0.14.0
 
 ### Added

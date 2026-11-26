@@ -35,7 +35,9 @@ public final class Main {
      * The reader's claim: the features its output for {@code examples/ledger} uses and the subject
      * of every conformance kit case with a {@code java/Case.java}, which the reader reads, the passes
      * and the Go writer write and {@code codespec-run-go} runs to the case's {@code expected.txt}, or,
-     * for a module the Go writer refuses ({@code decl.union}), {@code codespec-write-cir} writes and
+     * for a module the Go writer refuses ({@code decl.union}, and {@code stmt.foreign}, whose case
+     * keeps a try statement off the calls' path as a foreign statement, written with
+     * {@code --stop-when-reached}), {@code codespec-write-cir} writes and
      * {@code codespec-run-cir} runs ({@code ReaderTest}; {@code codespec-conformance manifest
      * --read} over the ledger and the kit modules checks every claimed feature is used).
      */
@@ -52,7 +54,7 @@ public final class Main {
         "op.gt", "op.land", "op.le", "op.lor", "op.lt", "op.mul", "op.ne", "op.or", "op.rem",
         "op.shl", "op.shr", "op.sub", "op.xor", "sem.continue.post", "sem.error.propagate",
         "sem.int.wrap", "sem.map.order", "sem.rem.sign", "sem.switch.break", "stmt.assign",
-        "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range",
+        "stmt.break", "stmt.continue", "stmt.decr", "stmt.expr", "stmt.for", "stmt.for_range", "stmt.foreign",
         "stmt.if", "stmt.incr", "stmt.let", "stmt.lookup_else", "stmt.return", "stmt.switch", "type.any", "type.bool",
         "type.error", "type.float", "type.func", "type.int", "type.map", "type.named", "type.param",
         "type.ptr", "type.slice", "type.string", "type.tuple", "type.unit", "unop.complement",
