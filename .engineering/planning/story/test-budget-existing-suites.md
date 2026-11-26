@@ -2,12 +2,15 @@
 format: aep.planning-md/3
 id: story:test-budget-existing-suites
 kind: story
-status: draft
+status: active
 title: Existing test suites keep the test budget
 summary: Suites measured over the 60 s per-test and 120 s per-step budget on 2026-11-23 make expensive products once and kill slow tests
 relations:
 - informed_by: epic:maintainer-review-2026-11-23
-revision: 2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 4}
 ---
 # Story: test-budget-existing-suites
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:diff-unknown-at-the-incomplete-function
 kind: story
-status: draft
+status: active
 title: An unknown a function inherits from its callee is reported once, at the callee
 summary: codespec diff reports calls-X-which-is-incomplete at the incomplete function with its callers as a list; a function whose own facts did not change gets no delta
 relations:
@@ -19,7 +19,10 @@ scope:
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 2
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 4}
 ---
 # Story: An unknown a function inherits from its callee is reported once, at the callee
 
