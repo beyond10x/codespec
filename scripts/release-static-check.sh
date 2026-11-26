@@ -20,7 +20,7 @@
 # CONTAINER (default docker) is the container engine; CONTAINER_FLAGS, word-split, are added to its
 # `run`.
 set -eu
-cd "$(dirname "$0")/.."
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 ALPINE_IMAGE=${ALPINE_IMAGE:-alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f}
 CONTAINER=${CONTAINER:-docker}
 
@@ -33,8 +33,15 @@ static() {
       bad=1
       continue
     fi
-    interp=$(readelf -lW "$f" | sed -n 's/.*\[Requesting program interpreter: \(.*\)\]/\1/p')
-    needed=$(readelf -dW "$f" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | tr '\n' ' ')
+    # A file whose headers readelf cannot read in full is not taken as static.
+    if ! lw=$(readelf -lW "$f" 2>&1) || ! dw=$(readelf -dW "$f" 2>&1) ||
+      printf '%s\n%s\n' "$lw" "$dw" | grep -q '^readelf: Error'; then
+      echo "$f: readelf cannot read its headers" >&2
+      bad=1
+      continue
+    fi
+    interp=$(printf '%s\n' "$lw" | sed -n 's/.*\[Requesting program interpreter: \(.*\)\]/\1/p')
+    needed=$(printf '%s\n' "$dw" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | tr '\n' ' ')
     if [ -n "$interp" ]; then
       echo "$f: not static: interpreter $interp" >&2
       bad=1
@@ -50,7 +57,9 @@ static() {
 # archive <archive.tar.gz> <version>
 archive() {
   a=$1 version=$2
-  d=$(mktemp -d "${RUNNER_TEMP:-$PWD/target}/release-static-check.XXXXXX")
+  tmp=${RUNNER_TEMP:-$ROOT/target}
+  mkdir -p "$tmp"
+  d=$(mktemp -d "$tmp/release-static-check.XXXXXX")
   trap 'rm -rf "$d"' EXIT
   tar -xzf "$a" -C "$d"
   bins=
@@ -89,7 +98,7 @@ archive() {
 }
 
 selftest() {
-  T=$PWD/target/release-static-check-test
+  T=$ROOT/target/release-static-check-test
   rm -rf "$T"
   mkdir -p "$T"
   printf '%s\n' 'fn main() { println!("hello"); }' > "$T/hello.rs"
