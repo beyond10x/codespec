@@ -154,8 +154,9 @@ Usage: codespec effects [OPTIONS] <MODULES>...
 | Argument | Required | Default | Environment | Meaning |
 |---|---|---|---|---|
 | `<MODULES>` | yes | none | none | The modules to analyse, cir/1 documents, read as one program. |
-| `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the modules; repeat for several. Where two name one function, the first counts. |
-| `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document: the functions that enter the operating system and what each syscall does. |
+| `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the modules; repeat for several. Where two name one function, the first counts. Without it, every `*.effects.json` of `share/codespec/summaries/` beside the `codespec` executable, in name order. |
+| `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document: the functions that enter the operating system and what each syscall does. Without it, the `*.barrier.json` of `share/codespec/summaries/` beside the `codespec` executable. |
+| `--no-default-summaries` | no | none | none | Read no summary and no barrier from `share/codespec/summaries/` beside the executable. |
 | `--report <MODULE>` | no | none | none | Report only the module with this import path or name; repeat for several. All when absent. |
 | `--roots` | no | none | none | Also count, per reported function, the unknown reasons of every function it reaches. |
 | `--entry <FUNC>` | no | none | none | An entry function, `<path>.<name>` or `<path>.<type>.<method>`; repeat for several. With an entry, dispatch defaults to rta. |
@@ -190,8 +191,9 @@ Usage: codespec diff [OPTIONS] <OLD> <NEW>
 |---|---|---|---|---|
 | `<OLD>` | yes | none | none | The old revision: a directory of cir/1 documents. |
 | `<NEW>` | yes | none | none | The new revision: a directory of cir/1 documents. |
-| `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the modules; repeat for several. Where two name one function, the first counts. |
-| `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document: the functions that enter the operating system and what each syscall does. |
+| `--summaries <FILE>` | no | none | none | A codespec-effects/1 summary of functions outside the modules; repeat for several. Where two name one function, the first counts. Without it, every `*.effects.json` of `share/codespec/summaries/` beside the `codespec` executable, in name order. |
+| `--barrier <FILE>` | no | none | none | A codespec-barrier/1 document: the functions that enter the operating system and what each syscall does. Without it, the `*.barrier.json` of `share/codespec/summaries/` beside the `codespec` executable. |
+| `--no-default-summaries` | no | none | none | Read no summary and no barrier from `share/codespec/summaries/` beside the executable. |
 | `--entry <FUNC>` | no | none | none | An entry function, `<path>.<name>` or `<path>.<type>.<method>`, in both revisions; repeat for several. |
 | `--exported <MODULE>` | no | none | none | A module, by import path or name, whose every exported function is an entry; repeat for several. |
 | `--dispatch <DISPATCH>` | no | `rta` | none | cha: every candidate of the set; rta (default): only types made and function values used by reached code. |
