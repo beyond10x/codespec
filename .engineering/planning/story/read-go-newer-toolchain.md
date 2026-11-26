@@ -7,7 +7,32 @@ title: The Go reader reads a tree on a newer Go, or refuses by name
 summary: a package importing math/rand/v2 reads under the newest Go; an older reader names the toolchain gap
 relations:
 - decomposes: epic:release-diff-go-field-gaps
-revision: 1
+scope:
+- confidence: cited
+  path: .github/workflows/check.yml
+- confidence: cited
+  path: .github/workflows/release-build.yml
+- confidence: inferred
+  path: AGENTS.md
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: Taskfile.yml
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/README.md
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/encode.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/front.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/goroot.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/main.go
+- confidence: inferred
+  path: adapters/go/cmd/codespec-read-go/testdata
+- confidence: cited
+  path: adapters/go/go.mod
+revision: 14
 ---
 # Story: The Go reader reads a tree on a newer Go, or refuses by name
 
@@ -35,3 +60,11 @@ The change:
 
 A consumer moving its code facts onto the 0.14.0 release (gap G6, relayed by the host operator,
 2026-11-26).
+
+## Found while scoping
+
+- The local gate and the forge build the reader with different Go today: the host's `go` is go1.27.1 with `GOTOOLCHAIN=auto`, while `setup-go` in `check.yml:103-105` and `release-build.yml:37-39,133-135` installs the newest 1.23.x from `go.mod`. The three `setup-go` steps name one `go-version` explicitly (unless a forge run proves that `setup-go` reads a `toolchain` line), so the gate and the release build with the same Go.
+- The build Go goes into `codespec-read-go --version` output only: `reader` in cir/1 is `deny_unknown_fields` (`crates/model/src/lib.rs:822-829`) and `reader.version` is the workspace version.
+- The host's GOVERSION carries a suffix (`go1.27.1-X:nodwarf5`); it is cut before comparing. The refusal compares minor versions, not patch releases.
+- A portable refusal test puts a stub `go` first on PATH that prints a newer GOVERSION.
+- The check runs before reading and before `--spans`; `--describe` reads no package and is left alone.
