@@ -375,6 +375,14 @@ func Run() int {
 `},
 		names: []string{"funcs.2.body.0.rhs.0 load", "funcs.2.body.2.rhs.0 count"},
 	},
+	{
+		name: "inits",
+		files: map[string]string{
+			"a.go": "package p\n\nvar seen = map[string]int{}\n\nfunc one() int { return 1 }\n\nfunc init() { seen[\"a\"] = one() }\n",
+			"b.go": "package p\n\nfunc init() { seen[\"b\"] = one() }\n",
+		},
+		names: []string{"funcs.1 init", "funcs.1.body.0.rhs.0 one", "funcs.2 init", "funcs.2.body.0.rhs.0 one"},
+	},
 }
 
 // Each named case reads with the name spans and unspanned entries it names, its expected span
@@ -442,6 +450,58 @@ func TestSpansOfNamedCases(t *testing.T) {
 			}
 			strictRead(t, dir)
 		})
+	}
+}
+
+// A package with several init functions, one per file, reads with spans: the span of each init's
+// call names a node of the cir/1 document, so strict reading takes the document, and the cir/1
+// module is the one a read without --spans writes.
+func TestAPackageWithSeveralInitFunctionsReadsStrictlyWithSpans(t *testing.T) {
+	files := map[string]string{
+		"go.mod": "module example.com/probe\n\ngo 1.22\n",
+		"a.go":   "package probe\n\nvar Registry = map[string]func() string{}\n\nfunc init() { Registry[\"a\"] = func() string { return \"a\" } }\n",
+		"b.go":   "package probe\n\nfunc label() string { return \"b\" }\n\nfunc init() { Registry[\"b\"] = label }\n",
+		"c.go":   "package probe\n\nfunc init() { Registry[\"c\"] = func() string { return label() } }\n",
+	}
+	dir := t.TempDir()
+	for name, src := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v := spansOf(t, dir)
+	sameNames(t, v)
+	inits := 0
+	for _, f := range v["cir"].(map[string]any)["funcs"].([]any) {
+		if f.(map[string]any)["name"] == "init" {
+			inits++
+		}
+	}
+	if inits != 3 {
+		t.Fatalf("%d init functions in funcs, want 3", inits)
+	}
+	cir, _ := strictRead(t, dir)
+	bin := codespec(t)
+	adapters := t.TempDir()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(self, filepath.Join(adapters, "codespec-read-go")); err != nil {
+		t.Fatal(err)
+	}
+	bare := filepath.Join(t.TempDir(), "bare.cir.json")
+	cmd := exec.Command(bin, "read", "--lang", "go", "--adapters", adapters, "--out", bare, dir)
+	cmd.Env = append(os.Environ(), asReader+"=1")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("codespec read %s: %v\n%s", dir, err, b)
+	}
+	want, err := os.ReadFile(bare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(cir, want) {
+		t.Fatal("cir/1 read with --spans differs from the read without")
 	}
 }
 

@@ -265,7 +265,64 @@ pub fn read_value(
     ids: &Ids,
     source: &dyn Fn(&str) -> Result<Vec<u8>, String>,
 ) -> Result<SpanDoc, SpanError> {
-    let doc = shape(v)?;
+    check(shape(v)?, ids, source)
+}
+
+/// A span or `unspanned` entry whose `at` names no node of the `cir/1` document, which
+/// [`read_value_dropping`] drops.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dropped {
+    pub at: String,
+    pub role: Role,
+    /// The module's name in ids ([`crate::ids::label`]).
+    pub module: String,
+}
+
+impl std::fmt::Display for Dropped {
+    /// `dropped span <at> <role>: names no node of the cir/1 document <module>`, the line
+    /// `codespec read --spans` prints on standard error.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "dropped span {} {}: names no node of the cir/1 document {}",
+            self.at, self.role, self.module
+        )
+    }
+}
+
+/// [`read_value`] after dropping every span and `unspanned` entry whose `at` names no node of the
+/// module: the document a reader printed, less what it and the `cir/1` document disagree on, read
+/// strictly, and the drops in the order of the document (spans, then entries). Every other rule
+/// refuses as in [`read_value`].
+pub fn read_value_dropping(
+    v: &Value,
+    ids: &Ids,
+    source: &dyn Fn(&str) -> Result<Vec<u8>, String>,
+) -> Result<(SpanDoc, Vec<Dropped>), SpanError> {
+    let mut doc = shape(v)?;
+    let mut dropped = Vec::new();
+    let mut placed = |at: &str, role: Role| {
+        let ok = ids.kind(at).is_some();
+        if !ok {
+            dropped.push(Dropped {
+                at: at.to_string(),
+                role,
+                module: ids.label().to_string(),
+            });
+        }
+        ok
+    };
+    doc.spans.retain(|s| placed(&s.at, s.role));
+    doc.unspanned.retain(|u| placed(&u.at, u.role));
+    Ok((check(doc, ids, source)?, dropped))
+}
+
+/// Strict reading of a document already in shape.
+fn check(
+    doc: SpanDoc,
+    ids: &Ids,
+    source: &dyn Fn(&str) -> Result<Vec<u8>, String>,
+) -> Result<SpanDoc, SpanError> {
     let m = ids.module();
     if doc.module != ids.label() {
         return Err(refuse(

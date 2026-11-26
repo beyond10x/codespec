@@ -320,6 +320,14 @@ defines `cir/1` alone). The document:
   model's types take no extra member. `codespec read --spans <out>` (and `codespec edit`)
   strict-reads the `cir/1`, adds `module` and `cir_sha256`, strict-reads the span document and
   writes both. The `cir/1` is byte-identical to a read without `--spans`.
+- Before the strict reading, a span or `unspanned` entry whose `at` names no node of the `cir/1`
+  document is dropped (`spans::read_value_dropping`), and `codespec read --spans` prints one line
+  per drop on standard error, in the order of the document (spans, then entries):
+  `dropped span <at> <role>: names no node of the cir/1 document <module>`. It exits 0 when only
+  drops happened. The node such a span was meant for has none, which an edit needing it refuses
+  (§ 7.1). Every other rule of § 6.2 still refuses the whole document: a span on a node of a kind
+  its role does not take, a bad byte range, two overlapping `name` spans, a missing required span,
+  a text other than the file's bytes. The format is unchanged: the drops are not a field of it.
 - A reader without spans fails on `--spans` or prints a bare module; `codespec edit` then refuses
   the language, naming the reader. No manifest field is added: the support matrix does not show
   spans in wave 1.

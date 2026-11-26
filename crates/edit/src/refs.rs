@@ -92,6 +92,7 @@ pub enum Item<'a> {
 /// Walk module `m`, the `mi`-th of the set, handing every item to `f`.
 pub fn walk(m: &mut Module, mi: usize, f: &mut dyn FnMut(&Ctx, Item<'_>)) {
     let label = label(m).to_string();
+    let ids = codespec_query::func_ids(m);
     let mut w = Walker {
         mi,
         func: None,
@@ -100,11 +101,11 @@ pub fn walk(m: &mut Module, mi: usize, f: &mut dyn FnMut(&Ctx, Item<'_>)) {
         spannable: true,
         f,
     };
-    for (i, func) in m.funcs.iter_mut().enumerate() {
+    for ((i, func), id) in m.funcs.iter_mut().enumerate().zip(ids) {
         w.func = Some(i);
         w.spannable = true;
         w.at_base = format!("funcs.{i}.body.");
-        w.site_base = format!("{label}.{}#", func.key());
+        w.site_base = format!("{id}#");
         if let Some(r) = &func.recv {
             w.emit("", Item::Local(&r.name));
         }
