@@ -226,6 +226,7 @@ fn with_defaults(
         return Ok((summaries, barrier));
     }
     let Some(dir) = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
         .ok()
         .and_then(|exe| Some(exe.parent()?.join("share/codespec/summaries")))
         .filter(|dir| dir.is_dir())

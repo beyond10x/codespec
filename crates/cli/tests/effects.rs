@@ -648,3 +648,113 @@ fn diff_reads_the_barrier_installed_beside_the_binary() {
     let off = String::from_utf8_lossy(&off.stdout);
     assert!(!off.contains("syscall-added"), "{off}");
 }
+
+const EMPTY_BARRIER: &str =
+    r#"{"format":"codespec-barrier/1","language":"go","numbered":[],"fixed":[],"syscalls":[]}"#;
+
+/// Adversary, story release-ships-go-summaries: a `--barrier` replaces the installed barrier of
+/// its own kind and leaves the installed summaries in force; a `--summaries` replaces the
+/// summaries and leaves the installed barrier in force.
+#[test]
+fn adv_g5_a_flag_replaces_only_the_default_of_its_own_kind() {
+    let exe = installed_prefix("adv-g5-one-kind");
+    let empty = exe.with_file_name("empty.barrier.json");
+    std::fs::write(&empty, EMPTY_BARRIER).unwrap();
+    let sys = root().join("crates/diff/tests/fixtures/syscall");
+    let (a, b) = (
+        read_revision("adv-g5-one-kind-sys", &sys, "a"),
+        read_revision("adv-g5-one-kind-sys", &sys, "b"),
+    );
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let own = installed(&exe, &["diff", a, b, "--barrier", empty.to_str().unwrap()]);
+    assert_eq!(
+        String::from_utf8_lossy(&own.stdout),
+        "",
+        "an explicit barrier must replace the installed one: {}",
+        text(&own)
+    );
+    let time = root().join("crates/cli/tests/fixtures/time-now");
+    let (ta, tb) = (
+        read_revision("adv-g5-one-kind-time", &time, "a"),
+        read_revision("adv-g5-one-kind-time", &time, "b"),
+    );
+    let (ta, tb) = (ta.to_str().unwrap(), tb.to_str().unwrap());
+    let kept = installed(
+        &exe,
+        &["diff", ta, tb, "--barrier", empty.to_str().unwrap()],
+    );
+    assert!(
+        String::from_utf8_lossy(&kept.stdout).contains("effect-added example.com/probe.Stamp time"),
+        "installed summaries stay when only --barrier is given: {}",
+        text(&kept)
+    );
+    let none = exe.with_file_name("none.effects.json");
+    std::fs::write(
+        &none,
+        r#"{"format": "codespec-effects/1", "language": "go", "externs": []}"#,
+    )
+    .unwrap();
+    let barrier_kept = installed(&exe, &["diff", a, b, "--summaries", none.to_str().unwrap()]);
+    assert!(
+        String::from_utf8_lossy(&barrier_kept.stdout).contains("syscall-added"),
+        "installed barrier stays when only --summaries is given: {}",
+        text(&barrier_kept)
+    );
+}
+
+/// Adversary: two installed barrier documents refuse by name unless one is named or the defaults
+/// are off; files that are neither `*.effects.json` nor `*.barrier.json` change nothing.
+#[test]
+fn adv_g5_two_installed_barriers_refuse_and_stray_files_are_ignored() {
+    let exe = installed_prefix("adv-g5-two-barriers");
+    let dir = exe.with_file_name("share/codespec/summaries");
+    let time = root().join("crates/cli/tests/fixtures/time-now");
+    let (a, b) = (
+        read_revision("adv-g5-two-barriers", &time, "a"),
+        read_revision("adv-g5-two-barriers", &time, "b"),
+    );
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let base = installed(&exe, &["diff", a, b]);
+    assert_eq!(base.status.code(), Some(1), "{}", text(&base));
+    std::fs::write(dir.join("README.txt"), "not json").unwrap();
+    std::fs::write(dir.join("go-std.effects.json.bak"), "not json").unwrap();
+    std::fs::write(dir.join("notes.json"), "not json").unwrap();
+    let stray = installed(&exe, &["diff", a, b]);
+    assert_eq!(stray.stdout, base.stdout, "{}", text(&stray));
+    std::fs::write(dir.join("second.barrier.json"), EMPTY_BARRIER).unwrap();
+    let two = installed(&exe, &["diff", a, b]);
+    assert_eq!(two.status.code(), Some(2), "{}", text(&two));
+    assert!(
+        String::from_utf8_lossy(&two.stderr).contains("2 barrier documents"),
+        "{}",
+        text(&two)
+    );
+    let second = dir.join("second.barrier.json");
+    let named = installed(&exe, &["diff", a, b, "--barrier", second.to_str().unwrap()]);
+    assert_eq!(named.stdout, base.stdout, "{}", text(&named));
+    let off = installed(&exe, &["diff", a, b, "--no-default-summaries"]);
+    assert_eq!(off.status.code(), Some(1), "{}", text(&off));
+}
+
+/// Adversary: the binary reached through a symlink in another directory reads the summaries
+/// beside the file the link names.
+#[test]
+fn adv_g5_a_symlinked_binary_reads_the_summaries_beside_its_target() {
+    let exe = installed_prefix("adv-g5-symlink");
+    let bin = exe.with_file_name("elsewhere");
+    std::fs::create_dir_all(&bin).unwrap();
+    let link = bin.join("codespec");
+    std::os::unix::fs::symlink(&exe, &link).unwrap();
+    let time = root().join("crates/cli/tests/fixtures/time-now");
+    let (a, b) = (
+        read_revision("adv-g5-symlink", &time, "a"),
+        read_revision("adv-g5-symlink", &time, "b"),
+    );
+    let out = installed(&link, &["diff", a.to_str().unwrap(), b.to_str().unwrap()]);
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "effect-added example.com/probe.Stamp time\n",
+        "{}",
+        text(&out)
+    );
+}

@@ -500,7 +500,7 @@ tasks:
       - target/debug/codespec-eval-diff --adapters {{.ADAPTERS}} --build-dir target/eval-diff --refused inventory:rust:Inventory.Find examples/series examples/inventory
 
   conformance-kit:
-    desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
+    desc: Pack the conformance kit, conformance/, schemas/cir-1.features.json and summaries/*.json (under share/codespec/summaries/, checked by scripts/release-summaries-check.sh), into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/, features file and summaries equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
     cmds:
       - cargo build --locked -p b10x-codespec-cli
       - mkdir -p {{.ADAPTERS}}
