@@ -39,6 +39,10 @@ use crate::Result;
 /// The generated matrix, relative to the repository root.
 pub const DATA: &str = "website/data/support-matrix.json";
 
+/// How the note of a refused cell whose case passes begins: the reader reads the feature without
+/// claiming it.
+pub const UNCLAIMED_PASS: &str = "Not claimed, though its case";
+
 /// The format of the matrix.
 pub const FORMAT: &str = "codespec-support-matrix/1";
 
@@ -208,10 +212,7 @@ fn state(
         (true, _) => ("failing", Some(failure(e))),
         (false, Verdict::Pass) => (
             "refused",
-            Some(format!(
-                "Not claimed, though its case {} passes.",
-                e.cases.join(", ")
-            )),
+            Some(format!("{UNCLAIMED_PASS} {} passes.", e.cases.join(", "))),
         ),
         (false, Verdict::Refused) => ("refused", Some(refusal(e))),
         (false, _) => ("refused", None),

@@ -31,4 +31,4 @@ task adapters-check groovy-fixture-check
 task examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-effects examples-series examples-ledger examples-fees harness examples-edit
 task conformance-cases conformance-kit
 task eval-kit eval-diff
-task docs-check
+task docs-check reader-coverage

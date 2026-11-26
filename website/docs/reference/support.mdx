@@ -48,5 +48,10 @@ features. The search, the family and the language are kept in the address, so a 
 the same view.
 
 Reader cells of `fact.*` features are n/a, and coverage counts applicable features only, so a
-reader that handles all 98 of them reaches 100%. How a claim becomes a verdict is in
+reader that handles all {matrix.features.filter((f) => f.family !== 'fact').length} of them
+reaches 100%. `task reader-coverage` prints each reader's verified count of them, and of those its
+language has a source form for. A reader's count equals its floor in
+[`conformance/reader-floors.json`](https://github.com/beyond10x/codespec/blob/main/conformance/reader-floors.json),
+which also lists each feature its language has no source form for, with the reason. How a claim
+becomes a verdict is in
 [Adapter conformance](https://github.com/beyond10x/codespec/blob/main/docs/conformance.md).
