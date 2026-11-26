@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version-file: adapters/go/go.mod
+          go-version: "1.27.4"
 
       - name: Install BEAM toolchains for the language adapters
         uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -78,6 +78,7 @@ jobs:
           sh adapters/elixir/build.sh "$bin" "$GITHUB_REF_NAME"
           odin build adapters/odin/read "-out:$bin/codespec-read-odin" "-define:CODESPEC_VERSION=$GITHUB_REF_NAME"
           test "$("$bin/codespec" --version)" = "codespec $GITHUB_REF_NAME"
+          test "$("$bin/codespec-read-go" --version)" = "codespec-read-go $GITHUB_REF_NAME built with $(go env GOVERSION)"
           "$bin/codespec" read --lang go examples/orders/source --out "$work/orders.read.cir.json" --adapters "$bin"
           cmp "$work/orders.read.cir.json" examples/orders/orders.read.cir.json
           "$bin/codespec" pass "$work/orders.read.cir.json" --out "$work/orders.cir.json"
@@ -135,7 +136,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version-file: adapters/go/go.mod
+          go-version: "1.27.4"
 
       - name: Install go-task, an authenticated download (scripts/ci-tools.sh)
         env:

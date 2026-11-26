@@ -6,6 +6,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Fixed
 
+- The release's `codespec-read-go` is built with go1.27.4 (CI's gate too), not the newest go1.23
+  that `adapters/go/go.mod` allows: built with go1.23, it failed on every package importing
+  `math/rand/v2` under a go1.27 host with "method must have no type parameters". When the host's
+  Go (`go env GOVERSION`) is of a newer minor than the Go the reader was built with, the reader
+  now refuses before reading, also with `--spans`: exit 1 and one line naming both versions, a
+  reader built with that Go or `GOTOOLCHAIN=<the reader's Go>` as the way out.
+
 - `codespec read --spans` reads a Go package with several `init` functions (or several
   `func _()`): the second and later function of one key gets the cq id `<module>.<key>~<k>`, so
   the spans of its nodes name a node and `codespec edit` edits them; it refused such a package with
