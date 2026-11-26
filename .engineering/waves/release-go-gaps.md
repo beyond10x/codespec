@@ -33,6 +33,6 @@ session merges. No tag, no release.
 
 | order | story | unit tree | unit commit | merge | adversary | state |
 |---|---|---|---|---|---|---|
-| 1 | story:release-ships-go-summaries | | | | | planned |
-| 2 | story:read-go-newer-toolchain | | | | | planned |
-| 3 | story:release-musl-static | | | | | planned |
+| 1 | story:release-ships-go-summaries | w6-g5 | 977d2370, e11f9db5 | 50dc6fa8 | 5 notes; fixed: canonical exe path (macOS symlink), kit desc; 3 cases kept; 1 pre-existing (barrier language) to the backlog | merged |
+| 2 | story:read-go-newer-toolchain | w6-g6 | 6e34190f, c067cf07 | 5e9ad1a6 | 2 test gaps (mutants), 2 cases kept; go env under the caller GOTOOLCHAIN kept as ensureGOROOT does | merged |
+| 3 | story:release-musl-static | w6-musl | 0cb3f92f, 19b11ceb | 1a67c688 | 2 defects in the static check (unreadable headers, no target/), fixed; workflow guard case added | merged |
