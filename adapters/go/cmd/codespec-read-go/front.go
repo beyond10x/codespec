@@ -394,6 +394,7 @@ func load(dir string) (*Module, error) {
 		f.methodSets()
 		f.linknames(files)
 		f.inits(files)
+		f.mod.Imports = f.importPaths(files)
 	}
 	f.routes(files)
 	f.mod.Fset = fset
@@ -402,6 +403,31 @@ func load(dir string) (*Module, error) {
 	}
 	f.mod.Layout = f.layout
 	return f.mod, nil
+}
+
+// importPaths is every import path of files, a blank (`import _ "x"`) and a dot import included,
+// sorted, once each: the packages linked into a program with this one, whose init functions run
+// with it even when no body refers to them. Each is the path go/types resolved the import to, so
+// a vendored import of the standard library is `vendor/golang.org/x/...`, the path its own
+// document carries.
+func (f *front) importPaths(files []*ast.File) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, file := range files {
+		for _, is := range file.Imports {
+			p, err := strconv.Unquote(is.Path.Value)
+			if pn := f.info.PkgNameOf(is); pn != nil {
+				p, err = pn.Imported().Path(), nil
+			}
+			if err != nil || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (f *front) pos(p token.Pos) string {

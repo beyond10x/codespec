@@ -25,6 +25,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
   names the first field that differs. `corpus/<language>/` holds the snapshot and the pinned
   manifest of each language.
 
+### Changed
+
+- `codespec reach` (and the rapid type analysis of `codespec effects` and `codespec trace`) takes
+  as roots of an entry the Go `init` functions and variable initializers of the packages in the
+  import closure of the programs (`main` packages) that hold it, not those of every package of
+  the set; an entry no program holds, or a set without `imports`, keeps every one. The reach
+  report says which per entry (`roots`: `{entry, roots}`, `program` or `all`). For this
+  `cir/1` `Module` has an optional `imports` field, every import path of the package's files
+  (blank and dot imports included), sorted, once each; the Go reader fills it for a package
+  with an import path.
+
 ## 0.14.0
 
 ### Added

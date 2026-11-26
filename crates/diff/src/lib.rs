@@ -15,8 +15,8 @@
 //! function its documents record in `Module.entries` (`func` of the module `Entry.path` names, or
 //! of the document's own module without one; an entry naming a function the set does not hold is
 //! no entry for reach); with no `--entry` and no `--exported`, `main.main` of each `main` module
-//! too, as `reach` takes it; every Go `init` and every module's variable initializers, as `reach`
-//! takes them.
+//! too, as `reach` takes it; and the Go `init` functions and variable initializers that run with
+//! them, as `reach` takes them (those of the programs that hold an entry, or of every module).
 //!
 //! # The report, `codespec-diff-report/1`
 //!

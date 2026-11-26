@@ -138,12 +138,26 @@
 //! `zero`, `lit`, `const`, `to_error` or `var` of the type, a field of a made struct, a reached
 //! method of the type) and the function values it uses, to a fixed point. The entries are
 //! [`Options::entries`] (`<path>.<key>`), every exported function of [`Options::exported`], or
-//! `main.main`; every Go `init` and every module's variable initializers too.
+//! `main.main`; and the initializers that run with them, the Go `init` functions and the
+//! module's variable initializers:
 //!
-//! [`reach`] gives `codespec-reach-report/1`: `{format, dispatch, entries, exported, modules}`,
-//! `exported` omitted when empty; each module `{path, name, reached, unreached}` in the order
-//! given (`path` omitted when empty), each list the function keys sorted by bytes. A function is
-//! reached by a call, a use as a value, or as a dispatch candidate.
+//! - A program is a Go module named `main` that declares `main`. Its closure is the module,
+//!   `runtime` (the Go linker puts it into every program), and every module of the set (matched
+//!   by `path`) that the `imports` of a module of the closure name, to a fixed point.
+//! - A program holds an entry whose module is in its closure. The initializers of an entry are
+//!   those of every module of the union of the closures of the programs that hold it.
+//! - An entry no program holds, every entry of a set no module of which records `imports` (other
+//!   readers, older documents), and a run without entries take the initializers of every module.
+//!
+//! Imports, not the references bodies make, give the closure: a package imported only for its
+//! `init` (`import _ "x"`) has no reference in any body.
+//!
+//! [`reach`] gives `codespec-reach-report/1`: `{format, dispatch, entries, exported, roots,
+//! modules}`, `exported` omitted when empty; `roots` one `{entry, roots}` per entry function
+//! (`<path>.<key>`, in the order resolved), `roots` `program` or `all` as above, omitted when there
+//! is no entry function; each module `{path, name, reached, unreached}` in the order given (`path`
+//! omitted when empty), each list the function keys sorted by bytes. A function is reached by a
+//! call, a use as a value, or as a dispatch candidate.
 //!
 //! A function with no effects, no syscalls and no `unknown` entry is pure as far as the summaries
 //! and the barrier say. The encoding is canonical: two-space indentation, a final newline; the same
@@ -546,7 +560,21 @@ pub struct ReachReport {
     pub entries: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exported: Vec<String>,
+    /// Which initializers are roots with each entry function.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roots: Vec<EntryRoots>,
     pub modules: Vec<ModuleReach>,
+}
+
+/// The initializers that run with one entry function: `program`, those of the import closures of
+/// the programs that hold it; `all`, those of every module of the set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntryRoots {
+    /// The entry function, `<path>.<key>`.
+    pub entry: String,
+    /// `program` or `all`.
+    pub roots: String,
 }
 
 /// The functions of one module the entries reach and those they do not.
@@ -752,8 +780,9 @@ pub fn check_entries(modules: &[Module], opts: &Options) -> Result<(), String> {
 /// Which functions of `modules`, read as one program, the entries of `opts` reach: by calls, by
 /// use as a value, and by calls through interfaces and function values resolved as
 /// `opts.dispatch` says. The entries are `opts.entries`, every exported function of the modules
-/// `opts.exported` names, or when both are empty `main.main`; every Go `init` function and every
-/// module's variable initializers are entries too.
+/// `opts.exported` names, or when both are empty `main.main`; the Go `init` functions and
+/// variable initializers that run with them are entries too (the crate doc: those of the
+/// programs that hold an entry, or of every module).
 pub fn reach(modules: &[Module], opts: &Options) -> Result<ReachReport, String> {
     check_entries(modules, opts)?;
     Ok(set::reach(modules, opts))

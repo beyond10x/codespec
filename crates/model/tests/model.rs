@@ -1950,6 +1950,31 @@ fn left_out_reads_back_canonical_and_is_strict() {
     assert!(err.contains("kind"), "{err}");
 }
 
+/// `imports` is additive: a document with it reads and writes back the same, one without it
+/// writes no field, and a list that is not sorted, repeats a path or holds an empty one is
+/// refused.
+#[test]
+fn imports_read_back_canonical_and_are_sorted_once_each() {
+    let mut v = orders();
+    let plain = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert!(plain.imports.is_empty());
+    assert!(!plain.to_json().contains("\"imports\""));
+    v["imports"] = serde_json::json!(["example.com/probe/libs/shared", "fmt", "os"]);
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    assert_eq!(m.imports, ["example.com/probe/libs/shared", "fmt", "os"]);
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    for bad in [
+        serde_json::json!(["os", "fmt"]),
+        serde_json::json!(["fmt", "fmt"]),
+        serde_json::json!([""]),
+    ] {
+        v["imports"] = bad.clone();
+        let err = refused(&v);
+        assert!(err.contains("import"), "{bad}: {err}");
+    }
+}
+
 #[test]
 fn a_transactional_mark_on_a_function_the_module_lacks_is_refused() {
     let mut v = with_framework();

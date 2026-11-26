@@ -260,3 +260,254 @@ fn every_go_init_function_is_an_entry() {
         assert_eq!(p.unreached, ["Dead"], "{dispatch:?}");
     }
 }
+
+const PROBE: &str = "example.com/probe";
+
+fn probe(rel: &str) -> String {
+    format!("{PROBE}/{rel}")
+}
+
+/// A package of `example.com/probe` importing `imports` (relative to the module).
+fn pkg(name: &str, rel: &str, funcs: Vec<Value>, imports: &[&str], extra: Value) -> Module {
+    let mut extra = extra;
+    let mut paths: Vec<String> = imports
+        .iter()
+        .map(|i| {
+            if i.contains('.') || !i.contains('/') {
+                i.to_string()
+            } else {
+                probe(i)
+            }
+        })
+        .collect();
+    paths.sort();
+    if !paths.is_empty() {
+        extra["imports"] = json!(paths);
+    }
+    doc(name, &probe(rel), funcs, extra)
+}
+
+fn call_of(line: u32, rel: &str, name: &str) -> Value {
+    foreign(
+        line,
+        vec![json!({"k": "func", "path": probe(rel), "name": name, "pos": format!("m.go:{line}")})],
+    )
+}
+
+/// Two programs and their libraries: `cmd/a` imports `libs/onlya` (which imports `libs/deep`)
+/// and `libs/shared`; `cmd/b` imports `libs/onlyb`, `libs/shared` and, for its initializer only,
+/// `libs/plugin` (`import _`). `libs/onlyb`'s `init` calls `hook`; `libs/plugin`'s variable
+/// initializer calls `Setup`; `libs/orphan` no program imports.
+fn two_programs() -> Vec<Module> {
+    vec![
+        pkg(
+            "main",
+            "cmd/a",
+            vec![unit_func("main", 1, vec![call_of(2, "libs/onlya", "Run")])],
+            &["libs/onlya", "libs/shared", "fmt"],
+            json!({}),
+        ),
+        pkg(
+            "main",
+            "cmd/b",
+            vec![unit_func("main", 1, vec![call_of(2, "libs/onlyb", "Run")])],
+            &["libs/onlyb", "libs/plugin", "libs/shared"],
+            json!({}),
+        ),
+        pkg(
+            "onlya",
+            "libs/onlya",
+            vec![unit_func("Run", 1, vec![]), unit_func("init", 2, vec![])],
+            &["libs/deep"],
+            json!({}),
+        ),
+        pkg(
+            "deep",
+            "libs/deep",
+            vec![unit_func("init", 1, vec![])],
+            &[],
+            json!({}),
+        ),
+        pkg(
+            "onlyb",
+            "libs/onlyb",
+            vec![
+                unit_func("Run", 1, vec![]),
+                unit_func("init", 2, vec![foreign(3, vec![cfunc("hook", 3)])]),
+                unit_func("hook", 4, vec![println_body(5)]),
+            ],
+            &["os"],
+            json!({}),
+        ),
+        pkg(
+            "plugin",
+            "libs/plugin",
+            vec![unit_func("Setup", 1, vec![])],
+            &[],
+            json!({"inits": [{"k": "func", "name": "Setup", "pos": "m.go:2"}]}),
+        ),
+        pkg(
+            "shared",
+            "libs/shared",
+            vec![unit_func("init", 1, vec![]), unit_func("Handle", 2, vec![])],
+            &[],
+            json!({}),
+        ),
+        pkg(
+            "orphan",
+            "libs/orphan",
+            vec![unit_func("F", 1, vec![])],
+            &[],
+            json!({}),
+        ),
+    ]
+}
+
+/// The reached functions of the module at `rel`.
+fn reached_in<'a>(r: &'a codespec_effects::ReachReport, rel: &str) -> &'a [String] {
+    let path = probe(rel);
+    &r.modules
+        .iter()
+        .find(|m| m.path == path)
+        .unwrap_or_else(|| panic!("{path} is reported"))
+        .reached
+}
+
+fn roots_of(r: &codespec_effects::ReachReport) -> Vec<(String, String)> {
+    r.roots
+        .iter()
+        .map(|e| (e.entry.clone(), e.roots.clone()))
+        .collect()
+}
+
+#[test]
+fn the_init_roots_of_a_program_entry_are_those_of_its_import_closure() {
+    let set = two_programs();
+    for dispatch in [DispatchMode::Cha, DispatchMode::Rta] {
+        let a = reach(&set, &opts(&[&probe("cmd/a.main")], dispatch)).unwrap();
+        assert!(reached_in(&a, "libs/onlyb").is_empty(), "{dispatch:?}");
+        assert_eq!(reached_in(&a, "libs/shared"), ["init"], "{dispatch:?}");
+        assert_eq!(
+            reached_in(&a, "libs/onlya"),
+            ["Run", "init"],
+            "{dispatch:?}"
+        );
+        assert_eq!(
+            reached_in(&a, "libs/deep"),
+            ["init"],
+            "two hops: {dispatch:?}"
+        );
+        assert!(
+            reached_in(&a, "libs/plugin").is_empty(),
+            "a blank import of the other program only: {dispatch:?}"
+        );
+        assert_eq!(roots_of(&a), [(probe("cmd/a.main"), "program".to_string())]);
+
+        let b = reach(&set, &opts(&[&probe("cmd/b.main")], dispatch)).unwrap();
+        assert_eq!(
+            reached_in(&b, "libs/onlyb"),
+            ["Run", "hook", "init"],
+            "{dispatch:?}"
+        );
+        assert_eq!(
+            reached_in(&b, "libs/plugin"),
+            ["Setup"],
+            "a blank import pulls in the initializer: {dispatch:?}"
+        );
+        assert!(reached_in(&b, "libs/deep").is_empty(), "{dispatch:?}");
+        assert!(reached_in(&b, "libs/onlya").is_empty(), "{dispatch:?}");
+    }
+}
+
+#[test]
+fn an_entry_of_a_module_both_programs_import_gets_the_union_of_their_closures() {
+    let r = reach(
+        &two_programs(),
+        &opts(&[&probe("libs/shared.Handle")], DispatchMode::Rta),
+    )
+    .unwrap();
+    assert_eq!(reached_in(&r, "libs/shared"), ["Handle", "init"]);
+    assert_eq!(reached_in(&r, "libs/onlya"), ["init"]);
+    assert_eq!(reached_in(&r, "libs/onlyb"), ["hook", "init"]);
+    assert_eq!(reached_in(&r, "libs/deep"), ["init"]);
+    assert_eq!(reached_in(&r, "libs/plugin"), ["Setup"]);
+    assert!(reached_in(&r, "cmd/a").is_empty());
+    assert_eq!(
+        roots_of(&r),
+        [(probe("libs/shared.Handle"), "program".to_string())]
+    );
+}
+
+#[test]
+fn an_entry_no_program_holds_and_a_set_without_imports_keep_every_init_and_say_so() {
+    let set = two_programs();
+    let orphan = reach(&set, &opts(&[&probe("libs/orphan.F")], DispatchMode::Rta)).unwrap();
+    assert_eq!(reached_in(&orphan, "libs/onlyb"), ["hook", "init"]);
+    assert_eq!(reached_in(&orphan, "libs/onlya"), ["init"]);
+    assert_eq!(
+        roots_of(&orphan),
+        [(probe("libs/orphan.F"), "all".to_string())]
+    );
+
+    let both = reach(
+        &set,
+        &opts(
+            &[&probe("cmd/a.main"), &probe("libs/orphan.F")],
+            DispatchMode::Rta,
+        ),
+    )
+    .unwrap();
+    assert_eq!(reached_in(&both, "libs/onlyb"), ["hook", "init"]);
+    assert_eq!(
+        roots_of(&both),
+        [
+            (probe("cmd/a.main"), "program".to_string()),
+            (probe("libs/orphan.F"), "all".to_string())
+        ]
+    );
+
+    let bare: Vec<Module> = set
+        .into_iter()
+        .map(|mut m| {
+            m.imports.clear();
+            m
+        })
+        .collect();
+    let a = reach(&bare, &opts(&[&probe("cmd/a.main")], DispatchMode::Rta)).unwrap();
+    assert_eq!(reached_in(&a, "libs/onlyb"), ["hook", "init"]);
+    assert_eq!(roots_of(&a), [(probe("cmd/a.main"), "all".to_string())]);
+}
+
+#[test]
+fn without_entries_each_main_is_held_by_its_own_program_and_the_report_is_the_same_bytes_twice() {
+    let set = two_programs();
+    let one = reach(&set, &Options::default()).unwrap();
+    assert_eq!(
+        roots_of(&one),
+        [
+            (probe("cmd/a.main"), "program".to_string()),
+            (probe("cmd/b.main"), "program".to_string())
+        ]
+    );
+    assert_eq!(reached_in(&one, "libs/onlyb"), ["Run", "hook", "init"]);
+    assert_eq!(reached_in(&one, "libs/onlya"), ["Run", "init"]);
+    let two = reach(&set, &Options::default()).unwrap();
+    assert_eq!(one.to_json(), two.to_json());
+    assert!(one.to_json().contains("\"roots\": \"program\""));
+}
+
+/// The Go linker puts `runtime` into every program whether or not a file imports it: its
+/// `init` is a root of every program entry.
+#[test]
+fn the_runtime_package_is_in_every_program_closure() {
+    let mut set = two_programs();
+    set.push(doc(
+        "runtime",
+        "runtime",
+        vec![unit_func("init", 1, vec![])],
+        json!({}),
+    ));
+    let a = reach(&set, &opts(&[&probe("cmd/a.main")], DispatchMode::Rta)).unwrap();
+    let runtime = a.modules.iter().find(|m| m.path == "runtime").unwrap();
+    assert_eq!(runtime.reached, ["init"]);
+}

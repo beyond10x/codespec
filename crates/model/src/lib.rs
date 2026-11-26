@@ -118,6 +118,11 @@ pub struct Module {
     /// its denominator with it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub left_out: Vec<LeftOut>,
+    /// Every import path the module's source files import (Go: blank `_` and dot imports
+    /// included), sorted by bytes, each once: which modules a program links, so a set knows
+    /// whose initializers run with it. Go reader only, for a module with an import path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imports: Vec<String>,
 }
 
 /// One declaration a normal build leaves out.
@@ -2469,8 +2474,18 @@ impl Module {
     /// a `path` that is a module path other than the module's own, naming a function of that
     /// module (not checked here: the document holds no other module); every bean naming a type of
     /// `types`, every persistence mark an annotation's simple name with arguments of one line each,
-    /// on a type of `types` or a field of one of its structs.
+    /// on a type of `types` or a field of one of its structs; `imports` sorted, each once, none
+    /// empty.
     fn check_framework(&self) -> Result<(), String> {
+        if let Some(p) = self.imports.iter().find(|p| p.is_empty()) {
+            return Err(format!("import path {p:?} is empty"));
+        }
+        if let Some(w) = self.imports.windows(2).find(|w| w[0] >= w[1]) {
+            return Err(format!(
+                "import {} is out of order or repeated: imports are sorted, each once",
+                w[1]
+            ));
+        }
         let funcs: std::collections::BTreeSet<String> = self.funcs.iter().map(Func::key).collect();
         for e in &self.entries {
             if !ENTRY_KINDS.contains(&e.kind.as_str()) {
