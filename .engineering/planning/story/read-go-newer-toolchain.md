@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:read-go-newer-toolchain
 kind: story
-status: draft
+status: active
 title: The Go reader reads a tree on a newer Go, or refuses by name
 summary: a package importing math/rand/v2 reads under the newest Go; an older reader names the toolchain gap
 relations:
@@ -32,7 +32,10 @@ scope:
   path: adapters/go/cmd/codespec-read-go/testdata
 - confidence: cited
   path: adapters/go/go.mod
-revision: 14
+revision: 16
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T15:11:24Z", actor: "human:operator", revision: 15}
+- {from: "proposed", to: "active", at: "2026-11-26T15:11:24Z", actor: "human:operator", revision: 16}
 ---
 # Story: The Go reader reads a tree on a newer Go, or refuses by name
 

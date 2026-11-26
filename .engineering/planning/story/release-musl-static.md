@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:release-musl-static
 kind: story
-status: draft
+status: active
 title: A static musl Linux archive beside the gnu one
 summary: codespec --version runs from the musl archive alone in a plain alpine container; mimalloc only where it is not slower
 relations:
@@ -21,7 +21,10 @@ scope:
   path: crates/cli/src/main.rs
 - confidence: cited
   path: website/docs/getting-started.md
-revision: 3
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T15:11:24Z", actor: "human:operator", revision: 4}
+- {from: "proposed", to: "active", at: "2026-11-26T15:11:24Z", actor: "human:operator", revision: 5}
 ---
 # Story: A static musl Linux archive beside the gnu one
 

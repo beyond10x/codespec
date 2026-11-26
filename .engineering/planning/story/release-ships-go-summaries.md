@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:release-ships-go-summaries
 kind: story
-status: draft
+status: active
 title: The release archive ships the Go summaries and the syscall barrier
 summary: codespec diff from an installed release alone resolves time.Now to its effect
 relations:
@@ -39,7 +39,10 @@ scope:
   path: website/docs/getting-started.md
 - confidence: cited
   path: website/docs/reference/cli.md
-revision: 4
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T15:11:23Z", actor: "human:operator", revision: 5}
+- {from: "proposed", to: "active", at: "2026-11-26T15:11:23Z", actor: "human:operator", revision: 6}
 ---
 # Story: The release archive ships the Go summaries and the syscall barrier
 
