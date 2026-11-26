@@ -30,6 +30,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- Each release carries `codespec-<tag>-x86_64-unknown-linux-musl.tar.gz` beside the gnu archive,
+  with the same files, in `SHA256SUMS` too. Its binaries are statically linked (the Go ones built
+  with `CGO_ENABLED=0`, `codespec-read-odin` linked static), so they run on a host with an older
+  glibc and in a plain `alpine` container; pin it on x86-64 Linux. The release build fails when one
+  of them has an interpreter or a `NEEDED` entry (`scripts/release-static-check.sh`) or when its
+  `--version` does not run in `alpine`. `codespec` from the musl archive allocates with mimalloc
+  (`docs/release.md` has the timings against musl's own allocator).
 - Every release archive, the conformance archive too, holds `share/codespec/summaries/`: the Go
   standard library's effect summaries `go-std.effects.json` and the linux/amd64 syscall barrier
   `go-linux-amd64.barrier.json` at the release's version. `codespec diff` and `codespec effects`

@@ -20,6 +20,12 @@ use codespec_conformance::conform::{
 };
 use codespec_model::{Module, features_json, schema_json};
 
+/// On musl, mimalloc: musl's own allocator made `query`, `effects` and `diff` over a large set
+/// slower (the numbers: `docs/release.md`). Other targets keep the system allocator.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> ExitCode {
     let command = Cli::parse().command;
     if let Cmd::Check { .. } = command {

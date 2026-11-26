@@ -60,8 +60,9 @@ For the changes in each release, see the [changelog](https://github.com/beyond10
 
 Download the archive for your platform from the
 [GitHub Releases](https://github.com/beyond10x/codespec/releases), `codespec-<tag>-<target>.tar.gz`
-for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` or `aarch64-apple-darwin`, and check it
-against `SHA256SUMS`. The directory you extract it into is the `--adapters` directory. Keep the
+for `x86_64-unknown-linux-musl`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` or
+`aarch64-apple-darwin`, and check it against `SHA256SUMS`. On x86-64 Linux, pin the musl archive:
+its binaries are static and run on any glibc and in `alpine`. The directory you extract it into is the `--adapters` directory. Keep the
 `beam/` directory beside the Elixir and Gleam programs when copying them from a build or archive.
 
 Or build from source, with Rust 1.97 (`rust-toolchain.toml`), Go 1.23 or newer and

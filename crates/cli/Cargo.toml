@@ -30,5 +30,8 @@ serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
 
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc.workspace = true
+
 [dev-dependencies]
 codespec-read-rust = { path = "../../adapters/rust-read" }
