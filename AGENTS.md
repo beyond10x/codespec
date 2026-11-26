@@ -87,8 +87,9 @@ list `scripts/check-parts.txt`, one part per line: `task check` runs every part 
 each part as one job of its matrix, both through `scripts/check-part.sh` (`run "<part>"` runs one
 alone). A new crate or test target goes into a `test` part of that list; the `lint` part fails
 until it does. A pull request whose changed files are all planning or prose (the one path list,
-`scripts/planning-only.sh`: `.engineering/**` and `*.md` outside `website/`, `docs/`, `testdata/`
-and the root `README.md`, whose badge block `codespec-docs` writes) runs no part: `codespec / task check` passes on that finding alone. A push to `main`
+`scripts/planning-only.sh`: `.engineering/**` and `*.md` outside `website/`, `testdata/` and the
+root `README.md`, whose badge block `codespec-docs` writes; a `docs/**/*.md` only while no tracked
+file outside `.engineering/` and `docs/` names its path) runs no part: `codespec / task check` passes on that finding alone. A push to `main`
 runs every part. `task planning-only-test` (also the first step of `task check` and of CI's plan
 job) runs the list's cases. CI's tool downloads (go-task, Groovy, pinned by version and SHA-256 in
 `scripts/ci-tools.sh`) happen once per run in the `check / tools` job, cached across runs; go-task
@@ -137,9 +138,14 @@ failure passes only while an open finding in `ux/findings/` waives its key (`wai
 than the baseline is taken in the same merge (`task ux-ratchet -- --update`), a worse one only with
 `--decision <id>`. A page added to the site needs `task ux-scenarios` and a baseline update. `task
 ux-round` writes a round's Measure output to `ux/rounds/R-nn/`; write a round's `notes.md` after the
-run, not before. CI runs the same steps as the job "UX gate" of `.github/workflows/pages.yml`, with
-4 workers and the baseline of `origin/main`; a site change that moves a ratchet value fails there
-until the baseline is updated in the same merge.
+run, not before. CI runs the same steps in `.github/workflows/pages.yml`: the Playwright specs as
+five jobs "UX gate / shard n of 5" (`--shard=n/5`, 4 workers each, on the site the job "Build
+documentation" made), then the job "UX gate" runs `tsc`, the findings rule and the ratchet over
+the shards' merged result files with the baseline of `origin/main`. The ratchet refuses a run
+without a result for every page scenario × gating viewport × theme and every task scenario. A site
+change that moves a ratchet value fails there until the baseline is updated in the same merge. The
+test step's budget is 2 minutes per shard; the 4-minute step timeout is not raised to fit a slower
+run: add a shard or cut the work.
 
 ## Generated files
 
@@ -212,6 +218,10 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `adapters/rust-read/tests/reader.rs::orders_rust_output_reads_back_to_the_passed_document_but_for_named_exceptions`;
   Rust outside the subset is kept as `foreign` with a refusal at its line:
   `adapters/rust-read/tests/reader.rs::a_closure_is_kept_as_foreign_with_a_refusal_at_its_line`;
+  a control or format character in a literal, comment or doc comment is written as an escape, never
+  refused as a whole file:
+  `adapters/rust-read/tests/reader.rs::a_foreign_statement_keeps_a_format_character_as_an_escape_in_its_source`,
+  `adapters/rust-read/tests/reader.rs::a_string_literal_holding_a_format_character_is_read_and_written_as_an_escape`;
   a crate is read with every module file it names, each position naming its own file:
   `adapters/rust-read/tests/whole_crate.rs`; what the reader refuses still lists its calls:
   `adapters/rust-read/tests/listed_calls.rs`.
@@ -328,8 +338,11 @@ count, no date, no pattern text.
 The site: `.github/workflows/pages.yml` ("Documentation validation") builds it on every push and
 pull request, runs `cargo test -p codespec-docs`, binds the build to its commit with
 `codespec-docs provenance --site website/build --commit "$GITHUB_SHA"`, and on a push to `main`
-uploads `website/build` as `b10x-project-site`; its job "UX gate" builds the site again and runs
-`task ux-check`'s steps on it. `.github/workflows/b10x-docs-site.yml`
+uploads `website/build` as `b10x-project-site`; on every run it uploads the same build as `ux-site`
+for the UX gate's shards. Its first job, "Documentation scope", runs `scripts/planning-only.sh
+--site` (the same list, with `ux/**` as code) on a pull request; a planning-only one skips the build
+and the UX gate, and the skipped required check "Build documentation" passes.
+`.github/workflows/b10x-docs-site.yml`
 ("Documentation site") then deploys it through Website's reusable `project-site.yml`, for bot pushes
 to `main` only.
 
@@ -339,7 +352,7 @@ to `main` only.
    `adapters/go/cmd/codespec-read-go/main.go` and `adapters/go/cmd/codespec-write-go/main.go` (it is written into every document as
    `reader.version`; `Main.VERSION` in `adapters/java/src/codespec/read/Main.java` and `adapters/groovy/src/codespec/read/groovy/Main.java` likewise, with the `reader.version` in `adapters/groovy/testdata/lending.read.cir.json` and `adapters/groovy/testdata/holds.read.cir.json`, a test checks each; the same literal is `VERSION` in `adapters/groovy/src/codespec/read/groovy/Main.java`, `const version` in `adapters/go/cmd/codespec-write-go/main.go`, `VERSION` and one test literal in `crates/docs/src/status.rs`, line 7 of `adapters/java/testdata/quarkus.read.cir.json`, and the `codespec <version>` lines of `website/docs/getting-started.md` and `website/docs/guides/add-an-adapter.md`), then `task examples`, `task conformance` and `task docs-generate` (it rewrites the conform sample in `website/docs/guides/add-an-adapter.md` from the Go writer report; `VERSION` in
    `crates/docs/src/status.rs` follows the workspace version, a test checks it, and the test `every_shipped_capability_rests_on_a_test_that_exists` names the version literally: bump both by hand; the `codespec --version` output pasted in `website/docs/getting-started.md` is checked against it too). Move the
-   `CHANGELOG.md` entries under a `## <version>` heading. `task check` green on that commit; let
+   `CHANGELOG.md` entries under a `## <version>` heading. Leave an empty `## Unreleased` heading above it. `task check` green on that commit; let
    `cargo build` update `Cargo.lock`, never `cargo generate-lockfile`.
    Also bump the `CODESPEC_VERSION` fallback in `adapters/odin/read/main.odin` for standalone builds. The packaged Odin and BEAM programs take the version from the build.
 2. Annotated tag `0.x.y` on `main`, pushed as the bot.

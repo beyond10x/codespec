@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { adapter } from './adapter.ts';
 import { findingProblems, loadFindings } from './core/findings.ts';
 import { compare, update, type Baseline, type Tolerance } from './core/ratchet.ts';
-import { readResults, toMeasured } from './core/results.ts';
-import { pageDrift, syncPages } from './core/scenarios.ts';
+import { missingGateUnits, readResults, toMeasured } from './core/results.ts';
+import { loadScenarios, pageDrift, syncPages } from './core/scenarios.ts';
 import { sitemapPaths } from './core/site.ts';
 import { nextRound, writeRound } from './core/round.ts';
 
@@ -47,6 +47,16 @@ function ratchet(): number {
     console.error(`ratchet: no results in ${out}; run the L2 and L3 specs first`);
     return 1;
   }
+  const scenarioList = loadScenarios(join(UX, adapter.dirs.scenarios));
+  const missing = missingGateUnits(
+    scenarioList.filter((s) => s.page).map((s) => s.name),
+    scenarioList.filter((s) => s.task).map((s) => s.name),
+    adapter.viewports.gating.map((v) => v.name),
+    adapter.themes,
+    results,
+  );
+  for (const m of missing) console.error('ratchet: no result for ' + m);
+  if (missing.length) return 1;
   const measured = toMeasured(results);
   const current: Baseline | null = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : null;
   if (flag('--update')) {
