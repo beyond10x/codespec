@@ -1,0 +1,27 @@
+{
+  "format": "codespec-corpus/1",
+  "language": "Go",
+  "reader": "go",
+  "mode": "top",
+  "count": 3,
+  "seed": null,
+  "fetched_on": "2026-11-25",
+  "snapshot_sha256": "38f1d7defc9d93481ebd494af20477a6559dedfcd3ff2b85d1b60ed17f95af9b",
+  "repositories": [
+    {
+      "name": "example-org/alpha",
+      "url": "https://example.com/example-org/alpha",
+      "commit": "1c3dae8b69a17a0381f804ca66935d91d9d72e22"
+    },
+    {
+      "name": "example-org/charlie",
+      "url": "https://example.com/example-org/charlie",
+      "commit": "d257b63d0ee5328e9f0850e2b43f5cbdf388b4f5"
+    },
+    {
+      "name": "example-org/echo",
+      "url": "https://example.com/example-org/echo",
+      "commit": "987b9370c29f992ff7e5055dd051e01548301b56"
+    }
+  ]
+}

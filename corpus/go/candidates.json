@@ -1,0 +1,463 @@
+{
+  "format": "codespec-corpus-candidates/1",
+  "fetched_on": "2026-11-25",
+  "language": "Go",
+  "max_size_kb": 200000,
+  "excluded": {
+    "forks": 0,
+    "archived": 4,
+    "oversized": 24
+  },
+  "candidates": [
+    {
+      "name": "avelino/awesome-go",
+      "url": "https://github.com/avelino/awesome-go",
+      "language": "Go",
+      "commit": "a8277a047c3c79ac6799ed0cc80554bb8b92d16f",
+      "stars": 195918,
+      "size_kb": 13042,
+      "rank": 1
+    },
+    {
+      "name": "ollama/ollama",
+      "url": "https://github.com/ollama/ollama",
+      "language": "Go",
+      "commit": "924cc286cc592f49c481fa84e15fa60dbc75989e",
+      "stars": 188103,
+      "size_kb": 98293,
+      "rank": 2
+    },
+    {
+      "name": "JuliusBrussee/caveman",
+      "url": "https://github.com/JuliusBrussee/caveman",
+      "language": "Go",
+      "commit": "47c61be2d10a354f0c5cbe2b90959d24c06b16c6",
+      "stars": 122777,
+      "size_kb": 23199,
+      "rank": 3
+    },
+    {
+      "name": "fatedier/frp",
+      "url": "https://github.com/fatedier/frp",
+      "language": "Go",
+      "commit": "a2c975efb5e55102068065d61cfc17ffe34e939d",
+      "stars": 110784,
+      "size_kb": 33195,
+      "rank": 4
+    },
+    {
+      "name": "infiniflow/ragflow",
+      "url": "https://github.com/infiniflow/ragflow",
+      "language": "Go",
+      "commit": "bb7b3c28888c21e1610678d3d7b8c2094265a644",
+      "stars": 94697,
+      "size_kb": 199523,
+      "rank": 5
+    },
+    {
+      "name": "syncthing/syncthing",
+      "url": "https://github.com/syncthing/syncthing",
+      "language": "Go",
+      "commit": "134b625bcb0f60a527171acc529bf1f8cff71b15",
+      "stars": 90827,
+      "size_kb": 128044,
+      "rank": 6
+    },
+    {
+      "name": "gohugoio/hugo",
+      "url": "https://github.com/gohugoio/hugo",
+      "language": "Go",
+      "commit": "47f831efbd1a90ec370e5dc487882319a44416ed",
+      "stars": 90562,
+      "size_kb": 153938,
+      "rank": 7
+    },
+    {
+      "name": "gin-gonic/gin",
+      "url": "https://github.com/gin-gonic/gin",
+      "language": "Go",
+      "commit": "0f09c3a9b4626d9fe9979cf4d0521d6ae32ab646",
+      "stars": 89578,
+      "size_kb": 10657,
+      "rank": 8
+    },
+    {
+      "name": "junegunn/fzf",
+      "url": "https://github.com/junegunn/fzf",
+      "language": "Go",
+      "commit": "ed173e71e44b2a5fa6264ecf232a153dee6994d0",
+      "stars": 84475,
+      "size_kb": 8528,
+      "rank": 9
+    },
+    {
+      "name": "jesseduffield/lazygit",
+      "url": "https://github.com/jesseduffield/lazygit",
+      "language": "Go",
+      "commit": "10f045b8f93232a03e8522f924e65681b0b210d8",
+      "stars": 84079,
+      "size_kb": 169411,
+      "rank": 10
+    },
+    {
+      "name": "caddyserver/caddy",
+      "url": "https://github.com/caddyserver/caddy",
+      "language": "Go",
+      "commit": "679806f92d49e5b494200f2e90a93f228203a418",
+      "stars": 79527,
+      "size_kb": 21939,
+      "rank": 11
+    },
+    {
+      "name": "nektos/act",
+      "url": "https://github.com/nektos/act",
+      "language": "Go",
+      "commit": "ac4c09993f474fc8091608f2f7cf85a69dfd012f",
+      "stars": 72792,
+      "size_kb": 19949,
+      "rank": 12
+    },
+    {
+      "name": "traefik/traefik",
+      "url": "https://github.com/traefik/traefik",
+      "language": "Go",
+      "commit": "8fcaa7cda47c139b76e02ab3d115c168d093ac04",
+      "stars": 65698,
+      "size_kb": 164967,
+      "rank": 13
+    },
+    {
+      "name": "usememos/memos",
+      "url": "https://github.com/usememos/memos",
+      "language": "Go",
+      "commit": "1656ef0d66afbf33af87c1fe0470d3960beaf46a",
+      "stars": 64692,
+      "size_kb": 49991,
+      "rank": 14
+    },
+    {
+      "name": "FiloSottile/mkcert",
+      "url": "https://github.com/FiloSottile/mkcert",
+      "language": "Go",
+      "commit": "1c1dc4ed27ed5936046b6398d39cab4d657a2d8e",
+      "stars": 59925,
+      "size_kb": 1799,
+      "rank": 15
+    },
+    {
+      "name": "router-for-me/CLIProxyAPI",
+      "url": "https://github.com/router-for-me/CLIProxyAPI",
+      "language": "Go",
+      "commit": "38fe929502f19f7cce03c69c19aacddf30f1ef5e",
+      "stars": 59451,
+      "size_kb": 60551,
+      "rank": 16
+    },
+    {
+      "name": "alibaba/open-code-review",
+      "url": "https://github.com/alibaba/open-code-review",
+      "language": "Go",
+      "commit": "d4f568f71d3a9d5c5ec972791b1509e40cd31ad1",
+      "stars": 56280,
+      "size_kb": 58469,
+      "rank": 17
+    },
+    {
+      "name": "wagoodman/dive",
+      "url": "https://github.com/wagoodman/dive",
+      "language": "Go",
+      "commit": "75dea9077a4f0c0328cf0084d9b1e32f2f22df87",
+      "stars": 54762,
+      "size_kb": 7303,
+      "rank": 18
+    },
+    {
+      "name": "jesseduffield/lazydocker",
+      "url": "https://github.com/jesseduffield/lazydocker",
+      "language": "Go",
+      "commit": "596fd59df6b088bb1e38c5bb08cd4fbf28b3ebfb",
+      "stars": 53440,
+      "size_kb": 30202,
+      "rank": 19
+    },
+    {
+      "name": "etcd-io/etcd",
+      "url": "https://github.com/etcd-io/etcd",
+      "language": "Go",
+      "commit": "4e090c033abc29636df2f844fbdd363adffcd90b",
+      "stars": 52651,
+      "size_kb": 103040,
+      "rank": 20
+    },
+    {
+      "name": "QuantumNous/new-api",
+      "url": "https://github.com/QuantumNous/new-api",
+      "language": "Go",
+      "commit": "6627f0e3f37c002564b630a73e5afb0d28a92d3b",
+      "stars": 52518,
+      "size_kb": 99247,
+      "rank": 21
+    },
+    {
+      "name": "MHSanaei/3x-ui",
+      "url": "https://github.com/MHSanaei/3x-ui",
+      "language": "Go",
+      "commit": "e95d17a7dbece52c3dbfb9515d23c3e4b935135e",
+      "stars": 50622,
+      "size_kb": 84342,
+      "rank": 22
+    },
+    {
+      "name": "AlistGo/alist",
+      "url": "https://github.com/AlistGo/alist",
+      "language": "Go",
+      "commit": "92e745360766cce32564f94a468cb576f577d27e",
+      "stars": 50495,
+      "size_kb": 6916,
+      "rank": 23
+    },
+    {
+      "name": "cli/cli",
+      "url": "https://github.com/cli/cli",
+      "language": "Go",
+      "commit": "b546819fd547ef8c97da470bb00f2aaad4165c84",
+      "stars": 47202,
+      "size_kb": 83646,
+      "rank": 24
+    },
+    {
+      "name": "v2ray/v2ray-core",
+      "url": "https://github.com/v2ray/v2ray-core",
+      "language": "Go",
+      "commit": "d80440f3d57b45c829dbf513306f7adf9a0f3f76",
+      "stars": 46906,
+      "size_kb": 55172,
+      "rank": 25
+    },
+    {
+      "name": "Wei-Shaw/sub2api",
+      "url": "https://github.com/Wei-Shaw/sub2api",
+      "language": "Go",
+      "commit": "0f6671457132425d1b84f3d80536b53e02942424",
+      "stars": 46621,
+      "size_kb": 128629,
+      "rank": 26
+    },
+    {
+      "name": "juanfont/headscale",
+      "url": "https://github.com/juanfont/headscale",
+      "language": "Go",
+      "commit": "adfc6d08aabceb5bdda222ee10e10e7ef6e79ff3",
+      "stars": 46076,
+      "size_kb": 74238,
+      "rank": 27
+    },
+    {
+      "name": "charmbracelet/bubbletea",
+      "url": "https://github.com/charmbracelet/bubbletea",
+      "language": "Go",
+      "commit": "4d611720dd2bb4036932f29519d519fb4ce8af41",
+      "stars": 45874,
+      "size_kb": 6071,
+      "rank": 28
+    },
+    {
+      "name": "spf13/cobra",
+      "url": "https://github.com/spf13/cobra",
+      "language": "Go",
+      "commit": "adbc8813901bba65827259daa8e22ff94ec1f30e",
+      "stars": 44829,
+      "size_kb": 2107,
+      "rank": 29
+    },
+    {
+      "name": "danielmiessler/Fabric",
+      "url": "https://github.com/danielmiessler/Fabric",
+      "language": "Go",
+      "commit": "30b83e996cd1e6e3f5843fb5b64997ea63ecfd5c",
+      "stars": 44765,
+      "size_kb": 169502,
+      "rank": 30
+    },
+    {
+      "name": "astaxie/build-web-application-with-golang",
+      "url": "https://github.com/astaxie/build-web-application-with-golang",
+      "language": "Go",
+      "commit": "c294b087b96d99d2593ad8f470151af5354bb57f",
+      "stars": 43842,
+      "size_kb": 38293,
+      "rank": 31
+    },
+    {
+      "name": "XTLS/Xray-core",
+      "url": "https://github.com/XTLS/Xray-core",
+      "language": "Go",
+      "commit": "b56ffef338c8096c7dbe78eaa76f1cb05a328d6f",
+      "stars": 43152,
+      "size_kb": 11130,
+      "rank": 32
+    },
+    {
+      "name": "schollz/croc",
+      "url": "https://github.com/schollz/croc",
+      "language": "Go",
+      "commit": "d77d59a8931d67460574f7603b9446470d475070",
+      "stars": 41048,
+      "size_kb": 12671,
+      "rank": 33
+    },
+    {
+      "name": "gofiber/fiber",
+      "url": "https://github.com/gofiber/fiber",
+      "language": "Go",
+      "commit": "d3bfd53c6dbb527fa0c060c937a29f7738e55963",
+      "stars": 40318,
+      "size_kb": 55651,
+      "rank": 34
+    },
+    {
+      "name": "SagerNet/sing-box",
+      "url": "https://github.com/SagerNet/sing-box",
+      "language": "Go",
+      "commit": "b3f845963897f14156609a22c24092221b01558c",
+      "stars": 40299,
+      "size_kb": 31283,
+      "rank": 35
+    },
+    {
+      "name": "evanw/esbuild",
+      "url": "https://github.com/evanw/esbuild",
+      "language": "Go",
+      "commit": "f6058f8364fe7ab91ca57a83e02577ed74c9cae4",
+      "stars": 40177,
+      "size_kb": 20899,
+      "rank": 36
+    },
+    {
+      "name": "go-gorm/gorm",
+      "url": "https://github.com/go-gorm/gorm",
+      "language": "Go",
+      "commit": "ead4e04ba7c6a49654649131e587133b1d9f3eca",
+      "stars": 40001,
+      "size_kb": 4664,
+      "rank": 37
+    },
+    {
+      "name": "The-Vibe-Company/quivr",
+      "url": "https://github.com/The-Vibe-Company/quivr",
+      "language": "Go",
+      "commit": "87f3743fa42f83a03d7cc5e9f0e324d0e5dcb5c9",
+      "stars": 39664,
+      "size_kb": 175508,
+      "rank": 38
+    },
+    {
+      "name": "tailscale/tailscale",
+      "url": "https://github.com/tailscale/tailscale",
+      "language": "Go",
+      "commit": "28f22b00627472bbe161534056c7732cf9197bcd",
+      "stars": 39606,
+      "size_kb": 93762,
+      "rank": 39
+    },
+    {
+      "name": "docker/compose",
+      "url": "https://github.com/docker/compose",
+      "language": "Go",
+      "commit": "65c301a069388469a6c129498d116d8af9459aea",
+      "stars": 39087,
+      "size_kb": 30811,
+      "rank": 40
+    },
+    {
+      "name": "harness/harness",
+      "url": "https://github.com/harness/harness",
+      "language": "Go",
+      "commit": "07047b76fa7ceccd6d036eda31fd58702406dade",
+      "stars": 38974,
+      "size_kb": 60513,
+      "rank": 41
+    },
+    {
+      "name": "glanceapp/glance",
+      "url": "https://github.com/glanceapp/glance",
+      "language": "Go",
+      "commit": "53aec7f392ca72143870dcb45526ec7c80a68f32",
+      "stars": 38371,
+      "size_kb": 20540,
+      "rank": 42
+    },
+    {
+      "name": "IceWhaleTech/CasaOS",
+      "url": "https://github.com/IceWhaleTech/CasaOS",
+      "language": "Go",
+      "commit": "e099dd6b4982a264663df2536a55bfea2ae5448a",
+      "stars": 37705,
+      "size_kb": 181044,
+      "rank": 43
+    },
+    {
+      "name": "1Panel-dev/1Panel",
+      "url": "https://github.com/1Panel-dev/1Panel",
+      "language": "Go",
+      "commit": "a79afe7eb6f4efdfc6c7c8642ad1c2785ef5e077",
+      "stars": 37524,
+      "size_kb": 116076,
+      "rank": 44
+    },
+    {
+      "name": "restic/restic",
+      "url": "https://github.com/restic/restic",
+      "language": "Go",
+      "commit": "f25ec9a5ab18fbb6797ab336b995d6639d62c4d4",
+      "stars": 37451,
+      "size_kb": 71158,
+      "rank": 45
+    },
+    {
+      "name": "binwiederhier/ntfy",
+      "url": "https://github.com/binwiederhier/ntfy",
+      "language": "Go",
+      "commit": "aa97efef7e35143f52f4b5cdce4369fb5d76df2e",
+      "stars": 35745,
+      "size_kb": 45022,
+      "rank": 46
+    },
+    {
+      "name": "derailed/k9s",
+      "url": "https://github.com/derailed/k9s",
+      "language": "Go",
+      "commit": "c732946a6da348ad1b4fdabd6b9bd0f8cd2d3804",
+      "stars": 35065,
+      "size_kb": 65832,
+      "rank": 47
+    },
+    {
+      "name": "vxcontrol/pentagi",
+      "url": "https://github.com/vxcontrol/pentagi",
+      "language": "Go",
+      "commit": "cffed9485aa1cca70762cd08a57ac62a80406258",
+      "stars": 35011,
+      "size_kb": 60402,
+      "rank": 48
+    },
+    {
+      "name": "unknwon/the-way-to-go_ZH_CN",
+      "url": "https://github.com/unknwon/the-way-to-go_ZH_CN",
+      "language": "Go",
+      "commit": "7a54d34d3657084b6a59e5618bd069b912d571aa",
+      "stars": 34985,
+      "size_kb": 12602,
+      "rank": 49
+    },
+    {
+      "name": "v2fly/v2ray-core",
+      "url": "https://github.com/v2fly/v2ray-core",
+      "language": "Go",
+      "commit": "ec5ce8ba78e8a70167b5b1f003287f1340ecc19a",
+      "stars": 34806,
+      "size_kb": 69778,
+      "rank": 50
+    }
+  ]
+}

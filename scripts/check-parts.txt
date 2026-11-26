@@ -3,6 +3,7 @@ test b10x-codespec-model b10x-codespec-passes b10x-codespec-harness
 test b10x-codespec-cli
 test b10x-codespec-check
 test b10x-codespec-query b10x-codespec-edit
+test b10x-codespec-corpus
 test b10x-codespec-effects b10x-codespec-diff
 test b10x-codespec-eval --lib --bins --test=adversary_faults --test=adversary_handlers --test=crossings --test=faults --test=go_spelling --test=sessions
 test b10x-codespec-eval --test=adversary1

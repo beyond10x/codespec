@@ -1,0 +1,36 @@
+#!/bin/sh
+# A stub of the GitHub CLI for the tests of codespec-corpus: prints recorded JSON, never touches
+# the network. `gh search repos --language <l> --sort stars ...` prints search-<l>.json (l in
+# lower case); `gh api repos/<owner>/<repo>/commits/<ref>` prints api/<owner>__<repo>.json. Any
+# other call, and a search that does not ask for stars order, fails with exit 2.
+set -eu
+dir=$(dirname "$0")
+case "${1:-} ${2:-}" in
+"search repos")
+  lang=""
+  sort=""
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --language) lang=$2; shift ;;
+    --sort) sort=$2; shift ;;
+    esac
+    shift
+  done
+  [ "$sort" = stars ] || { echo "gh stub: search without --sort stars" >&2; exit 2; }
+  lang=$(printf '%s' "$lang" | tr 'A-Z' 'a-z')
+  [ -f "$dir/search-$lang.json" ] || { echo "gh stub: no recording for language $lang" >&2; exit 2; }
+  cat "$dir/search-$lang.json"
+  ;;
+"api repos/"*)
+  name=${2#repos/}
+  name=${name%%/commits/*}
+  name=$(printf '%s' "$name" | sed 's|/|__|')
+  [ -f "$dir/api/$name.json" ] || { echo "gh stub: no recording for $2" >&2; exit 2; }
+  cat "$dir/api/$name.json"
+  ;;
+*)
+  echo "gh stub: unexpected call: $*" >&2
+  exit 2
+  ;;
+esac
