@@ -484,6 +484,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
@@ -595,6 +596,7 @@ impl<'r> Body<'r> {
             | Stmt::Decr { x, .. }
             | Stmt::Expr { x, .. }
             | Stmt::Raise { x, .. } => self.expr(w, x, &format!("{p}.x")),
+            Stmt::Defer { call, .. } => self.expr(w, call, &format!("{p}.call")),
             Stmt::If {
                 cond,
                 then,

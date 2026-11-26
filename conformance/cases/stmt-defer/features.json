@@ -1,0 +1,23 @@
+{
+  "format": "codespec-case-features/1",
+  "features": [
+    "stmt.defer",
+    "expr.call",
+    "expr.call_value",
+    "expr.intrinsic",
+    "expr.lambda",
+    "expr.lit",
+    "expr.var",
+    "intrinsic.println",
+    "sem.int.wrap",
+    "stmt.assign",
+    "stmt.expr",
+    "stmt.incr",
+    "stmt.return",
+    "type.error",
+    "type.func",
+    "type.int",
+    "type.string",
+    "type.tuple"
+  ]
+}

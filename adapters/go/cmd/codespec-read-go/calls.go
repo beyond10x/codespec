@@ -29,6 +29,8 @@ type CallRef struct {
 	Methods []MethodSig
 	Calls   []CallRef
 	Pos     string
+	// method, iface: the local the receiver is rooted at (recvRoot)
+	RecvVar string
 }
 
 type ConstArg struct {
@@ -321,6 +323,38 @@ func (f *front) collect(n ast.Node, out *[]CallRef) {
 	})
 }
 
+// recvRoot is the local, parameter or receiver the receiver expression e is rooted at, through
+// fields, indexes, `*` and `&`, spelled as the reader spells it; "" when e is rooted at a package
+// variable, a call's result or anything else.
+func (f *front) recvRoot(e ast.Expr) string {
+	for {
+		switch x := ast.Unparen(e).(type) {
+		case *ast.Ident:
+			o, ok := f.info.Uses[x].(*types.Var)
+			if !ok || o.IsField() || o.Pkg() == nil || o.Parent() == o.Pkg().Scope() {
+				return ""
+			}
+			return f.name(x)
+		case *ast.SelectorExpr:
+			if sel := f.info.Selections[x]; sel == nil || sel.Kind() != types.FieldVal {
+				return ""
+			}
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.StarExpr:
+			e = x.X
+		case *ast.UnaryExpr:
+			if x.Op != token.AND {
+				return ""
+			}
+			e = x.X
+		default:
+			return ""
+		}
+	}
+}
+
 func (f *front) callExpr(c *ast.CallExpr, out *[]CallRef) {
 	pos := f.pos(c.Pos())
 	fun := ast.Unparen(c.Fun)
@@ -387,6 +421,9 @@ func (f *front) callExpr(c *ast.CallExpr, out *[]CallRef) {
 					cr.Consts = append(cr.Consts, ConstArg{Index: i, Value: av.Value.ExactString()})
 				}
 			}
+		}
+		if recv != nil && (cr.K == "method" || cr.K == "iface") {
+			cr.RecvVar = f.recvRoot(recv)
 		}
 		*out = append(*out, cr)
 		if recv != nil {

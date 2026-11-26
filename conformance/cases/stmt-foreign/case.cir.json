@@ -50,8 +50,8 @@
         {
           "k": "foreign",
           "lang": "go",
-          "src": "defer done()",
-          "reason": "defer is outside cir/1",
+          "src": "go done()",
+          "reason": "goroutine: concurrency is outside cir/1",
           "pos": "case.go:6",
           "calls": [
             {
@@ -104,7 +104,7 @@
           "pos": "case.go:8"
         }
       ],
-      "doc": "Count adds n to a total through a deferred call, which cir/1 cannot express.",
+      "doc": "Count adds n to a total and starts a goroutine, which cir/1 cannot express.",
       "pos": "case.go:4"
     },
     {
@@ -126,8 +126,8 @@
   "refusals": [
     {
       "pos": "case.go:6",
-      "what": "defer done()",
-      "reason": "defer is outside cir/1"
+      "what": "go done()",
+      "reason": "goroutine: concurrency is outside cir/1"
     }
   ]
 }

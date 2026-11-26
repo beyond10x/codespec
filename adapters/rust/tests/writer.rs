@@ -894,6 +894,32 @@ fn a_function_holding_raise_is_refused_by_name_at_the_raise() {
     assert!(!lib.contains("fn check"), "{lib}");
 }
 
+/// The kit case stmt-defer: `Count` holds a `defer`, which the writer has no mapping for, so the
+/// function is left out and listed by name at the defer's position.
+#[test]
+fn a_function_holding_defer_is_refused_by_name_at_the_defer() {
+    let doc = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance/cases/stmt-defer/case.cir.json"),
+    )
+    .unwrap();
+    let out = scratch("stmt-defer");
+    let o = write(&doc, &out);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let refusals: Value =
+        serde_json::from_slice(&std::fs::read(out.join("refusals.json")).unwrap()).unwrap();
+    let entries = refusals.as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{refusals}");
+    assert_eq!(entries[0]["name"], "Count");
+    assert_eq!(entries[0]["pos"], "case.go:9");
+    assert!(
+        entries[0]["reason"].as_str().unwrap().starts_with("defer"),
+        "{refusals}"
+    );
+    let lib = std::fs::read_to_string(out.join("src/lib.rs")).unwrap();
+    assert!(!lib.contains("fn count"), "{lib}");
+}
+
 // ----- a `for … range` sees its source as Go's does (review 2026-11-23, A3 and A6) -------------
 
 fn slice_int() -> Value {

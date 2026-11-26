@@ -68,8 +68,8 @@ A tagged union: the field `k` names the kind. 8 kinds.
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
 | `func` | `consts`: list of [`ConstArg`](#constarg); `name`\*: `string`; `path`: `string`; `pos`\*: `string` | A call of the function `name` of the module `path`; `path` empty: this module. |
-| `method` | `by`: `string`; `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`\*: `string` | A call of the method `name` declared on the named type `recv` of the module `path` (empty: this module), the receiver's type being known. With `by`, a convention of a framework gave the target, not the source language's type information, and `by` names the convention; without it, the type information resolved the call. The Groovy reader writes two: `grails-gorm`, a GORM method called on a domain class `recv` of the module, which GORM adds at run time (`path` is `grails.gorm`), and `grails-service-field`, a call the type checker did not resolve through a field that Grails 2 sets, by its name, to the service `recv` of the module (`noticeService` to `NoticeService`). |
-| `iface` | `iface`\*: `string`; `methods`\*: list of [`MethodSig`](#methodsig); `name`\*: `string`; `pos`\*: `string` | A call of the method `name` through a value of the interface `iface` (its spelling, for reading), whose whole method set is `methods`. |
+| `method` | `by`: `string`; `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`\*: `string`; `recv_var`: `string` | A call of the method `name` declared on the named type `recv` of the module `path` (empty: this module), the receiver's type being known. With `by`, a convention of a framework gave the target, not the source language's type information, and `by` names the convention; without it, the type information resolved the call. The Groovy reader writes two: `grails-gorm`, a GORM method called on a domain class `recv` of the module, which GORM adds at run time (`path` is `grails.gorm`), and `grails-service-field`, a call the type checker did not resolve through a field that Grails 2 sets, by its name, to the service `recv` of the module (`noticeService` to `NoticeService`). |
+| `iface` | `iface`\*: `string`; `methods`\*: list of [`MethodSig`](#methodsig); `name`\*: `string`; `pos`\*: `string`; `recv_var`: `string` | A call of the method `name` through a value of the interface `iface` (its spelling, for reading), whose whole method set is `methods`. |
 | `value` | `pos`\*: `string`; `sig`\*: `string` | A call of a function value of the signature `sig`. |
 | `ref` | `name`\*: `string`; `path`: `string`; `pos`\*: `string`; `recv`: `string`; `sig`\*: `string` | The function `name` of `path` (empty: this module), or with `recv` the method, used as a value of the signature `sig`: it may run wherever a value of `sig` is called. |
 | `lambda` | `calls`\*: list of [`CallRef`](#callref); `pos`\*: `string`; `sig`\*: `string` | A function literal of the signature `sig`. Its calls belong to the function that holds it, and it may run wherever a value of `sig` is called. |
@@ -376,7 +376,7 @@ One persistence mark: an annotation of a type or of a field of it that tells an 
 
 A statement.
 
-A tagged union: the field `k` names the kind. 17 kinds.
+A tagged union: the field `k` names the kind. 18 kinds.
 
 | `k` | Fields (\* required) | Meaning |
 |---|---|---|
@@ -394,6 +394,7 @@ A tagged union: the field `k` names the kind. 17 kinds.
 | `return` | `pos`\*: `string`; `results`\*: list of [`Expr`](#expr) |  |
 | `raise` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) | Leaves the function, and every caller up to the framework that started it, with `x`, a value of an extern type (Java: `throw` of a jar's unchecked exception): no result is returned. The function lists the type in `raises`. |
 | `expr` | `pos`\*: `string`; `x`\*: [`Expr`](#expr) |  |
+| `defer` | `call`\*: [`Expr`](#expr); `pos`\*: `string` | `defer call`: the call is made when the function returns. Its function value, receiver and arguments are evaluated here; the call runs at each `return` and at the end of the body, after the results are taken, the calls a function deferred last deferred first. `call` is a `call`, `method`, `extern`, `extern_method`, `call_value` or `iface_call`. |
 | `send` | `chan`\*: [`Expr`](#expr); `pos`\*: `string`; `x`\*: [`Expr`](#expr) | `chan <- x`. |
 | `lookup_else` | `index`\*: [`Expr`](#expr); `map`\*: [`Expr`](#expr); `name`\*: `string`; `pos`\*: `string`; `then`\*: list of [`Stmt`](#stmt) | `name := map[index]`, running `then` (which ends in a return) when the key is absent. `name` is not bound inside `then`. |
 | `foreign` | `calls`: list of [`CallRef`](#callref) or null; `lang`\*: `string`; `pos`\*: `string`; `reason`\*: `string`; `src`\*: `string` | Source the reader kept verbatim, in `lang`, because cir/1 cannot express it. |

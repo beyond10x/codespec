@@ -303,11 +303,14 @@ dropped_error(Site) :- call{site: Site, callee: C}, fact{kind: "fallible", item:
 
 ## 8. What `cir/1` needs
 
-- **`defer` as a statement** (`{k: "defer", call}`), read by the Go reader. Today `defer` is
-  `foreign` with its call list but without the receiver, so `lock_released` cannot match the
-  Unlock to the Lock's value. This is additive (`cir/1` minor).
+- **`defer` as a statement** (`{k: "defer", call}`), read by the Go reader. Before it `defer` was
+  `foreign` with its call list but without the receiver, so `lock_released` could not match the
+  Unlock to the Lock's value. Additive (`cir/1` minor). Built: the Go reader reads a deferred call
+  of a function, a method, an extern, a function value or through an interface as one; the
+  evaluator runs it; `defer call{…}` matches it in a property; `checks/lock-without-unlock.cq`.
 - **A receiver root on call refs** (`recv_var` on `CallRef.method` and `iface`), so value identity
-  reaches into `foreign` statements. Additive.
+  reaches into `foreign` statements. Additive. Built in `cir/1` and the Go reader; cq does not
+  read it yet.
 - **Nothing else is required.** Node ids, control flow, dominance and def-use are derived by the
   engine from what `cir/1` holds (§ 4.1, § 4.2).
 

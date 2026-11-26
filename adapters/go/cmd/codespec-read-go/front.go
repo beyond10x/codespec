@@ -941,6 +941,21 @@ func (f *front) foreign(s ast.Stmt, reason string) Stmt {
 	return Stmt{K: "foreign", Lang: "go", Src: f.src(s), Reason: reason, Pos: f.pos(s.Pos()), Calls: f.callsOf(s)}
 }
 
+// deferStmt reads `defer call` as a `defer` statement when the call reads as one cir/1 defers: a
+// call of a function, a method, an extern, a function value or through an interface. A call of a
+// builtin or one outside cir/1 keeps the statement foreign.
+func (f *front) deferStmt(s *ast.DeferStmt) Stmt {
+	x, ok := f.expr(s.Call)
+	if !ok {
+		return f.foreign(s, f.exprReason())
+	}
+	switch x.K {
+	case "call", "method", "extern", "extern_method", "call_value", "iface_call":
+		return Stmt{K: "defer", Call: &x, Pos: f.pos(s.Pos())}
+	}
+	return f.foreign(s, "defer of "+x.K+" is outside cir/1")
+}
+
 // rangeName is the name a range clause binds as its key or value, parentheses removed: `_` when
 // there is none, "" when it is not an identifier (`for s.f = range xs`).
 func rangeName(e ast.Expr) string {
@@ -1374,7 +1389,7 @@ func (f *front) stmtRaw(s ast.Stmt, results []Type) Stmt {
 	case *ast.GoStmt:
 		return f.foreign(s, "goroutine: concurrency is outside cir/1")
 	case *ast.DeferStmt:
-		return f.foreign(s, "defer is outside cir/1")
+		return f.deferStmt(s)
 	}
 	return f.foreign(s, fmt.Sprintf("statement %T is outside cir/1", s))
 }

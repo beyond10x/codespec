@@ -578,6 +578,12 @@
       "id": "stmt.decr"
     },
     {
+      "case": "stmt-defer",
+      "description": "`defer call`: the call is made when the function returns. Its function value, receiver and arguments are evaluated here; the call runs at each `return` and at the end of the body, after the results are taken, the calls a function deferred last deferred first. `call` is a `call`, `method`, `extern`, `extern_method`, `call_value` or `iface_call`.",
+      "family": "statement",
+      "id": "stmt.defer"
+    },
+    {
       "case": "stmt-expr",
       "description": "the `expr` statement",
       "family": "statement",
@@ -912,6 +918,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "verified",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -1054,6 +1061,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "verified",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -1190,6 +1198,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "refused",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -1368,11 +1377,15 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": {
+          "note": "Case stmt-defer: the writer refuses it: Count (case.go:9): defer: the Rust writer has no mapping for a call deferred to the return of its function.",
+          "state": "refused"
+        },
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
         "stmt.foreign": {
-          "note": "Case stmt-foreign: the writer refuses it: Count (case.go:6): foreign go statement: defer is outside cir/1.",
+          "note": "Case stmt-foreign: the writer refuses it: Count (case.go:6): foreign go statement: goroutine: concurrency is outside cir/1.",
           "state": "refused"
         },
         "stmt.if": "verified",
@@ -1522,6 +1535,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "refused",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -1652,6 +1666,7 @@
         "stmt.break": "none",
         "stmt.continue": "none",
         "stmt.decr": "none",
+        "stmt.defer": "none",
         "stmt.expr": "none",
         "stmt.for": "none",
         "stmt.for_range": "none",
@@ -1863,6 +1878,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "refused",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -2014,6 +2030,7 @@
         "stmt.break": "none",
         "stmt.continue": "none",
         "stmt.decr": "none",
+        "stmt.defer": "none",
         "stmt.expr": "none",
         "stmt.for": "none",
         "stmt.for_range": "none",
@@ -2147,6 +2164,7 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "refused",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
@@ -2316,11 +2334,15 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": {
+          "note": "Case stmt-defer: the writer refuses it: codespec-write-c: refused Count (case.go:9): defer: the C writer has no mapping for a call deferred to the return of its function.",
+          "state": "refused"
+        },
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
         "stmt.foreign": {
-          "note": "Case stmt-foreign: the writer refuses it: codespec-write-c: refused Count (case.go:6): foreign go statement: defer is outside cir/1.",
+          "note": "Case stmt-foreign: the writer refuses it: codespec-write-c: refused Count (case.go:6): foreign go statement: goroutine: concurrency is outside cir/1.",
           "state": "refused"
         },
         "stmt.if": "verified",
@@ -2470,6 +2492,7 @@
         "stmt.break": "refused",
         "stmt.continue": "refused",
         "stmt.decr": "refused",
+        "stmt.defer": "refused",
         "stmt.expr": "refused",
         "stmt.for": "refused",
         "stmt.for_range": "refused",
@@ -2756,6 +2779,10 @@
           "state": "refused"
         },
         "stmt.decr": "verified",
+        "stmt.defer": {
+          "note": "Case stmt-defer: the writer refuses it: codespec-write-elixir: unsupported statement \"defer\" at \"case.go:9\".",
+          "state": "refused"
+        },
         "stmt.expr": {
           "note": "Case stmt-expr: the writer refuses it: codespec-write-elixir: unsupported type %{\"k\" => \"error\"}.",
           "state": "refused"
@@ -2964,6 +2991,7 @@
         "stmt.break": "refused",
         "stmt.continue": "refused",
         "stmt.decr": "refused",
+        "stmt.defer": "refused",
         "stmt.expr": "refused",
         "stmt.for": "refused",
         "stmt.for_range": "refused",
@@ -3250,6 +3278,10 @@
           "state": "refused"
         },
         "stmt.decr": "verified",
+        "stmt.defer": {
+          "note": "Case stmt-defer: the writer refuses it: codespec-write-gleam: unsupported statement \"defer\" at \"case.go:9\".",
+          "state": "refused"
+        },
         "stmt.expr": {
           "note": "Case stmt-expr: the writer refuses it: codespec-write-gleam: unsupported type %{\"k\" => \"error\"}.",
           "state": "refused"
@@ -3461,6 +3493,7 @@
         "stmt.break": "refused",
         "stmt.continue": "refused",
         "stmt.decr": "refused",
+        "stmt.defer": "refused",
         "stmt.expr": "refused",
         "stmt.for": "refused",
         "stmt.for_range": "refused",
@@ -3783,6 +3816,10 @@
           "state": "refused"
         },
         "stmt.decr": "verified",
+        "stmt.defer": {
+          "note": "Case stmt-defer: the writer refuses it: codespec-write-odin: Count: unsupported \"defer\" statement at \"case.go:9\".",
+          "state": "refused"
+        },
         "stmt.expr": {
           "note": "Case stmt-expr: the writer refuses it: codespec-write-odin: Say: unsupported \"expr\" statement at \"case.go:7\".",
           "state": "refused"
@@ -3994,6 +4031,7 @@
         "stmt.break": "none",
         "stmt.continue": "none",
         "stmt.decr": "none",
+        "stmt.defer": "none",
         "stmt.expr": "none",
         "stmt.for": "none",
         "stmt.for_range": "none",
@@ -4127,11 +4165,12 @@
         "stmt.break": "verified",
         "stmt.continue": "verified",
         "stmt.decr": "verified",
+        "stmt.defer": "verified",
         "stmt.expr": "verified",
         "stmt.for": "verified",
         "stmt.for_range": "verified",
         "stmt.foreign": {
-          "note": "Case stmt-foreign: the writer refuses it: codespec-write-cir: refused Count (case.go:6): foreign go statement: defer is outside cir/1; the evaluator stops there. A foreign statement keeps source whose meaning cir/1 does not give; the evaluator stops when it reaches one, so the writer refuses a function holding one.",
+          "note": "Case stmt-foreign: the writer refuses it: codespec-write-cir: refused Count (case.go:6): foreign go statement: goroutine: concurrency is outside cir/1; the evaluator stops there. A foreign statement keeps source whose meaning cir/1 does not give; the evaluator stops when it reaches one, so the writer refuses a function holding one.",
           "state": "refused"
         },
         "stmt.if": "verified",

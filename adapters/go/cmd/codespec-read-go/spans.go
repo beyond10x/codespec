@@ -327,6 +327,8 @@ func (w *spanWalk) stmt(s Stmt, p string) {
 	case "send":
 		w.expr(*s.Chan, p+".chan")
 		w.expr(*s.X, p+".x")
+	case "defer":
+		w.expr(*s.Call, p+".call")
 	}
 }
 

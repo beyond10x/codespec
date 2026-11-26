@@ -73,7 +73,8 @@ reason, and the module lists it under `refusals`. Nothing is dropped or approxim
 reader these constructs are:
 
 - a goroutine;
-- `defer`;
+- a `defer` of a builtin (`defer close(ch)`) or of a call it has no node for; any other `defer`
+  reads as a `defer` statement;
 - named results in a function or literal that holds a `defer`. Without one, named results read as
   locals declared at the top with their zero values, and a bare `return` returns them;
 - an expression it has no node for;

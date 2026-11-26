@@ -126,8 +126,8 @@ fn every_check_is_written_in_cq_with_the_same_findings_or_waits_for_a_named_sect
         );
     }
     assert!(
-        waiting.contains_key("lock-without-unlock"),
-        "lock-without-unlock needs § 5.3 and § 8"
+        !waiting.contains_key("lock-without-unlock"),
+        "lock-without-unlock is written in cq: § 5.3 and § 8 are built"
     );
     let mut written = 0;
     for check in CHECKS {
@@ -206,7 +206,7 @@ fn every_fixture_of_a_written_check_gives_the_findings_of_codespec_check() {
     }
     assert_eq!(
         (cases, skipped),
-        (22, vec!["unreached/library".to_string()]),
+        (24, vec!["unreached/library".to_string()]),
         "the fixtures the CHANGELOG names"
     );
 }
@@ -296,4 +296,22 @@ fn cq_knows_the_names_lists_of_codespec_check_and_refuses_any_other() {
     let err = with(br#"{"never-fial": ["x"]}"#).unwrap_err();
     assert!(err.contains("no list never-fial"), "{err}");
     assert!(with(br#"{"receive": ["x"], "never-fail": ["x"]}"#).is_ok());
+}
+
+/// `crates/check/tests/fixtures/adv-defer`: a lock released by an unlock in a deferred function
+/// literal (`lock`) is not held at a return, and one whose deferred literal does not unlock
+/// (`lock-held`) is; `lock-without-unlock.cq` gives what `codespec check` gives on both.
+#[test]
+fn cq_lock_without_unlock_sees_an_unlock_in_a_deferred_literal_as_check_does() {
+    let src = std::fs::read_to_string(checks_dir().join("lock-without-unlock.cq")).unwrap();
+    for (case, findings) in [("lock", 0), ("lock-held", 1)] {
+        let m = read("adv-defer", case);
+        let want = checked("lock-without-unlock", &m);
+        assert_eq!(want.len(), findings, "adv-defer/{case}: {want:?}");
+        assert_eq!(
+            queried("lock-without-unlock", &src, &m),
+            want,
+            "adv-defer/{case}"
+        );
+    }
 }

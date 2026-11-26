@@ -22,7 +22,7 @@
 //! avoid   = Var "where" lit ("," lit)* | term
 //! property = "property" ident "(" "scope" ":" ("body" | "calls") ")" "{" (trans | message)* "}"
 //! trans   = ident "->" ident ":" event ("=>" ident ":=" Var ("," ident ":=" Var)*)?
-//! event   = "exit" | "call" "{" field ("," field)* "}"
+//! event   = "exit" | "defer"? "call" "{" field ("," field)* "}"
 //! message = "message" string
 //! edit    = "edit" op "(" term ("," term)* ")" ":-" body "."
 //! ```
@@ -41,8 +41,8 @@
 //! In a property's event a lower-case name in a field is a register; a property sets at most
 //! [`MAX_REGISTERS`] of them, each before it is read on some transition, and names `start` and
 //! `error`; its message names states and registers in braces (`{start}`, `{m}`). `defer
-//! call{…}` waits for the `defer` statement of `cir/1` (§ 8 of `docs/query-language.md`) and is
-//! refused, naming it, as is a `check` declaration (§ 5.4).
+//! call{…}` matches the call of a `defer` statement (§ 8 of `docs/query-language.md`). A `check`
+//! declaration (§ 5.4) is refused, naming it.
 //!
 //! Limits: parentheses, negated conditions, aggregates and the operators of a term nest at most
 //! [`MAX_NESTING`] deep (`1 + 2 + 3` is two deep), and a body holds at most [`MAX_BODY`]
@@ -172,6 +172,9 @@ pub enum Event {
     Exit,
     /// A call matching the record pattern of `call`; a lower-case variable is a register.
     Call(Atom),
+    /// `defer call{…}`: the call a `defer` statement holds, matched at the statement, where its
+    /// operands are evaluated; a `call{…}` event does not match it.
+    Defer(Atom),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -423,6 +426,7 @@ impl fmt::Display for Property {
             let event = match &t.event {
                 Event::Exit => "exit".to_string(),
                 Event::Call(a) => a.to_string(),
+                Event::Defer(a) => format!("defer {a}"),
             };
             write!(f, "    {} -> {}: {event}", t.from, t.to)?;
             if !t.assign.is_empty() {
@@ -1283,22 +1287,25 @@ impl Parser {
                     }
                     Event::Exit
                 }
-                Some(Tok::Ident(w)) if w == "defer" => {
-                    return Err(format!(
-                        "{t_at}: defer call{{…}} waits for the defer statement of cir/1 (§ 8 of {DESIGN}), which cq cannot see yet"
-                    ));
-                }
                 _ => {
+                    let deferred = matches!(self.peek(), Some(Tok::Ident(w)) if w == "defer");
+                    if deferred {
+                        self.k += 1;
+                    }
                     self.registers = true;
                     let a = self.atom();
                     self.registers = false;
                     let a = a?;
                     if a.rel != "call" || !matches!(a.args, Args::Named(_)) {
                         return Err(format!(
-                            "{t_at}: an event is exit or a record pattern of call, call{{…}}; not {a}"
+                            "{t_at}: an event is exit, a record pattern of call, call{{…}}, or defer call{{…}}; not {a}"
                         ));
                     }
-                    Event::Call(a)
+                    if deferred {
+                        Event::Defer(a)
+                    } else {
+                        Event::Call(a)
+                    }
                 }
             };
             let mut assign = Vec::new();
@@ -1344,6 +1351,10 @@ pub fn registers_read(t: &Transition) -> Vec<String> {
     if let Event::Call(Atom {
         args: Args::Named(fs),
         ..
+    })
+    | Event::Defer(Atom {
+        args: Args::Named(fs),
+        ..
     }) = &t.event
     {
         for (_, f) in fs {
@@ -1373,7 +1384,7 @@ fn check_property(p: &Property) -> Result<(), String> {
                 return Err(format!("{r} := {v}: a register's name is lower case"));
             }
             let mut vs = Vec::new();
-            if let Event::Call(a) = &t.event {
+            if let Event::Call(a) | Event::Defer(a) = &t.event {
                 atom_vars_of(a, &mut vs);
             }
             if !vs.contains(v) {
@@ -1458,8 +1469,7 @@ fn agg_fn(w: &str) -> Option<AggFn> {
     })
 }
 
-/// Parse a cq module. A `check` declaration (§ 5.4) or a `defer` event (§ 8) is refused, naming
-/// it.
+/// Parse a cq module. A `check` declaration (§ 5.4) is refused, naming it.
 pub fn parse(src: &str) -> Result<Program, String> {
     let toks = lex(src)?;
     Parser {

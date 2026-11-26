@@ -1,0 +1,287 @@
+{
+  "format": "cir/1",
+  "name": "stmt_defer",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.14.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Count",
+      "exported": true,
+      "params": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "defer",
+          "call": {
+            "k": "call",
+            "name": "show",
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"first\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "case.go:9"
+        },
+        {
+          "k": "incr",
+          "x": {
+            "k": "var",
+            "name": "n",
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "case.go:10"
+        },
+        {
+          "k": "defer",
+          "call": {
+            "k": "call",
+            "name": "show",
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"second\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "case.go:11"
+        },
+        {
+          "k": "defer",
+          "call": {
+            "k": "call_value",
+            "f": {
+              "k": "lambda",
+              "params": [],
+              "results": [],
+              "captures": [
+                "n"
+              ],
+              "body": [
+                {
+                  "k": "assign",
+                  "lhs": [
+                    {
+                      "k": "var",
+                      "name": "n",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "rhs": [
+                    {
+                      "k": "lit",
+                      "value": "0",
+                      "t": {
+                        "k": "int",
+                        "width": "platform",
+                        "signed": true
+                      }
+                    }
+                  ],
+                  "pos": "case.go:13"
+                }
+              ],
+              "t": {
+                "k": "func",
+                "params": [],
+                "results": []
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "case.go:12"
+        },
+        {
+          "k": "expr",
+          "x": {
+            "k": "intrinsic",
+            "name": "println",
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"body\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              {
+                "k": "var",
+                "name": "n",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                {
+                  "k": "error"
+                }
+              ]
+            }
+          },
+          "pos": "case.go:15"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "var",
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "case.go:16"
+        }
+      ],
+      "doc": "Count prints in the order its deferred calls run: the last deferred first, each with the\nargument it had when it was deferred, and after the result is taken, so the literal that\nclears n does not change what Count returns.",
+      "pos": "case.go:8"
+    },
+    {
+      "name": "show",
+      "exported": false,
+      "params": [
+        {
+          "name": "what",
+          "t": {
+            "k": "string"
+          }
+        },
+        {
+          "name": "v",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "intrinsic",
+            "name": "println",
+            "args": [
+              {
+                "k": "var",
+                "name": "what",
+                "t": {
+                  "k": "string"
+                }
+              },
+              {
+                "k": "var",
+                "name": "v",
+                "t": {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": [
+                {
+                  "k": "int",
+                  "width": "platform",
+                  "signed": true
+                },
+                {
+                  "k": "error"
+                }
+              ]
+            }
+          },
+          "pos": "case.go:20"
+        }
+      ],
+      "pos": "case.go:19"
+    }
+  ],
+  "layout": [
+    "func:Count",
+    "func:show"
+  ],
+  "facts": {
+    "shared": []
+  }
+}

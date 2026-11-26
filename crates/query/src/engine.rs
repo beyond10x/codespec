@@ -556,12 +556,14 @@ enum CEvent {
     /// The call sites the event's relation holds in column 0, each with the values of its
     /// variables: (register, column) pairs the register must equal, and the registers set.
     /// `fields` names the `call` field each column holding a variable comes from, for the
-    /// fields a listed call does not read (`recv`, `args`).
+    /// fields a listed call does not read (`recv`, `args`). A `defer call{…}` event (`deferred`)
+    /// matches the call a `defer` statement holds, and only it; a `call{…}` event every other.
     Call {
         rel: usize,
         checks: Vec<(usize, usize)>,
         assigns: Vec<(usize, usize)>,
         fields: Vec<(usize, &'static str)>,
+        deferred: bool,
     },
 }
 
@@ -1731,7 +1733,7 @@ impl Compiler<'_> {
         for t in &p.transitions {
             let event = match &t.event {
                 Event::Exit => CEvent::Exit,
-                Event::Call(a) => {
+                Event::Call(a) | Event::Defer(a) => {
                     let Args::Named(fields) = &a.args else {
                         unreachable!("the parser takes call{{…}} only")
                     };
@@ -1797,6 +1799,7 @@ impl Compiler<'_> {
                         checks: registers_read(t).iter().map(|r| (reg(r), col(r))).collect(),
                         assigns: t.assign.iter().map(|(r, v)| (reg(r), col(v))).collect(),
                         fields: unread,
+                        deferred: matches!(t.event, Event::Defer(_)),
                     }
                 }
             };
@@ -2320,6 +2323,8 @@ struct Graphs {
     /// The listed calls (of a foreign statement's call list): whether a receiver it has goes
     /// unread, and its position.
     listed: HashMap<Rc<str>, (bool, Rc<str>)>,
+    /// The calls `defer` statements hold: `<statement>.call`.
+    deferred: HashSet<Rc<str>>,
 }
 
 impl Graphs {
@@ -2923,6 +2928,11 @@ impl<'a> Eval<'a> {
         for r in rows("func") {
             g.funcs.insert(rc(&r[0]));
         }
+        for r in rows("stmt") {
+            if rc(&r[2]).as_ref() == "defer" {
+                g.deferred.insert(Rc::from(format!("{}.call", rc(&r[0]))));
+            }
+        }
         let mut func_of: HashMap<Rc<str>, Rc<str>> = HashMap::new();
         for r in rows("call") {
             let (site, f) = (rc(&r[0]), rc(&r[1]));
@@ -3270,10 +3280,14 @@ impl<'a> Eval<'a> {
                 checks,
                 assigns,
                 fields,
+                deferred,
             } = &t.event
             else {
                 continue;
             };
+            if *deferred != g.deferred.contains(site) {
+                continue;
+            }
             let unread = |c: usize| -> Option<u32> {
                 let (recv, pos) = listed?;
                 let &(_, field) = fields

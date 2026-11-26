@@ -4,6 +4,29 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `cir/1` has a `defer` statement, `{k: "defer", call, pos}`, whose `call` is a `call`, `method`,
+  `extern`, `extern_method`, `call_value` or `iface_call` (feature `stmt.defer`, kit case
+  `stmt-defer`). The Go reader reads `defer f(x)` as one where it read a `foreign` statement
+  with a refusal before; a `defer` of a builtin, or one in a function with named results, stays
+  as it was. The Go writer writes it; the evaluator takes the function value, receiver and
+  arguments at the statement and makes the call when the function returns, the last deferred
+  first; the Rust, C, Odin, Elixir and Gleam writers refuse it, naming it; the Rust reader does
+  not claim it.
+- `cir/1` `CallRef` `method` and `iface` have an optional `recv_var`: the local, parameter or
+  receiver the call's receiver is rooted at (`c` of `c.mu.Lock()`). The Go reader writes it on
+  the calls it lists for `foreign` statements and opaque functions. A document without the
+  field is unchanged.
+- cq: a property's event `defer call{…}` matches the call a `defer` statement holds, which a
+  `call{…}` event does not. `checks/lock-without-unlock.cq` gives the findings of
+  `codespec check lock-without-unlock` on its fixtures and has left `checks/waiting.json`.
+
+### Changed
+
+- The kit case `stmt-foreign` keeps a goroutine (`go done()`) as its `foreign` statement, since
+  its `defer done()` is now a `defer` statement.
+
 ## 0.14.0
 
 ### Added

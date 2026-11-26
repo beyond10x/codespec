@@ -286,8 +286,8 @@ fn dropped_error_reports_writes_to_a_parameter_one_caller_fills_with_a_file() {
     );
 }
 
-/// A deferred call is a `foreign` statement whose call list does not show its arguments: the
-/// file it passes is unknown, so the parameter is not proven to hold a writer that cannot fail.
+/// A `defer` statement holds its call, arguments included: the deferred caller passes a file,
+/// which can fail, so the parameter is not proven to hold a writer that cannot fail.
 #[test]
 fn dropped_error_reports_writes_to_a_parameter_a_deferred_caller_fills_with_a_file() {
     let found = findings("dropped-error", "deferred");
@@ -551,4 +551,38 @@ fn lock_without_unlock_finds_a_lock_held_at_a_raise_and_at_a_call_that_raises() 
     );
     assert!(notes[1].contains("check"), "{}", notes[1]);
     assert!(notes[1].contains("s.go:12"), "{}", notes[1]);
+}
+
+// ---- adversary pass on story:cir1-defer-receiver-root ----
+
+/// Before the story the Go reader kept every `defer` as a `foreign` statement whose call list held
+/// the calls of a deferred function literal, so `defer func() { c.mu.Unlock() }()` released the
+/// lock. The story reads the defer as a `defer` statement, and the check walks its expression with
+/// function literals skipped: the unlock the literal makes at every return is not seen.
+#[test]
+fn adv_defer_lock_without_unlock_sees_an_unlock_in_a_deferred_literal() {
+    let found = run(
+        "lock-without-unlock",
+        &[read("adv-defer", "lock")],
+        &Options::default(),
+    )
+    .unwrap()
+    .findings;
+    assert!(found.is_empty(), "{found:#?}");
+}
+
+/// The same shape for `conn-leak`: before the story a `foreign` defer cleared what was open;
+/// now the `defer` statement is walked as an expression whose function literal is skipped, so
+/// `defer func() { _ = conn.Close() }()` does not close the connection and the error return
+/// after it is reported, where `defer conn.Close()` (the `miss` fixture's `Ping`) is not.
+#[test]
+fn adv_defer_conn_leak_sees_a_close_in_a_deferred_literal() {
+    let found = run(
+        "conn-leak",
+        &[read("adv-defer", "conn")],
+        &Options::default(),
+    )
+    .unwrap()
+    .findings;
+    assert!(found.is_empty(), "{found:#?}");
 }

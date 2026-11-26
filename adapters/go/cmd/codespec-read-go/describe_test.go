@@ -38,9 +38,9 @@ func loadCase(t *testing.T, name string) *Module {
 	return m
 }
 
-// A Go construct outside cir/1 (here `defer`) is kept verbatim as `stmt.foreign` with a refusal at
-// its line, and the reader claims `stmt.foreign` on that evidence.
-func TestADeferIsKeptForeignVerbatimAndTheReaderClaimsStmtForeign(t *testing.T) {
+// A Go construct outside cir/1 (here a goroutine) is kept verbatim as `stmt.foreign` with a
+// refusal at its line, and the reader claims `stmt.foreign` on that evidence.
+func TestAGoroutineIsKeptForeignVerbatimAndTheReaderClaimsStmtForeign(t *testing.T) {
 	m := loadCase(t, "stmt-foreign")
 	var found *Stmt
 	for _, f := range m.Funcs {
@@ -53,8 +53,8 @@ func TestADeferIsKeptForeignVerbatimAndTheReaderClaimsStmtForeign(t *testing.T) 
 	if found == nil {
 		t.Fatal("stmt-foreign: no foreign statement read")
 	}
-	if found.Src != "defer done()" || found.Lang != "go" {
-		t.Fatalf("foreign statement is not the verbatim defer: lang %q src %q", found.Lang, found.Src)
+	if found.Src != "go done()" || found.Lang != "go" {
+		t.Fatalf("foreign statement is not the verbatim goroutine: lang %q src %q", found.Lang, found.Src)
 	}
 	if len(m.Refusals) == 0 {
 		t.Fatal("stmt-foreign: a foreign statement without a refusal")

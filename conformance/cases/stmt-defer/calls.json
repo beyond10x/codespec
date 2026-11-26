@@ -1,0 +1,17 @@
+{
+  "format": "codespec-calls/1",
+  "calls": [
+    {
+      "func": "Count",
+      "args": [
+        "3"
+      ]
+    },
+    {
+      "func": "Count",
+      "args": [
+        "-1"
+      ]
+    }
+  ]
+}
