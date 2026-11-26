@@ -20,7 +20,7 @@ scope:
   path: docs/static-analysis.md
 - confidence: inferred
   path: summaries/go-std.effects.json
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 4}
@@ -124,7 +124,7 @@ story's first step reads off a real run; the consumer's report says it does.
 
 - A failing test first, in the integration-test binary of `crates/effects` (`tests/effects.rs`),
   over a checked-in document of the reproducer (read once, not per test): with
-  `--summaries summaries/go-std.effects.json`, `Run` has the effect `time` and an empty `unknown`;
+  `--summaries summaries/go-std.effects.json`, `Run` has the effect `time` and no `extern without summary` (its one `unknown`, for `defer cancel()`, moves to story:call-value-extern-func-type);
   `slog.String` adds nothing, `context.WithTimeout` and `time.Now` add `time`.
 - Near misses: `slog.Logger.Info` adds `stdout`; `log.Fatal` adds `stdout` and `proc`;
   `context.Background` and `errors.New` add nothing and no unknown; `http.Get` adds `net`;
@@ -160,3 +160,9 @@ story's first step reads off a real run; the consumer's report says it does.
   summarise around it.
 - Third-party modules (`story:go-library-effect-summaries`), `database/sql` and `os/exec`
   (a story of their own, for the effects `db` and `proc` by argument), and cgo.
+
+## Amended in the adversary round, 2026-11-26
+
+- "An empty `unknown`" for `Run` cannot be met by summary entries: `defer cancel()` is a `call_value` of a local of the extern type `context.CancelFunc`, which `crates/effects` reports as `function value with no candidate in the set: context.CancelFunc` and which no entry can name. That clause moves to story:call-value-extern-func-type.
+- A named function passed to a summarised extern (`once.Do(initX)`, `sort.Slice(x, less)`) counts as a call candidate of the caller, so its effects and unknowns are not lost.
+- `log` and `log/slog` log calls add `time`; `time.Time.Format`, `time.Date` and `time.Parse` add `env` and `fs.read` (the Local zone); the default-client `net/http` calls add `env` (the proxy environment).
