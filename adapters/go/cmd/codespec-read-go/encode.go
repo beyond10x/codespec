@@ -359,6 +359,8 @@ func (e *enc) stmt(s Stmt) node {
 		n["results"] = e.exprs(s.Results)
 	case "send":
 		n["chan"], n["x"] = e.expr(*s.Chan), e.expr(*s.X)
+	case "defer":
+		n["call"] = e.expr(*s.Call)
 	case "foreign":
 		n["lang"], n["src"], n["reason"] = s.Lang, s.Src, s.Reason
 		n["calls"] = e.callRefs(s.Calls)
@@ -469,11 +471,13 @@ func (e *enc) callRef(c CallRef) node {
 	case "method":
 		opt("path", c.Path)
 		n["recv"], n["name"] = c.Recv, c.Name
+		opt("recv_var", c.RecvVar)
 	case "iface":
 		n["iface"], n["name"] = c.Iface, c.Name
 		n["methods"] = e.list(len(c.Methods), func(i int) any {
 			return node{"name": c.Methods[i].Name, "sig": c.Methods[i].Sig}
 		})
+		opt("recv_var", c.RecvVar)
 	case "value":
 		n["sig"] = c.Sig
 	case "ref":

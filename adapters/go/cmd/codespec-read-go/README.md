@@ -11,7 +11,7 @@ codespec-read-go --describe
 ```
 
 `--describe` prints the manifest (`describe.go`). The reader claims every feature whose
-conformance kit case it reads, `stmt.foreign` among them (a `defer` kept verbatim). Facts are
+conformance kit case it reads, `stmt.foreign` among them (a goroutine kept verbatim). Facts are
 computed by `codespec pass` and never claimed by a reader.
 
 ## Routes

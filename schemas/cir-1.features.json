@@ -488,6 +488,11 @@
       "description": "the `decr` statement"
     },
     {
+      "id": "stmt.defer",
+      "family": "statement",
+      "description": "`defer call`: the call is made when the function returns. Its function value, receiver and arguments are evaluated here; the call runs at each `return` and at the end of the body, after the results are taken, the calls a function deferred last deferred first. `call` is a `call`, `method`, `extern`, `extern_method`, `call_value` or `iface_call`."
+    },
+    {
       "id": "stmt.expr",
       "family": "statement",
       "description": "the `expr` statement"

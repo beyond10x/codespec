@@ -144,6 +144,7 @@ pub fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
@@ -238,6 +239,29 @@ fn body_calls<'a>(m: &Module, body: &'a [Stmt], in_lambda: bool, out: &mut Vec<C
         }
         stmt_exprs(s, &mut |e| expr_calls(m, e, pos, in_lambda, out));
     });
+}
+
+/// The body of the function literal a `defer` statement calls (`defer func() { … }()`): its
+/// statements run when the function returns, so a check that asks what holds at a return takes
+/// them as made at the `defer`.
+pub fn deferred_literal(s: &Stmt) -> Option<&[Stmt]> {
+    let Stmt::Defer {
+        call: Expr::CallValue { f, .. },
+        ..
+    } = s
+    else {
+        return None;
+    };
+    match &**f {
+        Expr::Lambda { body, .. } => Some(body),
+        _ => None,
+    }
+}
+
+/// Every call of a function literal's body, nested blocks and literals included, each marked as
+/// inside a literal.
+pub fn literal_calls<'a>(m: &Module, body: &'a [Stmt], out: &mut Vec<Call<'a>>) {
+    body_calls(m, body, true, out);
 }
 
 /// The calls of a call list, a function literal's included; `new` entries are not calls.

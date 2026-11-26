@@ -94,7 +94,7 @@ $ codespec validate --canonical work/stock.read.cir.json
 work/stock.read.cir.json: cir/1 stock, 3 types, 4 funcs, 0 refusals
 ```
 
-No refusals: everything in the package has a `cir/1` node. A package with a goroutine, `defer` or
+No refusals: everything in the package has a `cir/1` node. A package with a goroutine, a `select` or
 another construct `cir/1` cannot express would list it here
 ([Refusals](/docs/concepts/pipeline#refusals)).
 

@@ -6,7 +6,8 @@ use codespec_model::walk::{children, stmt_exprs};
 use codespec_model::{Expr, IntWidth, Module, Stmt, Type, TypeDecl};
 
 use crate::set::{
-    Call, Fun, Kind, Set, all_stmts, at, expr_call, label, line, ref_calls, stmt_pos,
+    Call, Fun, Kind, Set, all_stmts, at, deferred_literal, expr_call, label, line, literal_calls,
+    ref_calls, stmt_pos,
 };
 use crate::{Evidence, Finding, Options};
 
@@ -1185,7 +1186,9 @@ impl<'a> Locks<'_, 'a> {
     }
 
     /// The calls of one statement, its nested blocks and function literals not included; a
-    /// `foreign` statement's whole call list.
+    /// `foreign` statement's whole call list; and the calls of the literal a `defer` statement
+    /// calls, which run at every return after it: an unlock there releases, a lock there is not
+    /// taken by this function, as in any literal.
     fn stmt(&mut self, s: &'a Stmt, st: &mut State<'a>) {
         let mut calls = Vec::new();
         match s {
@@ -1202,6 +1205,9 @@ impl<'a> Locks<'_, 'a> {
                     children(e, &mut |c| each(m, c, pos, out));
                 }
                 stmt_exprs(s, &mut |e| each(self.m, e, pos, &mut calls));
+                if let Some(body) = deferred_literal(s) {
+                    literal_calls(self.m, body, &mut calls);
+                }
             }
         }
         for c in &calls {

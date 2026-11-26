@@ -4,7 +4,7 @@ import "strings"
 
 // The reader's claim: the features it was seen to read, outside a `foreign` statement, from the
 // Go source of their conformance cases, plus `foreign`, which the stmt-foreign case reads to (a
-// `defer` kept verbatim). No fact: facts are computed by `codespec pass`.
+// goroutine kept verbatim). No fact: facts are computed by `codespec pass`.
 //
 // claimNot is every feature whose kit case this reader does not read to it, each with its reason
 // (README.md § Features left unclaimed):

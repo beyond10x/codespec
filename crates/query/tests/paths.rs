@@ -303,14 +303,45 @@ fn a_property_over_a_call_path_reports_the_one_entry_whose_callee_chain_breaks_t
     assert_eq!(out, expected("properties-layers.txt"));
 }
 
+/// § 8: `defer call{…}` matches the call a `defer` statement holds, at the statement, and a
+/// `call{…}` event does not: `Early` with its Unlock deferred right after the Lock fails the
+/// fixture's property, which has no `defer` transition, and passes once it has one.
+#[test]
+fn a_deferred_unlock_releases_through_a_defer_event_and_through_no_call_event() {
+    let deferred = || {
+        edited("properties/locks.cir.json", |funcs| {
+            let f = funcs.iter_mut().find(|f| f["name"] == "Early").unwrap();
+            let unlock = f["body"][2]["x"].clone();
+            let body = f["body"].as_array_mut().unwrap();
+            body.pop();
+            body.insert(
+                1,
+                serde_json::json!({"k": "defer", "call": unlock, "pos": "locks.go:13"}),
+            );
+        })
+    };
+    let plain = std::fs::read_to_string(fixture("properties/lock.cq")).unwrap();
+    let out = answer(&plain, &[deferred()]);
+    assert!(out.contains("example.com/locks.Early\t"), "{out}");
+    let with_defer = plain.replace(
+        "  held  -> error: exit",
+        "  held  -> start: defer call{callee: ~\"^sync\\.(RW)?Mutex\\.(R)?Unlock$\", recv: m}\n  held  -> error: exit",
+    );
+    assert_ne!(with_defer, plain);
+    let out = answer(&with_defer, &[deferred()]);
+    assert!(!out.contains("example.com/locks.Early\t"), "{out}");
+    assert!(
+        parse(&with_defer).unwrap().properties[0]
+            .to_string()
+            .contains("held -> start: defer call{"),
+        "--explain prints the defer event"
+    );
+}
+
 #[test]
 fn a_property_names_what_it_cannot_run() {
     let locks = [module("properties/locks.cir.json")];
     for (src, want) in [
-        (
-            "property p(scope: body) {\n  start -> error: defer call{callee: \"x\"}\n}\n?- p(F, A, M).",
-            "§ 8",
-        ),
         (
             "property p(scope: calls) {\n  start -> error: exit\n}\n?- p(F, A, M).",
             "exit",

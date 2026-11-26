@@ -102,6 +102,23 @@ struct Frame<'m> {
     scopes: Vec<Vec<(&'m str, HeapId)>>,
     tbind: Vec<(String, Type)>,
     results: &'m [Type],
+    /// The calls a `defer` of this function kept, in the order deferred, each with its node.
+    deferred: Vec<(Pending<'m>, Node<'m>)>,
+}
+
+/// A call with its function, receiver and arguments evaluated, not made yet
+/// ([`Interp::prepare`]).
+enum Pending<'m> {
+    Func(
+        &'m Func,
+        Option<Value<'m>>,
+        Vec<Value<'m>>,
+        Vec<(String, Type)>,
+    ),
+    Builtin(String, Option<Place>, Vec<Value<'m>>),
+    Closure(Rc<Closure<'m>>, Vec<Value<'m>>),
+    /// A call whose value is known when it is prepared: `Error` of an error value.
+    Done(Value<'m>),
 }
 
 pub(crate) struct Interp<'m> {
@@ -840,10 +857,12 @@ impl<'m> Interp<'m> {
                 scopes: vec![scope],
                 tbind,
                 results: &f.results,
+                deferred: Vec::new(),
             },
             node,
         )?;
         let flow = self.exec_stmts(&f.body)?;
+        self.run_deferred()?;
         self.frames.pop();
         Ok(match flow {
             Flow::Return(vs) => vs,
@@ -888,10 +907,12 @@ impl<'m> Interp<'m> {
                         scopes: vec![captures.clone(), scope],
                         tbind: tbind.clone(),
                         results,
+                        deferred: Vec::new(),
                     },
                     Some(node),
                 )?;
                 let flow = self.exec_stmts(body)?;
+                self.run_deferred()?;
                 self.frames.pop();
                 Ok(match flow {
                     Flow::Return(vs) => vs,
@@ -1077,7 +1098,8 @@ impl<'m> Interp<'m> {
         }
     }
 
-    /// Calls the method `name` of the dynamic type `t` of the value `v`.
+    /// The call of the method `name` of the dynamic type `t` of the value `v`, its receiver and
+    /// arguments evaluated, not made yet.
     fn dispatch(
         &mut self,
         t: &Type,
@@ -1085,7 +1107,7 @@ impl<'m> Interp<'m> {
         name: &str,
         args: &'m [Expr],
         node: Node<'m>,
-    ) -> R<'m, Value<'m>> {
+    ) -> R<'m, Pending<'m>> {
         let base = match t {
             Type::Ptr { elem } => elem.as_ref(),
             t => t,
@@ -1104,8 +1126,7 @@ impl<'m> Interp<'m> {
                 };
                 let tb = self.recv_binds(f, t);
                 let argv = self.func_args(f, &tb, args, node)?;
-                let vs = self.call_func(f, Some(recv), argv, tb, Some(node))?;
-                Ok(Self::result(vs))
+                Ok(Pending::Func(f, Some(recv), argv, tb))
             }
             Type::Extern { path, name: tn, .. } => {
                 let key = format!("{path}.{tn}.{name}");
@@ -1117,17 +1138,161 @@ impl<'m> Interp<'m> {
                     .iter()
                     .map(|a| self.eval(a))
                     .collect::<R<'m, Vec<_>>>()?;
-                self.builtin(&key, Some(place), argv, node)
+                Ok(Pending::Builtin(key, Some(place), argv))
             }
             Type::Error if name == "Error" => {
                 let msg = self.error_message(&v, node)?;
-                Ok(Value::str(&msg))
+                Ok(Pending::Done(Value::str(&msg)))
             }
             other => Err(self.unsupported(
                 node,
                 format!("a call of {name} on a value of type {}", type_name(other)),
             )),
         }
+    }
+
+    /// The call `e` (a `call`, `method`, `extern`, `extern_method`, `call_value` or
+    /// `iface_call`) with its function, receiver and arguments evaluated in Go's order, not made
+    /// yet: [`Self::invoke`] makes it, at once for an expression, when the function returns for
+    /// a `defer`.
+    fn prepare(&mut self, e: &'m Expr, node: Node<'m>) -> R<'m, Pending<'m>> {
+        match e {
+            Expr::Call {
+                name, targs, args, ..
+            } => {
+                let f = self.func(name, node)?;
+                let tb: Vec<(String, Type)> = f
+                    .tparams
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .zip(targs.iter().map(|t| self.subst(t)))
+                    .collect();
+                let argv = self.func_args(f, &tb, args, node)?;
+                Ok(Pending::Func(f, None, argv, tb))
+            }
+            Expr::Method { x, name, args, .. } => {
+                let xt = self.subst(x.t());
+                let tn = receiver_type_name(&xt).to_string();
+                let f = self.func(&format!("{tn}.{name}"), node)?;
+                let recv = self.recv_for(f, x)?;
+                let tb = self.recv_binds(f, &xt);
+                let argv = self.func_args(f, &tb, args, node)?;
+                Ok(Pending::Func(f, Some(recv), argv, tb))
+            }
+            Expr::Extern {
+                path, name, args, ..
+            } => {
+                let key = format!("{path}.{name}");
+                let (slots, variadic) = match self.m.extern_decl(path, name) {
+                    Some(d) => (d.params.clone(), d.variadic),
+                    None => (self.own_types(args), false),
+                };
+                let argv = self.eval_into(args, &slots, variadic, node)?;
+                Ok(Pending::Builtin(key, None, argv))
+            }
+            Expr::ExternMethod {
+                path,
+                type_name,
+                name,
+                recv,
+                args,
+                ..
+            } => {
+                let key = format!("{path}.{type_name}.{name}");
+                let place = if self.is_ptr(recv.t()) {
+                    match self.eval(recv)? {
+                        Value::Ptr(p) => p,
+                        _ => {
+                            return Err(self
+                                .panic(node, "invalid memory address or nil pointer dereference"));
+                        }
+                    }
+                } else {
+                    match self.addr(recv)? {
+                        Value::Ptr(p) => p,
+                        _ => unreachable!("addr gives a pointer"),
+                    }
+                };
+                let (slots, variadic) = match self.m.extern_method_decl(path, type_name, name) {
+                    Some(d) => (d.params.clone(), d.variadic),
+                    None => (self.own_types(args), false),
+                };
+                let argv = self.eval_into(args, &slots, variadic, node)?;
+                Ok(Pending::Builtin(key, Some(place), argv))
+            }
+            Expr::CallValue { f, args, .. } => {
+                let fv = self.eval(f)?;
+                let Value::Func(c) = fv else {
+                    return Err(
+                        self.panic(node, "invalid memory address or nil pointer dereference")
+                    );
+                };
+                let (slots, variadic) = match c.as_ref() {
+                    Closure::Func(f) | Closure::Bound(f, _) => Self::param_slots(&f.params, &[]),
+                    Closure::Lambda { params, tbind, .. } => Self::param_slots(params, tbind),
+                };
+                let argv = self.eval_into(args, &slots, variadic, node)?;
+                Ok(Pending::Closure(c, argv))
+            }
+            Expr::IfaceCall {
+                recv, name, args, ..
+            } => {
+                let rv = self.eval(recv)?;
+                let (t, v) = match rv {
+                    Value::Iface(t, v) => ((*t).clone(), *v),
+                    Value::Struct(n, fs) => (
+                        Type::Named {
+                            name: n.to_string(),
+                            targs: Vec::new(),
+                        },
+                        Value::Struct(n, fs),
+                    ),
+                    Value::Error(ev) => (Type::Error, Value::Error(ev)),
+                    Value::Nil => {
+                        return Err(
+                            self.panic(node, "invalid memory address or nil pointer dereference")
+                        );
+                    }
+                    other => (self.subst(recv.t()), other),
+                };
+                self.dispatch(&t, v, name, args, node)
+            }
+            _ => Err(self.unsupported(node, "a call of an expression that is no call")),
+        }
+    }
+
+    /// Makes the call `p` [`Self::prepare`] gave for `node`.
+    fn invoke(&mut self, p: Pending<'m>, node: Node<'m>) -> R<'m, Value<'m>> {
+        match p {
+            Pending::Func(f, recv, argv, tb) => {
+                let vs = self.call_func(f, recv, argv, tb, Some(node))?;
+                Ok(Self::result(vs))
+            }
+            Pending::Builtin(key, place, argv) => self.builtin(&key, place, argv, node),
+            Pending::Closure(c, argv) => {
+                let vs = self.call_closure(&c, argv, node)?;
+                Ok(Self::result(vs))
+            }
+            Pending::Done(v) => Ok(v),
+        }
+    }
+
+    /// Makes the calls the running function deferred, the last deferred first, each at the
+    /// node of its call; their results are dropped.
+    fn run_deferred(&mut self) -> R<'m, ()> {
+        while let Some((p, node)) = self.frames.last_mut().and_then(|f| f.deferred.pop()) {
+            match self.invoke(p, node)? {
+                Value::Tuple(vs) => {
+                    for v in &vs {
+                        self.traced("dropped", v, node);
+                    }
+                }
+                v => {
+                    self.traced("dropped", &v, node);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn builtin(
@@ -1425,6 +1590,17 @@ impl<'m> Interp<'m> {
                     v => {
                         self.traced("dropped", &v, node);
                     }
+                }
+            }
+            Stmt::Defer { call, .. } => {
+                // The function value, receiver and arguments are taken now, the call made when
+                // the function returns.
+                self.nested(Node::Expr(call))?;
+                let p = self.prepare(call, Node::Expr(call));
+                self.nest -= 1;
+                let p = p?;
+                if let Some(f) = self.frames.last_mut() {
+                    f.deferred.push((p, Node::Expr(call)));
                 }
             }
             Stmt::Send { chan, x, .. } => {
@@ -2089,70 +2265,14 @@ impl<'m> Interp<'m> {
                     }
                 }
             }
-            Expr::Call {
-                name, targs, args, ..
-            } => {
-                let f = self.func(name, node)?;
-                let tb: Vec<(String, Type)> = f
-                    .tparams
-                    .iter()
-                    .map(|p| p.name.clone())
-                    .zip(targs.iter().map(|t| self.subst(t)))
-                    .collect();
-                let argv = self.func_args(f, &tb, args, node)?;
-                let vs = self.call_func(f, None, argv, tb, Some(node))?;
-                Ok(Self::result(vs))
-            }
-            Expr::Method { x, name, args, .. } => {
-                let xt = self.subst(x.t());
-                let tn = receiver_type_name(&xt).to_string();
-                let f = self.func(&format!("{tn}.{name}"), node)?;
-                let recv = self.recv_for(f, x)?;
-                let tb = self.recv_binds(f, &xt);
-                let argv = self.func_args(f, &tb, args, node)?;
-                let vs = self.call_func(f, Some(recv), argv, tb, Some(node))?;
-                Ok(Self::result(vs))
-            }
-            Expr::Extern {
-                path, name, args, ..
-            } => {
-                let key = format!("{path}.{name}");
-                let (slots, variadic) = match self.m.extern_decl(path, name) {
-                    Some(d) => (d.params.clone(), d.variadic),
-                    None => (self.own_types(args), false),
-                };
-                let argv = self.eval_into(args, &slots, variadic, node)?;
-                self.builtin(&key, None, argv, node)
-            }
-            Expr::ExternMethod {
-                path,
-                type_name,
-                name,
-                recv,
-                args,
-                ..
-            } => {
-                let key = format!("{path}.{type_name}.{name}");
-                let place = if self.is_ptr(recv.t()) {
-                    match self.eval(recv)? {
-                        Value::Ptr(p) => p,
-                        _ => {
-                            return Err(self
-                                .panic(node, "invalid memory address or nil pointer dereference"));
-                        }
-                    }
-                } else {
-                    match self.addr(recv)? {
-                        Value::Ptr(p) => p,
-                        _ => unreachable!("addr gives a pointer"),
-                    }
-                };
-                let (slots, variadic) = match self.m.extern_method_decl(path, type_name, name) {
-                    Some(d) => (d.params.clone(), d.variadic),
-                    None => (self.own_types(args), false),
-                };
-                let argv = self.eval_into(args, &slots, variadic, node)?;
-                self.builtin(&key, Some(place), argv, node)
+            Expr::Call { .. }
+            | Expr::Method { .. }
+            | Expr::Extern { .. }
+            | Expr::ExternMethod { .. }
+            | Expr::CallValue { .. }
+            | Expr::IfaceCall { .. } => {
+                let p = self.prepare(e, node)?;
+                self.invoke(p, node)
             }
             Expr::Binop { op, x, y, t } => match op.as_str() {
                 "&&" => Ok(Value::Bool(self.cond(x)? && self.cond(y)?)),
@@ -2298,45 +2418,7 @@ impl<'m> Interp<'m> {
                     expr: e,
                 })))
             }
-            Expr::CallValue { f, args, .. } => {
-                let fv = self.eval(f)?;
-                let Value::Func(c) = fv else {
-                    return Err(
-                        self.panic(node, "invalid memory address or nil pointer dereference")
-                    );
-                };
-                let (slots, variadic) = match c.as_ref() {
-                    Closure::Func(f) | Closure::Bound(f, _) => Self::param_slots(&f.params, &[]),
-                    Closure::Lambda { params, tbind, .. } => Self::param_slots(params, tbind),
-                };
-                let argv = self.eval_into(args, &slots, variadic, node)?;
-                let vs = self.call_closure(&c, argv, node)?;
-                Ok(Self::result(vs))
-            }
             Expr::Spread { x, .. } => self.eval(x),
-            Expr::IfaceCall {
-                recv, name, args, ..
-            } => {
-                let rv = self.eval(recv)?;
-                let (t, v) = match rv {
-                    Value::Iface(t, v) => ((*t).clone(), *v),
-                    Value::Struct(n, fs) => (
-                        Type::Named {
-                            name: n.to_string(),
-                            targs: Vec::new(),
-                        },
-                        Value::Struct(n, fs),
-                    ),
-                    Value::Error(ev) => (Type::Error, Value::Error(ev)),
-                    Value::Nil => {
-                        return Err(
-                            self.panic(node, "invalid memory address or nil pointer dereference")
-                        );
-                    }
-                    other => (self.subst(recv.t()), other),
-                };
-                self.dispatch(&t, v, name, args, node)
-            }
             Expr::ToIface { x, .. } => {
                 let v = self.eval(x)?;
                 if self.is_iface(x.t()) {
@@ -3103,6 +3185,7 @@ impl<'m> Interp<'m> {
                 scopes: vec![Vec::new()],
                 tbind: Vec::new(),
                 results: &[],
+                deferred: Vec::new(),
             });
             let value = if let Some(f) = &v.foreign {
                 return Err(Halt {
@@ -3204,6 +3287,7 @@ impl<'m> Interp<'m> {
             scopes: vec![Vec::new()],
             tbind: Vec::new(),
             results: &[],
+            deferred: Vec::new(),
         });
         let line = self.result_line(f, &vs).map_err(|mut h| {
             h.at = At::Func(f);

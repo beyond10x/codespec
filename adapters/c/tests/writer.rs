@@ -127,6 +127,29 @@ fn a_function_holding_raise_exits_1_naming_it_at_the_raise() {
     assert_builds(&out);
 }
 
+/// The kit case stmt-defer: `Count` holds a `defer`, which the writer has no mapping for: exit 1,
+/// the function named on stderr and in `refusals.json` at the defer's position.
+#[test]
+fn a_function_holding_defer_exits_1_naming_it_at_the_defer() {
+    let out = scratch("stmt-defer");
+    let o = write(
+        &root().join("conformance/cases/stmt-defer/case.cir.json"),
+        &out,
+    );
+    assert_eq!(o.status.code(), Some(1));
+    let listed = refusals(&out);
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!(listed[0]["name"], "Count");
+    assert_eq!(listed[0]["pos"], "case.go:9");
+    assert!(
+        listed[0]["reason"].as_str().unwrap().starts_with("defer"),
+        "{listed:?}"
+    );
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("Count") && err.contains("case.go:9"), "{err}");
+    assert_builds(&out);
+}
+
 /// `doc` written into a directory below a fresh scratch directory exits 1 with a message holding
 /// `want`, and no file is left anywhere in the scratch directory.
 fn refused_naming(doc: &str, name: &str, want: &str) {

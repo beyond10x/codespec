@@ -96,7 +96,7 @@ fn a_run_that_executes_a_foreign_statement_stops_naming_it() {
     assert_eq!(stop.kind, StopKind::Foreign);
     assert_eq!(stop.node, "example.com/eval/foreign.Count#1.then.0");
     assert_eq!(stop.pos, "foreign.go:9");
-    assert!(stop.reason.contains("defer"), "{}", stop.reason);
+    assert!(stop.reason.contains("goroutine"), "{}", stop.reason);
     assert_eq!(
         stop.to_string(),
         format!(

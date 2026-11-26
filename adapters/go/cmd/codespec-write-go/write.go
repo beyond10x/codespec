@@ -791,7 +791,7 @@ func collect(body []Stmt, used map[string]bool, foreign, clauses bool) {
 				used[n] = true
 			}
 		}
-		for _, e := range []*Expr{s.X, s.Cond, s.Over, s.Tag, s.Chan, s.Map, s.Index} {
+		for _, e := range []*Expr{s.X, s.Call, s.Cond, s.Over, s.Tag, s.Chan, s.Map, s.Index} {
 			ex(e)
 		}
 		for _, l := range [][]Expr{s.Lhs, s.Rhs, s.Results} {
@@ -982,6 +982,13 @@ func (w *writer) stmt(s *Stmt) []ast.Stmt {
 		return []ast.Stmt{&ast.ExprStmt{X: w.expr(*s.X)}}
 	case "send":
 		return []ast.Stmt{&ast.SendStmt{Chan: w.expr(*s.Chan), Value: w.expr(*s.X)}}
+	case "defer":
+		call, ok := ast.Unparen(w.expr(*s.Call)).(*ast.CallExpr)
+		if !ok {
+			w.refuse("function %s: defer of a %s the writer does not write as a Go call", printable(w.fn.key()), s.Call.K)
+			return nil
+		}
+		return []ast.Stmt{&ast.DeferStmt{Call: call}}
 	case "lookup_else":
 		pos := s.Pos
 		ok := w.fresh("ok")

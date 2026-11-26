@@ -108,10 +108,10 @@ differs:
 ```shell-session
 $ export CODESPEC_ADAPTERS=target/adapters
 $ target/debug/codespec conform --lang go --role writer --out work/go-writer.json
-writer go 0.14.0: conforms; 126 claimed, 126 pass, 0 fail, 2 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
+writer go 0.14.0: conforms; 127 claimed, 127 pass, 0 fail, 2 refused unclaimed, 0 pass unclaimed, 0 untested, 0 boundary failing
 work/go-writer.json: written
 $ jq -c .summary work/go-writer.json
-{"claimed":126,"pass":126,"fail":0,"refused_unclaimed":2,"pass_unclaimed":0,"untested":0,"boundary_fail":0}
+{"claimed":127,"pass":127,"fail":0,"refused_unclaimed":2,"pass_unclaimed":0,"untested":0,"boundary_fail":0}
 ```
 <!-- /conform-sample -->
 

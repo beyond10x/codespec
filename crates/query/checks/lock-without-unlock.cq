@@ -1,0 +1,60 @@
+// lock-without-unlock: in a read body, a lock call with a path to a return or the end of the
+// body that passes no unlock of the same value, by hand or deferred (docs/query-language.md
+// § 5.3 and § 8). As codespec check: a function one of whose words is in holders holds the lock
+// for its caller and is not checked; an unlock with no lock taken before it releases the
+// caller's lock, and a lock after it takes the lock back for the caller; a call of a function of
+// the set that unlocks for its caller releases, and so does an unlock in a function literal a
+// `defer` calls; a lock taken under an `if` is not held in the other branch of a later `if` on
+// the same condition. Two conditions are the same when each reads one local, the same.
+
+names lock = ["sync.Mutex.Lock", "sync.RWMutex.Lock", "sync.RWMutex.RLock"].
+names unlock = ["sync.Mutex.Unlock", "sync.RWMutex.Unlock", "sync.RWMutex.RUnlock"].
+names holders = ["lock", "rlock", "acquire"].
+
+property lock_released(scope: body) {
+  start -> held:  call{callee: in @names.lock, recv: M} => m := M
+  held  -> start: call{callee: in @names.unlock, recv: m}
+  held  -> start: defer call{callee: in @names.unlock, recv: m}
+  held  -> error: exit
+  message "{start}"
+}
+
+lock_site(F, S) :- call{func: F, site: S, callee: in @names.lock}.
+
+// An unlock, or a call of a function that releases for its caller, that a path from the entry
+// reaches without passing a lock: it releases the caller's lock.
+release_site(F, S) :- call{func: F, site: S, callee: in @names.unlock}.
+release_site(F, S) :- release_call(F, S).
+release_call(F, S) :- call{func: F, site: S}, calls{site: S, target: G}, releaser(G).
+releases_first(F, S) :- release_site(F, S), entry(F, E),
+                        path(E -> S, avoid: N where lock_site(F, N)).
+releaser(G) :- releases_first(G, _).
+
+// A lock after such a release takes the caller's lock back.
+taken_back(L) :- lock_site(F, L), releases_first(F, U), path(U -> L).
+
+// A call of a function that releases for its caller, after the lock.
+released_by_call(L) :- lock_site(F, L), release_call(F, C), path(L -> C).
+
+// The literal a `defer` calls runs at every return after it: an unlock in it, after the lock,
+// releases the lock.
+released_by_literal(L) :- lock_site(F, L), stmt{id: D, func: F, kind: "defer"},
+                          expr{id: C, parent: D, slot: "call", kind: "call_value"},
+                          expr{id: X, parent: C, slot: "f", kind: "lambda"},
+                          call{func: F, site: U, callee: in @names.unlock},
+                          contains{outer: X, inner: U}, path(L -> C).
+
+// A lock under `if V`, and a later `if V` that unlocks: the lock is not held in its other branch.
+under(L, I, V) :- expr{id: L, stmt: S}, stmt{id: S, parent: I},
+                  stmt{id: I, kind: "if"}, expr{parent: I, slot: "cond", kind: "var", name: V}.
+same_condition(L) :- under(L, I, V), lock_site(F, L), stmt{id: J, func: F, kind: "if"}, J != I,
+                     expr{parent: J, slot: "cond", kind: "var", name: V},
+                     stmt{id: T, parent: J}, release_site(F, U), expr{id: U, stmt: T}.
+
+holder(F) :- func{id: F, name: N}, word(N, _, W), W in @names.holders.
+
+found(Pos, F) :- lock_released(F, _, L), call{site: L, pos: Pos}, !holder(F), !taken_back(L),
+                 !released_by_call(L), !same_condition(L),
+                 !released_by_literal(L).
+
+?- found(Pos, F).

@@ -486,7 +486,10 @@ fn stmt_names<'a>(body: &'a [Stmt], f: NameFn<'_, 'a>) {
                 type_names(t, f);
             }
             Stmt::Assign { lhs, rhs, .. } => lhs.iter().chain(rhs).for_each(|e| expr_names(e, f)),
-            Stmt::Incr { x, .. } | Stmt::Decr { x, .. } | Stmt::Expr { x, .. } => expr_names(x, f),
+            Stmt::Incr { x, .. }
+            | Stmt::Decr { x, .. }
+            | Stmt::Expr { x, .. }
+            | Stmt::Defer { call: x, .. } => expr_names(x, f),
             Stmt::If {
                 cond,
                 then,
@@ -698,6 +701,11 @@ pub enum CallRef {
         name: String,
         #[serde(default, skip_serializing_if = "String::is_empty")]
         by: String,
+        /// The local, parameter or receiver the call's receiver is rooted at, through fields,
+        /// indexes, `*` and `&` (`c` of `c.mu.Lock()`); empty when it is rooted elsewhere (a
+        /// module variable, a call's result) or the reader does not say.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        recv_var: String,
         pos: Pos,
     },
     /// A call of the method `name` through a value of the interface `iface` (its spelling, for
@@ -706,6 +714,9 @@ pub enum CallRef {
         iface: String,
         name: String,
         methods: Vec<MethodSig>,
+        /// The local the interface value is rooted at, as `Method`'s `recv_var`.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        recv_var: String,
         pos: Pos,
     },
     /// A call of a function value of the signature `sig`.
@@ -760,6 +771,49 @@ pub enum CallRef {
 
 /// The forms of [`CallRef::Named`] a document may hold.
 pub const NAMED_FORMS: &[&str] = &["method", "macro", "func"];
+
+/// The expression kinds [`Stmt::Defer`]'s `call` may be: the calls.
+pub const DEFERRABLE: &[&str] = &[
+    "call",
+    "method",
+    "extern",
+    "extern_method",
+    "call_value",
+    "iface_call",
+];
+
+/// An expression's kind, its `k` tag.
+pub fn expr_kind(e: &Expr) -> &'static str {
+    match e {
+        Expr::Lit { .. } => "lit",
+        Expr::Float { .. } => "float",
+        Expr::Nil { .. } => "nil",
+        Expr::Var { .. } => "var",
+        Expr::Const { .. } => "const",
+        Expr::Errvar { .. } => "errvar",
+        Expr::Global { .. } => "global",
+        Expr::Field { .. } => "field",
+        Expr::Index { .. } => "index",
+        Expr::Call { .. } => "call",
+        Expr::Method { .. } => "method",
+        Expr::Extern { .. } => "extern",
+        Expr::ExternMethod { .. } => "extern_method",
+        Expr::Binop { .. } => "binop",
+        Expr::Unop { .. } => "unop",
+        Expr::Struct { .. } => "struct",
+        Expr::Conv { .. } => "conv",
+        Expr::Make { .. } => "make",
+        Expr::Zero { .. } => "zero",
+        Expr::Intrinsic { .. } => "intrinsic",
+        Expr::ToError { .. } => "to_error",
+        Expr::FuncRef { .. } => "func_ref",
+        Expr::Lambda { .. } => "lambda",
+        Expr::CallValue { .. } => "call_value",
+        Expr::Spread { .. } => "spread",
+        Expr::IfaceCall { .. } => "iface_call",
+        Expr::ToIface { .. } => "to_iface",
+    }
+}
 
 impl CallRef {
     pub fn pos(&self) -> &Pos {
@@ -1302,6 +1356,14 @@ pub enum Stmt {
         x: Expr,
         pos: Pos,
     },
+    /// `defer call`: the call is made when the function returns. Its function value, receiver and
+    /// arguments are evaluated here; the call runs at each `return` and at the end of the body,
+    /// after the results are taken, the calls a function deferred last deferred first. `call` is
+    /// a `call`, `method`, `extern`, `extern_method`, `call_value` or `iface_call`.
+    Defer {
+        call: Expr,
+        pos: Pos,
+    },
     /// `chan <- x`.
     Send {
         chan: Expr,
@@ -1687,6 +1749,7 @@ impl Module {
         m.check_externs().map_err(ReadError::Invalid)?;
         m.check_vars().map_err(ReadError::Invalid)?;
         m.check_assigns().map_err(ReadError::Invalid)?;
+        m.check_defers().map_err(ReadError::Invalid)?;
         m.check_captures().map_err(ReadError::Invalid)?;
         m.check_opaque().map_err(ReadError::Invalid)?;
         m.check_named_calls().map_err(ReadError::Invalid)?;
@@ -2423,6 +2486,32 @@ impl Module {
         bad.map_or(Ok(()), Err)
     }
 
+    /// Every `defer`, in a function or a lambda, defers a call: one of [`DEFERRABLE`].
+    fn check_defers(&self) -> Result<(), String> {
+        let mut bad = None;
+        for func in &self.funcs {
+            let key = func.key();
+            let mut check = |s: &Stmt| {
+                if let Stmt::Defer { call, pos } = s
+                    && bad.is_none()
+                    && !DEFERRABLE.contains(&expr_kind(call))
+                {
+                    bad = Some(format!(
+                        "defer at {pos} in {key} defers a {}, not a call",
+                        expr_kind(call)
+                    ));
+                }
+            };
+            walk::walk_stmts(&func.body, &mut check);
+            walk::body_exprs(&func.body, &mut |e| {
+                if let Expr::Lambda { body, .. } = e {
+                    walk::walk_stmts(body, &mut check);
+                }
+            });
+        }
+        bad.map_or(Ok(()), Err)
+    }
+
     /// Every embedded field is a struct's, named after its type, and named by no other field of
     /// its struct.
     fn check_embedded(&self) -> Result<(), String> {
@@ -2833,12 +2922,21 @@ impl Module {
     }
 
     /// Every `named` call is of a form of [`NAMED_FORMS`], names something, and only a `macro`
-    /// one has a path.
+    /// one has a path; the receiver root (`recv_var`) of a `method` or `iface` call is a name.
     fn check_named_calls(&self) -> Result<(), String> {
         let mut err = None;
         self.each_call_ref(&mut |c| {
             if err.is_some() {
                 return;
+            }
+            if let CallRef::Method { recv_var, pos, .. } | CallRef::Iface { recv_var, pos, .. } =
+                c
+                && !recv_var.is_empty()
+                && !is_name(recv_var)
+            {
+                err = Some(format!(
+                    "the receiver root {recv_var:?} of the call at {pos} is not a name"
+                ));
             }
             if let CallRef::Named {
                 form,

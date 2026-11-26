@@ -153,6 +153,7 @@ fn expr_pos(s: &Stmt) -> Pos {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos.clone(),
@@ -724,12 +725,14 @@ impl<'a> Graph<'a> {
                 recv,
                 name,
                 by: _,
+                recv_var: _,
                 pos,
             } => self.method(holder, mi, path, recv, name, pos),
             CallRef::Iface {
                 iface,
                 name,
                 methods,
+                recv_var: _,
                 pos,
             } => {
                 let empty =

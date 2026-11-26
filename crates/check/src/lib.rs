@@ -83,15 +83,15 @@
 //!   call of a function of the set that lists `raises` (the path may leave there), or the end of
 //!   the function, that passes no matching `unlock` (the entry at the same index). Locks are
 //!   matched by kind (`sync.Mutex.Lock` with `sync.Mutex.Unlock`), not by receiver. An unlock in a
-//!   `foreign` statement (`defer`, a deferred function literal) releases there and on; so does a
-//!   call of a function of the set that unlocks for its caller (its calls, in line order, unlock
-//!   a kind with no lock of it taken before, itself or through such a callee). An unlock with no
-//!   lock of its kind held releases the caller's lock, and the next lock of the kind takes it
-//!   back for the caller. `if`, `switch` and loops fork the paths and join them; a loop body is
-//!   followed once; a lock taken in one branch of an `if` is not held in the other branch of a
-//!   later `if` on the same condition. An opaque function has no paths and is not checked. A
-//!   function one of whose words is in `holders` (`lockProfiles`, `acquireForkLock`) holds the
-//!   lock for its caller and is not checked.
+//!   `foreign` statement, a `defer` statement or the function literal a `defer` calls releases
+//!   there and on; so does a call of a function of the set that unlocks for its caller (its calls,
+//!   in line order, unlock a kind with no lock of it taken before, itself or through such a
+//!   callee). An unlock with no lock of its kind held releases the caller's lock, and the next
+//!   lock of the kind takes it back for the caller. `if`, `switch` and loops fork the paths and
+//!   join them; a loop body is followed once; a lock taken in one branch of an `if` is not held
+//!   in the other branch of a later `if` on the same condition. An opaque function has no paths
+//!   and is not checked. A function one of whose words is in `holders` (`lockProfiles`,
+//!   `acquireForkLock`) holds the lock for its caller and is not checked.
 //! - `timer-not-stopped`: in read bodies, a method of a type that stops (`stop`) a timer held in
 //!   a field of its receiver, itself or through a method of the type it calls, and arms none, while
 //!   another method of the type arms (`arm`) a timer into a field it does not stop: that timer
@@ -101,7 +101,8 @@
 //!   that neither `close`s it, returns it, nor hands it on (passes it to a call, stores it, or
 //!   captures it); a call that takes it and gives a resource wraps it, and the wrapper is followed
 //!   instead. In the branch of `if err != nil` on the error the opening call gave, it is nil. A
-//!   `foreign` statement may do anything with it, and ends the following.
+//!   `foreign` statement may do anything with it, and ends the following. What the function
+//!   literal a `defer` calls closes or hands on counts at the `defer`.
 //! - `accept-blocking`: a function whose calls (read or opaque) hold an `accept`, then a
 //!   `blocking` call at a later line, not inside a function literal, and no `deadline` call: one
 //!   peer that connects and sends nothing stops every later accept.

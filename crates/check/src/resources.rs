@@ -9,7 +9,9 @@ use codespec_model::{Expr, Module, Stmt, Type};
 
 use crate::Finding;
 use crate::checks::{Ctx, bare, ev, exprs_at, mentions, note, receiver, type_name};
-use crate::set::{Call, all_stmts, at, expr_call, label, line, ref_calls, stmt_pos};
+use crate::set::{
+    Call, all_stmts, at, deferred_literal, expr_call, label, line, ref_calls, stmt_pos,
+};
 
 /// The calls of one statement, its nested blocks and function literals not included; a
 /// `foreign` statement's whole call list.
@@ -374,6 +376,16 @@ impl<'a> Leaks<'_, 'a> {
         if let Stmt::Assign { lhs, .. } = s {
             // A store into a field or an element hands the value on.
             exprs.extend(lhs.iter().filter(|l| !matches!(l, Expr::Var { .. })));
+        }
+        if let Some(body) = deferred_literal(s) {
+            // The literal a `defer` calls runs at every return after it: what it closes or hands
+            // on is closed or handed on from here.
+            all_stmts(body, true, &mut |t, _| {
+                stmt_exprs(t, &mut |e| exprs.push(e));
+                if let Stmt::Assign { lhs, .. } = t {
+                    exprs.extend(lhs.iter().filter(|l| !matches!(l, Expr::Var { .. })));
+                }
+            });
         }
         st.retain(|o| {
             !exprs

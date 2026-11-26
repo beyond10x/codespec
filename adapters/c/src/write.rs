@@ -53,13 +53,13 @@
 //! String literals and error messages are written as escaped C string literals ([`c_str`]),
 //! integer literals as parsed numbers, doc comments with every `\` written as `/` and every `*/`,
 //! `/*` and `??` broken, so no line join, trigraph or nested comment can end the comment
-//! ([`comment`]). A `foreign` statement and a `raise` are refused, never written. A refusal printed to stderr or
+//! ([`comment`]). A `foreign` statement, a `raise` and a `defer` are refused, never written. A refusal printed to stderr or
 //! listed in `refusals.json` writes the document's text with its control and format characters
 //! escaped.
 //!
 //! # Refusals
 //!
-//! A function the writer cannot express (a `foreign` statement, a `raise`, a construct or type
+//! A function the writer cannot express (a `foreign` statement, a `raise`, a `defer`, a construct or type
 //! without a mapping, a call of a refused function) is left out and listed in `refusals.json` with its key,
 //! its position and the reason; so is a module-level variable whose initializer is not a literal.
 
@@ -2748,6 +2748,10 @@ impl<'w, 'm> Fx<'w, 'm> {
                 "raise: the C writer has no mapping for leaving a function by a raised value"
                     .into(),
             ),
+            Stmt::Defer { .. } => Err(
+                "defer: the C writer has no mapping for a call deferred to the return of its function"
+                    .into(),
+            ),
         }
     }
 
@@ -2941,6 +2945,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
