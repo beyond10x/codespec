@@ -14,7 +14,7 @@ import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
 
-VERSION :: #config(CODESPEC_VERSION, "0.13.0")
+VERSION :: #config(CODESPEC_VERSION, "0.14.0")
 FEATURES :: [?]string{
 	"type.int", "type.bool", "type.string",
 	"expr.lit", "expr.var", "expr.call", "expr.binop", "expr.unop",

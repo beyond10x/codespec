@@ -4,6 +4,8 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+## 0.14.0
+
 ### Added
 
 - `codespec query --max-tuples N` stops a run that holds more than N tuples (a fact a rule
@@ -18,6 +20,12 @@ Every change a user of `codespec` or of `cir/1` would notice.
   the crate doc of `b10x-codespec-effects`). A reason names a function literal
   `<holder>.lambda@<n>`, no longer `func literal at <file>:<line>`.
 - The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
+- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
+  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
+  `cfg(test)` was around it. `codespec measure`
+  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
+  JSON shows it as `total.left_out`. A document without the field is unchanged.
 
 ### Fixed
 
@@ -38,12 +46,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
   apart, and an atom whose variables are all bound runs once per smallest set of sites. Rows rest on fewer sites. On 40 one-file modules the three
   shapes held at most 7,001, 11,240 and 2,694,881 tuples before, and 720, 480 and 640 now; time
   not measured.
-- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
-  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
-  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
-  `cfg(test)` was around it. `codespec measure`
-  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
-  JSON shows it as `total.left_out`. A document without the field is unchanged.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.
