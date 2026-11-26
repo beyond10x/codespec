@@ -19,6 +19,23 @@ Every change a user of `codespec` or of `cir/1` would notice.
   take, which reads to a `foreign` statement with a refusal at it; the reader check's evaluator
   step runs the module to the case's `expected.txt` without reaching the statement.
 
+### Changed
+
+- `codespec diff` reports a reason a function is incomplete once, at the function whose own body
+  gives it. A function whose only difference is that a callee became incomplete or complete
+  (`calls <func> which is incomplete`, `<func>` a function of the report, or a function literal
+  whose every reason is inherited or its holder's too) gets no `unknown-*` delta; a function
+  whose own call of an incomplete callee is new or gone (its call-site id, or a candidate of its call through an
+  interface or a function value) keeps it. An `unknown-added` or `unknown-removed` delta gains
+  `callers` in json, every function incomplete through it in the revision that has the reason,
+  callers of callers too, through function literals too; text ends its line with `callers=<n>`.
+  `--unknowns summary` counts the deltas that remain: its class `calls <func> which is
+  incomplete` now counts only new or gone calls of incomplete callees and the reasons that name a
+  function literal whose own body gives a reason its holder does not have, variable initializers
+  or a module `--report` leaves out. `analyze_program` of `b10x-codespec-effects` gives, beside the report, the function
+  literals of the set with their reasons, and each entry's calls in memory (`FuncEffects::calls`,
+  not part of the document).
+
 ### Fixed
 
 - `codespec-read-c` keeps a `switch` with a `case` or `default` label below an arm's top level

@@ -281,7 +281,9 @@ fn a_change_that_only_moves_lines_yields_no_delta() {
 }
 
 /// Revision `rev` of the Go fixture pair `pair` read with `codespec read` into
-/// `<CARGO_TARGET_TMPDIR>/<test>/<rev>/`, a directory of the test's own; that directory.
+/// `<CARGO_TARGET_TMPDIR>/<test>/<rev>/`, a directory of the test's own; that directory. The
+/// reader runs in the revision, so its `go list` resolves a stub through the revision's
+/// `replace`; offline.
 fn read_revision(test: &str, pair: &Path, rev: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(test).join(rev);
     let _ = std::fs::remove_dir_all(&dir);
@@ -293,6 +295,11 @@ fn read_revision(test: &str, pair: &Path, rev: &str) -> PathBuf {
         .arg(dir.join("module.cir.json"))
         .arg("--adapters")
         .arg(go_adapters())
+        .current_dir(pair.join(rev))
+        .env("GOWORK", "off")
+        .env("GOPROXY", "off")
+        .env("GOTOOLCHAIN", "local")
+        .env("GOFLAGS", "-mod=mod")
         .output()
         .unwrap();
     assert!(read.status.success(), "{rev}: {}", text(&read));
@@ -353,6 +360,44 @@ fn diff_of_the_moved_lines_fixture_is_empty_and_an_empty_directory_exits_2() {
     assert_eq!(refused.status.code(), Some(2), "{}", text(&refused));
     let err = String::from_utf8_lossy(&refused.stderr);
     assert!(err.contains(empty.to_str().unwrap()), "{err}");
+}
+
+/// `codespec diff` over the reproducer of `crates/diff/tests/fixtures/inherited`: only `Lib`
+/// changes, to call an extern no summary names. One delta, at `Lib`, with its three callers:
+/// `callers=3` in text, the list in JSON; exit 1. `Lib` incomplete in both revisions with only
+/// lines moved exits 0 with no output.
+#[test]
+fn diff_reports_an_inherited_reason_once_at_the_callee_and_exits_1() {
+    let pair = root().join("crates/diff/tests/fixtures/inherited");
+    let a = read_revision("diff-inherited", &pair, "a");
+    let b = read_revision("diff-inherited", &pair, "b");
+    let moved = read_revision("diff-inherited", &pair, "b-moved");
+    let (a, b, moved) = (
+        a.to_str().unwrap(),
+        b.to_str().unwrap(),
+        moved.to_str().unwrap(),
+    );
+    let out = codespec(&["diff", a, b]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "unknown-added example.com/probe.Lib extern without summary: example.org/lib.Do \
+         callers=3\n"
+    );
+    let json = codespec(&["diff", a, b, "--format", "json"]);
+    assert_eq!(json.status.code(), Some(1), "{}", text(&json));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(
+        report["deltas"][0]["callers"],
+        serde_json::json!([
+            "example.com/probe.A",
+            "example.com/probe.B",
+            "example.com/probe.C"
+        ])
+    );
+    let same = codespec(&["diff", b, moved]);
+    assert_eq!(same.status.code(), Some(0), "{}", text(&same));
+    assert!(same.stdout.is_empty(), "{}", text(&same));
 }
 
 /// `--unknowns summary` over `crates/diff/tests/fixtures/unknown-classes`: every delta is an
@@ -427,12 +472,17 @@ fn adv_diff_help_states_how_each_printed_class_is_formed() {
         list.contains("unknown-added example.com/probe.Caller calls Raw which is incomplete\n"),
         "the fixture should make a `calls .. which is incomplete` reason:\n{list}"
     );
-    // The rule as `--help` states it, applied to each reason `list` prints.
+    // The rule as `--help` states it, applied to each reason `list` prints (before the
+    // `callers=<n>` a delta with callers ends with).
     let by_rule: std::collections::BTreeSet<String> = list
         .lines()
         .filter_map(|l| {
             let (kind, rest) = l.split_once(' ')?;
             let (_unit, reason) = rest.split_once(' ')?;
+            let reason = match reason.rsplit_once(" callers=") {
+                Some((r, n)) if n.parse::<usize>().is_ok() => r,
+                _ => reason,
+            };
             kind.starts_with("unknown-").then(|| {
                 reason
                     .split_once(": ")

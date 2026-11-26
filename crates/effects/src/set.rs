@@ -15,9 +15,9 @@ mod trace;
 pub(crate) use trace::trace;
 
 use crate::{
-    CallSite, Counts, Dispatch, DispatchMode, EFFECTS, FuncEffects, ModuleReach, Options,
-    REACH_FORMAT, REPORT_FORMAT, ReachReport, ReasonCount, Report, Site, Summary, Unknown,
-    position_key, sorted_positions,
+    Call as ReportCall, CallSite, Counts, Dispatch, DispatchMode, EFFECTS, FuncEffects,
+    ModuleReach, Options, REACH_FORMAT, REPORT_FORMAT, ReachReport, ReasonCount, Report, Site,
+    Summary, Unknown, position_key, sorted_positions,
 };
 
 /// Bit 0 of a node's bits: it, or something it reaches, has an `unknown` entry.
@@ -1701,14 +1701,18 @@ pub(crate) fn reach(modules: &[Module], opts: &Options) -> ReachReport {
     }
 }
 
+/// Entries of the analysis outside the report's `funcs`, each with the index of its module.
+pub(crate) type Entries = Vec<(usize, FuncEffects)>;
+
 /// The report, and what runs when a module loads that its `funcs` do not list, each with its
 /// module: the module's variable initializers (named [`crate::VAR_INIT`]) and every Go `init`
-/// function after the first (named `init`).
+/// function after the first (named `init`); and every function literal, named as a reason names
+/// it (`<holder>.lambda@<n>`), each with its module.
 pub(crate) fn analyze(
     modules: &[Module],
     summaries: &[Summary],
     opts: &Options,
-) -> (Report, Vec<(usize, FuncEffects)>) {
+) -> (Report, Entries, Entries) {
     let (g, declared, _) = dispatched(modules, summaries, opts);
 
     let comps = components(&g.nodes);
@@ -1779,9 +1783,12 @@ pub(crate) fn analyze(
     // What runs when a module loads that `funcs` does not list: its variable initializers and
     // every Go `init` function after the first.
     let mut at_load = Vec::new();
+    let mut literals = Vec::new();
     let no_pos = Pos::new();
     for n in 0..g.nodes.len() {
+        let literal = matches!(g.nodes[n].kind, Kind::Lambda(..));
         let (mi, name, pos) = match &g.nodes[n].kind {
+            Kind::Lambda(mi, pos, name) => (*mi, name.clone(), pos),
             Kind::Func(mi, i) => (
                 *mi,
                 modules[*mi].funcs[*i].key(),
@@ -1800,7 +1807,7 @@ pub(crate) fn analyze(
         }
         let listed = n < declared && g.keys[mi].get(&name) == Some(&n);
         let go_init = n < declared && modules[mi].reader.language == "go" && name == "init";
-        if !listed && !go_init && !matches!(g.nodes[n].kind, Kind::Init(_)) {
+        if !literal && !listed && !go_init && !matches!(g.nodes[n].kind, Kind::Init(_)) {
             continue;
         }
         let node = &g.nodes[n];
@@ -1852,6 +1859,28 @@ pub(crate) fn analyze(
                 .then_with(|| a.call.cmp(&b.call))
         });
         dispatch.dedup();
+
+        // Every call of a function of the set, named as a reason names it, whether the callee
+        // is incomplete or not.
+        let mut callees = Vec::new();
+        for ((t, _), id) in node.edges.iter().zip(&node.edge_calls) {
+            let target = &g.nodes[*t];
+            if let Kind::Iface(_) | Kind::Value(_) = &target.kind {
+                for (c, _) in &target.edges {
+                    callees.push(ReportCall {
+                        site: id.clone(),
+                        callee: g.name(*c, mi),
+                    });
+                }
+            } else if *t != n {
+                callees.push(ReportCall {
+                    site: id.clone(),
+                    callee: g.name(*t, mi),
+                });
+            }
+        }
+        callees.sort();
+        callees.dedup();
 
         let mut sites: BTreeMap<usize, BTreeSet<Pos>> = BTreeMap::new();
         let mut calls: BTreeMap<usize, BTreeSet<CallSite>> = BTreeMap::new();
@@ -1927,8 +1956,11 @@ pub(crate) fn analyze(
             effect_sites,
             dispatch,
             unknown_roots,
+            calls: callees,
         };
-        if listed {
+        if literal {
+            literals.push((mi, entry));
+        } else if listed {
             funcs.push(entry);
         } else {
             at_load.push((mi, entry));
@@ -1958,5 +1990,5 @@ pub(crate) fn analyze(
         funcs,
         notes: notes.into_iter().collect(),
     };
-    (report, at_load)
+    (report, at_load, literals)
 }

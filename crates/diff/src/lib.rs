@@ -27,8 +27,8 @@
 //! | `deltas` | array | one object per delta, sorted by `unit`, then `kind`, then `site` (`callee`, then `n`), then `value` |
 //! | `unknowns` | array, only with `--unknowns summary` and omitted when empty | one object per kind and reason class of the `unknown-*` deltas, sorted by `kind`, then `class` (below) |
 //!
-//! A delta is `{kind, unit, site, value, old, new}`; `site`, `value`, `old` and `new` are omitted
-//! when they do not apply:
+//! A delta is `{kind, unit, site, value, old, new, callers}`; `site`, `value`, `old`, `new` and
+//! `callers` are omitted when they do not apply or are empty:
 //!
 //! | `kind` | `unit` | other fields |
 //! |---|---|---|
@@ -39,7 +39,7 @@
 //! | `raise-added`, `raise-removed` | the function | `value`: an extern type `path.name` in its `raises` in one revision only |
 //! | `reach-gained`, `reach-lost` | the function | none: reached from the entries in the new revision only, or in the old only; a unit added or removed gives no reach delta |
 //! | `entry-added`, `entry-removed` | the entry's function | `value`: `<kind> <method> <on>` (`http GET /api/items`); `<kind> <on>` without a method (outside `http`, or an `http` entry for any method: `scheduled every=5m`) |
-//! | `unknown-added`, `unknown-removed` | the function | `value`: an `unknown` reason of `codespec effects` (its text, without its position) present in one revision only |
+//! | `unknown-added`, `unknown-removed` | the function | `value`: an `unknown` reason of `codespec effects` (its text, without its position) present in one revision only, except an inherited one (§ Inherited reasons); `callers`: the functions incomplete through it in that revision, sorted |
 //!
 //! `unit` is `<module path>.<function key>` (the module's `path`, or its `name` without one), for
 //! functions and opaque functions alike. What runs when a module loads is a unit too: its
@@ -56,8 +56,44 @@
 //! The encoding is canonical: two-space indentation, a final newline; the same inputs give the
 //! same bytes. The text form ([`Report::to_text`]) prints one line per delta in the same order,
 //! its fields separated by one space, a missing one skipped, the site as `<callee>@<n>`:
-//! `syscall-removed example.com/probe.Load syscall.Syscall@1 getpid`, and `old -> new` for a
-//! signature.
+//! `syscall-removed example.com/probe.Load syscall.Syscall@1 getpid`, `old -> new` for a
+//! signature, and `callers=<n>` last, the length of `callers`, when it is not empty (the names
+//! are in the JSON form only).
+//!
+//! ## Inherited reasons
+//!
+//! A reason is reported at the function whose own body gives it. `calls <func> which is
+//! incomplete` is inherited when `<func>` is a unit of the revision (a callee of the function's
+//! own module named without its path, as `codespec effects` names it, is qualified with it), or
+//! a function literal (`A.lambda@1`, `analyze_program` of `b10x-codespec-effects`) each of
+//! whose reasons is `calls <func> which is incomplete` naming a unit or such a literal, or a
+//! reason its holder has too (the effects report counts the body of a literal in a function's
+//! body as that function's, so the holder's own delta gives it), to a fixed point. The function
+//! only inherits the callee's incompleteness. Such a reason present in one
+//! revision only is a delta only when a call of the function's own that leads to the callee
+//! exists in that revision alone: its call site (`{callee, n}`, § Call sites of
+//! `b10x-codespec-effects`), or, for a call through an interface or a function value, that site
+//! with the callee among its candidates. So a function whose only difference is that its callee
+//! became incomplete (or complete) gets no delta; a function that starts calling an incomplete
+//! callee keeps `unknown-added <unit> calls <func> which is incomplete`. Every other reason is
+//! the function's own, a delta as above; that includes `calls <func> which is incomplete` naming
+//! a literal whose own body gives a reason its holder does not have (a literal of a `foreign`
+//! statement's call list) or calls one that does, variable initializers, or a function of a
+//! module that
+//! [`Options::report`] leaves out, which are no unit of the report.
+//!
+//! `callers` of an `unknown-added` delta (of the old revision for `unknown-removed`) lists every
+//! function incomplete through the delta's function in that revision: each function or literal
+//! whose reason `calls <func> which is incomplete` names it, and each that names one of those,
+//! to a fixed point, the functions of them only. A caller through an interface or a function
+//! value is one, and so are the holder of a literal that calls it and every function whose call
+//! through a function value may reach that literal; a literal whose own reasons its holder has
+//! is incomplete through its holder, so whoever may call the literal is a caller of the holder.
+//! A caller with two calls of it is listed once.
+//!
+//! ```text
+//! unknown-added example.com/probe.Lib extern without summary: example.org/lib.Do callers=3
+//! ```
 //!
 //! ## `--unknowns summary`
 //!
@@ -74,7 +110,12 @@
 //! path (`calls Raw which is incomplete`), so an example of `calls <func> which is incomplete`
 //! adds the path of the unit's module (`example.com/p.Raw`) unless the callee already starts
 //! with the path of another module of the program; two functions of one name in two modules
-//! are two examples. The other deltas are unchanged. The text form prints the deltas, then
+//! are two examples. The summary counts the `unknown-*` deltas `list` gives, after § Inherited
+//! reasons: an inherited reason makes no delta there either, so the class `calls <func> which
+//! is incomplete` counts only the functions whose own call of an incomplete function is new (or
+//! gone), and the reasons that stay their function's own; the functions that inherit a reason
+//! are counted nowhere, and `callers` is not kept. The other deltas are unchanged. The text form
+//! prints the deltas, then
 //! `<kind> <class> count=<count> units=<units>` per entry, each example below it on a line of
 //! its own indented by two spaces:
 //!
@@ -88,7 +129,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use codespec_effects::{Barrier, CallSite, DispatchMode, FuncEffects, Summary};
+use codespec_effects::{Barrier, Call, CallSite, DispatchMode, FuncEffects, Summary};
 use codespec_model::Module;
 use serde::{Deserialize, Serialize};
 
@@ -158,6 +199,10 @@ pub struct Delta {
     pub old: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new: Option<String>,
+    /// Of an `unknown-added` or `unknown-removed` delta: the functions incomplete through
+    /// `unit` in the revision that has the reason, sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub callers: Vec<String>,
 }
 
 impl Report {
@@ -168,9 +213,9 @@ impl Report {
         s
     }
 
-    /// One line per delta, its fields separated by one space, a missing one skipped, then one
-    /// line per entry of `unknowns`, each example on a line of its own indented by two spaces;
-    /// empty without either.
+    /// One line per delta, its fields separated by one space, a missing one skipped,
+    /// `callers=<n>` last when it has callers, then one line per entry of `unknowns`, each
+    /// example on a line of its own indented by two spaces; empty without either.
     pub fn to_text(&self) -> String {
         let mut out = String::new();
         for d in &self.deltas {
@@ -180,6 +225,9 @@ impl Report {
             match (&d.old, &d.new) {
                 (Some(old), Some(new)) => fields.push(format!("{old} -> {new}")),
                 (old, new) => fields.extend(old.iter().chain(new).cloned()),
+            }
+            if !d.callers.is_empty() {
+                fields.push(format!("callers={}", d.callers.len()));
             }
             out.push_str(&fields.join(" "));
             out.push('\n');
@@ -338,12 +386,27 @@ struct Unit {
     raises: BTreeSet<String>,
     reached: bool,
     unknown: BTreeSet<String>,
+    /// Its calls of functions of the set, whether the callee is incomplete or not.
+    calls: BTreeSet<Call>,
+    /// Each reason `calls <func> which is incomplete` whose `<func>` is a unit or a function
+    /// literal of the revision, with that unit or literal: the function is incomplete through
+    /// it.
+    through: BTreeMap<String, String>,
+    /// The reasons of `through` the function inherits: those naming a unit, or a literal that
+    /// is incomplete only through what it calls or through reasons its holder already has.
+    inherited: BTreeSet<String>,
+    /// Of a literal: the unit that holds it, when that unit has every reason of the literal
+    /// outside `through` (a holder's report counts the bodies of its literals as its own).
+    covered_by: Option<String>,
 }
 
-/// The facts of one revision: each unit's, and each entry as `(unit, value)`.
+/// The facts of one revision: each unit's, each entry as `(unit, value)`, and each function
+/// literal's `unknown`, `through` and `inherited`, keyed `<module path>.<holder>.lambda@<n>`
+/// (no function key holds an `@`).
 struct Facts {
     units: BTreeMap<String, Unit>,
     entries: BTreeSet<(String, String)>,
+    literals: BTreeMap<String, Unit>,
 }
 
 /// The entries of the revision `modules`: those of `opts`, `main.main` of each `main` module
@@ -378,6 +441,7 @@ fn absorb(u: &mut Unit, f: &FuncEffects) {
     u.effects.extend(f.effects.iter().cloned());
     u.raises.extend(f.raises.iter().cloned());
     u.unknown.extend(f.unknown.iter().map(|x| x.reason.clone()));
+    u.calls.extend(f.calls.iter().cloned());
     for s in &f.syscalls {
         if s.sites.is_empty() {
             u.syscalls.insert((None, s.name.clone()));
@@ -420,7 +484,11 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
 
     // The report lists the functions module by module in the order given, each key of a module
     // once: walk the modules alongside it.
-    let (report, at_load) = codespec_effects::analyze_at_load(modules, opts.summaries, &eopts);
+    let codespec_effects::Program {
+        report,
+        at_load,
+        literals: literal_effects,
+    } = codespec_effects::analyze_program(modules, opts.summaries, &eopts);
     let mut consumed: Vec<BTreeSet<String>> = vec![BTreeSet::new(); modules.len()];
     let mut mi = 0;
     for f in &report.funcs {
@@ -455,6 +523,17 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
         );
     }
 
+    let mut literals: BTreeMap<String, Unit> = BTreeMap::new();
+    for (mi, f) in &literal_effects {
+        absorb(
+            literals
+                .entry(format!("{}.{}", label(&modules[*mi]), f.name))
+                .or_default(),
+            f,
+        );
+    }
+    attribute(modules, &mut units, &mut literals);
+
     let reach = codespec_effects::reach(modules, &eopts)?;
     for r in &reach.modules {
         let l = if r.path.is_empty() { &r.name } else { &r.path };
@@ -481,7 +560,133 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
             }
         }
     }
-    Ok(Facts { units, entries })
+    Ok(Facts {
+        units,
+        entries,
+        literals,
+    })
+}
+
+/// Fill `through` and `inherited` of every unit and literal of one revision. A reason `calls
+/// <func> which is incomplete` names a callee of the function's own module without its label:
+/// qualify it. It is inherited when it names a unit, or a literal whose every reason is in its
+/// `through` or is a reason of its holder (the holder reports it) and whose `through` names
+/// units and such literals only, to a fixed point (a literal whose own body gives a reason no
+/// holder reports, or that calls one that does, is not).
+fn attribute(
+    modules: &[Module],
+    units: &mut BTreeMap<String, Unit>,
+    literals: &mut BTreeMap<String, Unit>,
+) {
+    let labels: Vec<String> = modules.iter().map(|m| label(m).to_owned()).collect();
+    let resolve = |key: &str, u: &Unit| -> BTreeMap<String, String> {
+        u.unknown
+            .iter()
+            .filter_map(|reason| {
+                if codespec_effects::Unknown::class(reason) != INCOMPLETE {
+                    return None;
+                }
+                let callee = qualified(&labels, key, codespec_effects::Unknown::subject(reason)?);
+                (units.contains_key(&callee) || literals.contains_key(&callee))
+                    .then(|| (reason.clone(), callee))
+            })
+            .collect()
+    };
+    let unit_through: Vec<(String, BTreeMap<String, String>)> = units
+        .iter()
+        .map(|(k, u)| (k.clone(), resolve(k, u)))
+        .collect();
+    let literal_through: Vec<(String, BTreeMap<String, String>)> = literals
+        .iter()
+        .map(|(k, u)| (k.clone(), resolve(k, u)))
+        .collect();
+    for (k, t) in literal_through {
+        if let Some(u) = literals.get_mut(&k) {
+            u.through = t;
+        }
+    }
+    for (k, t) in unit_through {
+        if let Some(u) = units.get_mut(&k) {
+            u.through = t;
+        }
+    }
+
+    // A literal whose reasons outside `through` its holder has too: the holder's report counts
+    // the literal's body as its own, so those reasons are deltas of the holder already.
+    for (k, u) in literals.iter_mut() {
+        let holder = k.find(".lambda@").map(|at| &k[..at]);
+        u.covered_by = holder
+            .and_then(|h| units.get(h).map(|hu| (h, hu)))
+            .filter(|(_, hu)| {
+                u.unknown
+                    .iter()
+                    .filter(|r| !u.through.contains_key(*r))
+                    .all(|r| hu.unknown.contains(r))
+            })
+            .map(|(h, _)| h.to_owned());
+    }
+
+    // The literals with a reason of their own that no holder reports: one outside `through`,
+    // then any that reaches one.
+    let mut own: BTreeSet<String> = literals
+        .iter()
+        .filter(|(_, u)| u.unknown.len() != u.through.len() && u.covered_by.is_none())
+        .map(|(k, _)| k.clone())
+        .collect();
+    loop {
+        let more: Vec<String> = literals
+            .iter()
+            .filter(|(k, u)| !own.contains(*k) && u.through.values().any(|c| own.contains(c)))
+            .map(|(k, _)| k.clone())
+            .collect();
+        if more.is_empty() {
+            break;
+        }
+        own.extend(more);
+    }
+    let inherited = |u: &Unit| -> BTreeSet<String> {
+        u.through
+            .iter()
+            .filter(|(_, callee)| !own.contains(*callee))
+            .map(|(reason, _)| reason.clone())
+            .collect()
+    };
+    for u in units.values_mut().chain(literals.values_mut()) {
+        u.inherited = inherited(u);
+    }
+}
+
+/// Of each unit and literal of `facts`, the units and literals incomplete through it directly.
+fn inheritors(facts: &Facts) -> BTreeMap<&str, BTreeSet<&str>> {
+    let mut out: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for (caller, u) in facts.units.iter().chain(&facts.literals) {
+        for callee in u.through.values().chain(&u.covered_by) {
+            out.entry(callee.as_str())
+                .or_default()
+                .insert(caller.as_str());
+        }
+    }
+    out
+}
+
+/// The units incomplete through `unit`, from [`inheritors`] of the revision `facts`: every unit
+/// or literal incomplete through it, and every one incomplete through those, to a fixed point;
+/// the units of them sorted, without `unit` itself.
+fn callers(facts: &Facts, inheritors: &BTreeMap<&str, BTreeSet<&str>>, unit: &str) -> Vec<String> {
+    let mut found: BTreeSet<&str> = BTreeSet::new();
+    let mut queue = vec![unit];
+    while let Some(callee) = queue.pop() {
+        for caller in inheritors.get(callee).into_iter().flatten() {
+            if *caller != unit && found.insert(caller) {
+                queue.push(caller);
+            }
+        }
+    }
+    found
+        .into_iter()
+        .filter(|k| facts.units.contains_key(*k))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// The deltas from the revision `old` to the revision `new`, each read as one program. An entry
@@ -490,6 +695,7 @@ fn facts(modules: &[Module], opts: &Options) -> Result<Facts, String> {
 pub fn diff(old: &[Module], new: &[Module], opts: &Options) -> Result<Report, String> {
     let a = facts(old, opts).map_err(|e| format!("old revision: {e}"))?;
     let b = facts(new, opts).map_err(|e| format!("new revision: {e}"))?;
+    let (inheritors_a, inheritors_b) = (inheritors(&a), inheritors(&b));
     let mut deltas = Vec::new();
     let delta = |kind: &str, unit: &str| Delta {
         kind: kind.into(),
@@ -498,6 +704,7 @@ pub fn diff(old: &[Module], new: &[Module], opts: &Options) -> Result<Report, St
         value: None,
         old: None,
         new: None,
+        callers: Vec::new(),
     };
     let with_value = |kind: &str, unit: &str, value: &str| Delta {
         value: Some(value.into()),
@@ -556,13 +763,29 @@ pub fn diff(old: &[Module], new: &[Module], opts: &Options) -> Result<Report, St
             (true, false) => deltas.push(delta("reach-lost", unit)),
             _ => {}
         }
-        sets(
-            &mut deltas,
-            unit,
-            ["unknown-added", "unknown-removed"],
-            &o.unknown,
-            &n.unknown,
-        );
+        // A reason the function inherits is a delta only when a call of its own that leads to
+        // the callee exists in that revision alone; its callee's delta lists it as a caller.
+        for (kind, from, to, facts, inheritors) in [
+            ("unknown-added", o, n, &b, &inheritors_b),
+            ("unknown-removed", n, o, &a, &inheritors_a),
+        ] {
+            for reason in to.unknown.difference(&from.unknown) {
+                if to.inherited.contains(reason) {
+                    let callee = codespec_effects::Unknown::subject(reason).unwrap_or_default();
+                    let own_call_changed = to
+                        .calls
+                        .iter()
+                        .any(|c| c.callee == callee && !from.calls.contains(c));
+                    if !own_call_changed {
+                        continue;
+                    }
+                }
+                deltas.push(Delta {
+                    callers: callers(facts, inheritors, unit),
+                    ..with_value(kind, unit, reason)
+                });
+            }
+        }
     }
     for (unit, value) in b.entries.difference(&a.entries) {
         deltas.push(with_value("entry-added", unit, value));
