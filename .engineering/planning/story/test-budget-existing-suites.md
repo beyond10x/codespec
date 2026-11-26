@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:test-budget-existing-suites
 kind: story
-status: active
+status: implemented
 title: Existing test suites keep the test budget
 summary: Suites measured over the 60 s per-test and 120 s per-step budget on 2026-11-23 make expensive products once and kill slow tests
 relations:
@@ -84,10 +84,11 @@ scope:
   path: scripts/check-part.sh
 - confidence: cited
   path: scripts/check-parts.txt
-revision: 42
+revision: 43
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:09Z", actor: "human:operator", revision: 43, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: test-budget-existing-suites
 

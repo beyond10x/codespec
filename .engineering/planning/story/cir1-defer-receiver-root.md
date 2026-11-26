@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:cir1-defer-receiver-root
 kind: story
-status: active
+status: implemented
 title: defer as a statement and a receiver root on call refs
 relations:
 - decomposes: epic:codebase-transformations
@@ -13,10 +13,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/model/src/lib.rs
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T01:24:37Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-11-10T01:24:37Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:08Z", actor: "human:operator", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 # Story: `defer` as a statement and a receiver root on call refs
 

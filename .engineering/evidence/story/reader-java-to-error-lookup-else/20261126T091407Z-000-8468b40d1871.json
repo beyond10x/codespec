@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T09:14:07Z",
+  "actor": "human:operator",
+  "artifact": "story:reader-java-to-error-lookup-else",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "codespec conform --lang java --role reader via task docs-generate on 43b7d8bfe7944751c5a5d61d14dcb4e4097989b1: conforms true, 106 claimed, stmt.lookup_else claimed, verdict pass (website/data/conformance/reader-java.json); the change is on main since 8a863ed1",
+    "reference": "commit:43b7d8bfe7944751c5a5d61d14dcb4e4097989b1"
+  }
+}

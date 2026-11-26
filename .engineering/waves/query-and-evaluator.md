@@ -30,7 +30,7 @@ typed scope entry per story, all inferred. No `aep:story-scoper` ran.
 | 2 | E | story:eval-conformance-runner | impl/eval-conformance-runner | `<trees>/qe-eval-conform` | `<scratch>/cs/eval-conform` | implemented (store) |
 | 3 | E | story:eval-handlers-traces | impl/eval-handlers-traces | `<trees>/qe-eval-handlers` | `<scratch>/cs/eval-handlers` | implemented (store) |
 | 4 | E | story:eval-fault-plans | impl/eval-fault-plans | `<trees>/qe-eval-faults` | `<scratch>/cs/eval-faults` | implemented (store) |
-| 5 | alone | story:cir1-defer-receiver-root | impl/cir1-defer-receiver-root | `<trees>/qe-cir1-defer` | `<scratch>/cs/cir1-defer` | dispatched |
+| 5 | alone | story:cir1-defer-receiver-root | impl/cir1-defer-receiver-root | `<trees>/qe-cir1-defer` | `<scratch>/cs/cir1-defer` | merged (00c88502) |
 
 `<trees>` is `~/.local/state/worktree/trees/b10x/codespec`; `<scratch>` is the coordinating
 session's scratch directory; each build directory is `target/` inside its worktree.
@@ -77,19 +77,22 @@ The owner, 05:18 CET: "now, move in way bigger /aep:wave and deliver PRs with mo
 gap-closures at once". One integration branch (`wave/cir1-defer-receiver-root`), one pull request.
 Scopes from `aep:story-scoper`, one per story.
 
-| order | story | unit branch | managed tree | scratch | state |
+| order | story | unit commit | merge | adversary round | state |
 |---|---|---|---|---|---|
-| A | story:cir1-defer-receiver-root | impl/cir1-defer-receiver-root | qe-cir1-defer | `<scratch>/cs/cir1-defer` | dispatched |
-| A | story:reader-check-stops-when-reached (C and Java; the Rust part shipped in e2cff037) | impl/stop-reached-c-java | qe-stop-reached | `<scratch>/cs/stop-reached` | dispatched |
-| A | story:diff-unknowns-summary | | | | waits for acceptance |
-| B | story:diff-unknown-at-the-incomplete-function (after diff-unknowns-summary: same files in crates/diff) | | | | waits for acceptance |
-| B | story:go-std-effect-summaries-common (after cir1-defer: its reproducer is Go reader output and `defer` changes) | | | | waits for acceptance |
-| B | story:test-budget-existing-suites (after cir1-defer: adapters/go, crates/eval, crates/query) | | | | waits for acceptance |
-| C | story:reader-coverage-floor (last and alone: its floors are the merged support matrix) | | | | planned |
+| A | story:cir1-defer-receiver-root | f4c8ab16 | 00c88502 | 2 findings (check: lock and conn released in a deferred literal), fixed | merged |
+| A | story:reader-check-stops-when-reached (C and Java; the Rust part shipped in e2cff037) | b4876b1a | 949593d8 | 1 finding (nested C case label), fixed | merged |
+| A | story:diff-unknowns-summary | f74df436 | c047c73e | 2 findings (help text, examples of one name), fixed | merged |
+| B | story:diff-unknown-at-the-incomplete-function | 571db2ab | 65fa09e4 | 1 finding (function-literal reasons), fixed | merged |
+| B | story:go-std-effect-summaries-common | d8a05a0e | 9b5e5412 | 7 findings (higher-order entries, clock, zone, proxy, promoted methods); one clause moved to story:call-value-extern-func-type | merged |
+| B | story:test-budget-existing-suites | 82e87a72 | 473ef9ec | 8 findings (single-thread kill, digest, go-test output, step bound), fixed | merged |
+| C | story:reader-coverage-floor | 64f5c873 | 6fbb0686 | 3 findings (ratchet, unclaimed pass, Go entries), fixed | merged |
 | - | story:reader-java-to-error-lookup-else | none | | | already on main (8a863ed1, 2026-11-10); closed with an observed conformance run |
 
-The four stories marked "waits for acceptance" are drafts. The acceptance (decision D5, option A)
-was refused by the coordinator's permission check; they join when the owner moves them to active.
+The four gap-closure stories were accepted by the owner in this session ("accept next", about
+05:45 CET; approval-record:big-wave-gap-closures-2026-11-26).
+
+Drafts filed during the wave, waiting for the owner's acceptance: story:release-ships-go-summaries
+(G5), story:read-go-newer-toolchain (G6), story:release-musl-static, story:call-value-extern-func-type.
 
 Commits this wave makes: the pages, one commit per unit, its merge into the integration branch,
 the closing store commit, one pull request to `main`. No tag, no release.

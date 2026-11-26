@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:go-std-effect-summaries-common
 kind: story
-status: active
+status: implemented
 title: Effect summaries for the Go standard library a service calls
 summary: log/slog, context, time, net/http, encoding/json, errors, fmt, sync, io and the rest of os, strings and strconv give effects, not extern without summary, in codespec diff
 relations:
@@ -20,10 +20,11 @@ scope:
   path: docs/static-analysis.md
 - confidence: inferred
   path: summaries/go-std.effects.json
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-26T04:43:16Z", actor: "human:operator", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:09Z", actor: "human:operator", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: Effect summaries for the Go standard library a service calls
 
