@@ -12,7 +12,10 @@
 //! function's tree, statement 3, its `then` branch, statement 0, field `x`
 //! (`net/http.Client.Do#3.then.0.x`); a list's element carries its index (`rhs.0`, `args.1`),
 //! a call of a call list its place in the list (`#4.calls.0`, an opaque function's
-//! `<function>#calls.0`). Positions are `<module path>/<file>:<line>`.
+//! `<function>#calls.0`). A function is `<module path>.<function key>`; the second and later
+//! function of one key in a module's `funcs` (Go's several `init` functions of a package) is
+//! `<module path>.<function key>~<k>`, `k` its 1-based occurrence ([`func_ids`]), and its nodes
+//! hang below that id. Positions are `<module path>/<file>:<line>`.
 //!
 //! [`load`] caches the fact base in the reviewer's cache directory ([`cache_dir`]:
 //! `$CODESPEC_CACHE_DIR`, else `$XDG_CACHE_HOME/codespec/facts`, else
@@ -248,7 +251,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub use engine::{Cost, MAX_BODIES, OverLimit};
-pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, SourceName, WAITING, schema_text};
+pub use facts::{FACTS_FORMAT, FactBase, RELATIONS, SourceName, WAITING, func_ids, schema_text};
 pub use regex::{INST_BYTES, MAX_COUNT, MAX_GROUPS, MAX_PROGRAM};
 pub use syntax::{EDIT_OPS, Edit, MAX_BODY, MAX_NESTING, MAX_REGISTERS, Program};
 

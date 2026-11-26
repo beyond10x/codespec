@@ -4,6 +4,16 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Fixed
+
+- `codespec read --spans` reads a Go package with several `init` functions (or several
+  `func _()`): the second and later function of one key gets the cq id `<module>.<key>~<k>`, so
+  the spans of its nodes name a node and `codespec edit` edits them; it refused such a package with
+  "names no node of the cir/1 document" before. An id of any other function is unchanged.
+- `codespec read --spans` drops a span or `unspanned` entry that names no node of the `cir/1`
+  document, prints `dropped span <at> <role>: names no node of the cir/1 document <module>` on
+  standard error for each, and reads the rest strictly; it refused the whole span document before.
+
 ### Added
 
 - `codespec-corpus` (`crates/corpus`), the selection step of the reader self-improvement loop:

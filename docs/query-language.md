@@ -100,6 +100,14 @@ statement 1, field `x`. It is stable under re-reading the same source, unique wi
 names the node a rewrite would replace (R16). Reports print it beside the `file:line` position the
 node's statement has.
 
+A module may hold several functions of one key: a Go package declares an `init` function (or a
+`func _()`) in as many files as it likes. The first of them in the module's `funcs` keeps
+`<module path>.<function key>`; the second and later is `<module path>.<function key>~<k>`, `k`
+its 1-based occurrence among the functions of that key in `funcs` order (`example.com/probe.init`,
+`example.com/probe.init~2`, `example.com/probe.init~3#0.rhs.0`). No key is spelled with `~`, so
+the id is never another function's, and reading the package again gives the same ids. An id of a
+module without such functions does not change.
+
 ### 4.2 Relations
 
 Relations from the documents (every reader):

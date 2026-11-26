@@ -74,6 +74,24 @@ fn read_with_spans_writes_the_same_cir_and_the_checked_in_span_document() {
         std::fs::read_to_string(dir.join("out.spans.json")).unwrap(),
         std::fs::read_to_string(fixtures().join("expected.spans.json")).unwrap()
     );
+    assert!(!stderr(&o).contains("dropped span"), "{}", stderr(&o));
+}
+
+#[test]
+fn read_with_spans_drops_three_spans_naming_no_node_with_a_line_each_and_exits_0() {
+    let dir = adapters("dropped", "dropped.json");
+    let o = read(&dir, true);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(
+        stderr(&o),
+        "dropped span funcs.0.body.7 name: names no node of the cir/1 document pair\n\
+         dropped span funcs.5 name: names no node of the cir/1 document pair\n\
+         dropped span types.0 name: names no node of the cir/1 document pair\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("out.spans.json")).unwrap(),
+        std::fs::read_to_string(fixtures().join("expected.spans.json")).unwrap()
+    );
 }
 
 #[test]
@@ -381,7 +399,8 @@ fn a_cache_directory_inside_the_copied_root_is_an_error_and_is_not_made() {
 // `codespec edit --lang go` (`story:edit-cli-verified-apply`) on a copy of `fixtures/edit/go/`
 // per case: `shop` (one go.mod, packages `stock` and `front`; `front` calls `stock.Load` and
 // `stock.Weight`, and `stock.Total` inside a `go` statement, a foreign statement with a call
-// list), `replace` (module `app` with `replace example.com/lib => ../lib`, a sibling module).
+// list), `replace` (module `app` with `replace example.com/lib => ../lib`, a sibling module),
+// `probe` (package `inits` with two `init` functions, the first calling `one`, the second `two`).
 // The Go reader is built once for the run.
 
 fn go_fixtures() -> PathBuf {
@@ -600,6 +619,39 @@ fn go_delete_of_an_uncalled_function_is_applied_and_verified() {
         r#"edit delete(F) :- func{id: F, name: "spare"}, !calls(_, F)."#,
         "delete.diff",
     );
+}
+
+#[test]
+fn go_rename_of_a_function_called_in_the_second_init_edits_that_call_and_no_other() {
+    let probe = go_copy("go-inits").join("probe");
+    let program = r#"edit rename(F, "pair") :- func{id: F, name: "two"}."#;
+    let o = edit_in(
+        "go-inits",
+        &probe,
+        "go",
+        go_adapters(),
+        &[],
+        &["--closed-world", "--apply", "inits", "-e", program],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let diff = stdout(&o);
+    assert!(
+        diff.contains("-func two() int { return 2 }\n+func pair() int { return 2 }"),
+        "{diff}"
+    );
+    assert!(
+        diff.contains(
+            "-func init() { Registry[\"b\"] = two() }\n+func init() { Registry[\"b\"] = pair() }"
+        ),
+        "{diff}"
+    );
+    let added = diff
+        .lines()
+        .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+        .count();
+    assert_eq!(added, 2, "{diff}");
+    let a = std::fs::read_to_string(probe.join("inits/a.go")).unwrap();
+    assert!(a.contains("func init() { Registry[\"a\"] = one() }"), "{a}");
 }
 
 #[test]
