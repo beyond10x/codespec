@@ -70,3 +70,26 @@ closing store commit (evidence and the move to implemented), and a pull request 
 the operator session merges. No tag, no release.
 
 After this wave every wave of the plan is delivered.
+
+## The wave grows, 2026-11-26
+
+The owner, 05:18 CET: "now, move in way bigger /aep:wave and deliver PRs with more stories +
+gap-closures at once". One integration branch (`wave/cir1-defer-receiver-root`), one pull request.
+Scopes from `aep:story-scoper`, one per story.
+
+| order | story | unit branch | managed tree | scratch | state |
+|---|---|---|---|---|---|
+| A | story:cir1-defer-receiver-root | impl/cir1-defer-receiver-root | qe-cir1-defer | `<scratch>/cs/cir1-defer` | dispatched |
+| A | story:reader-check-stops-when-reached (C and Java; the Rust part shipped in e2cff037) | impl/stop-reached-c-java | qe-stop-reached | `<scratch>/cs/stop-reached` | dispatched |
+| A | story:diff-unknowns-summary | | | | waits for acceptance |
+| B | story:diff-unknown-at-the-incomplete-function (after diff-unknowns-summary: same files in crates/diff) | | | | waits for acceptance |
+| B | story:go-std-effect-summaries-common (after cir1-defer: its reproducer is Go reader output and `defer` changes) | | | | waits for acceptance |
+| B | story:test-budget-existing-suites (after cir1-defer: adapters/go, crates/eval, crates/query) | | | | waits for acceptance |
+| C | story:reader-coverage-floor (last and alone: its floors are the merged support matrix) | | | | planned |
+| - | story:reader-java-to-error-lookup-else | none | | | already on main (8a863ed1, 2026-11-10); closed with an observed conformance run |
+
+The four stories marked "waits for acceptance" are drafts. The acceptance (decision D5, option A)
+was refused by the coordinator's permission check; they join when the owner moves them to active.
+
+Commits this wave makes: the pages, one commit per unit, its merge into the integration branch,
+the closing store commit, one pull request to `main`. No tag, no release.
