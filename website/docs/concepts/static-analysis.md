@@ -70,7 +70,7 @@ A summary entry with `"effects": []` declares the function pure.
 
 | format | what | file |
 |---|---|---|
-| `codespec-effects/1` | a summary: `{path, name, effects}` per outside function | `summaries/go-std.effects.json`, 37 Go standard library functions |
+| `codespec-effects/1` | a summary: `{path, name, effects}` per outside function | `summaries/go-std.effects.json`, 864 functions and methods of 26 Go standard library packages, the table in `docs/static-analysis.md` § 4 |
 | `codespec-barrier/1` | where the source ends: functions that enter the operating system and what each syscall does | `summaries/go-linux-amd64.barrier.json` |
 | `codespec-effects-report/1` | what `codespec effects` prints: per function `effects`, `unknown`, and when present `syscalls`, `effect_sites`, `dispatch`, `unknown_roots` | stdout |
 

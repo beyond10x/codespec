@@ -1,0 +1,523 @@
+{
+  "format": "cir/1",
+  "name": "near",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.14.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Info",
+      "exported": true,
+      "params": [
+        {
+          "name": "l",
+          "t": {
+            "k": "ptr",
+            "elem": {
+              "k": "extern",
+              "path": "log/slog",
+              "name": "Logger"
+            }
+          }
+        }
+      ],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern_method",
+            "path": "log/slog",
+            "type": "Logger",
+            "name": "Info",
+            "recv": {
+              "k": "var",
+              "name": "l",
+              "t": {
+                "k": "ptr",
+                "elem": {
+                  "k": "extern",
+                  "path": "log/slog",
+                  "name": "Logger"
+                }
+              }
+            },
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"started\"",
+                "t": {
+                  "k": "string"
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "near.go:15"
+        }
+      ],
+      "pos": "near.go:14"
+    },
+    {
+      "name": "Fatal",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "log",
+            "name": "Fatal",
+            "args": [
+              {
+                "k": "lit",
+                "value": "\"stopped\"",
+                "t": {
+                  "k": "string"
+                }
+              }
+            ],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "near.go:19"
+        }
+      ],
+      "pos": "near.go:18"
+    },
+    {
+      "name": "Background",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "extern",
+          "path": "context",
+          "name": "Context"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "context",
+              "name": "Background",
+              "args": [],
+              "t": {
+                "k": "extern",
+                "path": "context",
+                "name": "Context"
+              }
+            }
+          ],
+          "pos": "near.go:23"
+        }
+      ],
+      "pos": "near.go:22"
+    },
+    {
+      "name": "NewError",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "errors",
+              "name": "New",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"failed\"",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "error"
+              }
+            }
+          ],
+          "pos": "near.go:27"
+        }
+      ],
+      "pos": "near.go:26"
+    },
+    {
+      "name": "Get",
+      "exported": true,
+      "params": [],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "extern",
+            "path": "net/http",
+            "name": "Response"
+          }
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "net/http",
+              "name": "Get",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"https://example.com/\"",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "ptr",
+                    "elem": {
+                      "k": "extern",
+                      "path": "net/http",
+                      "name": "Response"
+                    }
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "near.go:31"
+        }
+      ],
+      "pos": "near.go:30"
+    },
+    {
+      "name": "Write",
+      "exported": true,
+      "params": [
+        {
+          "name": "w",
+          "t": {
+            "k": "extern",
+            "path": "io",
+            "name": "Writer"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "fmt",
+              "name": "Fprintf",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "w",
+                  "t": {
+                    "k": "extern",
+                    "path": "io",
+                    "name": "Writer"
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "\"%d\\n\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "1",
+                  "t": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              ],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "near.go:35"
+        }
+      ],
+      "pos": "near.go:34"
+    },
+    {
+      "name": "Random",
+      "exported": true,
+      "params": [
+        {
+          "name": "b",
+          "t": {
+            "k": "slice",
+            "elem": {
+              "k": "int",
+              "width": "8",
+              "signed": false
+            }
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "crypto/rand",
+              "name": "Read",
+              "args": [
+                {
+                  "k": "var",
+                  "name": "b",
+                  "t": {
+                    "k": "slice",
+                    "elem": {
+                      "k": "int",
+                      "width": "8",
+                      "signed": false
+                    }
+                  }
+                }
+              ],
+              "t": {
+                "k": "tuple",
+                "elems": [
+                  {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  },
+                  {
+                    "k": "error"
+                  }
+                ]
+              }
+            }
+          ],
+          "pos": "near.go:39"
+        }
+      ],
+      "pos": "near.go:38"
+    }
+  ],
+  "externs": [
+    {
+      "path": "context",
+      "name": "Background",
+      "params": [],
+      "results": [
+        {
+          "k": "extern",
+          "path": "context",
+          "name": "Context"
+        }
+      ]
+    },
+    {
+      "path": "crypto/rand",
+      "name": "Read",
+      "params": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "int",
+            "width": "8",
+            "signed": false
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ]
+    },
+    {
+      "path": "errors",
+      "name": "New",
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "error"
+        }
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fprintf",
+      "params": [
+        {
+          "k": "extern",
+          "path": "io",
+          "name": "Writer"
+        },
+        {
+          "k": "string"
+        },
+        {
+          "k": "slice",
+          "elem": {
+            "k": "any"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        },
+        {
+          "k": "error"
+        }
+      ],
+      "variadic": true
+    },
+    {
+      "path": "log",
+      "name": "Fatal",
+      "params": [
+        {
+          "k": "slice",
+          "elem": {
+            "k": "any"
+          }
+        }
+      ],
+      "results": [],
+      "variadic": true
+    },
+    {
+      "path": "log/slog",
+      "name": "Info",
+      "recv": {
+        "k": "ptr",
+        "elem": {
+          "k": "extern",
+          "path": "log/slog",
+          "name": "Logger"
+        }
+      },
+      "params": [
+        {
+          "k": "string"
+        },
+        {
+          "k": "slice",
+          "elem": {
+            "k": "any"
+          }
+        }
+      ],
+      "results": [],
+      "variadic": true
+    },
+    {
+      "path": "net/http",
+      "name": "Get",
+      "params": [
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "ptr",
+          "elem": {
+            "k": "extern",
+            "path": "net/http",
+            "name": "Response"
+          }
+        },
+        {
+          "k": "error"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "func:Info",
+    "func:Fatal",
+    "func:Background",
+    "func:NewError",
+    "func:Get",
+    "func:Write",
+    "func:Random"
+  ]
+}

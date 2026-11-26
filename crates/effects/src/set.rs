@@ -776,6 +776,7 @@ impl<'a> Graph<'a> {
                 for c in calls {
                     self.callref(l, mi, c);
                 }
+                self.passed_out_listed(l, mi, calls);
                 self.edge(holder, l, pos);
                 self.value_cands
                     .entry(sig.clone())
@@ -829,6 +830,99 @@ impl<'a> Graph<'a> {
         }
     }
 
+    /// A call outside the set (`path` names no document of it) may call what it is given: every
+    /// function of the set used as a value in `args` (`sort.Slice(x, less)`, `once.Do(t.Init)`,
+    /// `http.Handle("/", http.HandlerFunc(h))`) counts as called by `holder` at the call, as the
+    /// calls of a function literal there count as `holder`'s own.
+    fn passed_out(&mut self, holder: usize, mi: usize, path: &str, args: &[Expr], pos: &Pos) {
+        if self.module_of(mi, path).is_some() {
+            return;
+        }
+        let mut keys: Vec<String> = Vec::new();
+        for a in args {
+            own_exprs(a, &mut |e| {
+                if let Expr::FuncRef { name, recv, .. } = e {
+                    keys.push(match recv {
+                        Some(x) => format!("{}.{name}", receiver_type_name(x.t())),
+                        None => name.clone(),
+                    });
+                }
+            });
+        }
+        for key in keys {
+            let found = self.keys[mi].get(&key).copied().ok_or(key);
+            self.called_value(holder, found, pos);
+        }
+    }
+
+    /// The same for the calls a `foreign` statement, an opaque function, a literal or an `init`
+    /// lists: when one of them is a call outside the set, every `ref` beside it counts as called,
+    /// at the position of the `ref`.
+    fn passed_out_listed(&mut self, holder: usize, mi: usize, calls: &[CallRef]) {
+        let outside = calls.iter().any(|c| match c {
+            CallRef::Func { path, .. } | CallRef::Method { path, .. } => {
+                self.module_of(mi, path).is_none()
+            }
+            _ => false,
+        });
+        if !outside {
+            return;
+        }
+        for c in calls {
+            if let CallRef::Ref {
+                path,
+                recv,
+                name,
+                pos,
+                ..
+            } = c
+            {
+                let key = if recv.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{recv}.{name}")
+                };
+                let found = self
+                    .module_of(mi, path)
+                    .and_then(|tm| self.keys[tm].get(&key).copied())
+                    .ok_or_else(|| {
+                        if path.is_empty() {
+                            key.clone()
+                        } else {
+                            format!("{path}.{key}")
+                        }
+                    });
+                self.called_value(holder, found, pos);
+            }
+        }
+    }
+
+    /// An edge from `holder` to a function a call outside the set is given, or an `unknown`
+    /// naming one the set does not hold. It is reached through the call's own site; a call the
+    /// analysis recorded as `unknown` is no site, so the edge then names none.
+    fn called_value(&mut self, holder: usize, found: Result<usize, String>, pos: &Pos) {
+        let unknown_call = self
+            .call
+            .as_ref()
+            .is_some_and(|c| c.holder == holder && c.unknown);
+        let call = if unknown_call || found.is_err() {
+            self.call.take()
+        } else {
+            None
+        };
+        match found {
+            Ok(n) => self.edge(holder, n, pos),
+            Err(name) => self.unknown(
+                holder,
+                pos,
+                format!("function value outside the set: {name}"),
+            ),
+        }
+        if call.is_some() {
+            self.call = call;
+        }
+    }
+
     /// The calls of a body `cir/1` holds, at the position of the statement making each. The
     /// statements of a lambda's body are the holder's too (its calls count for the function that
     /// holds it); each lambda is also a node of its own, a candidate wherever a value of its
@@ -863,6 +957,7 @@ impl<'a> Graph<'a> {
                         for c in calls {
                             self.callref(holder, mi, c);
                         }
+                        self.passed_out_listed(holder, mi, calls);
                     }
                     None => self.unknown(holder, &pos, "foreign statement".into()),
                 }
@@ -945,7 +1040,10 @@ impl<'a> Graph<'a> {
             match e {
                 Expr::Extern {
                     path, name, args, ..
-                } => self.call_func(holder, mi, path, name, &lits(args), pos),
+                } => {
+                    self.call_func(holder, mi, path, name, &lits(args), pos);
+                    self.passed_out(holder, mi, path, args, pos);
+                }
                 // A method of a type of another module: summarised as `<type>.<method>`, and in a
                 // set the method of that type in the document with that path.
                 Expr::ExternMethod {
@@ -956,7 +1054,8 @@ impl<'a> Graph<'a> {
                     ..
                 } => {
                     let key = format!("{type_name}.{name}");
-                    self.call_func(holder, mi, path, &key, &lits(args), pos)
+                    self.call_func(holder, mi, path, &key, &lits(args), pos);
+                    self.passed_out(holder, mi, path, args, pos);
                 }
                 Expr::Call { name, args, .. } => {
                     self.call_func(holder, mi, "", name, &lits(args), pos)
@@ -1594,6 +1693,7 @@ fn build<'a>(
             for c in &m.inits {
                 g.callref(n, mi, c);
             }
+            g.passed_out_listed(n, mi, &m.inits);
             // The initializers `cir/1` holds: what they use as a value is a candidate.
             for (e, pos) in inits {
                 let mut exprs = Vec::new();
@@ -1609,6 +1709,7 @@ fn build<'a>(
                 for c in &modules[mi].opaque[i].calls {
                     g.callref(n, mi, c);
                 }
+                g.passed_out_listed(n, mi, &modules[mi].opaque[i].calls);
             }
             _ => {}
         }

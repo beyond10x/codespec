@@ -1,0 +1,191 @@
+{
+  "format": "cir/1",
+  "name": "probe",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.14.0"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "Run",
+      "exported": true,
+      "params": [
+        {
+          "name": "parent",
+          "t": {
+            "k": "extern",
+            "path": "context",
+            "name": "Context"
+          }
+        }
+      ],
+      "results": [
+        {
+          "k": "extern",
+          "path": "time",
+          "name": "Time"
+        }
+      ],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "go",
+          "src": "ctx, cancel := context.WithTimeout(parent, time.Second)",
+          "reason": "expression outside cir/1: constant of another package",
+          "pos": "probe.go:10",
+          "calls": [
+            {
+              "k": "func",
+              "path": "context",
+              "name": "WithTimeout",
+              "consts": [
+                {
+                  "index": 1,
+                  "value": "1000000000"
+                }
+              ],
+              "pos": "probe.go:10"
+            }
+          ]
+        },
+        {
+          "k": "defer",
+          "call": {
+            "k": "call_value",
+            "f": {
+              "k": "var",
+              "name": "cancel",
+              "t": {
+                "k": "extern",
+                "path": "context",
+                "name": "CancelFunc"
+              }
+            },
+            "args": [],
+            "t": {
+              "k": "tuple",
+              "elems": []
+            }
+          },
+          "pos": "probe.go:11"
+        },
+        {
+          "k": "let",
+          "names": [
+            "_"
+          ],
+          "rhs": [
+            {
+              "k": "extern",
+              "path": "log/slog",
+              "name": "String",
+              "args": [
+                {
+                  "k": "lit",
+                  "value": "\"k\"",
+                  "t": {
+                    "k": "string"
+                  }
+                },
+                {
+                  "k": "lit",
+                  "value": "\"v\"",
+                  "t": {
+                    "k": "string"
+                  }
+                }
+              ],
+              "t": {
+                "k": "extern",
+                "path": "log/slog",
+                "name": "Attr"
+              }
+            }
+          ],
+          "pos": "probe.go:12"
+        },
+        {
+          "k": "let",
+          "names": [
+            "_"
+          ],
+          "rhs": [
+            {
+              "k": "var",
+              "name": "ctx",
+              "t": {
+                "k": "extern",
+                "path": "context",
+                "name": "Context"
+              }
+            }
+          ],
+          "pos": "probe.go:13"
+        },
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "extern",
+              "path": "time",
+              "name": "Now",
+              "args": [],
+              "t": {
+                "k": "extern",
+                "path": "time",
+                "name": "Time"
+              }
+            }
+          ],
+          "pos": "probe.go:14"
+        }
+      ],
+      "pos": "probe.go:9"
+    }
+  ],
+  "externs": [
+    {
+      "path": "log/slog",
+      "name": "String",
+      "params": [
+        {
+          "k": "string"
+        },
+        {
+          "k": "string"
+        }
+      ],
+      "results": [
+        {
+          "k": "extern",
+          "path": "log/slog",
+          "name": "Attr"
+        }
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Now",
+      "params": [],
+      "results": [
+        {
+          "k": "extern",
+          "path": "time",
+          "name": "Time"
+        }
+      ]
+    }
+  ],
+  "layout": [
+    "func:Run"
+  ],
+  "refusals": [
+    {
+      "pos": "probe.go:10",
+      "what": "ctx, cancel := context.WithTimeout(parent, time.Second)",
+      "reason": "expression outside cir/1: constant of another package"
+    }
+  ]
+}
