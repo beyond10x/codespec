@@ -194,6 +194,7 @@ type Stmt struct {
 	Lhs     []Expr   `json:"lhs,omitempty"`
 	Rhs     []Expr   `json:"rhs,omitempty"`
 	X       *Expr    `json:"x,omitempty"`
+	Call    *Expr    `json:"call,omitempty"` // defer: the deferred call
 	Chan    *Expr    `json:"chan,omitempty"`
 	Cond    *Expr    `json:"cond,omitempty"`
 	Then    []Stmt   `json:"then,omitempty"`

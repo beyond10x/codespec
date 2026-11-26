@@ -994,18 +994,18 @@ func Run() error {
 }
 
 // Planning reads the condition and init of each candidate before the body is read; that read
-// leaves nothing behind: a literal in the condition refuses its defer once, not twice.
+// leaves nothing behind: a literal in the condition refuses its goroutine once, not twice.
 func TestIfInitPlanningLeavesNoRefusalOfItsOwn(t *testing.T) {
 	m := loadSource(t, ifInitPrelude+`
 func Run() error {
-	if err := G(); func() bool { defer G(); return err != nil }() {
+	if err := G(); func() bool { go G(); return err != nil }() {
 		return err
 	}
 	return nil
 }
 `)
-	if len(m.Refusals) != 1 || m.Refusals[0].Reason != "defer is outside cir/1" {
-		t.Fatalf("refusals %v, want the defer's alone", m.Refusals)
+	if len(m.Refusals) != 1 || m.Refusals[0].Reason != "goroutine: concurrency is outside cir/1" {
+		t.Fatalf("refusals %v, want the goroutine's alone", m.Refusals)
 	}
 	if run := ifInitRun(t, m); run.Body[0].K != "let" {
 		t.Fatalf("body %+v", run.Body)

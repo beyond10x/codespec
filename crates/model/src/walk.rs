@@ -47,6 +47,7 @@ pub fn stmt_exprs<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
         Stmt::Incr { x, .. }
         | Stmt::Decr { x, .. }
         | Stmt::Expr { x, .. }
+        | Stmt::Defer { call: x, .. }
         | Stmt::Raise { x, .. } => f(x),
         Stmt::If { cond, .. } => f(cond),
         Stmt::ForRange { over, .. } => f(over),

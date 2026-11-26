@@ -23,7 +23,7 @@ Java original (`driver/Main.java`) on its `calls.json`, byte-equal.
 `codespec-read-java --describe` claims the features its `examples/ledger` output uses and the
 subject of every kit case under `../../conformance/cases` that holds `java/Case.java`: the case in
 Java, package `<case>` with `-` read as `_`, `long` for Go's `int`. `ReaderTest` reads each through
-`codespec read --lang java` with no refusal and no `foreign`, passes it, writes it as Go and runs it
+`codespec read --lang java` with no refusal and no `foreign` (but `stmt-foreign`, below), passes it, writes it as Go and runs it
 with `codespec-run-go` on the case's `calls.json`, and requires the case's `expected.txt` (a module
 the Go writer refuses, `decl-union`'s, is written by `codespec-write-cir` and run by
 `codespec-run-cir`, as the reader check's step 4 does); `task
@@ -43,8 +43,13 @@ float), `intrinsic-println-int` (a line of a string and an integer), `decl-varia
 
 `decl-union` holds a Java source: a sealed interface whose permitted classes are records without
 members, read as a `union`. The Go writer refuses a union, so the reader check's step 4 hands the
-module to the evaluator, which runs it to the case's `expected.txt`. The features left unclaimed,
-and why:
+module to the evaluator, which runs it to the case's `expected.txt`. `stmt-foreign` holds one too: a
+`try` statement, which `cir/1` cannot express and Groovy 2.4 compiles (the Groovy reader's corpus is
+the kit's Java sources), under a branch the calls do not take. It reads to a
+`foreign` statement holding that Java source, with a refusal at it, the one module of the kit read
+with either; the Go writer refuses it, and `codespec-write-cir --stop-when-reached` writes it and
+`codespec-run-cir` runs it to the case's `expected.txt`, as the reader check's step 4 does. The
+features left unclaimed, and why:
 
 | case | subject | why |
 |---|---|---|
@@ -54,7 +59,6 @@ and why:
 | `expr-extern`, `expr-extern-method`, `type-extern` | `expr.extern`, `expr.extern_method`, `type.extern` | a package read maps the JDK calls of its table and refuses the rest; externs come only from a project's jars, which a kit case has none of |
 | `fact-*` | `fact.*` | facts are computed by `codespec pass`, never claimed by a reader |
 | `sem-multi-assign-order` | `sem.multi_assign.order` | Java has no assignment of several targets at once |
-| `stmt-foreign` | `stmt.foreign` | a `foreign` statement holds Java source, which the Go writer cannot write, so the evaluator runs the module; the case `stmt-foreign/java/Case.java` exists, the claim is not made in 0.8.0 because the case has not been run since `codespec-run-cir` resolves a call name as Go spells it |
 | `stmt-send`, `type-chan`, `unop-recv` | `stmt.send`, `type.chan`, `unop.recv` | Java has no channels |
 | `stmt-raise` | `stmt.raise` | read only in a project, in a function an entry names (Projects and Quarkus); a kit case is a package read with no entry, so its module is written by hand |
 | `stmt-var` | `stmt.var` | a Java local has no zero value: javac rejects reading one that was never assigned |

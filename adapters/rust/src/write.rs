@@ -34,6 +34,7 @@
 //! | `this := &T{…}`, `T` not shared, used only as a field base, a receiver or the returned `*T` (a Java constructor) | the value `T` itself, moved out by the return | `shared` |
 //! | `foreign` | refused by design: a foreign statement is source the reader kept in its own language, so no writer has a mapping for it; `stmt.foreign` stays unclaimed | — |
 //! | `raise` | refused: the function leaves every caller up to the framework with the raised value, which no Rust form here hands on; the function is listed in `refusals.json` and `stmt.raise` stays unclaimed | — |
+//! | `defer` | refused, naming it: no Rust form here runs a call when its function returns, after the results are taken; `stmt.defer` stays unclaimed | — |
 //! | `init` | refused, and with it every function, since Go runs `init` before any of them | — |
 //! | an embedded field (`decl.embedded`) read, written or set in a struct literal | the function refused; the struct is written with it as an ordinary field | — |
 //! | type parameters (`decl.type_params`), a type parameter (`type.param`) or type arguments (`expr.instantiate`) in a function | the function refused, naming the feature; a module declaring a generic type refused whole | — |
@@ -2146,6 +2147,7 @@ fn stmt_exprs(s: &Stmt) -> Vec<&Expr> {
         Stmt::Incr { x, .. }
         | Stmt::Decr { x, .. }
         | Stmt::Expr { x, .. }
+        | Stmt::Defer { call: x, .. }
         | Stmt::Raise { x, .. } => {
             vec![x]
         }
@@ -2957,6 +2959,11 @@ impl Fx<'_, '_> {
                 reason:
                     "raise: the Rust writer has no mapping for leaving a function by a raised value"
                         .to_string(),
+            }),
+            Stmt::Defer { pos, .. } => Err(Refuse {
+                pos: pos.clone(),
+                reason: "defer: the Rust writer has no mapping for a call deferred to the return of its function"
+                    .to_string(),
             }),
         }
     }
@@ -4430,6 +4437,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,

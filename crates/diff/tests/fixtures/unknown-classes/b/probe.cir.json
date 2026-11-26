@@ -1,0 +1,121 @@
+{
+  "format": "cir/1",
+  "name": "probe",
+  "path": "example.com/probe",
+  "reader": {
+    "language": "go",
+    "name": "hand-written",
+    "version": "1"
+  },
+  "types": [],
+  "funcs": [
+    {
+      "name": "First",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "example.org/lib",
+            "name": "A",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "probe.go:4"
+        }
+      ],
+      "pos": "probe.go:3"
+    },
+    {
+      "name": "Second",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "example.org/lib",
+            "name": "B",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "probe.go:8"
+        }
+      ],
+      "pos": "probe.go:7"
+    },
+    {
+      "name": "Third",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "extern",
+            "path": "example.org/lib",
+            "name": "C",
+            "args": [],
+            "t": {
+              "k": "unit"
+            }
+          },
+          "pos": "probe.go:12"
+        }
+      ],
+      "pos": "probe.go:11"
+    },
+    {
+      "name": "Raw",
+      "exported": true,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "foreign",
+          "lang": "go",
+          "src": "goto done",
+          "reason": "statement outside cir/1: goto",
+          "pos": "probe.go:16"
+        }
+      ],
+      "pos": "probe.go:15"
+    }
+  ],
+  "externs": [
+    {
+      "path": "example.org/lib",
+      "name": "A",
+      "params": [],
+      "results": []
+    },
+    {
+      "path": "example.org/lib",
+      "name": "B",
+      "params": [],
+      "results": []
+    },
+    {
+      "path": "example.org/lib",
+      "name": "C",
+      "params": [],
+      "results": []
+    }
+  ],
+  "layout": [
+    "func:First",
+    "func:Second",
+    "func:Third",
+    "func:Raw"
+  ]
+}

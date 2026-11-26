@@ -162,6 +162,7 @@ pub fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
@@ -268,6 +269,7 @@ impl<'a, 'v> Walk<'a, 'v> {
             | Stmt::Decr { x, .. }
             | Stmt::Expr { x, .. }
             | Stmt::Raise { x, .. } => self.field_expr("x", x),
+            Stmt::Defer { call, .. } => self.field_expr("call", call),
             Stmt::If {
                 cond,
                 then,

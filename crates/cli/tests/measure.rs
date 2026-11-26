@@ -452,7 +452,7 @@ fn go_adapters() -> &'static Path {
 }
 
 /// `crates/cli/tests/fixtures/measure-go`: `Add` is read; `Mag`, whose `complex128` signature the
-/// Go reader records as an opaque function, and `Run`, whose local closure defers a call (a
+/// Go reader records as an opaque function, and `Run`, whose local closure starts a goroutine (a
 /// `foreign` statement inside a lambda's body), are refused.
 #[test]
 fn an_opaque_function_and_a_foreign_statement_in_a_closure_are_refused() {

@@ -6,7 +6,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 use codespec_conformance::{CALLS_FORMAT, Call, Calls};
 use codespec_eval::{Options, StopKind, Stub, Stubbed, count, run_calls};
@@ -16,26 +15,12 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-/// `codespec-read-go`, built once per test binary.
-fn reader() -> &'static Path {
-    static READER: OnceLock<PathBuf> = OnceLock::new();
-    READER.get_or_init(|| {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("eval-reader");
-        std::fs::create_dir_all(&dir).unwrap();
-        let built = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .arg("./cmd/codespec-read-go")
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../adapters/go"))
-            .output()
-            .unwrap();
-        assert!(
-            built.status.success(),
-            "{}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        dir.join("codespec-read-go")
-    })
+#[path = "../../conformance/tests/support/go_bin.rs"]
+mod go_bin;
+
+/// `codespec-read-go`, built once for each state of its sources (`go_bin.rs`).
+fn reader() -> PathBuf {
+    go_bin::go_bin().join("codespec-read-go")
 }
 
 /// The fixture package `name` read with `codespec-read-go`.
@@ -96,7 +81,7 @@ fn a_run_that_executes_a_foreign_statement_stops_naming_it() {
     assert_eq!(stop.kind, StopKind::Foreign);
     assert_eq!(stop.node, "example.com/eval/foreign.Count#1.then.0");
     assert_eq!(stop.pos, "foreign.go:9");
-    assert!(stop.reason.contains("defer"), "{}", stop.reason);
+    assert!(stop.reason.contains("goroutine"), "{}", stop.reason);
     assert_eq!(
         stop.to_string(),
         format!(

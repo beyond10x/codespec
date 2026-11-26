@@ -555,6 +555,7 @@ fn stmt_kind(s: &Stmt) -> &'static str {
         Stmt::Return { .. } => "return",
         Stmt::Raise { .. } => "raise",
         Stmt::Expr { .. } => "expr",
+        Stmt::Defer { .. } => "defer",
         Stmt::Send { .. } => "send",
         Stmt::LookupElse { .. } => "lookup_else",
         Stmt::Foreign { .. } => "foreign",
@@ -577,6 +578,7 @@ fn stmt_pos(s: &Stmt) -> &str {
         | Stmt::Return { pos, .. }
         | Stmt::Raise { pos, .. }
         | Stmt::Expr { pos, .. }
+        | Stmt::Defer { pos, .. }
         | Stmt::Send { pos, .. }
         | Stmt::LookupElse { pos, .. }
         | Stmt::Foreign { pos, .. } => pos,
@@ -1828,6 +1830,7 @@ impl Walker<'_> {
                 }
             }
             Stmt::Expr { x, .. } | Stmt::Raise { x, .. } => e(self, x, "x", None),
+            Stmt::Defer { call, .. } => e(self, call, "call", None),
             Stmt::If {
                 cond,
                 then,

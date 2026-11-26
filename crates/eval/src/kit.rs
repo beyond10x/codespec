@@ -8,7 +8,7 @@
 //! `codespec eval` prints on standard error after `codespec eval: `):
 //!
 //! ```text
-//! stmt-foreign stopped at stmt_foreign.Count#1 (case.go:6): foreign: defer is outside cir/1 (go: `defer done()`)
+//! stmt-foreign stopped at stmt_foreign.Count#1 (case.go:6): foreign: goroutine: concurrency is outside cir/1 (go: `go done()`)
 //! ```
 //!
 //! [`check`] fails a case when

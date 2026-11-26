@@ -2,14 +2,40 @@
 format: aep.planning-md/3
 id: story:reader-check-stops-when-reached
 kind: story
-status: active
+status: implemented
 title: The reader check stops on a raise or a foreign statement only when the run reaches it
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+scope:
+- confidence: inferred
+  path: adapters/c-read/src/body.rs
+- confidence: cited
+  path: adapters/c-read/src/lib.rs
+- confidence: cited
+  path: adapters/c-read/src/main.rs
+- confidence: cited
+  path: adapters/c-read/tests/cases.rs
+- confidence: cited
+  path: adapters/java/README.md
+- confidence: cited
+  path: adapters/java/src/codespec/read/Main.java
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: cited
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: cited
+  path: conformance/cases/stmt-foreign/c/case.c
+- confidence: cited
+  path: conformance/cases/stmt-foreign/java/Case.java
+- confidence: cited
+  path: conformance/reader/c/stmt-foreign
+- confidence: cited
+  path: conformance/reader/java/stmt-foreign
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T20:37:32Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T20:37:32Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:08Z", actor: "human:operator", revision: 6, decided_on: {"recorded":{"test_result":2}}}
 ---
 # Story: the reader check stops on a raise or a foreign statement only when the run reaches it
 

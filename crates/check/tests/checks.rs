@@ -3,7 +3,6 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 use codespec_check::{CHECKS, Finding, Names, Options, run};
 use codespec_model::Module;
@@ -12,26 +11,12 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-/// `codespec-read-go`, built once per test binary.
-fn reader() -> &'static Path {
-    static READER: OnceLock<PathBuf> = OnceLock::new();
-    READER.get_or_init(|| {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("check-reader");
-        std::fs::create_dir_all(&dir).unwrap();
-        let built = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .arg("./cmd/codespec-read-go")
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../adapters/go"))
-            .output()
-            .unwrap();
-        assert!(
-            built.status.success(),
-            "{}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        dir.join("codespec-read-go")
-    })
+#[path = "../../conformance/tests/support/go_bin.rs"]
+mod go_bin;
+
+/// `codespec-read-go`, built once for each state of its sources (`go_bin.rs`).
+fn reader() -> PathBuf {
+    go_bin::go_bin().join("codespec-read-go")
 }
 
 /// The fixture `<check>/<case>` read with `codespec-read-go`, from the fixtures' module so that a
@@ -286,8 +271,8 @@ fn dropped_error_reports_writes_to_a_parameter_one_caller_fills_with_a_file() {
     );
 }
 
-/// A deferred call is a `foreign` statement whose call list does not show its arguments: the
-/// file it passes is unknown, so the parameter is not proven to hold a writer that cannot fail.
+/// A `defer` statement holds its call, arguments included: the deferred caller passes a file,
+/// which can fail, so the parameter is not proven to hold a writer that cannot fail.
 #[test]
 fn dropped_error_reports_writes_to_a_parameter_a_deferred_caller_fills_with_a_file() {
     let found = findings("dropped-error", "deferred");
@@ -551,4 +536,38 @@ fn lock_without_unlock_finds_a_lock_held_at_a_raise_and_at_a_call_that_raises() 
     );
     assert!(notes[1].contains("check"), "{}", notes[1]);
     assert!(notes[1].contains("s.go:12"), "{}", notes[1]);
+}
+
+// ---- adversary pass on story:cir1-defer-receiver-root ----
+
+/// Before the story the Go reader kept every `defer` as a `foreign` statement whose call list held
+/// the calls of a deferred function literal, so `defer func() { c.mu.Unlock() }()` released the
+/// lock. The story reads the defer as a `defer` statement, and the check walks its expression with
+/// function literals skipped: the unlock the literal makes at every return is not seen.
+#[test]
+fn adv_defer_lock_without_unlock_sees_an_unlock_in_a_deferred_literal() {
+    let found = run(
+        "lock-without-unlock",
+        &[read("adv-defer", "lock")],
+        &Options::default(),
+    )
+    .unwrap()
+    .findings;
+    assert!(found.is_empty(), "{found:#?}");
+}
+
+/// The same shape for `conn-leak`: before the story a `foreign` defer cleared what was open;
+/// now the `defer` statement is walked as an expression whose function literal is skipped, so
+/// `defer func() { _ = conn.Close() }()` does not close the connection and the error return
+/// after it is reported, where `defer conn.Close()` (the `miss` fixture's `Ping`) is not.
+#[test]
+fn adv_defer_conn_leak_sees_a_close_in_a_deferred_literal() {
+    let found = run(
+        "conn-leak",
+        &[read("adv-defer", "conn")],
+        &Options::default(),
+    )
+    .unwrap()
+    .findings;
+    assert!(found.is_empty(), "{found:#?}");
 }

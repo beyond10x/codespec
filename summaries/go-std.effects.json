@@ -3,6 +3,1975 @@
   "language": "go",
   "externs": [
     {
+      "path": "bufio",
+      "name": "NewReadWriter",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "NewReader",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "NewReaderSize",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "NewScanner",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "NewWriter",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "NewWriterSize",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Buffered",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Discard",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Peek",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Read",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadByte",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadBytes",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadLine",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadRune",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadSlice",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.ReadString",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Reset",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.Size",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.UnreadByte",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.UnreadRune",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Reader.WriteTo",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "ScanBytes",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "ScanLines",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "ScanRunes",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "ScanWords",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Buffer",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Bytes",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Err",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Scan",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Split",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Scanner.Text",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Available",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.AvailableBuffer",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Buffered",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Flush",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.ReadFrom",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Reset",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Size",
+      "effects": []
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.Write",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.WriteByte",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.WriteRune",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bufio",
+      "name": "Writer.WriteString",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Available",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.AvailableBuffer",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Bytes",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Cap",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Grow",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Len",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Next",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Read",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.ReadByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.ReadBytes",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.ReadFrom",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.ReadRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.ReadString",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Reset",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.String",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Truncate",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.UnreadByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.UnreadRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.Write",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.WriteByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.WriteRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.WriteString",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Buffer.WriteTo",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bytes",
+      "name": "Clone",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Compare",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Contains",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ContainsAny",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ContainsFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ContainsRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Count",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Cut",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "CutPrefix",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "CutSuffix",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Equal",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "EqualFold",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Fields",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "FieldsFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "HasPrefix",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "HasSuffix",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Index",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "IndexAny",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "IndexByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "IndexFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "IndexRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Join",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "LastIndex",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "LastIndexAny",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "LastIndexByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "LastIndexFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Map",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "NewBuffer",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "NewBufferString",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "NewReader",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.Len",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.Read",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.ReadAt",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.ReadByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.ReadRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.Reset",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.Seek",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.Size",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.UnreadByte",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.UnreadRune",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Reader.WriteTo",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "bytes",
+      "name": "Repeat",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Replace",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ReplaceAll",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Runes",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Split",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "SplitAfter",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "SplitAfterN",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "SplitN",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Title",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToLower",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToLowerSpecial",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToTitle",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToTitleSpecial",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToUpper",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToUpperSpecial",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "ToValidUTF8",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "Trim",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimLeft",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimLeftFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimPrefix",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimRight",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimRightFunc",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimSpace",
+      "effects": []
+    },
+    {
+      "path": "bytes",
+      "name": "TrimSuffix",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "AfterFunc",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "Background",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "Cause",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "TODO",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "WithCancel",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "WithCancelCause",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "WithDeadline",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "context",
+      "name": "WithDeadlineCause",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "context",
+      "name": "WithTimeout",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "context",
+      "name": "WithTimeoutCause",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "context",
+      "name": "WithValue",
+      "effects": []
+    },
+    {
+      "path": "context",
+      "name": "WithoutCancel",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Compact",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Decoder.Decode",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "encoding/json",
+      "name": "Decoder.DisallowUnknownFields",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Decoder.More",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "encoding/json",
+      "name": "Decoder.Token",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "encoding/json",
+      "name": "Decoder.UseNumber",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Encoder.Encode",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "encoding/json",
+      "name": "Encoder.SetEscapeHTML",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Encoder.SetIndent",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "HTMLEscape",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Indent",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Marshal",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "MarshalIndent",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "NewDecoder",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "NewEncoder",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Unmarshal",
+      "effects": []
+    },
+    {
+      "path": "encoding/json",
+      "name": "Valid",
+      "effects": []
+    },
+    {
+      "path": "errors",
+      "name": "As",
+      "effects": []
+    },
+    {
+      "path": "errors",
+      "name": "Is",
+      "effects": []
+    },
+    {
+      "path": "errors",
+      "name": "Join",
+      "effects": []
+    },
+    {
+      "path": "errors",
+      "name": "New",
+      "effects": []
+    },
+    {
+      "path": "errors",
+      "name": "Unwrap",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Append",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Appendf",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Appendln",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Errorf",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "FormatString",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Fprint",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fprintf",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fprintln",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fscan",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fscanf",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Fscanln",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Print",
+      "effects": [
+        "stdout"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Printf",
+      "effects": [
+        "stdout"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Println",
+      "effects": [
+        "stdout"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Scan",
+      "effects": [
+        "stdin"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Scanf",
+      "effects": [
+        "stdin"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Scanln",
+      "effects": [
+        "stdin"
+      ]
+    },
+    {
+      "path": "fmt",
+      "name": "Sprint",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Sprintf",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Sprintln",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Sscan",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Sscanf",
+      "effects": []
+    },
+    {
+      "path": "fmt",
+      "name": "Sscanln",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "Copy",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "CopyBuffer",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "CopyN",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "LimitReader",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "MultiReader",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "MultiWriter",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "NewOffsetWriter",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "NewSectionReader",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "NopCloser",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "Pipe",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "ReadAll",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "ReadAtLeast",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "ReadFull",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "io",
+      "name": "TeeReader",
+      "effects": []
+    },
+    {
+      "path": "io",
+      "name": "WriteString",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Fatal",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Fatalf",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Fatalln",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Fatal",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Fatalf",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Fatalln",
+      "effects": [
+        "env",
+        "fs.read",
+        "proc",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Panic",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Panicf",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Panicln",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Print",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Printf",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Logger.Println",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "New",
+      "effects": []
+    },
+    {
+      "path": "log",
+      "name": "Panic",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Panicf",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Panicln",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Print",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Printf",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log",
+      "name": "Println",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Any",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Bool",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Debug",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "DebugContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Default",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Duration",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Error",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "ErrorContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Float64",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Group",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Info",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "InfoContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Int",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Int64",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Log",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "LogAttrs",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.Debug",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.DebugContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.Error",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.ErrorContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.Info",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.InfoContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.Log",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.LogAttrs",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.Warn",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.WarnContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.With",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Logger.WithGroup",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "New",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "NewJSONHandler",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "NewTextHandler",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "SetDefault",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "String",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Time",
+      "effects": []
+    },
+    {
+      "path": "log/slog",
+      "name": "Warn",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "log/slog",
+      "name": "WarnContext",
+      "effects": [
+        "env",
+        "fs.read",
+        "stdout",
+        "time"
+      ]
+    },
+    {
+      "path": "maps",
+      "name": "All",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Clone",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Collect",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Copy",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "DeleteFunc",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Equal",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "EqualFunc",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Insert",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Keys",
+      "effects": []
+    },
+    {
+      "path": "maps",
+      "name": "Values",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Abs",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Acos",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Acosh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Asin",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Asinh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Atan",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Atan2",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Atanh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Cbrt",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Ceil",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Copysign",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Cos",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Cosh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Dim",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Erf",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Erfc",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Erfcinv",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Erfinv",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Exp",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Exp2",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Expm1",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "FMA",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Float32bits",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Float32frombits",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Float64bits",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Float64frombits",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Floor",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Frexp",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Gamma",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Hypot",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Ilogb",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Inf",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "IsInf",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "IsNaN",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "J0",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "J1",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Jn",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Ldexp",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Lgamma",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Log",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Log10",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Log1p",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Log2",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Logb",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Max",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Min",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Mod",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Modf",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "NaN",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Nextafter",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Nextafter32",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Pow",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Pow10",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Remainder",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Round",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "RoundToEven",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Signbit",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Sin",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Sincos",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Sinh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Sqrt",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Tan",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Tanh",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Trunc",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Y0",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Y1",
+      "effects": []
+    },
+    {
+      "path": "math",
+      "name": "Yn",
+      "effects": []
+    },
+    {
       "path": "math/rand",
       "name": "Int",
       "effects": [
@@ -24,10 +1993,476 @@
       ]
     },
     {
+      "path": "net/http",
+      "name": "Client.Do",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Client.Get",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Client.Head",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Client.Post",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Client.PostForm",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Error",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Get",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Handle",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "HandleFunc",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "Head",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Header.Add",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "Header.Del",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "Header.Get",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "Header.Set",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "ListenAndServe",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "ListenAndServeTLS",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "MaxBytesReader",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "NewRequest",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "NewRequestWithContext",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "NewServeMux",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "NotFound",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Post",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "PostForm",
+      "effects": [
+        "env",
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Redirect",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Serve",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "ServeFile",
+      "effects": [
+        "fs.read",
+        "io"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "ServeMux.Handle",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "ServeMux.HandleFunc",
+      "effects": []
+    },
+    {
+      "path": "net/http",
+      "name": "ServeTLS",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.Close",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.ListenAndServe",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.ListenAndServeTLS",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.Serve",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.ServeTLS",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "Server.Shutdown",
+      "effects": [
+        "net"
+      ]
+    },
+    {
+      "path": "net/http",
+      "name": "StatusText",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Error.Error",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Error.Temporary",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Error.Timeout",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Error.Unwrap",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "EscapeError.Error",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "InvalidHostError.Error",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "JoinPath",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Parse",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "ParseQuery",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "ParseRequestURI",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "PathEscape",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "PathUnescape",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "QueryEscape",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "QueryUnescape",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.EscapedFragment",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.EscapedPath",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.Hostname",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.IsAbs",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.JoinPath",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.MarshalBinary",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.Parse",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.Port",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.Query",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.Redacted",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.RequestURI",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.ResolveReference",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.String",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "URL.UnmarshalBinary",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "User",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "UserPassword",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Userinfo.Password",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Userinfo.String",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Userinfo.Username",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Add",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Del",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Encode",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Get",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Has",
+      "effects": []
+    },
+    {
+      "path": "net/url",
+      "name": "Values.Set",
+      "effects": []
+    },
+    {
+      "path": "os",
+      "name": "Chmod",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Create",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Environ",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Executable",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
       "path": "os",
       "name": "Exit",
       "effects": [
         "proc"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "ExpandEnv",
+      "effects": [
+        "env"
       ]
     },
     {
@@ -67,6 +2502,49 @@
     },
     {
       "path": "os",
+      "name": "Lstat",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Mkdir",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "MkdirAll",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Open",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "OpenFile",
+      "effects": [
+        "fs.read",
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "ReadDir",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
       "name": "ReadFile",
       "effects": [
         "fs.read"
@@ -81,6 +2559,20 @@
     },
     {
       "path": "os",
+      "name": "RemoveAll",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Rename",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
       "name": "Setenv",
       "effects": [
         "env"
@@ -88,7 +2580,28 @@
     },
     {
       "path": "os",
+      "name": "Stat",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "Truncate",
+      "effects": [
+        "fs.write"
+      ]
+    },
+    {
+      "path": "os",
       "name": "Unsetenv",
+      "effects": [
+        "env"
+      ]
+    },
+    {
+      "path": "os",
+      "name": "UserHomeDir",
       "effects": [
         "env"
       ]
@@ -101,8 +2614,786 @@
       ]
     },
     {
+      "path": "path/filepath",
+      "name": "Abs",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "path/filepath",
+      "name": "Base",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Clean",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Dir",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "EvalSymlinks",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "path/filepath",
+      "name": "Ext",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "FromSlash",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Glob",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "path/filepath",
+      "name": "HasPrefix",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "IsAbs",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "IsLocal",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Join",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Localize",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Match",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Rel",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Split",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "SplitList",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "ToSlash",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "VolumeName",
+      "effects": []
+    },
+    {
+      "path": "path/filepath",
+      "name": "Walk",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "path/filepath",
+      "name": "WalkDir",
+      "effects": [
+        "fs.read"
+      ]
+    },
+    {
+      "path": "regexp",
+      "name": "Compile",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "CompilePOSIX",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Match",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "MatchReader",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "regexp",
+      "name": "MatchString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "MustCompile",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "MustCompilePOSIX",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "QuoteMeta",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Copy",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Expand",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ExpandString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Find",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAll",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllStringIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllStringSubmatch",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllStringSubmatchIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllSubmatch",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindAllSubmatchIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindReaderIndex",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindReaderSubmatchIndex",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindStringIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindStringSubmatch",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindStringSubmatchIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindSubmatch",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.FindSubmatchIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.LiteralPrefix",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Longest",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.MarshalText",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Match",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.MatchReader",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.MatchString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.NumSubexp",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAll",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAllFunc",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAllLiteral",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAllLiteralString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAllString",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.ReplaceAllStringFunc",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.Split",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.String",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.SubexpIndex",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.SubexpNames",
+      "effects": []
+    },
+    {
+      "path": "regexp",
+      "name": "Regexp.UnmarshalText",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "All",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "AppendSeq",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Backward",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "BinarySearch",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "BinarySearchFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Chunk",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Clip",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Clone",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Collect",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Compact",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "CompactFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Compare",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "CompareFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Concat",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Contains",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "ContainsFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Delete",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "DeleteFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Equal",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "EqualFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Grow",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Index",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "IndexFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Insert",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "IsSorted",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "IsSortedFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Max",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "MaxFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Min",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "MinFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Repeat",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Replace",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Reverse",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Sort",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "SortFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "SortStableFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Sorted",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "SortedFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "SortedStableFunc",
+      "effects": []
+    },
+    {
+      "path": "slices",
+      "name": "Values",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Find",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64Slice.Len",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64Slice.Less",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64Slice.Search",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64Slice.Sort",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64Slice.Swap",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64s",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Float64sAreSorted",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntSlice.Len",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntSlice.Less",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntSlice.Search",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntSlice.Sort",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntSlice.Swap",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Ints",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IntsAreSorted",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "IsSorted",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Reverse",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Search",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "SearchFloat64s",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "SearchInts",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "SearchStrings",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Slice",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "SliceIsSorted",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "SliceStable",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Sort",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Stable",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringSlice.Len",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringSlice.Less",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringSlice.Search",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringSlice.Sort",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringSlice.Swap",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "Strings",
+      "effects": []
+    },
+    {
+      "path": "sort",
+      "name": "StringsAreSorted",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendBool",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendFloat",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendInt",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuote",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuoteRune",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuoteRuneToASCII",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuoteRuneToGraphic",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuoteToASCII",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendQuoteToGraphic",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "AppendUint",
+      "effects": []
+    },
+    {
       "path": "strconv",
       "name": "Atoi",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "CanBackquote",
       "effects": []
     },
     {
@@ -112,7 +3403,32 @@
     },
     {
       "path": "strconv",
+      "name": "FormatComplex",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "FormatFloat",
+      "effects": []
+    },
+    {
+      "path": "strconv",
       "name": "FormatInt",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "FormatUint",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "IsGraphic",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "IsPrint",
       "effects": []
     },
     {
@@ -122,7 +3438,27 @@
     },
     {
       "path": "strconv",
+      "name": "NumError.Error",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "NumError.Unwrap",
+      "effects": []
+    },
+    {
+      "path": "strconv",
       "name": "ParseBool",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "ParseComplex",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "ParseFloat",
       "effects": []
     },
     {
@@ -132,7 +3468,107 @@
     },
     {
       "path": "strconv",
+      "name": "ParseUint",
+      "effects": []
+    },
+    {
+      "path": "strconv",
       "name": "Quote",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuoteRune",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuoteRuneToASCII",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuoteRuneToGraphic",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuoteToASCII",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuoteToGraphic",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "QuotedPrefix",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "Unquote",
+      "effects": []
+    },
+    {
+      "path": "strconv",
+      "name": "UnquoteChar",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.Cap",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.Grow",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.Len",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.Reset",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.String",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.Write",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.WriteByte",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.WriteRune",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Builder.WriteString",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Clone",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Compare",
       "effects": []
     },
     {
@@ -142,12 +3578,52 @@
     },
     {
       "path": "strings",
+      "name": "ContainsAny",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ContainsFunc",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ContainsRune",
+      "effects": []
+    },
+    {
+      "path": "strings",
       "name": "Count",
       "effects": []
     },
     {
       "path": "strings",
+      "name": "Cut",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "CutPrefix",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "CutSuffix",
+      "effects": []
+    },
+    {
+      "path": "strings",
       "name": "EqualFold",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Fields",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "FieldsFunc",
       "effects": []
     },
     {
@@ -167,12 +3643,129 @@
     },
     {
       "path": "strings",
+      "name": "IndexAny",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "IndexByte",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "IndexFunc",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "IndexRune",
+      "effects": []
+    },
+    {
+      "path": "strings",
       "name": "Join",
       "effects": []
     },
     {
       "path": "strings",
+      "name": "LastIndex",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "LastIndexAny",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "LastIndexByte",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "LastIndexFunc",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Map",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "NewReader",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "NewReplacer",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.Len",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.Read",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.ReadAt",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.ReadByte",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.ReadRune",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.Reset",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.Seek",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.Size",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.UnreadByte",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.UnreadRune",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Reader.WriteTo",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "strings",
       "name": "Repeat",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Replace",
       "effects": []
     },
     {
@@ -182,7 +3775,39 @@
     },
     {
       "path": "strings",
+      "name": "Replacer.Replace",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Replacer.WriteString",
+      "effects": [
+        "io"
+      ]
+    },
+    {
+      "path": "strings",
       "name": "Split",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "SplitAfter",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "SplitAfterN",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "SplitN",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Title",
       "effects": []
     },
     {
@@ -192,12 +3817,67 @@
     },
     {
       "path": "strings",
+      "name": "ToLowerSpecial",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ToTitle",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ToTitleSpecial",
+      "effects": []
+    },
+    {
+      "path": "strings",
       "name": "ToUpper",
       "effects": []
     },
     {
       "path": "strings",
+      "name": "ToUpperSpecial",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "ToValidUTF8",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "Trim",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimFunc",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimLeft",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimLeftFunc",
+      "effects": []
+    },
+    {
+      "path": "strings",
       "name": "TrimPrefix",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimRight",
+      "effects": []
+    },
+    {
+      "path": "strings",
+      "name": "TrimRightFunc",
       "effects": []
     },
     {
@@ -211,11 +3891,903 @@
       "effects": []
     },
     {
+      "path": "sync",
+      "name": "Cond.Broadcast",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Cond.Signal",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Cond.Wait",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Clear",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.CompareAndDelete",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Delete",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Load",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.LoadAndDelete",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.LoadOrStore",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Range",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Store",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Map.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Mutex.Lock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Mutex.TryLock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Mutex.Unlock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "NewCond",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Once.Do",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "OnceFunc",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "OnceValue",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "OnceValues",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Pool.Get",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "Pool.Put",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.Lock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.RLock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.RLocker",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.RUnlock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.TryLock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.TryRLock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "RWMutex.Unlock",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "WaitGroup.Add",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "WaitGroup.Done",
+      "effects": []
+    },
+    {
+      "path": "sync",
+      "name": "WaitGroup.Wait",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AddInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AddInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AddUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AddUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AddUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AndInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AndInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AndUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AndUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "AndUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Bool.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Bool.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Bool.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Bool.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapPointer",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "CompareAndSwapUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.Add",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.And",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.Or",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int32.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.Add",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.And",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.Or",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Int64.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadPointer",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "LoadUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "OrInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "OrInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "OrUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "OrUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "OrUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Pointer.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Pointer.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Pointer.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Pointer.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StoreInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StoreInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StorePointer",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StoreUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StoreUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "StoreUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapInt32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapInt64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapPointer",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapUint32",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapUint64",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "SwapUintptr",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.Add",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.And",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.Or",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint32.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.Add",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.And",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.Or",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uint64.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.Add",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.And",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.Or",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Uintptr.Swap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Value.CompareAndSwap",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Value.Load",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Value.Store",
+      "effects": []
+    },
+    {
+      "path": "sync/atomic",
+      "name": "Value.Swap",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "After",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "AfterFunc",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Date",
+      "effects": [
+        "env",
+        "fs.read"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Duration.Abs",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Hours",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Microseconds",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Milliseconds",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Minutes",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Nanoseconds",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Round",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Seconds",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.String",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Duration.Truncate",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "NewTicker",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "NewTimer",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Now",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Parse",
+      "effects": [
+        "env",
+        "fs.read"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "ParseDuration",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "ParseInLocation",
+      "effects": [
+        "env",
+        "fs.read"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Since",
+      "effects": [
+        "time"
+      ]
+    },
+    {
       "path": "time",
       "name": "Sleep",
       "effects": [
         "time"
       ]
+    },
+    {
+      "path": "time",
+      "name": "Tick",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Ticker.Reset",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Ticker.Stop",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Add",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.After",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Before",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Equal",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Format",
+      "effects": [
+        "env",
+        "fs.read"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Time.IsZero",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Sub",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Truncate",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.UTC",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Time.Unix",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Timer.Reset",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "time",
+      "name": "Timer.Stop",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Unix",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "UnixMilli",
+      "effects": []
+    },
+    {
+      "path": "time",
+      "name": "Until",
+      "effects": [
+        "time"
+      ]
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "AppendRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "DecodeLastRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "DecodeLastRuneInString",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "DecodeRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "DecodeRuneInString",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "EncodeRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "FullRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "FullRuneInString",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "RuneCount",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "RuneCountInString",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "RuneLen",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "RuneStart",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "Valid",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "ValidRune",
+      "effects": []
+    },
+    {
+      "path": "unicode/utf8",
+      "name": "ValidString",
+      "effects": []
     }
   ]
 }

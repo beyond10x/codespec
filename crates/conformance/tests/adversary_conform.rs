@@ -3,8 +3,6 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::OnceLock;
 
 use codespec_conformance::conform::{
     Exec, Process, ReaderPrograms, Reason, Run, Target, UNKNOWN_KIND, Verdict, conform_adapter,
@@ -62,22 +60,13 @@ fn mini_kit(dir: &Path, cases: &[&str]) -> PathBuf {
     k
 }
 
-/// The Go writer and runner, built once with `go build` into their own directory.
+#[path = "support/go_bin.rs"]
+mod go;
+
+/// The Go writer and runner (and reader), built once for each state of their sources
+/// (`support/go_bin.rs`).
 fn go_bin() -> &'static Path {
-    static B: OnceLock<PathBuf> = OnceLock::new();
-    B.get_or_init(|| {
-        let dir = root().join("target/conform-adversary-go");
-        std::fs::create_dir_all(&dir).unwrap();
-        let o = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .args(["./cmd/codespec-write-go", "./cmd/codespec-run-go"])
-            .current_dir(root().join("adapters/go"))
-            .output()
-            .unwrap();
-        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-        dir
-    })
+    go::go_bin()
 }
 
 /// docs/conformance.md § 4: "A runner cannot pass a case on its own: the module it runs comes from

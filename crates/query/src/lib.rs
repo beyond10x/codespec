@@ -169,8 +169,9 @@
 //! register, and it matches when the field's value is the register's: the local an expression
 //! reads, through `&`, `*` and fields (`<body>$mu.inner`), else the value itself.
 //! `=> m := M` sets a register from the pattern's variable `M` the same way; a property sets at
-//! most three ([`MAX_REGISTERS`]). `defer call{…}` waits for the `defer` statement of `cir/1`
-//! (§ 8) and is refused.
+//! most three ([`MAX_REGISTERS`]). `defer call{…}` matches the call a `defer` statement holds
+//! (§ 8), at that statement, where its operands are evaluated; a `call{…}` event does not match
+//! a deferred call.
 //!
 //! A run over a body that passes a foreign statement without a call list rests on it, and in the
 //! upper bound such a statement, or an opaque function, may make the property fail anywhere in
@@ -237,8 +238,11 @@
 //!   `crates/check` they run on, but: `insecure-random` takes neither `--strict` nor `--report`;
 //!   `unreached` neither `--entry` nor `--exported`, and its generated-file names are fixed in
 //!   the check, not the list `generated`; `case-fold-asymmetry` and `clone-aliasing` do not
-//!   follow an accessor of an opaque or foreign function. `lock-without-unlock` waits for the
-//!   `defer` statement (§ 8), as `checks/waiting.json` says.
+//!   follow an accessor of an opaque or foreign function. `lock-without-unlock` compares the
+//!   conditions of two `if`s only when each reads one local, and follows a call that releases
+//!   for its caller one level deep.
+//! - `recv_var`, the receiver root a listed call names (§ 8), is not read: a register compared
+//!   with a listed call's receiver still matches only possibly.
 
 mod engine;
 mod facts;
@@ -594,8 +598,7 @@ impl Names {
     }
 }
 
-/// Parse a cq module. A `check` declaration (§ 5.4) or a `defer` event (§ 8) is refused, naming
-/// it.
+/// Parse a cq module. A `check` declaration (§ 5.4) is refused, naming it.
 pub fn parse(src: &str) -> Result<Program, String> {
     syntax::parse(src)
 }

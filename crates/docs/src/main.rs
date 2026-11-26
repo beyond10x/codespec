@@ -33,6 +33,10 @@
 //!
 //! `generate --check` also refuses an admonition whose title is not in brackets anywhere under
 //! `website/docs`.
+//!
+//! `reader-coverage` ([`coverage`]) prints each reader's coverage of the kit, read from the
+//! checked-in support matrix, and fails when one is not at its floor in
+//! `conformance/reader-floors.json`.
 #![forbid(unsafe_code)]
 
 mod badges;
@@ -41,6 +45,7 @@ mod cir;
 mod cli;
 mod comparison;
 mod comparison_page;
+mod coverage;
 mod crates;
 mod diagram;
 mod guide;
@@ -119,6 +124,14 @@ enum Action {
         /// `server-deep.trace.json`.
         #[arg(long)]
         work: PathBuf,
+        /// Repository root.
+        #[arg(long, default_value = ".")]
+        root: PathBuf,
+    },
+    /// Print, for each reader of `conformance/reader-floors.json`, its verified count of the
+    /// features a reader can claim and of those its language has a source form for, read from
+    /// `website/data/support-matrix.json`; fail naming each reader whose count is not its floor.
+    ReaderCoverage {
         /// Repository root.
         #[arg(long, default_value = ".")]
         root: PathBuf,
@@ -563,6 +576,7 @@ fn main() -> ExitCode {
         }),
         Action::Netcheck { work, root } => netcheck::reduce(&root, &work)
             .map(|()| println!("examples/netcheck: written from {}", work.display())),
+        Action::ReaderCoverage { root } => coverage::step(&root),
         Action::Provenance { site, commit } => write_provenance(&site, &commit)
             .map(|()| println!("{}: bound to {commit}", site.display())),
     };

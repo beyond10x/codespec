@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:reader-java-to-error-lookup-else
 kind: story
-status: active
+status: implemented
 title: The Java reader claims expr.to_error and stmt.lookup_else
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T20:49:24Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T20:49:25Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:09Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":2}}}
 ---
 # Story: the Java reader claims expr.to_error and stmt.lookup_else
 

@@ -13,7 +13,7 @@ test b10x-codespec-eval --test=diff
 test b10x-codespec-eval --test=kit --test=refusals
 test b10x-codespec-eval --test=runner
 test b10x-codespec-conformance --lib --bins
-test b10x-codespec-conformance b10x-codespec-eval --doc
+test b10x-codespec-conformance b10x-codespec-eval codespec-run-rust codespec-read-c --doc
 test b10x-codespec-conformance --test=adversary2
 test b10x-codespec-conformance --test=adversary_conform
 test b10x-codespec-conformance --test=adversary_evalstep
@@ -21,12 +21,15 @@ test b10x-codespec-conformance --test=cases
 test b10x-codespec-conformance --test=conform
 test codespec-docs
 test codespec-write-rust
-test codespec-read-rust codespec-run-rust
-test codespec-write-c codespec-run-c
-test codespec-read-c codespec-odin
+test codespec-read-rust
+test codespec-run-rust --lib --bins --test=adversary --test=manifests
+test codespec-run-rust --test=acceptance
+test codespec-write-c codespec-run-c codespec-odin
+test codespec-read-c --test=runtime --test=bounds --test=adversary_bounds --test=adversary2 --test=adversary3 --test=to_error_variadic --test=reader
+test codespec-read-c --lib --bins --test=cases --test=adversary1
 task language-adapters-check
 task adapters-check groovy-fixture-check
 task examples-check examples-pass examples-go examples-rust examples-greeter examples-inventory examples-effects examples-series examples-ledger examples-fees harness examples-edit
 task conformance-cases conformance-kit
 task eval-kit eval-diff
-task docs-check
+task docs-check reader-coverage

@@ -193,6 +193,7 @@ impl Walker<'_, '_> {
             | Stmt::Decr { x, .. }
             | Stmt::Expr { x, .. }
             | Stmt::Raise { x, .. } => self.expr(x, &sub("x")),
+            Stmt::Defer { call, .. } => self.expr(call, &sub("call")),
             Stmt::If {
                 cond,
                 then,

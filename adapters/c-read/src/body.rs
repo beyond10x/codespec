@@ -180,6 +180,16 @@ pub(crate) fn addressed(n: &J) -> BTreeSet<String> {
     out
 }
 
+/// Whether `n` is or holds a `case` or `default` label of the switch around it: one outside a
+/// switch of its own under `n`.
+fn nested_label(n: &J) -> bool {
+    match n.kind() {
+        "CaseStmt" | "DefaultStmt" => true,
+        "SwitchStmt" => false,
+        _ => n.inner().iter().any(nested_label),
+    }
+}
+
 /// Whether `n`, under parentheses, is a call.
 fn bare_call(n: &J) -> bool {
     strip(n).kind() == "CallExpr"
@@ -795,6 +805,15 @@ impl<'a> Body<'a> {
                 };
                 last.1.push(k);
             }
+        }
+        // A label below an arm's top level (inside an `if`, Duff's `do`) is a jump target of this
+        // switch that no `cir/1` case can hold: the whole switch is refused, so no dispatch to it
+        // runs on as if the label were not there.
+        if segments
+            .iter()
+            .any(|(_, stmts)| stmts.iter().any(|s| nested_label(s)))
+        {
+            return Err("a case label nested below an arm's top level".into());
         }
         let count = segments.len();
         let mut cases = Vec::new();

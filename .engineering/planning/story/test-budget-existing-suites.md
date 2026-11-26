@@ -2,12 +2,93 @@
 format: aep.planning-md/3
 id: story:test-budget-existing-suites
 kind: story
-status: draft
+status: implemented
 title: Existing test suites keep the test budget
 summary: Suites measured over the 60 s per-test and 120 s per-step budget on 2026-11-23 make expensive products once and kill slow tests
 relations:
 - informed_by: epic:maintainer-review-2026-11-23
-revision: 2
+scope:
+- confidence: inferred
+  path: .config/nextest.toml
+- confidence: cited
+  path: Taskfile.yml
+- confidence: inferred
+  path: adapters/c-read/src/lib.rs
+- confidence: cited
+  path: adapters/c-read/tests/adversary1.rs
+- confidence: cited
+  path: adapters/c-read/tests/adversary_bounds.rs
+- confidence: cited
+  path: adapters/c-read/tests/bounds.rs
+- confidence: cited
+  path: adapters/c-read/tests/cases.rs
+- confidence: cited
+  path: adapters/c-read/tests/runtime.rs
+- confidence: cited
+  path: adapters/c/tests/secreview2.rs
+- confidence: cited
+  path: adapters/c/tests/writer.rs
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/adversary2_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/adversary_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/bounds_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/calls_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/describe_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/entries_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/front.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/labeled_test.go
+- confidence: inferred
+  path: adapters/go/cmd/codespec-read-go/main.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/spans.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-read-go/whole_package_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-write-go/adversary_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-write-go/java_forms_test.go
+- confidence: cited
+  path: adapters/go/cmd/codespec-write-go/write_test.go
+- confidence: cited
+  path: adapters/rust-read/tests/bounds.rs
+- confidence: cited
+  path: adapters/rust-read/tests/cases.rs
+- confidence: cited
+  path: adapters/rust/tests/writer.rs
+- confidence: cited
+  path: crates/check/tests/checks.rs
+- confidence: inferred
+  path: crates/conformance/src
+- confidence: cited
+  path: crates/conformance/tests/conform.rs
+- confidence: cited
+  path: crates/effects/tests/trace.rs
+- confidence: cited
+  path: crates/eval/tests/adversary1.rs
+- confidence: cited
+  path: crates/eval/tests/adversary3.rs
+- confidence: cited
+  path: crates/eval/tests/diff.rs
+- confidence: cited
+  path: crates/eval/tests/runner.rs
+- confidence: cited
+  path: crates/query/tests/checks.rs
+- confidence: cited
+  path: scripts/check-part.sh
+- confidence: cited
+  path: scripts/check-parts.txt
+revision: 43
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-26T04:43:17Z", actor: "human:operator", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:09Z", actor: "human:operator", revision: 43, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: test-budget-existing-suites
 

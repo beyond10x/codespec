@@ -257,6 +257,7 @@ impl<'r> Lister<'r> {
                         recv: recv.clone(),
                         name: go.clone(),
                         by: String::new(),
+                        recv_var: String::new(),
                         pos,
                     }),
                     Some((None, go)) => self.out.push(CallRef::Func {
@@ -424,6 +425,7 @@ impl<'ast> Visit<'ast> for Lister<'_> {
                 recv,
                 name: go,
                 by: String::new(),
+                recv_var: String::new(),
                 pos,
             },
             None => CallRef::Named {

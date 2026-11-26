@@ -3,10 +3,10 @@
 //! `crates/check/tests/fixtures`, both read with `codespec-read-go`, or waits in
 //! `checks/waiting.json` for a design section that is not built yet.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 
 use codespec_model::Module;
 use codespec_query::{FactBase, Names, Value, parse, run};
@@ -34,29 +34,28 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../check/tests/fixtures")
 }
 
-/// `codespec-read-go`, built once per test binary.
-fn reader() -> &'static Path {
-    static READER: OnceLock<PathBuf> = OnceLock::new();
-    READER.get_or_init(|| {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-reader");
-        std::fs::create_dir_all(&dir).unwrap();
-        let built = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .arg("./cmd/codespec-read-go")
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../adapters/go"))
-            .output()
-            .unwrap();
-        assert!(
-            built.status.success(),
-            "{}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        dir.join("codespec-read-go")
-    })
+#[path = "../../conformance/tests/support/go_bin.rs"]
+mod go_bin;
+
+/// `codespec-read-go`, built once for each state of its sources (`go_bin.rs`).
+fn reader() -> PathBuf {
+    go_bin::go_bin().join("codespec-read-go")
 }
 
+/// The fixture `<check>/<case>` read with `codespec-read-go`, once per test binary: the tests read
+/// many of the same fixtures.
 fn read(check: &str, case: &str) -> Module {
+    static READ: Mutex<BTreeMap<String, Module>> = Mutex::new(BTreeMap::new());
+    let key = format!("{check}/{case}");
+    if let Some(m) = READ.lock().unwrap().get(&key) {
+        return m.clone();
+    }
+    let m = read_now(check, case);
+    READ.lock().unwrap().insert(key, m.clone());
+    m
+}
+
+fn read_now(check: &str, case: &str) -> Module {
     let out = Command::new(reader())
         .arg(format!("./{check}/{case}"))
         .current_dir(fixtures())
@@ -126,8 +125,8 @@ fn every_check_is_written_in_cq_with_the_same_findings_or_waits_for_a_named_sect
         );
     }
     assert!(
-        waiting.contains_key("lock-without-unlock"),
-        "lock-without-unlock needs § 5.3 and § 8"
+        !waiting.contains_key("lock-without-unlock"),
+        "lock-without-unlock is written in cq: § 5.3 and § 8 are built"
     );
     let mut written = 0;
     for check in CHECKS {
@@ -206,7 +205,7 @@ fn every_fixture_of_a_written_check_gives_the_findings_of_codespec_check() {
     }
     assert_eq!(
         (cases, skipped),
-        (22, vec!["unreached/library".to_string()]),
+        (24, vec!["unreached/library".to_string()]),
         "the fixtures the CHANGELOG names"
     );
 }
@@ -296,4 +295,22 @@ fn cq_knows_the_names_lists_of_codespec_check_and_refuses_any_other() {
     let err = with(br#"{"never-fial": ["x"]}"#).unwrap_err();
     assert!(err.contains("no list never-fial"), "{err}");
     assert!(with(br#"{"receive": ["x"], "never-fail": ["x"]}"#).is_ok());
+}
+
+/// `crates/check/tests/fixtures/adv-defer`: a lock released by an unlock in a deferred function
+/// literal (`lock`) is not held at a return, and one whose deferred literal does not unlock
+/// (`lock-held`) is; `lock-without-unlock.cq` gives what `codespec check` gives on both.
+#[test]
+fn cq_lock_without_unlock_sees_an_unlock_in_a_deferred_literal_as_check_does() {
+    let src = std::fs::read_to_string(checks_dir().join("lock-without-unlock.cq")).unwrap();
+    for (case, findings) in [("lock", 0), ("lock-held", 1)] {
+        let m = read("adv-defer", case);
+        let want = checked("lock-without-unlock", &m);
+        assert_eq!(want.len(), findings, "adv-defer/{case}: {want:?}");
+        assert_eq!(
+            queried("lock-without-unlock", &src, &m),
+            want,
+            "adv-defer/{case}"
+        );
+    }
 }

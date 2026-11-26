@@ -260,6 +260,10 @@
             },
             "recv": {
               "type": "string"
+            },
+            "recv_var": {
+              "description": "The local, parameter or receiver the call's receiver is rooted at, through fields,\nindexes, `*` and `&` (`c` of `c.mu.Lock()`); empty when it is rooted elsewhere (a\nmodule variable, a call's result) or the reader does not say.",
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -291,6 +295,10 @@
               "type": "string"
             },
             "pos": {
+              "type": "string"
+            },
+            "recv_var": {
+              "description": "The local the interface value is rooted at, as `Method`'s `recv_var`.",
               "type": "string"
             }
           },
@@ -2300,6 +2308,28 @@
           "required": [
             "k",
             "x",
+            "pos"
+          ]
+        },
+        {
+          "description": "`defer call`: the call is made when the function returns. Its function value, receiver and\narguments are evaluated here; the call runs at each `return` and at the end of the body,\nafter the results are taken, the calls a function deferred last deferred first. `call` is\na `call`, `method`, `extern`, `extern_method`, `call_value` or `iface_call`.",
+          "type": "object",
+          "properties": {
+            "call": {
+              "$ref": "#/$defs/Expr"
+            },
+            "k": {
+              "type": "string",
+              "const": "defer"
+            },
+            "pos": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "k",
+            "call",
             "pos"
           ]
         },

@@ -64,6 +64,7 @@ fn manifest() -> AdapterManifest {
             "expr.lambda",
             "expr.spread",
             "expr.to_iface",
+            "stmt.defer",
             "stmt.foreign",
             "stmt.raise",
             "type.array",

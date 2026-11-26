@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T09:14:07Z",
+  "actor": "human:operator",
+  "artifact": "story:reader-check-stops-when-reached",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on 43b7d8bfe7944751c5a5d61d14dcb4e4097989b1: sh scripts/check-part.sh run, all 34 parts of scripts/check-parts.txt exit 0, plus planning-only test",
+    "reference": "commit:43b7d8bfe7944751c5a5d61d14dcb4e4097989b1"
+  }
+}

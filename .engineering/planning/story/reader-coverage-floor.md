@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:reader-coverage-floor
 kind: story
-status: active
+status: implemented
 title: Reader coverage is printed by one command and held by a floor
 summary: codespec-docs generates a per-reader percentage of the kit; task check fails when a reader drops below its checked-in floor.
 relations:
@@ -15,10 +15,11 @@ relations:
 scope:
 - confidence: inferred
   path: crates/docs
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T02:03:40Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-11-10T02:03:40Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:09Z", actor: "human:operator", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 # Story: Reader coverage is printed by one command and held by a floor
 

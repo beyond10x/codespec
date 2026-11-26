@@ -79,19 +79,137 @@ type, a method on a type from another package, a function value. Each stays `for
 - `effects` is a sorted set from the closed vocabulary below; `[]` declares the function pure.
 - Read strictly: unknown fields, unknown effects, duplicate `(path, name)` and any other format are
   refused.
-- `summaries/go-std.effects.json` is the checked-in Go standard library summary.
+- `summaries/go-std.effects.json` is the checked-in Go standard library summary (below).
 
 | effect | meaning |
 |---|---|
 | `env` | reads or writes the process environment or arguments |
 | `fs.read` | reads the file system |
 | `fs.write` | writes the file system |
+| `io` | reads or writes a file descriptor whose origin the analysis does not follow: a file, a socket or a standard stream |
 | `net` | opens or uses a network connection |
 | `proc` | starts, signals or ends a process, including `os.Exit` |
 | `rand` | reads a random source |
 | `stdin` | reads standard input |
 | `stdout` | writes standard output or standard error |
 | `time` | reads a clock or sleeps |
+
+### The Go standard library summary
+
+`summaries/go-std.effects.json` holds 864 entries in 26 packages, for the standard library
+packages a typical service calls. The signatures are those of **Go 1.23**, the `go` line of
+`adapters/go/go.mod` and the Go CI installs: every entry is a function or method of the API lists
+`api/go1.txt` to `api/go1.23.txt` of the Go distribution. These tests hold the file:
+
+- `adapters/go/cmd/codespec-read-go/std_summary_test.go` resolves every entry with `go/types`
+  against the standard library of the Go that runs it, each package imported once, and refuses an
+  entry that an API list after Go 1.23 adds; an entry for a function the pinned Go lacks fails
+  there, locally on a newer Go too.
+- `adapters/go/cmd/codespec-read-go/std_summary_adversary_test.go` refuses an entry that names a
+  promoted method (no call is named so), and checks that a named function passed to an entry
+  taking a function value reads as a `func_ref` argument or a `ref` beside the call; the Go
+  tests share one import pass.
+- `crates/effects/tests/effects.rs::the_table_in_static_analysis_md_is_the_go_standard_library_summary`
+  requires the table below to be the file: one row per package and effect set, rows by package
+  and then effect set, names sorted.
+
+These rules decide the effect of a function that does not name a resource itself, so that a cell
+is not a taste. Where a function may or may not touch a resource, the entry says it may: sound
+over precise.
+
+- A function that reads or writes through a stream its caller supplies (an `io.Reader`,
+  `io.Writer`, `io.RuneReader`, `http.ResponseWriter`) has `io`, the vocabulary's own meaning: a
+  descriptor whose origin the analysis does not follow. It is not `net` and not `fs.write`. A
+  constructor that only wraps the stream (`bufio.NewReader`, `json.NewEncoder`,
+  `http.MaxBytesReader`) reads nothing and is pure, and so is a method that only reads or resets
+  the buffer (`bufio.Reader.Size`, `Buffered`, `Reset`; `bufio.Writer.Available`,
+  `AvailableBuffer`). In `bytes`, `strings`, `regexp` and the other packages whose every function
+  is listed, a function or method with such a parameter has `io` (`bytes.Buffer.WriteTo`,
+  `strings.Replacer.WriteString`, `regexp.Regexp.MatchReader`).
+- A logger writes `stdout`, which the vocabulary defines as standard output or standard error;
+  where the destination is a handler chosen at run time the entry says what the default handler
+  does. Every record is stamped with the clock (`log/log.go` `output`, `log/slog/logger.go`
+  `log`), so a logging call also has `time`, and the stamp is formatted in the local zone (next
+  rule). A constructor of a logger (`log.New`, `slog.New`) writes nothing and is pure.
+- A function that may present a time in the local zone loads that zone once per process: `$TZ`
+  and `/etc/localtime` (`time/zoneinfo.go`, `initLocal`). `time.Date`, `Parse`,
+  `ParseInLocation`, `Time.Format` and every logging call have `env` and `fs.read`.
+- A function given a file name reads or writes the file system: `filepath.Abs`, `EvalSymlinks`,
+  `Glob`, `Walk` and `WalkDir` have `fs.read`, `http.ServeFile` has `fs.read` and `io`.
+- A request through `http.DefaultClient` or a `Client` without its own transport reads the proxy
+  environment (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`; `net/http/transport.go`,
+  `ProxyFromEnvironment`): `Get`, `Head`, `Post`, `PostForm` and the `Client` methods have `env`
+  and `net`.
+- An entry may take a function value (`sync.Once.Do`, `sort.Slice`, `filepath.WalkDir`,
+  `http.HandleFunc`, `time.AfterFunc`): its effects are those of the function itself.
+  `crates/effects` counts a function of the set given to a call outside the set as called by the
+  caller at that call, so the caller has the effects and the unknowns of what it passes. A
+  method of a caller's value that such a function calls through an interface (`sort.Sort(x)`
+  calling `x.Less`, `fmt.Sprint(x)` calling `x.String`, `json.Marshal(v)` calling
+  `v.MarshalJSON`) is not counted: that is a call through an interface the set cannot see.
+- A method is named by the type that declares it, as the reader names the call: a call of a
+  promoted method (`rw.Flush()` on a `bufio.ReadWriter`) is the method of the embedded type
+  (`bufio.Writer.Flush`), so the table has no entry for a promoted method.
+
+A package outside the table (`crypto/rand`, `database/sql`, `os/exec`, a third-party module)
+stays `extern without summary: <path>.<name>`. A call no entry can name stays unknown too: a
+call of a function value, such as `defer cancel()` after `ctx, cancel :=
+context.WithTimeout(…)`, is a `call_value` and has `function value with no candidate in the set:
+context.CancelFunc` while no document of the set uses a function of that type as a value.
+
+| package | entries | effect |
+|---|---|---|
+| `bufio` | `NewReadWriter`, `NewReader`, `NewReaderSize`, `NewScanner`, `NewWriter`, `NewWriterSize`, `Reader.Buffered`, `Reader.Reset`, `Reader.Size`, `ScanBytes`, `ScanLines`, `ScanRunes`, `ScanWords`, `Scanner.Buffer`, `Scanner.Bytes`, `Scanner.Err`, `Scanner.Split`, `Scanner.Text`, `Writer.Available`, `Writer.AvailableBuffer`, `Writer.Buffered`, `Writer.Reset`, `Writer.Size` | pure |
+| `bufio` | `Reader.Discard`, `Reader.Peek`, `Reader.Read`, `Reader.ReadByte`, `Reader.ReadBytes`, `Reader.ReadLine`, `Reader.ReadRune`, `Reader.ReadSlice`, `Reader.ReadString`, `Reader.UnreadByte`, `Reader.UnreadRune`, `Reader.WriteTo`, `Scanner.Scan`, `Writer.Flush`, `Writer.ReadFrom`, `Writer.Write`, `Writer.WriteByte`, `Writer.WriteRune`, `Writer.WriteString` | `io` |
+| `bytes` | `Buffer.Available`, `Buffer.AvailableBuffer`, `Buffer.Bytes`, `Buffer.Cap`, `Buffer.Grow`, `Buffer.Len`, `Buffer.Next`, `Buffer.Read`, `Buffer.ReadByte`, `Buffer.ReadBytes`, `Buffer.ReadRune`, `Buffer.ReadString`, `Buffer.Reset`, `Buffer.String`, `Buffer.Truncate`, `Buffer.UnreadByte`, `Buffer.UnreadRune`, `Buffer.Write`, `Buffer.WriteByte`, `Buffer.WriteRune`, `Buffer.WriteString`, `Clone`, `Compare`, `Contains`, `ContainsAny`, `ContainsFunc`, `ContainsRune`, `Count`, `Cut`, `CutPrefix`, `CutSuffix`, `Equal`, `EqualFold`, `Fields`, `FieldsFunc`, `HasPrefix`, `HasSuffix`, `Index`, `IndexAny`, `IndexByte`, `IndexFunc`, `IndexRune`, `Join`, `LastIndex`, `LastIndexAny`, `LastIndexByte`, `LastIndexFunc`, `Map`, `NewBuffer`, `NewBufferString`, `NewReader`, `Reader.Len`, `Reader.Read`, `Reader.ReadAt`, `Reader.ReadByte`, `Reader.ReadRune`, `Reader.Reset`, `Reader.Seek`, `Reader.Size`, `Reader.UnreadByte`, `Reader.UnreadRune`, `Repeat`, `Replace`, `ReplaceAll`, `Runes`, `Split`, `SplitAfter`, `SplitAfterN`, `SplitN`, `Title`, `ToLower`, `ToLowerSpecial`, `ToTitle`, `ToTitleSpecial`, `ToUpper`, `ToUpperSpecial`, `ToValidUTF8`, `Trim`, `TrimFunc`, `TrimLeft`, `TrimLeftFunc`, `TrimPrefix`, `TrimRight`, `TrimRightFunc`, `TrimSpace`, `TrimSuffix` | pure |
+| `bytes` | `Buffer.ReadFrom`, `Buffer.WriteTo`, `Reader.WriteTo` | `io` |
+| `context` | `AfterFunc`, `Background`, `Cause`, `TODO`, `WithCancel`, `WithCancelCause`, `WithValue`, `WithoutCancel` | pure |
+| `context` | `WithDeadline`, `WithDeadlineCause`, `WithTimeout`, `WithTimeoutCause` | `time` |
+| `encoding/json` | `Compact`, `Decoder.DisallowUnknownFields`, `Decoder.UseNumber`, `Encoder.SetEscapeHTML`, `Encoder.SetIndent`, `HTMLEscape`, `Indent`, `Marshal`, `MarshalIndent`, `NewDecoder`, `NewEncoder`, `Unmarshal`, `Valid` | pure |
+| `encoding/json` | `Decoder.Decode`, `Decoder.More`, `Decoder.Token`, `Encoder.Encode` | `io` |
+| `errors` | `As`, `Is`, `Join`, `New`, `Unwrap` | pure |
+| `fmt` | `Append`, `Appendf`, `Appendln`, `Errorf`, `FormatString`, `Sprint`, `Sprintf`, `Sprintln`, `Sscan`, `Sscanf`, `Sscanln` | pure |
+| `fmt` | `Fprint`, `Fprintf`, `Fprintln`, `Fscan`, `Fscanf`, `Fscanln` | `io` |
+| `fmt` | `Scan`, `Scanf`, `Scanln` | `stdin` |
+| `fmt` | `Print`, `Printf`, `Println` | `stdout` |
+| `io` | `LimitReader`, `MultiReader`, `MultiWriter`, `NewOffsetWriter`, `NewSectionReader`, `NopCloser`, `Pipe`, `TeeReader` | pure |
+| `io` | `Copy`, `CopyBuffer`, `CopyN`, `ReadAll`, `ReadAtLeast`, `ReadFull`, `WriteString` | `io` |
+| `log` | `New` | pure |
+| `log` | `Fatal`, `Fatalf`, `Fatalln`, `Logger.Fatal`, `Logger.Fatalf`, `Logger.Fatalln` | `env`, `fs.read`, `proc`, `stdout`, `time` |
+| `log` | `Logger.Panic`, `Logger.Panicf`, `Logger.Panicln`, `Logger.Print`, `Logger.Printf`, `Logger.Println`, `Panic`, `Panicf`, `Panicln`, `Print`, `Printf`, `Println` | `env`, `fs.read`, `stdout`, `time` |
+| `log/slog` | `Any`, `Bool`, `Default`, `Duration`, `Float64`, `Group`, `Int`, `Int64`, `Logger.With`, `Logger.WithGroup`, `New`, `NewJSONHandler`, `NewTextHandler`, `SetDefault`, `String`, `Time` | pure |
+| `log/slog` | `Debug`, `DebugContext`, `Error`, `ErrorContext`, `Info`, `InfoContext`, `Log`, `LogAttrs`, `Logger.Debug`, `Logger.DebugContext`, `Logger.Error`, `Logger.ErrorContext`, `Logger.Info`, `Logger.InfoContext`, `Logger.Log`, `Logger.LogAttrs`, `Logger.Warn`, `Logger.WarnContext`, `Warn`, `WarnContext` | `env`, `fs.read`, `stdout`, `time` |
+| `maps` | `All`, `Clone`, `Collect`, `Copy`, `DeleteFunc`, `Equal`, `EqualFunc`, `Insert`, `Keys`, `Values` | pure |
+| `math` | `Abs`, `Acos`, `Acosh`, `Asin`, `Asinh`, `Atan`, `Atan2`, `Atanh`, `Cbrt`, `Ceil`, `Copysign`, `Cos`, `Cosh`, `Dim`, `Erf`, `Erfc`, `Erfcinv`, `Erfinv`, `Exp`, `Exp2`, `Expm1`, `FMA`, `Float32bits`, `Float32frombits`, `Float64bits`, `Float64frombits`, `Floor`, `Frexp`, `Gamma`, `Hypot`, `Ilogb`, `Inf`, `IsInf`, `IsNaN`, `J0`, `J1`, `Jn`, `Ldexp`, `Lgamma`, `Log`, `Log10`, `Log1p`, `Log2`, `Logb`, `Max`, `Min`, `Mod`, `Modf`, `NaN`, `Nextafter`, `Nextafter32`, `Pow`, `Pow10`, `Remainder`, `Round`, `RoundToEven`, `Signbit`, `Sin`, `Sincos`, `Sinh`, `Sqrt`, `Tan`, `Tanh`, `Trunc`, `Y0`, `Y1`, `Yn` | pure |
+| `math/rand` | `Int`, `Intn` | `rand` |
+| `net` | `LookupHost` | `net` |
+| `net/http` | `Handle`, `HandleFunc`, `Header.Add`, `Header.Del`, `Header.Get`, `Header.Set`, `MaxBytesReader`, `NewRequest`, `NewRequestWithContext`, `NewServeMux`, `ServeMux.Handle`, `ServeMux.HandleFunc`, `StatusText` | pure |
+| `net/http` | `Client.Do`, `Client.Get`, `Client.Head`, `Client.Post`, `Client.PostForm`, `Get`, `Head`, `Post`, `PostForm` | `env`, `net` |
+| `net/http` | `ServeFile` | `fs.read`, `io` |
+| `net/http` | `Error`, `NotFound`, `Redirect` | `io` |
+| `net/http` | `ListenAndServe`, `ListenAndServeTLS`, `Serve`, `ServeTLS`, `Server.Close`, `Server.ListenAndServe`, `Server.ListenAndServeTLS`, `Server.Serve`, `Server.ServeTLS`, `Server.Shutdown` | `net` |
+| `net/url` | `Error.Error`, `Error.Temporary`, `Error.Timeout`, `Error.Unwrap`, `EscapeError.Error`, `InvalidHostError.Error`, `JoinPath`, `Parse`, `ParseQuery`, `ParseRequestURI`, `PathEscape`, `PathUnescape`, `QueryEscape`, `QueryUnescape`, `URL.EscapedFragment`, `URL.EscapedPath`, `URL.Hostname`, `URL.IsAbs`, `URL.JoinPath`, `URL.MarshalBinary`, `URL.Parse`, `URL.Port`, `URL.Query`, `URL.Redacted`, `URL.RequestURI`, `URL.ResolveReference`, `URL.String`, `URL.UnmarshalBinary`, `User`, `UserPassword`, `Userinfo.Password`, `Userinfo.String`, `Userinfo.Username`, `Values.Add`, `Values.Del`, `Values.Encode`, `Values.Get`, `Values.Has`, `Values.Set` | pure |
+| `os` | `Environ`, `ExpandEnv`, `Getenv`, `Hostname`, `LookupEnv`, `Setenv`, `Unsetenv`, `UserHomeDir` | `env` |
+| `os` | `Executable`, `Getwd`, `Lstat`, `Open`, `ReadDir`, `ReadFile`, `Stat` | `fs.read` |
+| `os` | `OpenFile` | `fs.read`, `fs.write` |
+| `os` | `Chmod`, `Create`, `Mkdir`, `MkdirAll`, `Remove`, `RemoveAll`, `Rename`, `Truncate`, `WriteFile` | `fs.write` |
+| `os` | `Exit`, `Getpid` | `proc` |
+| `path/filepath` | `Base`, `Clean`, `Dir`, `Ext`, `FromSlash`, `HasPrefix`, `IsAbs`, `IsLocal`, `Join`, `Localize`, `Match`, `Rel`, `Split`, `SplitList`, `ToSlash`, `VolumeName` | pure |
+| `path/filepath` | `Abs`, `EvalSymlinks`, `Glob`, `Walk`, `WalkDir` | `fs.read` |
+| `regexp` | `Compile`, `CompilePOSIX`, `Match`, `MatchString`, `MustCompile`, `MustCompilePOSIX`, `QuoteMeta`, `Regexp.Copy`, `Regexp.Expand`, `Regexp.ExpandString`, `Regexp.Find`, `Regexp.FindAll`, `Regexp.FindAllIndex`, `Regexp.FindAllString`, `Regexp.FindAllStringIndex`, `Regexp.FindAllStringSubmatch`, `Regexp.FindAllStringSubmatchIndex`, `Regexp.FindAllSubmatch`, `Regexp.FindAllSubmatchIndex`, `Regexp.FindIndex`, `Regexp.FindString`, `Regexp.FindStringIndex`, `Regexp.FindStringSubmatch`, `Regexp.FindStringSubmatchIndex`, `Regexp.FindSubmatch`, `Regexp.FindSubmatchIndex`, `Regexp.LiteralPrefix`, `Regexp.Longest`, `Regexp.MarshalText`, `Regexp.Match`, `Regexp.MatchString`, `Regexp.NumSubexp`, `Regexp.ReplaceAll`, `Regexp.ReplaceAllFunc`, `Regexp.ReplaceAllLiteral`, `Regexp.ReplaceAllLiteralString`, `Regexp.ReplaceAllString`, `Regexp.ReplaceAllStringFunc`, `Regexp.Split`, `Regexp.String`, `Regexp.SubexpIndex`, `Regexp.SubexpNames`, `Regexp.UnmarshalText` | pure |
+| `regexp` | `MatchReader`, `Regexp.FindReaderIndex`, `Regexp.FindReaderSubmatchIndex`, `Regexp.MatchReader` | `io` |
+| `slices` | `All`, `AppendSeq`, `Backward`, `BinarySearch`, `BinarySearchFunc`, `Chunk`, `Clip`, `Clone`, `Collect`, `Compact`, `CompactFunc`, `Compare`, `CompareFunc`, `Concat`, `Contains`, `ContainsFunc`, `Delete`, `DeleteFunc`, `Equal`, `EqualFunc`, `Grow`, `Index`, `IndexFunc`, `Insert`, `IsSorted`, `IsSortedFunc`, `Max`, `MaxFunc`, `Min`, `MinFunc`, `Repeat`, `Replace`, `Reverse`, `Sort`, `SortFunc`, `SortStableFunc`, `Sorted`, `SortedFunc`, `SortedStableFunc`, `Values` | pure |
+| `sort` | `Find`, `Float64Slice.Len`, `Float64Slice.Less`, `Float64Slice.Search`, `Float64Slice.Sort`, `Float64Slice.Swap`, `Float64s`, `Float64sAreSorted`, `IntSlice.Len`, `IntSlice.Less`, `IntSlice.Search`, `IntSlice.Sort`, `IntSlice.Swap`, `Ints`, `IntsAreSorted`, `IsSorted`, `Reverse`, `Search`, `SearchFloat64s`, `SearchInts`, `SearchStrings`, `Slice`, `SliceIsSorted`, `SliceStable`, `Sort`, `Stable`, `StringSlice.Len`, `StringSlice.Less`, `StringSlice.Search`, `StringSlice.Sort`, `StringSlice.Swap`, `Strings`, `StringsAreSorted` | pure |
+| `strconv` | `AppendBool`, `AppendFloat`, `AppendInt`, `AppendQuote`, `AppendQuoteRune`, `AppendQuoteRuneToASCII`, `AppendQuoteRuneToGraphic`, `AppendQuoteToASCII`, `AppendQuoteToGraphic`, `AppendUint`, `Atoi`, `CanBackquote`, `FormatBool`, `FormatComplex`, `FormatFloat`, `FormatInt`, `FormatUint`, `IsGraphic`, `IsPrint`, `Itoa`, `NumError.Error`, `NumError.Unwrap`, `ParseBool`, `ParseComplex`, `ParseFloat`, `ParseInt`, `ParseUint`, `Quote`, `QuoteRune`, `QuoteRuneToASCII`, `QuoteRuneToGraphic`, `QuoteToASCII`, `QuoteToGraphic`, `QuotedPrefix`, `Unquote`, `UnquoteChar` | pure |
+| `strings` | `Builder.Cap`, `Builder.Grow`, `Builder.Len`, `Builder.Reset`, `Builder.String`, `Builder.Write`, `Builder.WriteByte`, `Builder.WriteRune`, `Builder.WriteString`, `Clone`, `Compare`, `Contains`, `ContainsAny`, `ContainsFunc`, `ContainsRune`, `Count`, `Cut`, `CutPrefix`, `CutSuffix`, `EqualFold`, `Fields`, `FieldsFunc`, `HasPrefix`, `HasSuffix`, `Index`, `IndexAny`, `IndexByte`, `IndexFunc`, `IndexRune`, `Join`, `LastIndex`, `LastIndexAny`, `LastIndexByte`, `LastIndexFunc`, `Map`, `NewReader`, `NewReplacer`, `Reader.Len`, `Reader.Read`, `Reader.ReadAt`, `Reader.ReadByte`, `Reader.ReadRune`, `Reader.Reset`, `Reader.Seek`, `Reader.Size`, `Reader.UnreadByte`, `Reader.UnreadRune`, `Repeat`, `Replace`, `ReplaceAll`, `Replacer.Replace`, `Split`, `SplitAfter`, `SplitAfterN`, `SplitN`, `Title`, `ToLower`, `ToLowerSpecial`, `ToTitle`, `ToTitleSpecial`, `ToUpper`, `ToUpperSpecial`, `ToValidUTF8`, `Trim`, `TrimFunc`, `TrimLeft`, `TrimLeftFunc`, `TrimPrefix`, `TrimRight`, `TrimRightFunc`, `TrimSpace`, `TrimSuffix` | pure |
+| `strings` | `Reader.WriteTo`, `Replacer.WriteString` | `io` |
+| `sync` | `Cond.Broadcast`, `Cond.Signal`, `Cond.Wait`, `Map.Clear`, `Map.CompareAndDelete`, `Map.CompareAndSwap`, `Map.Delete`, `Map.Load`, `Map.LoadAndDelete`, `Map.LoadOrStore`, `Map.Range`, `Map.Store`, `Map.Swap`, `Mutex.Lock`, `Mutex.TryLock`, `Mutex.Unlock`, `NewCond`, `Once.Do`, `OnceFunc`, `OnceValue`, `OnceValues`, `Pool.Get`, `Pool.Put`, `RWMutex.Lock`, `RWMutex.RLock`, `RWMutex.RLocker`, `RWMutex.RUnlock`, `RWMutex.TryLock`, `RWMutex.TryRLock`, `RWMutex.Unlock`, `WaitGroup.Add`, `WaitGroup.Done`, `WaitGroup.Wait` | pure |
+| `sync/atomic` | `AddInt32`, `AddInt64`, `AddUint32`, `AddUint64`, `AddUintptr`, `AndInt32`, `AndInt64`, `AndUint32`, `AndUint64`, `AndUintptr`, `Bool.CompareAndSwap`, `Bool.Load`, `Bool.Store`, `Bool.Swap`, `CompareAndSwapInt32`, `CompareAndSwapInt64`, `CompareAndSwapPointer`, `CompareAndSwapUint32`, `CompareAndSwapUint64`, `CompareAndSwapUintptr`, `Int32.Add`, `Int32.And`, `Int32.CompareAndSwap`, `Int32.Load`, `Int32.Or`, `Int32.Store`, `Int32.Swap`, `Int64.Add`, `Int64.And`, `Int64.CompareAndSwap`, `Int64.Load`, `Int64.Or`, `Int64.Store`, `Int64.Swap`, `LoadInt32`, `LoadInt64`, `LoadPointer`, `LoadUint32`, `LoadUint64`, `LoadUintptr`, `OrInt32`, `OrInt64`, `OrUint32`, `OrUint64`, `OrUintptr`, `Pointer.CompareAndSwap`, `Pointer.Load`, `Pointer.Store`, `Pointer.Swap`, `StoreInt32`, `StoreInt64`, `StorePointer`, `StoreUint32`, `StoreUint64`, `StoreUintptr`, `SwapInt32`, `SwapInt64`, `SwapPointer`, `SwapUint32`, `SwapUint64`, `SwapUintptr`, `Uint32.Add`, `Uint32.And`, `Uint32.CompareAndSwap`, `Uint32.Load`, `Uint32.Or`, `Uint32.Store`, `Uint32.Swap`, `Uint64.Add`, `Uint64.And`, `Uint64.CompareAndSwap`, `Uint64.Load`, `Uint64.Or`, `Uint64.Store`, `Uint64.Swap`, `Uintptr.Add`, `Uintptr.And`, `Uintptr.CompareAndSwap`, `Uintptr.Load`, `Uintptr.Or`, `Uintptr.Store`, `Uintptr.Swap`, `Value.CompareAndSwap`, `Value.Load`, `Value.Store`, `Value.Swap` | pure |
+| `time` | `Duration.Abs`, `Duration.Hours`, `Duration.Microseconds`, `Duration.Milliseconds`, `Duration.Minutes`, `Duration.Nanoseconds`, `Duration.Round`, `Duration.Seconds`, `Duration.String`, `Duration.Truncate`, `ParseDuration`, `Ticker.Stop`, `Time.Add`, `Time.After`, `Time.Before`, `Time.Equal`, `Time.IsZero`, `Time.Sub`, `Time.Truncate`, `Time.UTC`, `Time.Unix`, `Timer.Stop`, `Unix`, `UnixMilli` | pure |
+| `time` | `Date`, `Parse`, `ParseInLocation`, `Time.Format` | `env`, `fs.read` |
+| `time` | `After`, `AfterFunc`, `NewTicker`, `NewTimer`, `Now`, `Since`, `Sleep`, `Tick`, `Ticker.Reset`, `Timer.Reset`, `Until` | `time` |
+| `unicode/utf8` | `AppendRune`, `DecodeLastRune`, `DecodeLastRuneInString`, `DecodeRune`, `DecodeRuneInString`, `EncodeRune`, `FullRune`, `FullRuneInString`, `RuneCount`, `RuneCountInString`, `RuneLen`, `RuneStart`, `Valid`, `ValidRune`, `ValidString` | pure |
+
 
 ### `codespec effects`: the report
 

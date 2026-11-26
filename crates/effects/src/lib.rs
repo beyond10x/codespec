@@ -74,6 +74,17 @@
 //! | `function without a body: <path>.<name>` | a function without a body that neither the barrier nor a linkname resolves |
 //! | `syscall number not constant: <path>.<name>` | a barrier function called with a number that is not a constant |
 //! | `syscall number <n> has no name` | the barrier table does not name the number |
+//! | `macro invocation, not expanded: <name>` | a call ref of form `macro` (a `named` call ref) |
+//! | `call of a name the reader did not resolve: <name>` | a `named` call ref of form `func` |
+//! | `method call on a value of a type the reader did not know: <name>` | a `named` call ref of form `method` |
+//! | `interface call through an undeclared interface: <iface>.<name>` | an `iface_call` naming an interface no document of the set declares |
+//! | `method outside the set: <path>.<type>.<name>` | a type a call through an interface may reach whose method set names a method the set does not hold |
+//! | `function value outside the set: <name>` | a function used as a value of the signature, or given to a call outside the set, that the set does not hold |
+//!
+//! The class of a reason ([`Unknown::class`], the families in [`Unknown::CLASSES`]) is its text
+//! up to its first `: `, or the whole reason without one; `calls <func> which is incomplete` and
+//! `syscall number <n> has no name` are their own classes whatever they name. Two reasons that
+//! differ only in what they name have one class.
 //!
 //! The body of a `lambda` counts as part of the function that holds it: its calls, its
 //! `foreign` statements and its calls of function values. A `call_value` dispatches like a
@@ -82,6 +93,15 @@
 //! (`func([]byte) (int, error)`, named types by import path). An `extern_method` is the extern
 //! `<path>.<type>.<method>`: a summary names it `<type>.<method>`, and in a set the method of that
 //! type in the document with that path.
+//!
+//! A call outside the set (an `extern` or `extern_method` whose path names no document of the set,
+//! summarised or not) may call what it is given: every function of the set used as a value in
+//! its arguments (`sort.Slice(x, less)`, `once.Do(t.Init)`, `http.HandlerFunc(h)` inside an
+//! argument) counts as called by the caller at that call, reached through the call's own site,
+//! as a literal's calls count as its holder's. The same holds for each `ref` call ref listed
+//! beside a `func` or `method` call ref outside the set (a `foreign` statement, an opaque function,
+//! a literal or an `init`). A method of the caller's own value that such a call invokes through
+//! an interface (`sort.Sort(x)`, `fmt.Sprint(x)` calling `x.String`) is not counted.
 //!
 //! ## Call sites
 //!
@@ -432,7 +452,7 @@ pub struct Report {
 }
 
 /// What one function may do.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FuncEffects {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -453,6 +473,40 @@ pub struct FuncEffects {
     pub dispatch: Vec<Dispatch>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unknown_roots: Vec<ReasonCount>,
+    /// Only in memory, never in the document nor in equality: every call of the function to a
+    /// function, a function literal or a module's variable initializers of the set, a call
+    /// through an interface or a function value once per candidate; sorted, each once. Empty in
+    /// a report read from its document.
+    #[serde(skip)]
+    pub calls: Vec<Call>,
+}
+
+impl PartialEq for FuncEffects {
+    fn eq(&self, o: &Self) -> bool {
+        (
+            &self.path,
+            &self.name,
+            &self.pos,
+            &self.effects,
+            &self.raises,
+        ) == (&o.path, &o.name, &o.pos, &o.effects, &o.raises)
+            && (&self.unknown, &self.syscalls, &self.effect_sites)
+                == (&o.unknown, &o.syscalls, &o.effect_sites)
+            && (&self.dispatch, &self.unknown_roots) == (&o.dispatch, &o.unknown_roots)
+    }
+}
+
+impl Eq for FuncEffects {}
+
+/// A call of a function of the set, as [`FuncEffects::calls`] lists it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Call {
+    /// The id of the call (§ Call sites); `None` for a use the table of sites does not number.
+    pub site: Option<CallSite>,
+    /// The callee as the function's reason `calls <func> which is incomplete` names it: its key
+    /// in the function's own module, `<module path>.<key>` in another, a function literal as
+    /// § Call sites names it.
+    pub callee: String,
 }
 
 /// One reason a function's effects may be incomplete.
@@ -461,6 +515,72 @@ pub struct FuncEffects {
 pub struct Unknown {
     pub pos: Pos,
     pub reason: String,
+}
+
+/// The two reasons whose symbol is not after a `: `, each `(prefix, suffix, class)`.
+const SPLICED: [(&str, &str, &str); 2] = [
+    (
+        "calls ",
+        " which is incomplete",
+        "calls <func> which is incomplete",
+    ),
+    (
+        "syscall number ",
+        " has no name",
+        "syscall number <n> has no name",
+    ),
+];
+
+impl Unknown {
+    /// The class of every reason the analysis makes (`src/set.rs`), one per family; a new
+    /// reason is added here with its class.
+    pub const CLASSES: &'static [&'static str] = &[
+        "call of a name the reader did not resolve",
+        "call of undeclared function",
+        "calls <func> which is incomplete",
+        "extern without summary",
+        "foreign statement",
+        "function value outside the set",
+        "function value with no candidate in the set",
+        "function without a body",
+        "interface call through an undeclared interface",
+        "interface call with no implementation in the set",
+        "macro invocation, not expanded",
+        "method call on a value of a type the reader did not know",
+        "method on undeclared type",
+        "method outside the set",
+        "not in its module",
+        "syscall number <n> has no name",
+        "syscall number not constant",
+    ];
+
+    /// The class of the reason `reason`: its family, without the symbol it names. The text up
+    /// to the first `: `, or the whole reason without one; `calls <func> which is incomplete`
+    /// and `syscall number <n> has no name` whatever they name.
+    pub fn class(reason: &str) -> &str {
+        Self::split(reason).0
+    }
+
+    /// What the reason `reason` names apart from its class: the text after its first `: `, the
+    /// `<func>` or `<n>` of the two other forms; `None` for a reason that is its whole class.
+    pub fn subject(reason: &str) -> Option<&str> {
+        Self::split(reason).1
+    }
+
+    fn split(reason: &str) -> (&str, Option<&str>) {
+        for (prefix, suffix, class) in SPLICED {
+            if let Some(symbol) = reason
+                .strip_prefix(prefix)
+                .and_then(|r| r.strip_suffix(suffix))
+            {
+                return (class, Some(symbol));
+            }
+        }
+        match reason.split_once(": ") {
+            Some((class, subject)) => (class, Some(subject)),
+            None => (reason, None),
+        }
+    }
 }
 
 /// A syscall or effect a function reaches, with the positions of its calls that lead there and
@@ -823,7 +943,35 @@ pub fn analyze_at_load(
     summaries: &[Summary],
     opts: &Options,
 ) -> (Report, Vec<(usize, FuncEffects)>) {
-    set::analyze(modules, summaries, opts)
+    let (report, at_load, _) = set::analyze(modules, summaries, opts);
+    (report, at_load)
+}
+
+/// What [`analyze_program`] gives.
+#[derive(Debug, Clone)]
+pub struct Program {
+    /// The report of [`analyze_set`].
+    pub report: Report,
+    /// What runs when a module loads that `report` does not list, as [`analyze_at_load`] gives
+    /// it.
+    pub at_load: Vec<(usize, FuncEffects)>,
+    /// Every function literal of the modules the report lists, each with the index of its
+    /// module, computed on the same call graph: named `<holder>.lambda@<n>` as a reason of its
+    /// module names it (§ Call sites), its `unknown` the reasons of its own body and of the
+    /// calls it makes, as for a function. The report names a literal only in a reason `calls
+    /// <holder>.lambda@<n> which is incomplete`; this list is for a reader that follows such a
+    /// reason into the literal.
+    pub literals: Vec<(usize, FuncEffects)>,
+}
+
+/// [`analyze_at_load`] and the function literals of the set, from one analysis.
+pub fn analyze_program(modules: &[Module], summaries: &[Summary], opts: &Options) -> Program {
+    let (report, at_load, literals) = set::analyze(modules, summaries, opts);
+    Program {
+        report,
+        at_load,
+        literals,
+    }
 }
 
 /// `file:line` as `(file, line)`, so `m.go:9` sorts before `m.go:10`.

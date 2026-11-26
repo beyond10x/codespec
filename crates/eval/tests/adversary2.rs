@@ -22,25 +22,12 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-fn reader() -> &'static Path {
-    static READER: OnceLock<PathBuf> = OnceLock::new();
-    READER.get_or_init(|| {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("eval-reader-adv2");
-        std::fs::create_dir_all(&dir).unwrap();
-        let built = Command::new("go")
-            .args(["build", "-o"])
-            .arg(format!("{}/", dir.display()))
-            .arg("./cmd/codespec-read-go")
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../adapters/go"))
-            .output()
-            .unwrap();
-        assert!(
-            built.status.success(),
-            "{}",
-            String::from_utf8_lossy(&built.stderr)
-        );
-        dir.join("codespec-read-go")
-    })
+#[path = "../../conformance/tests/support/go_bin.rs"]
+mod go_bin;
+
+/// `codespec-read-go`, built once for each state of its sources (`go_bin.rs`).
+fn reader() -> PathBuf {
+    go_bin::go_bin().join("codespec-read-go")
 }
 
 /// The fixture package `adversary2/<name>` read with `codespec-read-go`.
@@ -477,4 +464,34 @@ fn review_e9_the_strict_writer_refuses_a_foreign_statement_in_a_variable_initial
     let e = write(m.to_json().as_bytes(), &out, Stops::Refuse).expect_err("refused");
     assert!(e.iter().any(|l| l.contains("foreign")), "{e:?}");
     assert!(!out.exists(), "nothing is written");
+}
+
+// ---- adversary pass on story:cir1-defer-receiver-root ----
+
+/// When a deferred call takes its operands and when it runs (`fixtures/adversary2/deferorder`).
+/// `go run` of the same calls, go1.27.1, quoted below.
+#[test]
+fn adv_defer_operands_are_taken_at_the_defer_and_calls_run_last_first() {
+    let m = read("deferorder");
+    let r = run(
+        &m,
+        &[
+            ("Recv", &[]),
+            ("Loop", &[]),
+            ("Early", &["2"]),
+            ("Early", &["0"]),
+            ("FuncVal", &[]),
+            ("Iface", &[]),
+            ("MethodValue", &[]),
+            ("ArgCall", &[]),
+            ("Nested", &[]),
+            ("Taken", &[]),
+            ("Rec", &["2"]),
+        ],
+    );
+    assert_eq!(r.stop, None, "{:?}", r.stdout);
+    assert_go_or_stop(
+        &r,
+        "ptr 2\nval 1\nok 2\nlit 2\nloop 2\nlit 1\nloop 1\nlit 0\nloop 0\nok 9\npos 2\nearly 2\nok 4\nin-for 0\nearly 0\nok -1\nf2 b\nf1 a\nok 0\nval 5\nok 1\nptr 7\nok 0\nbody 2\narg 2\nok 2\nouter\ninner 1\nok 3\nok 1\nrec 1\nrec 2\nok 3\n",
+    );
 }

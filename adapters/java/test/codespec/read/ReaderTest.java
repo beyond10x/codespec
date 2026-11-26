@@ -1037,7 +1037,9 @@ public final class ReaderTest {
      * checks the module uses the subject ({@code codespec-conformance features}). A case whose
      * subject is one of {@link #GO_REFUSES} must be refused by the Go writer, and is written by
      * {@code codespec-write-cir} and run by {@code codespec-run-cir} instead, as the reader check's
-     * step 4 judges it.
+     * step 4 judges it. The case of {@code stmt.foreign} keeps Java source as a foreign statement,
+     * each refusal at one, on a path its calls do not take: the Go writer refuses it,
+     * {@code codespec-write-cir --stop-when-reached} writes it and {@code codespec-run-cir} runs it.
      */
     private void kitCase(String kase) throws Exception {
         Path dir = kit().resolve(kase);
@@ -1051,23 +1053,39 @@ public final class ReaderTest {
         run("codespec read", log, err, codespec.toString(), "read", "--lang", "java", dir.resolve("java").toString(),
             "--out", read.toString(), "--adapters", adapters.toString());
         Map<String, Object> doc = map(Json.parse(Files.readString(read)));
-        if (doc.containsKey("refusals")) {
-            throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
+        boolean foreign = "stmt.foreign".equals(subject);
+        if (foreign) {
+            List<String> kept = foreignPositions(doc);
+            List<String> refused = refusalPositions(doc);
+            check(!kept.isEmpty() && !refused.isEmpty() && kept.containsAll(refused),
+                "stmt.foreign: foreign at " + kept + ", refusals at " + refused);
+        } else {
+            if (doc.containsKey("refusals")) {
+                throw new AssertionError("refusals: " + Json.write(doc.get("refusals")).replaceAll("\\s+", " "));
+            }
+            check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
         }
-        check(foreignPositions(doc).isEmpty(), "foreign at " + foreignPositions(doc));
         String pkg = kase.replace('-', '_');
         check(pkg.equals(doc.get("name")), "module " + doc.get("name") + ", the case's package is " + pkg);
         Files.writeString(w.resolve("subject"), subject + "\n", StandardCharsets.UTF_8);
         check(Arrays.asList(Main.CLAIM).contains(subject), "subject " + subject + " is not claimed");
         run("codespec pass", log, err, codespec.toString(), "pass", read.toString(), "--out", passed.toString());
         Path got = w.resolve("output.txt");
-        if (GO_REFUSES.contains(subject)) {
+        if (foreign || GO_REFUSES.contains(subject)) {
             Process go = new ProcessBuilder(codespec.toString(), "write", "--lang", "go", passed.toString(), "--out",
                 w.resolve("go").toString(), "--adapters", adapters.toString())
                 .redirectOutput(log.toFile()).redirectError(err.toFile()).start();
-            check(go.waitFor() != 0, "the Go writer wrote " + subject + ", which GO_REFUSES lists");
-            run("codespec write --lang cir", log, err, codespec.toString(), "write", "--lang", "cir", passed.toString(),
-                "--out", w.resolve("cir").toString(), "--adapters", adapters.toString());
+            check(go.waitFor() != 0, "the Go writer wrote " + subject + (foreign ? ", a foreign statement of Java" : ", which GO_REFUSES lists"));
+            if (foreign) {
+                // As the reader check's step 4: the foreign statement stops the run only when reached.
+                Process cir = new ProcessBuilder(adapters.resolve("codespec-write-cir").toString(),
+                    w.resolve("cir").toString(), "--stop-when-reached")
+                    .redirectInput(passed.toFile()).redirectOutput(log.toFile()).redirectError(err.toFile()).start();
+                check(cir.waitFor() == 0, "codespec-write-cir --stop-when-reached: " + Files.readString(err).strip());
+            } else {
+                run("codespec write --lang cir", log, err, codespec.toString(), "write", "--lang", "cir", passed.toString(),
+                    "--out", w.resolve("cir").toString(), "--adapters", adapters.toString());
+            }
             run("codespec-run-cir", got, err, adapters.resolve("codespec-run-cir").toString(), "--build",
                 w.resolve("cir-build").toString(), w.resolve("cir").toString(), dir.resolve("calls.json").toString());
         } else {

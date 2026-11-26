@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use codespec_effects::{
-    EFFECTS, Options, Report, Summary, analyze, analyze_set, barrier_from_json, summary_from_json,
+    EFFECTS, Options, Report, Summary, Unknown, analyze, analyze_set, barrier_from_json,
+    summary_from_json,
 };
 use codespec_model::Module;
 use serde_json::{Value, json};
@@ -268,26 +269,78 @@ fn the_go_standard_library_summary_reads_and_holds_every_listed_function() {
         canonical,
         "not canonical"
     );
+    // The 37 entries of the first file, then one entry per package of the table in
+    // `docs/static-analysis.md` § 4.
     let want: &[(&str, &str, &[&str])] = &[
-        ("os", "Getenv", &["env"]),
-        ("os", "LookupEnv", &["env"]),
-        ("os", "ReadFile", &["fs.read"]),
-        ("os", "Exit", &["proc"]),
-        ("os", "Getwd", &["fs.read"]),
-        ("os", "Hostname", &["env"]),
-        ("strings", "Repeat", &[]),
-        ("strings", "ToUpper", &[]),
-        ("strings", "ToLower", &[]),
-        ("strings", "TrimSpace", &[]),
-        ("strings", "Contains", &[]),
-        ("strings", "HasPrefix", &[]),
-        ("strings", "Split", &[]),
-        ("strings", "Join", &[]),
-        ("strconv", "Itoa", &[]),
-        ("strconv", "Atoi", &[]),
-        ("time", "Sleep", &["time"]),
+        ("math/rand", "Int", &["rand"]),
         ("math/rand", "Intn", &["rand"]),
         ("net", "LookupHost", &["net"]),
+        ("os", "Exit", &["proc"]),
+        ("os", "Getenv", &["env"]),
+        ("os", "Getpid", &["proc"]),
+        ("os", "Getwd", &["fs.read"]),
+        ("os", "Hostname", &["env"]),
+        ("os", "LookupEnv", &["env"]),
+        ("os", "ReadFile", &["fs.read"]),
+        ("os", "Remove", &["fs.write"]),
+        ("os", "Setenv", &["env"]),
+        ("os", "Unsetenv", &["env"]),
+        ("os", "WriteFile", &["fs.write"]),
+        ("strconv", "Atoi", &[]),
+        ("strconv", "FormatBool", &[]),
+        ("strconv", "FormatInt", &[]),
+        ("strconv", "Itoa", &[]),
+        ("strconv", "ParseBool", &[]),
+        ("strconv", "ParseInt", &[]),
+        ("strconv", "Quote", &[]),
+        ("strings", "Contains", &[]),
+        ("strings", "Count", &[]),
+        ("strings", "EqualFold", &[]),
+        ("strings", "HasPrefix", &[]),
+        ("strings", "HasSuffix", &[]),
+        ("strings", "Index", &[]),
+        ("strings", "Join", &[]),
+        ("strings", "Repeat", &[]),
+        ("strings", "ReplaceAll", &[]),
+        ("strings", "Split", &[]),
+        ("strings", "ToLower", &[]),
+        ("strings", "ToUpper", &[]),
+        ("strings", "TrimPrefix", &[]),
+        ("strings", "TrimSpace", &[]),
+        ("strings", "TrimSuffix", &[]),
+        ("time", "Sleep", &["time"]),
+        ("bufio", "Scanner.Scan", &["io"]),
+        ("bytes", "Buffer.WriteString", &[]),
+        ("context", "WithTimeout", &["time"]),
+        ("encoding/json", "Decoder.Decode", &["io"]),
+        ("errors", "New", &[]),
+        ("fmt", "Fprintf", &["io"]),
+        ("io", "ReadAll", &["io"]),
+        (
+            "log",
+            "Fatal",
+            &["env", "fs.read", "proc", "stdout", "time"],
+        ),
+        (
+            "log/slog",
+            "Logger.Info",
+            &["env", "fs.read", "stdout", "time"],
+        ),
+        ("maps", "Clone", &[]),
+        ("math", "Sqrt", &[]),
+        ("net/http", "Get", &["env", "net"]),
+        ("net/url", "Parse", &[]),
+        ("os", "OpenFile", &["fs.read", "fs.write"]),
+        ("path/filepath", "Join", &[]),
+        ("regexp", "MustCompile", &[]),
+        ("slices", "Sort", &[]),
+        ("sort", "Strings", &[]),
+        ("strconv", "ParseFloat", &[]),
+        ("strings", "Builder.WriteString", &[]),
+        ("sync", "Mutex.Lock", &[]),
+        ("sync/atomic", "Int64.Add", &[]),
+        ("time", "Now", &["time"]),
+        ("unicode/utf8", "RuneCountInString", &[]),
     ];
     for (path, name, effects) in want {
         let x = s
@@ -1903,4 +1956,691 @@ fn adv_a_call_site_displays_as_callee_at_n() {
         n: 12,
     };
     assert_eq!(id.to_string(), "iface:error.Error@12");
+}
+
+// --- the class of an `unknown` reason ---
+
+/// The reasons of the function `name` of `example.com/p` in a set of `p`, holding `funcs` and
+/// whatever `extra` sets, and `example.com/b`, an empty module, with the test barrier.
+fn reasons_in_p(name: &str, funcs: Vec<Value>, extra: Value) -> Vec<String> {
+    let p = doc("p", "example.com/p", funcs, extra);
+    let b = doc("b", "example.com/b", vec![], json!({}));
+    let bar = barrier();
+    let opts = Options {
+        barrier: Some(&bar),
+        ..Options::default()
+    };
+    let r = analyze_set(&[p, b], &[std_summary()], &opts);
+    set_entry(&r, "example.com/p", name)
+        .unknown
+        .iter()
+        .map(|u| u.reason.clone())
+        .collect()
+}
+
+/// The reasons of the opaque function `F` of `p` making only `calls`.
+fn reasons_of_calls(calls: Vec<Value>) -> Vec<String> {
+    reasons_in_p("F", vec![], json!({"opaque": [opaque("F", 1, calls)]}))
+}
+
+/// The reasons of the function `G` of `p` whose body is `body`.
+fn reasons_of_body(body: Vec<Value>) -> Vec<String> {
+    reasons_in_p("G", vec![unit_func("G", 1, body)], json!({}))
+}
+
+fn at(line: u32) -> String {
+    format!("m.go:{line}")
+}
+
+/// The one reason of `reasons`.
+fn one(reasons: Vec<String>) -> String {
+    assert_eq!(reasons.len(), 1, "one reason expected: {reasons:?}");
+    reasons.into_iter().next().unwrap()
+}
+
+/// One case per place in `src/set.rs` that makes an `unknown` reason (`site`, counted in source
+/// order: each `self.unknown(` call, then each `reason: format!(` of the report assembly), with
+/// the reason a shape of call site gives there and its class. A place making several families
+/// has a case for each.
+fn reason_cases() -> Vec<(usize, &'static str, String, &'static str)> {
+    let method_on = |t: Value, name: &str| {
+        json!({"k": "expr", "x": {"k": "method", "x": {"k": "var", "name": "v", "t": t},
+            "name": name, "args": [], "t": s()}, "pos": at(2)})
+    };
+    let goto =
+        json!({"k": "foreign", "lang": "go", "src": "goto done", "reason": "goto", "pos": at(4)});
+    let ghost = json!({"t": "Ghost", "methods": [{"name": "Speak", "sig": "func()",
+        "target": {"k": "method", "recv": "Ghost", "name": "Speak", "pos": at(1)}}]});
+    // Strict reading refuses an interface call naming an undeclared interface, so the module
+    // is read with `Nope` declared and loses the declaration after reading, as a module built
+    // in memory may.
+    let undeclared_iface = {
+        let call = json!({"k": "expr", "x": {"k": "iface_call", "iface": "Nope",
+            "name": "Speak", "recv": {"k": "var", "name": "v", "t": {"k": "named", "name": "Nope"}},
+            "args": [], "t": {"k": "tuple", "elems": []}}, "pos": at(2)});
+        let nope = json!({"name": "Nope", "exported": true, "pos": at(1),
+            "methods": [{"name": "Speak", "params": [], "results": []}]});
+        let mut p = doc(
+            "p",
+            "example.com/p",
+            vec![unit_func("G", 1, vec![call])],
+            json!({"interfaces": [nope]}),
+        );
+        p.interfaces.clear();
+        let r = analyze_set(&[p], &[std_summary()], &Options::default());
+        let g = set_entry(&r, "example.com/p", "G");
+        g.unknown.iter().map(|u| u.reason.clone()).collect()
+    };
+    let orphan = json!({"name": "Orphan", "pos": at(4), "reason": "function without a Go body",
+        "no_body": true, "calls": []});
+    let talk = {
+        let user = doc(
+            "u",
+            "example.com/u",
+            vec![unit_func("Talk", 1, vec![foreign(2, vec![speak_iface(2)])])],
+            json!({}),
+        );
+        let r = analyze_set(&[user, impls(true)], &[std_summary()], &Options::default());
+        let talk = set_entry(&r, "example.com/u", "Talk");
+        talk.unknown.iter().map(|u| u.reason.clone()).collect()
+    };
+    vec![
+        (
+            1,
+            "a barrier call whose constant number the table does not name",
+            one(reasons_of_calls(vec![
+                json!({"k": "func", "path": "syscall", "name": "Syscall6",
+                "consts": [{"index": 0, "value": "999"}], "pos": at(2)}),
+            ])),
+            "syscall number <n> has no name",
+        ),
+        (
+            2,
+            "a barrier call whose number is not constant",
+            one(reasons_of_calls(vec![
+                json!({"k": "func", "path": "syscall", "name": "Syscall6", "pos": at(2)}),
+            ])),
+            "syscall number not constant",
+        ),
+        (
+            3,
+            "a call of a function its own module does not declare",
+            one(reasons_of_calls(vec![cfunc("", "Nope", 2)])),
+            "call of undeclared function",
+        ),
+        (
+            4,
+            "a call of a module of the set that does not declare the function",
+            one(reasons_of_calls(vec![cfunc("example.com/b", "Gone", 2)])),
+            "not in its module",
+        ),
+        (
+            5,
+            "a call of an extern no summary names",
+            one(reasons_of_calls(vec![cfunc("example.org/lib", "A", 2)])),
+            "extern without summary",
+        ),
+        (
+            6,
+            "a macro the reader did not expand",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "macro",
+                "path": "log", "name": "info", "pos": at(2)}),
+            ])),
+            "macro invocation, not expanded",
+        ),
+        (
+            6,
+            "a function name the reader did not resolve",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "func", "name": "swap", "pos": at(2)}),
+            ])),
+            "call of a name the reader did not resolve",
+        ),
+        (
+            6,
+            "a method on a value of a type the reader did not know",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "method", "name": "unwrap", "pos": at(2)}),
+            ])),
+            "method call on a value of a type the reader did not know",
+        ),
+        (
+            7,
+            "a method call ref of a type of its own module without the method",
+            one(reasons_of_calls(vec![
+                json!({"k": "method", "recv": "T", "name": "M", "pos": at(2)}),
+            ])),
+            "method on undeclared type",
+        ),
+        (
+            8,
+            "a method call ref of another module of the set without the method",
+            one(reasons_of_calls(vec![
+                json!({"k": "method", "path": "example.com/b",
+                "recv": "T", "name": "M", "pos": at(2)}),
+            ])),
+            "not in its module",
+        ),
+        (
+            9,
+            "a foreign statement without a call list",
+            one(reasons_of_body(vec![goto.clone()])),
+            "foreign statement",
+        ),
+        (
+            10,
+            "a method call on a receiver of no named type",
+            one(reasons_of_body(vec![method_on(s(), "Len")])),
+            "method on undeclared type",
+        ),
+        (
+            11,
+            "a call through an interface no document declares",
+            one(undeclared_iface),
+            "interface call through an undeclared interface",
+        ),
+        (
+            12,
+            "an interface candidate whose method set names a method outside the set",
+            one(reasons_in_p(
+                "F",
+                vec![],
+                json!({"opaque": [opaque("F", 1, vec![speak_iface(2)])], "methods": [ghost]}),
+            )),
+            "method outside the set",
+        ),
+        (
+            13,
+            "an interface call no type of the set implements",
+            one(reasons_of_calls(vec![speak_iface(2)])),
+            "interface call with no implementation in the set",
+        ),
+        (
+            13,
+            "a method of error no type of the set implements",
+            one(reasons_of_body(vec![method_on(
+                json!({"k": "error"}),
+                "Foo",
+            )])),
+            "method on undeclared type",
+        ),
+        (
+            14,
+            "a call of a function value no function of the set is used as",
+            one(reasons_of_calls(vec![
+                json!({"k": "value", "sig": "func()", "pos": at(2)}),
+            ])),
+            "function value with no candidate in the set",
+        ),
+        (
+            15,
+            "a function value naming a function outside the set",
+            one(reasons_of_calls(vec![
+                json!({"k": "ref", "name": "Nope", "sig": "func()", "pos": at(2)}),
+                json!({"k": "value", "sig": "func()", "pos": at(3)}),
+            ])),
+            "function value outside the set",
+        ),
+        (
+            16,
+            "a function without a body the barrier does not name",
+            one(reasons_in_p("Orphan", vec![], json!({"opaque": [orphan]}))),
+            "function without a body",
+        ),
+        (
+            17,
+            "a candidate of an interface call that is incomplete itself",
+            one(talk),
+            "calls <func> which is incomplete",
+        ),
+        (
+            18,
+            "a call of a function that is incomplete itself",
+            one(reasons_in_p(
+                "F",
+                vec![unit_func("Raw", 3, vec![goto])],
+                json!({"opaque": [opaque("F", 1, vec![cfunc("", "Raw", 2)])]}),
+            )),
+            "calls <func> which is incomplete",
+        ),
+        (
+            19,
+            "a function the set does not hold given to a call outside the set",
+            one(reasons_of_calls(vec![
+                cfunc("strings", "ToUpper", 2),
+                json!({"k": "ref", "name": "Nope", "sig": "func()", "pos": at(2)}),
+            ])),
+            "function value outside the set",
+        ),
+    ]
+}
+
+/// Each place in `src/set.rs` that makes an `unknown` reason has a case, each case's reason has
+/// its class, and the classes are `Unknown::CLASSES` and the reasons of the crate doc's table.
+#[test]
+fn every_shape_of_call_site_that_makes_an_unknown_reason_has_a_class() {
+    let source = include_str!("../src/set.rs");
+    let places =
+        source.matches("self.unknown(").count() + source.matches("reason: format!(").count();
+    let cases = reason_cases();
+    let covered: BTreeSet<usize> = cases.iter().map(|c| c.0).collect();
+    assert_eq!(
+        covered,
+        (1..=places).collect::<BTreeSet<usize>>(),
+        "src/set.rs makes reasons at {places} places; a new one needs a case here"
+    );
+    for (_, shape, reason, class) in &cases {
+        assert_eq!(Unknown::class(reason), *class, "{shape}: {reason}");
+    }
+    let classes: BTreeSet<&str> = cases.iter().map(|c| c.3).collect();
+    let listed: BTreeSet<&str> = Unknown::CLASSES.iter().copied().collect();
+    assert_eq!(classes, listed, "Unknown::CLASSES against the cases");
+    assert_eq!(listed.len(), Unknown::CLASSES.len(), "a class listed twice");
+
+    let doc = include_str!("../src/lib.rs");
+    let table: BTreeSet<&str> = doc
+        .lines()
+        .skip_while(|l| *l != "//! | reason | when |")
+        .skip(2)
+        .take_while(|l| l.starts_with("//! | `"))
+        .map(|l| {
+            let reason = l["//! | `".len()..].split('`').next().unwrap();
+            Unknown::class(reason)
+        })
+        .collect();
+    assert_eq!(
+        table, listed,
+        "the crate doc's table of reasons against Unknown::CLASSES"
+    );
+}
+
+/// A class is a family, not a symbol: two reasons that differ only in what they name have one
+/// class, and a reason without `: ` is its own class.
+#[test]
+fn two_reasons_that_differ_only_in_their_symbol_have_one_class() {
+    for (one, two) in [
+        (
+            "extern without summary: example.org/lib.A",
+            "extern without summary: example.org/lib.B",
+        ),
+        (
+            "calls example.com/h.Bad.Speak which is incomplete",
+            "calls Shout.lambda@1 which is incomplete",
+        ),
+        (
+            "syscall number 999 has no name",
+            "syscall number 7 has no name",
+        ),
+        (
+            "method on undeclared type: error.Foo",
+            "method on undeclared type: string.Len",
+        ),
+    ] {
+        assert_eq!(Unknown::class(one), Unknown::class(two), "{one} / {two}");
+        assert_ne!(Unknown::class(one), one, "{one} names a symbol");
+    }
+    assert_eq!(Unknown::class("foreign statement"), "foreign statement");
+    assert_eq!(Unknown::class("a reason of its own"), "a reason of its own");
+    assert_ne!(
+        Unknown::class("syscall number not constant: syscall.Syscall6"),
+        Unknown::class("syscall number 7 has no name")
+    );
+}
+
+// --- the Go standard library summary over documents the Go reader wrote ---
+
+/// A document of `tests/data`, written once by `codespec read --lang go tests/data/<name>`.
+fn data(name: &str) -> Module {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/{name}.cir.json"));
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    Module::from_json(&bytes).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+fn go_std() -> Summary {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../summaries/go-std.effects.json");
+    let bytes = std::fs::read(&path).expect("summaries/go-std.effects.json");
+    summary_from_json(&bytes).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+fn reasons(f: &codespec_effects::FuncEffects) -> Vec<(&str, &str)> {
+    f.unknown
+        .iter()
+        .map(|u| (u.pos.as_str(), u.reason.as_str()))
+        .collect()
+}
+
+fn effect_at<'a>(f: &'a codespec_effects::FuncEffects, effect: &str) -> Vec<&'a str> {
+    f.effect_sites
+        .iter()
+        .filter(|s| s.name == effect)
+        .flat_map(|s| s.at.iter().map(String::as_str))
+        .collect()
+}
+
+/// The story's reproducer, `tests/data/probe/probe.go`: `context.WithTimeout` (a call the
+/// reader lists on a `foreign` statement, its argument `time.Second` being a constant of another
+/// package) and `time.Now` give `time`, `slog.String` gives nothing. What stays unknown is the
+/// `defer cancel()` of line 11: a `call_value` of the local `cancel`, which no summary entry
+/// can name and which has no candidate in a set without `context`.
+#[test]
+fn the_reproducer_reads_a_clock_through_context_and_time_and_logs_nothing() {
+    let r = analyze(&data("probe"), &[go_std()]);
+    let run = entry(&r, "Run");
+    assert_eq!(run.effects, ["time"]);
+    assert_eq!(effect_at(run, "time"), ["probe.go:10", "probe.go:14"]);
+    assert_eq!(
+        reasons(run),
+        [(
+            "probe.go:11",
+            "function value with no candidate in the set: context.CancelFunc"
+        )],
+        "no call of the table is an extern without summary"
+    );
+}
+
+/// One function of `tests/data/near/near.go` per near miss of the table.
+#[test]
+fn each_near_miss_takes_its_entry_and_a_package_outside_the_table_stays_unknown() {
+    let r = analyze(&data("near"), &[go_std()]);
+    for (name, effects) in [
+        ("Info", &["env", "fs.read", "stdout", "time"][..]),
+        ("Fatal", &["env", "fs.read", "proc", "stdout", "time"]),
+        ("Background", &[]),
+        ("NewError", &[]),
+        ("Get", &["env", "net"]),
+        ("Write", &["io"]),
+    ] {
+        let f = entry(&r, name);
+        assert_eq!(f.effects, effects, "{name}");
+        assert!(f.unknown.is_empty(), "{name}: {:?}", f.unknown);
+    }
+    let random = entry(&r, "Random");
+    assert!(random.effects.is_empty());
+    assert_eq!(
+        reasons(random),
+        [("near.go:39", "extern without summary: crypto/rand.Read")]
+    );
+}
+
+/// A document of the set with the path `errors` defines `New`; its body is analysed, not the
+/// summary's `[]`, and the report's `notes` say so.
+#[test]
+fn a_document_of_the_set_wins_over_an_entry_of_the_go_summary() {
+    let errors = doc(
+        "errors",
+        "errors",
+        vec![func("New", 1, vec![println_body(2)])],
+        json!({}),
+    );
+    let r = analyze_set(&[data("near"), errors], &[go_std()], &Options::default());
+    let f = set_entry(&r, "", "NewError");
+    assert_eq!(f.effects, ["stdout"]);
+    assert_eq!(
+        r.notes,
+        ["errors.New: the document of the set is analysed, its summary is not used"]
+    );
+}
+
+/// The table of `docs/static-analysis.md` § 4 as `summaries/go-std.effects.json` gives it: one
+/// row per package and effect set, rows by package then effect set, names sorted.
+fn go_std_table(s: &Summary) -> String {
+    let mut rows: Vec<(&str, &[String], Vec<&str>)> = Vec::new();
+    for x in &s.externs {
+        match rows
+            .iter_mut()
+            .find(|r| r.0 == x.path && r.1 == x.effects.as_slice())
+        {
+            Some(r) => r.2.push(&x.name),
+            None => rows.push((&x.path, &x.effects, vec![&x.name])),
+        }
+    }
+    rows.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+    let mut out = String::from("| package | entries | effect |\n|---|---|---|\n");
+    for (path, effects, names) in rows {
+        let names: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
+        let effect = if effects.is_empty() {
+            "pure".to_owned()
+        } else {
+            let e: Vec<String> = effects.iter().map(|e| format!("`{e}`")).collect();
+            e.join(", ")
+        };
+        out.push_str(&format!("| `{path}` | {} | {effect} |\n", names.join(", ")));
+    }
+    out
+}
+
+#[test]
+fn the_table_in_static_analysis_md_is_the_go_standard_library_summary() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/static-analysis.md");
+    let text = std::fs::read_to_string(&path).expect("docs/static-analysis.md");
+    let start = text
+        .find("| package | entries | effect |\n")
+        .expect("docs/static-analysis.md holds the table of the Go summary");
+    let table: String = text[start..]
+        .lines()
+        .take_while(|l| l.starts_with('|'))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    let want = go_std_table(&go_std());
+    assert!(
+        table == want,
+        "docs/static-analysis.md: the table differs from summaries/go-std.effects.json; it is\n{want}"
+    );
+}
+
+// --- adversary: the Go standard library summary against what the functions do ---
+
+/// The story's Done When, literally: with the summary, `Run` of the reproducer has the effect
+/// `time` and an empty `unknown`.
+#[test]
+#[ignore = "call_value of an extern func type: story call-value-extern-func-type"]
+fn adversary_the_reproducer_has_an_empty_unknown_as_the_story_requires() {
+    let r = analyze(&data("probe"), &[go_std()]);
+    let run = entry(&r, "Run");
+    assert_eq!(run.effects, ["time"]);
+    assert!(run.unknown.is_empty(), "Run: {:?}", reasons(run));
+}
+
+/// A named function handed to a summarised higher-order extern (`sync.Once.Do`, `sort.Slice`,
+/// `filepath.WalkDir`) runs inside it. Before the summary the call was an `unknown`; with it the
+/// caller must still carry the callee's effects, or an `unknown`, never "pure and complete".
+#[test]
+fn adversary_a_named_function_passed_to_a_summarised_extern_keeps_its_effects() {
+    let r = analyze(&data("adv"), &[go_std()]);
+    for (name, effect) in [
+        ("OnceStamp", "time"),
+        ("SortBy", "time"),
+        ("Walk", "stdout"),
+    ] {
+        let f = entry(&r, name);
+        assert!(
+            f.effects.iter().any(|e| e == effect) || !f.unknown.is_empty(),
+            "{name}: effects {:?}, unknown {:?}: the effect `{effect}` of the function it passes is lost",
+            f.effects,
+            reasons(f)
+        );
+    }
+}
+
+/// `log.Print` reads the clock for its prefix (`log/log.go`, `output`: `now := time.Now()`), and
+/// every `slog.Logger` record is stamped (`log/slog/logger.go`, `log`: `NewRecord(time.Now(), …)`).
+#[test]
+fn adversary_a_log_call_reads_the_clock() {
+    let r = analyze(&data("adv"), &[go_std()]);
+    for name in ["LogLine", "SlogLine"] {
+        let f = entry(&r, name);
+        assert!(
+            f.effects.iter().any(|e| e == "time"),
+            "{name}: {:?} lacks `time`",
+            f.effects
+        );
+    }
+}
+
+/// `Time.Format` of a time in `time.Local` loads the zone once: `$TZ` (`env`) and
+/// `/etc/localtime` (`fs.read`) (`time/zoneinfo.go` `Location.get` -> `initLocal`).
+#[test]
+fn adversary_formatting_a_local_time_reads_the_zone_from_env_and_file_system() {
+    let r = analyze(&data("adv"), &[go_std()]);
+    let f = entry(&r, "Stamp");
+    assert!(
+        f.effects.iter().any(|e| e == "env") && f.effects.iter().any(|e| e == "fs.read"),
+        "Stamp: {:?}",
+        f.effects
+    );
+}
+
+/// `http.Get` goes through `DefaultClient` and `DefaultTransport`, whose `Proxy` is
+/// `ProxyFromEnvironment`: the first request reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
+/// (`net/http/transport.go`, `envProxyFunc` -> `httpproxy.FromEnvironment`).
+#[test]
+fn adversary_a_get_through_the_default_client_reads_the_proxy_environment() {
+    let r = analyze(&data("near"), &[go_std()]);
+    let f = entry(&r, "Get");
+    assert!(f.effects.iter().any(|e| e == "env"), "Get: {:?}", f.effects);
+}
+
+// --- a function handed to a call outside the set runs there ---
+
+/// Every shape in which a function of the set reaches a call outside the set as a value: a
+/// `func_ref` argument of an `extern` (`sort.Slice(x, env)`) and of an `extern_method`
+/// (`once.Do(env)`), one inside an argument (`http.HandleFunc("/", http.HandlerFunc(env))`), a
+/// method value (`once.Do(t.Speak)`), and a `ref` call ref beside a call outside the set on a
+/// `foreign` statement. Each callee's effects are the caller's, at the call; a callee that is
+/// incomplete makes the caller incomplete; an extern without summary stays unknown and still
+/// counts the function it is given. A call of a document of the set is not such a call: its
+/// function value is dispatched there.
+#[test]
+fn a_function_passed_to_a_call_outside_the_set_counts_as_called_by_the_caller() {
+    let unit = json!({"k": "func", "params": [], "results": []});
+    let t = json!({"k": "named", "name": "T"});
+    let once = json!({"k": "extern", "path": "sync", "name": "Once"});
+    let handler = json!({"k": "extern", "path": "net/http", "name": "HandlerFunc"});
+    let fref = |name: &str| json!({"k": "func_ref", "name": name, "t": unit});
+    let x = |path: &str, name: &str, args: Vec<Value>| json!({"k": "extern", "path": path, "name": name, "args": args, "t": {"k": "unit"}});
+    let once_do = |arg: Value| {
+        json!({"k": "extern_method", "path": "sync", "type": "Once", "name": "Do",
+            "recv": {"k": "var", "name": "o", "t": once}, "args": [arg], "t": {"k": "unit"}})
+    };
+    let with_once = |mut f: Value| {
+        f["params"] = json!([{"name": "o", "t": once}, {"name": "t", "t": t}]);
+        f
+    };
+    let m = doc(
+        "p",
+        "example.com/p",
+        vec![
+            unit_func("Env", 1, vec![stmt(getenv(), 2)]),
+            unit_func(
+                "Shout",
+                3,
+                vec![stmt(x("example.com/lib", "Shout", vec![]), 4)],
+            ),
+            method_func("T", "Speak", 5, vec![stmt(getenv(), 6)]),
+            unit_func(
+                "Sort",
+                10,
+                vec![stmt(x("sort", "Slice", vec![fref("Env")]), 11)],
+            ),
+            with_once(unit_func("Once", 12, vec![stmt(once_do(fref("Env")), 13)])),
+            unit_func(
+                "Handle",
+                14,
+                vec![stmt(
+                    x(
+                        "net/http",
+                        "HandleFunc",
+                        vec![
+                            json!({"k": "conv", "name": "HandlerFunc", "x": fref("Env"), "t": handler}),
+                        ],
+                    ),
+                    15,
+                )],
+            ),
+            with_once(unit_func(
+                "Method",
+                16,
+                vec![stmt(
+                    once_do(json!({"k": "func_ref", "name": "Speak",
+                        "recv": {"k": "var", "name": "t", "t": t}, "t": unit})),
+                    17,
+                )],
+            )),
+            unit_func(
+                "Foreign",
+                18,
+                vec![foreign(
+                    19,
+                    vec![
+                        cfunc("sort", "Slice", 19),
+                        json!({"k": "ref", "name": "Env", "sig": "func()", "pos": "m.go:19"}),
+                    ],
+                )],
+            ),
+            unit_func(
+                "Loud",
+                20,
+                vec![stmt(x("sort", "Slice", vec![fref("Shout")]), 21)],
+            ),
+            unit_func(
+                "Unsummarised",
+                22,
+                vec![stmt(x("example.com/lib", "Each", vec![fref("Env")]), 23)],
+            ),
+        ],
+        json!({
+            "types": [{"k": "struct", "name": "T", "exported": true, "fields": [], "pos": "m.go:5"}],
+            "externs": [
+                {"path": "example.com/lib", "name": "Each", "params": [unit], "results": []},
+                {"path": "example.com/lib", "name": "Shout", "params": [], "results": []},
+                {"path": "net/http", "name": "HandleFunc", "params": [handler], "results": []},
+                decl("os", "Getenv"),
+                {"path": "sort", "name": "Slice", "params": [unit], "results": []},
+                {"path": "sync", "name": "Do", "recv": once, "params": [unit], "results": []}
+            ],
+            "methods": [method_set("T", "Speak", "func()")],
+            "layout": ["func:Env", "func:Shout", "type:T", "func:T.Speak", "func:Sort", "func:Once",
+                "func:Handle", "func:Method", "func:Foreign", "func:Loud", "func:Unsummarised"]
+        }),
+    );
+    let s = summary(&[
+        ("net/http", "HandleFunc", &[]),
+        ("os", "Getenv", &["env"]),
+        ("sort", "Slice", &[]),
+        ("sync", "Once.Do", &[]),
+    ]);
+    let r = analyze_set(&[m], &[s], &Options::default());
+    for (name, line) in [
+        ("Sort", 11),
+        ("Once", 13),
+        ("Handle", 15),
+        ("Method", 17),
+        ("Foreign", 19),
+    ] {
+        let f = set_entry(&r, "example.com/p", name);
+        assert_eq!(f.effects, ["env"], "{name}");
+        assert!(f.unknown.is_empty(), "{name}: {:?}", f.unknown);
+        assert_eq!(effect_at(f, "env"), [format!("m.go:{line}")], "{name}");
+    }
+    assert_eq!(
+        ids(&r, "Sort", "effect_sites", "env"),
+        ["sort.Slice@1"],
+        "the function passed is reached through the call's own site"
+    );
+    let loud = set_entry(&r, "example.com/p", "Loud");
+    assert_eq!(
+        reasons(loud),
+        [("m.go:21", "calls Shout which is incomplete")]
+    );
+    let u = set_entry(&r, "example.com/p", "Unsummarised");
+    assert_eq!(u.effects, ["env"]);
+    assert_eq!(
+        reasons(u),
+        [("m.go:23", "extern without summary: example.com/lib.Each")]
+    );
+    assert!(
+        ids(&r, "Unsummarised", "effect_sites", "env").is_empty(),
+        "a call recorded as unknown is no site, also when it is given a function"
+    );
 }

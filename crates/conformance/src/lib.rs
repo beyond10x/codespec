@@ -777,7 +777,9 @@ impl Walk {
                 }
             }
             Stmt::Return { results, .. } => self.exprs(results)?,
-            Stmt::Expr { x, .. } | Stmt::Raise { x, .. } => self.expr(x)?,
+            Stmt::Expr { x, .. } | Stmt::Defer { call: x, .. } | Stmt::Raise { x, .. } => {
+                self.expr(x)?
+            }
             Stmt::Send { chan, x, .. } => {
                 self.expr(chan)?;
                 self.expr(x)?;

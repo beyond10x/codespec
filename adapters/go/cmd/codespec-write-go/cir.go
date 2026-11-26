@@ -142,6 +142,7 @@ type Case struct {
 
 type Stmt struct {
 	K       string   `json:"k"`
+	Call    *Expr    `json:"call"`
 	Names   []string `json:"names"`
 	Name    string   `json:"name"`
 	T       *Type    `json:"t"`

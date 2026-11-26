@@ -14,6 +14,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
   document, prints `dropped span <at> <role>: names no node of the cir/1 document <module>` on
   standard error for each, and reads the rest strictly; it refused the whole span document before.
 
+
+- `codespec-read-c` keeps a `switch` with a `case` or `default` label below an arm's top level
+  (inside an `if`, Duff's device) as one `foreign` statement, refused with `a case label nested
+  below an arm's top level`. Before, it read the switch without the arm and kept only the labelled
+  fragment as `foreign`, so a call dispatched to that label ran to another answer without reaching
+  a `foreign` statement.
+
 ### Added
 
 - `codespec-corpus` (`crates/corpus`), the selection step of the reader self-improvement loop:
@@ -25,6 +32,59 @@ Every change a user of `codespec` or of `cir/1` would notice.
   names the first field that differs. `corpus/<language>/` holds the snapshot and the pinned
   manifest of each language.
 
+
+- `task reader-coverage` (`codespec-docs reader-coverage`) prints, for the Go, Rust, Java and C
+  readers, the verified count of the features a reader can claim and of those its language has a
+  source form for, from `website/data/support-matrix.json`, and fails naming a reader whose count
+  is not its floor in `conformance/reader-floors.json` (`codespec-reader-floors/1`: Go 116,
+  Rust 113, Java 106, C 106 of 122): below it a feature was lost, above it the floor is raised to
+  the count. The file lists each feature a reader's language has no source form for, with the
+  reason, and is refused when it lists one the reader claims or reads unclaimed, or one a kit case
+  holds a source of in that language. It is a step of `task check`. The language support page
+  takes its applicable count from the matrix.
+- `summaries/go-std.effects.json` covers the standard library a service calls: 864 entries in 26
+  packages (37 in 6 before): the functions of `log/slog`, `log`, `context`, `time`, `net/http`,
+  `encoding/json`, `io` and `os` a service calls, and every function and method of `errors`,
+  `fmt`, `strings`, `strconv`, `sync`, `sync/atomic`, `bufio` (but promoted methods), `bytes`,
+  `path/filepath`, `net/url`, `sort`, `slices`, `maps`, `math`, `regexp` and `unicode/utf8`,
+  with the signatures of Go 1.23. `time.Now` and `context.WithTimeout` have `time`; a `log` or
+  `slog.Logger` call `stdout`, `time`, and `env` and `fs.read` for the local zone, as
+  `Time.Format` and `time.Date` have; `fmt.Fprintf` `io`; `http.Get` `net` and `env` (the proxy
+  environment). The table and the rules that decide a cell are in `docs/static-analysis.md`
+  § 4, which a test compares with the file; Go tests of `codespec-read-go` resolve every entry
+  with `go/types`, refuse one that Go 1.23 lacks and one that names a promoted method.
+- `codespec effects`: a function of the set given as a value to a call outside the set
+  (`once.Do(initX)`, `sort.Slice(x, less)`, `filepath.WalkDir(root, visit)`, a `ref` listed
+  beside such a call) counts as called by the caller at that call, so its effects and unknowns
+  are the caller's; one the set does not hold is `function value outside the set: <name>`.
+- `codespec diff --unknowns summary` prints, in place of the `unknown-added` and `unknown-removed`
+  deltas, one count per kind and reason class (`unknown-added extern without summary count=3
+  units=3`, up to three examples below; the field `unknowns` in json); `--unknowns list` is the
+  default and the output so far. The class of a reason is its text up to the first `: `, the
+  whole reason without one, and one class each for `calls <func> which is incomplete` and
+  `syscall number <n> has no name` whatever they name (`Unknown::class` of
+  `b10x-codespec-effects`); an example of `calls <func> which is incomplete` names the callee
+  with its module's path. `codespec diff` exits 1 when only the unknowns summary is not empty.
+- `codespec-read-c` and `codespec-read-java` claim `stmt.foreign`. Each has a source of the kit
+  case `stmt-foreign`, a `goto` in C and a `try` statement in Java under a branch the calls do not
+  take, which reads to a `foreign` statement with a refusal at it; the reader check's evaluator
+  step runs the module to the case's `expected.txt` without reaching the statement.
+- `cir/1` has a `defer` statement, `{k: "defer", call, pos}`, whose `call` is a `call`, `method`,
+  `extern`, `extern_method`, `call_value` or `iface_call` (feature `stmt.defer`, kit case
+  `stmt-defer`). The Go reader reads `defer f(x)` as one where it read a `foreign` statement
+  with a refusal before; a `defer` of a builtin, or one in a function with named results, stays
+  as it was. The Go writer writes it; the evaluator takes the function value, receiver and
+  arguments at the statement and makes the call when the function returns, the last deferred
+  first; the Rust, C, Odin, Elixir and Gleam writers refuse it, naming it; the Rust reader does
+  not claim it.
+- `cir/1` `CallRef` `method` and `iface` have an optional `recv_var`: the local, parameter or
+  receiver the call's receiver is rooted at (`c` of `c.mu.Lock()`). The Go reader writes it on
+  the calls it lists for `foreign` statements and opaque functions. A document without the
+  field is unchanged.
+- cq: a property's event `defer call{…}` matches the call a `defer` statement holds, which a
+  `call{…}` event does not. `checks/lock-without-unlock.cq` gives the findings of
+  `codespec check lock-without-unlock` on its fixtures and has left `checks/waiting.json`.
+
 ### Changed
 
 - `codespec reach` (and the rapid type analysis of `codespec effects` and `codespec trace`) takes
@@ -35,6 +95,26 @@ Every change a user of `codespec` or of `cir/1` would notice.
   `cir/1` `Module` has an optional `imports` field, every import path of the package's files
   (blank and dot imports included), sorted, once each; the Go reader fills it for a package
   with an import path.
+
+
+- `codespec diff` reports a reason a function is incomplete once, at the function whose own body
+  gives it. A function whose only difference is that a callee became incomplete or complete
+  (`calls <func> which is incomplete`, `<func>` a function of the report, or a function literal
+  whose every reason is inherited or its holder's too) gets no `unknown-*` delta; a function
+  whose own call of an incomplete callee is new or gone (its call-site id, or a candidate of its call through an
+  interface or a function value) keeps it. An `unknown-added` or `unknown-removed` delta gains
+  `callers` in json, every function incomplete through it in the revision that has the reason,
+  callers of callers too, through function literals too; text ends its line with `callers=<n>`.
+  `--unknowns summary` counts the deltas that remain: its class `calls <func> which is
+  incomplete` now counts only new or gone calls of incomplete callees and the reasons that name a
+  function literal whose own body gives a reason its holder does not have, variable initializers
+  or a module `--report` leaves out. `analyze_program` of `b10x-codespec-effects` gives, beside the report, the function
+  literals of the set with their reasons, and each entry's calls in memory (`FuncEffects::calls`,
+  not part of the document).
+
+
+- The kit case `stmt-foreign` keeps a goroutine (`go done()`) as its `foreign` statement, since
+  its `defer done()` is now a `defer` statement.
 
 ## 0.14.0
 

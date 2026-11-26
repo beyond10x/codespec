@@ -4,14 +4,14 @@
     "role": "reader",
     "lang": "c",
     "version": "0.14.0",
-    "manifest_sha256": "05ba17fd222a6934e335efa96fd96081f383c622ea37d23de2d78f03012f0e2d"
+    "manifest_sha256": "4041b7bcbe2cee7829c189b58d832d861e7d9f65e2864716c9417c7256c1b10d"
   },
   "kit": {
     "version": "0.14.0",
-    "sha256": "f1d3d169d2d8f27744c886039573a228177b66c1fd505f29152e8dac650cc58e"
+    "sha256": "c2b3f32070278647ab9199d5401420a6ca44137656ec1f79ed0a3cdde2a78d89"
   },
   "corpus": {
-    "sha256": "4a63a68275c64ed46cbc010e14a500fd719e6cace2cd30e0a65d040ceb5d0763"
+    "sha256": "caae3aef2c4d4c6cba1d27d211d3426de95802886d1ac21a2daef0da9b503591"
   },
   "codespec": "0.14.0",
   "features": [
@@ -706,6 +706,12 @@
       ]
     },
     {
+      "id": "stmt.defer",
+      "claimed": false,
+      "verdict": "untested",
+      "cases": []
+    },
+    {
       "id": "stmt.expr",
       "claimed": true,
       "verdict": "pass",
@@ -731,9 +737,12 @@
     },
     {
       "id": "stmt.foreign",
-      "claimed": false,
-      "verdict": "untested",
-      "cases": []
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-foreign"
+      ],
+      "runner": "codespec-run-cir"
     },
     {
       "id": "stmt.if",
@@ -996,8 +1005,8 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 105,
-    "pass": 105,
+    "claimed": 106,
+    "pass": 106,
     "fail": 0,
     "refused_unclaimed": 0,
     "pass_unclaimed": 0,

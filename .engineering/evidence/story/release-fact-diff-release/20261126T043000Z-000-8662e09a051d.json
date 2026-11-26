@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T04:30:00Z",
+  "actor": "human:operator",
+  "artifact": "story:release-fact-diff-release",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "codespec 0.14.0 installed from the release archive: sha256sum -c SHA256SUMS OK (4 files); cmp codespec and codespec-read-go against the archive exit 0; codespec --version prints codespec 0.14.0; reader.version 0.14.0; moved-lines 0 deltas, syscall 2 deltas, shop echo fixture 3 http entries",
+    "reference": "https://github.com/beyond10x/codespec/releases/tag/0.14.0"
+  }
+}

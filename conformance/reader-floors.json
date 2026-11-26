@@ -1,0 +1,57 @@
+{
+  "format": "codespec-reader-floors/1",
+  "readers": [
+    {
+      "lang": "go",
+      "floor": 116,
+      "no_source_form": [
+        {"id": "decl.union", "why": "Go has no tagged union."},
+        {"id": "stmt.raise", "why": "Go has no statement that leaves a function with a value of another package's type to the framework that started it."},
+        {"id": "type.unit", "why": "Go has no unit type: a call of a function without results reads as an empty tuple."}
+      ]
+    },
+    {
+      "lang": "rust",
+      "floor": 113,
+      "no_source_form": [
+        {"id": "decl.variadic", "why": "Rust has no variadic function."},
+        {"id": "expr.spread", "why": "Rust has no variadic function to pass a slice to as its last parameter."},
+        {"id": "stmt.defer", "why": "Rust has no statement that defers a call to the function's return: a drop guard is a value of a type written for it, dropped at the end of its scope."},
+        {"id": "unop.plus", "why": "Rust has no unary plus."}
+      ]
+    },
+    {
+      "lang": "java",
+      "floor": 106,
+      "no_source_form": [
+        {"id": "assign.and_not", "why": "Java has no &^=; a &= ~b is assign.and of unop.complement."},
+        {"id": "decl.newtype", "why": "Java has no defined type over a primitive or String; a class is a struct."},
+        {"id": "op.and_not", "why": "Java has no &^; a & ~b is op.and of unop.complement."},
+        {"id": "sem.multi_assign.order", "why": "Java has no assignment of several targets at once."},
+        {"id": "stmt.defer", "why": "Java has no statement that defers a call to the method's return: a finally block runs a fixed block, not the calls deferred at run time, last first."},
+        {"id": "stmt.send", "why": "Java has no channels."},
+        {"id": "stmt.var", "why": "A Java local has no zero value: javac rejects reading one that was never assigned."},
+        {"id": "type.array", "why": "Java has no fixed-size array type: an array's length belongs to the object, not to its type."},
+        {"id": "type.chan", "why": "Java has no channels."},
+        {"id": "unop.deref", "why": "Java has no pointer to a local; an object reference is dereferenced implicitly."},
+        {"id": "unop.recv", "why": "Java has no channels."}
+      ]
+    },
+    {
+      "lang": "c",
+      "floor": 106,
+      "no_source_form": [
+        {"id": "decl.interface", "why": "C has no interface type."},
+        {"id": "decl.type_params", "why": "C has no generic function or type."},
+        {"id": "expr.iface_call", "why": "C has no interface type to call a method through."},
+        {"id": "expr.instantiate", "why": "C has no generic function or type to give type arguments to."},
+        {"id": "expr.lambda", "why": "C has no function literal."},
+        {"id": "expr.method", "why": "C has no method value bound to its receiver: that is a closure."},
+        {"id": "expr.to_iface", "why": "C has no interface type to convert a value to."},
+        {"id": "stmt.defer", "why": "C has no construct that makes a call when the function returns."},
+        {"id": "stmt.raise", "why": "C has no statement that leaves every caller with a value."},
+        {"id": "type.param", "why": "C has no type parameter."}
+      ]
+    }
+  ]
+}

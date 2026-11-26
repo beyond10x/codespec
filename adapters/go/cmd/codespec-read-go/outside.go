@@ -173,7 +173,7 @@ func stmtForeignType(s Stmt) string {
 		return foreignName(*s.T)
 	}
 	var exprs []Expr
-	for _, p := range []*Expr{s.X, s.Chan, s.Cond, s.Over, s.Map, s.Index, s.Tag} {
+	for _, p := range []*Expr{s.X, s.Chan, s.Cond, s.Over, s.Map, s.Index, s.Tag, s.Call} {
 		if p != nil {
 			exprs = append(exprs, *p)
 		}

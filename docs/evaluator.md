@@ -33,7 +33,7 @@ outputs only. An evaluator sees every node, and every effect passes through a ha
 
 ## 3. Can `cir/1` be evaluated faithfully today?
 
-Yes, for the part the kit pins. No, for concurrency, `defer`, or a body the reader kept `foreign`.
+Yes, for the part the kit pins. No, for concurrency, `recover`, or a body the reader kept `foreign`.
 
 **What the IR carries.** A type on every expression (`Module::from_json` refuses one without),
 integer `width` and `signed`, structured control flow, typed externs, interfaces, function values
@@ -46,7 +46,7 @@ module, a `codespec-calls/1` file and an `expected.txt` produced by Go.
 
 | gap | evidence | effect |
 |---|---|---|
-| goroutines, `defer`, `select`, type switches, named results | the Go reader (`front.go`) keeps them `foreign` | a path through them stops (E4) |
+| goroutines, `select`, type switches, named results with a `defer`, a `defer` of a builtin | the Go reader (`front.go`) keeps them `foreign` | a path through them stops (E4) |
 | run-time panics | no node and no `sem.` id for index out of range, nil dereference, division by zero. The C writer's `codespec_rt.h` (in progress) exits 3 | Go's behaviour, unpinned until § 9 |
 | string length unit | `intrinsic.len` is "length of a string, slice or map". Go counts bytes, Java UTF-16 units | a Java-read `len` may differ. Unpinned |
 | literal spelling | `Lit.value` is "in the source language's spelling". Example strings are all double-quoted. Escapes across readers: not verified | Go quoting parsed, anything else refused |
@@ -58,8 +58,10 @@ module, a `codespec-calls/1` file and an `expected.txt` produced by Go.
 **Runs now:** every kit case. `greeter`, `series`, `inventory`, `ledger` and `fees` (no `foreign`),
 `orders` but `Audit`, `envcheck` but `Save` (with handlers for its five externs).
 
-**Does not run:** anything reaching a goroutine, `defer` or `recover`, or library code below the
-API boundary.
+**Does not run:** anything reaching a goroutine or `recover`, or library code below the API
+boundary. A `defer` statement runs: its function value, receiver and arguments are taken where it
+stands, the call made when the function returns, after its results are taken, the last deferred
+first (kit case `stmt-defer`); a stop or a panic on the way runs no deferred call.
 
 `docs/conformance.md` § 9 D1 rejected an interpreter as the source of `expected.txt` ("a third
 implementation of the semantics to keep right"). Go stays the reference, and the evaluator is
@@ -339,7 +341,7 @@ Vocabulary and kit additions (`features.rs` and cases, no model change):
 
 Model additions (additive, `cir/1` minor):
 
-- `defer` as a statement (shared with the query design § 8), then `panic` and `recover`.
+- `defer` as a statement (shared with the query design § 8): built. Then `panic` and `recover`.
 - A conversion between `string` and `[]byte`, so `envcheck.Save` and most file I/O sites read.
 
 To check: whether every reader spells string literals as Go's `strconv.Quote` does (not

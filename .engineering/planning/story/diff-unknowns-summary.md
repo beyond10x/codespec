@@ -2,26 +2,34 @@
 format: aep.planning-md/3
 id: story:diff-unknowns-summary
 kind: story
-status: draft
+status: implemented
 title: codespec diff --unknowns summary groups unknown deltas by reason
 summary: A mode that replaces unknown-added and unknown-removed deltas by one count per reason class
 relations:
 - decomposes: epic:release-diff-go-field-gaps
 - depends_on: story:diff-command
 scope:
-- confidence: inferred
+- confidence: cited
   path: crates/cli/src/lib.rs
-- confidence: inferred
+- confidence: cited
   path: crates/cli/src/main.rs
-- confidence: inferred
+- confidence: cited
   path: crates/diff
-- confidence: inferred
+- confidence: cited
   path: crates/effects/src/lib.rs
 - confidence: inferred
+  path: crates/effects/src/set.rs
+- confidence: inferred
+  path: crates/effects/tests/effects.rs
+- confidence: cited
   path: website/docs/reference/cli.md
 - confidence: inferred
   path: website/docs/reference/crates.md
-revision: 2
+revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T04:43:15Z", actor: "human:operator", revision: 3}
+- {from: "proposed", to: "active", at: "2026-11-26T04:43:15Z", actor: "human:operator", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-26T09:14:08Z", actor: "human:operator", revision: 7, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: codespec diff --unknowns summary groups unknown deltas by reason
 

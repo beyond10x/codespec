@@ -2041,3 +2041,99 @@ fn the_schema_of_a_named_call_lists_its_forms_and_wants_a_name() {
     assert_eq!(forms, codespec_model::NAMED_FORMS);
     assert_eq!(props["name"]["minLength"], serde_json::json!(1));
 }
+
+/// `with_extern_method` with `defer mu.Unlock()` after the Lock: `docs/query-language.md` § 8.
+fn with_defer() -> serde_json::Value {
+    let mut v = with_extern_method();
+    let mut unlock = v["funcs"][0]["body"][0]["x"].clone();
+    unlock["name"] = serde_json::json!("Unlock");
+    v["funcs"][0]["body"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"k": "defer", "call": unlock, "pos": "m.go:5"}));
+    let mut decl = v["externs"][0].clone();
+    decl["name"] = serde_json::json!("Unlock");
+    v["externs"].as_array_mut().unwrap().push(decl);
+    v
+}
+
+#[test]
+fn a_defer_statement_holds_its_call_and_reads_back_to_the_same_bytes() {
+    let v = with_defer();
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    match &m.funcs[0].body[1] {
+        codespec_model::Stmt::Defer { call, pos } => {
+            assert_eq!(pos, "m.go:5");
+            assert!(
+                matches!(call, codespec_model::Expr::ExternMethod { name, .. } if name == "Unlock")
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    let back: serde_json::Value = serde_json::from_str(&m.to_json()).expect("json");
+    assert_eq!(back["funcs"][0]["body"][1], v["funcs"][0]["body"][1]);
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    let ids: Vec<String> = codespec_model::vocabulary()
+        .into_iter()
+        .map(|f| f.id)
+        .collect();
+    assert!(ids.contains(&"stmt.defer".to_string()), "{ids:?}");
+}
+
+#[test]
+fn a_defer_whose_call_is_not_a_call_is_refused_naming_it() {
+    let mut v = with_defer();
+    v["funcs"][0]["body"][1]["call"] =
+        serde_json::json!({"k": "var", "name": "mu", "t": v["funcs"][0]["params"][0]["t"]});
+    let why = refused(&v);
+    assert!(
+        why.contains("defer at m.go:5 in Hold defers a var, not a call"),
+        "{why}"
+    );
+    let mut w = with_defer();
+    w["funcs"][0]["body"][1]["call"] = serde_json::json!({
+        "k": "intrinsic", "name": "println", "args": [], "t": {"k": "tuple", "elems": []}
+    });
+    let why = refused(&w);
+    assert!(why.contains("defers a intrinsic, not a call"), "{why}");
+}
+
+/// The receiver root of a listed call (§ 8): the local a `method` or `iface` call ref's receiver
+/// is rooted at. Read back to the same bytes, absent from a document without it, refused on
+/// another kind of call ref and when it is not a name.
+#[test]
+fn a_method_and_an_iface_call_ref_name_the_local_their_receiver_is_rooted_at() {
+    let mut v = with_calls();
+    v["funcs"][0]["body"][0]["calls"][2]["recv_var"] = serde_json::json!("c");
+    v["funcs"][0]["body"][0]["calls"][3]["recv_var"] = serde_json::json!("w");
+    let m = Module::from_json(&serde_json::to_vec(&v).expect("json")).expect("admitted");
+    let codespec_model::Stmt::Foreign {
+        calls: Some(calls), ..
+    } = &m.funcs[0].body[0]
+    else {
+        panic!("{:?}", m.funcs[0].body[0]);
+    };
+    assert!(
+        matches!(&calls[2], codespec_model::CallRef::Method { recv_var, .. } if recv_var == "c")
+    );
+    assert!(
+        matches!(&calls[3], codespec_model::CallRef::Iface { recv_var, .. } if recv_var == "w")
+    );
+    let back: serde_json::Value = serde_json::from_str(&m.to_json()).expect("json");
+    assert_eq!(
+        back["funcs"][0]["body"][0]["calls"],
+        v["funcs"][0]["body"][0]["calls"]
+    );
+    let again = Module::from_json(m.to_json().as_bytes()).expect("canonical reads");
+    assert_eq!(again.to_json(), m.to_json());
+    let plain = Module::from_json(&serde_json::to_vec(&with_calls()).expect("json")).unwrap();
+    assert!(!plain.to_json().contains("recv_var"));
+    let mut f = with_calls();
+    f["funcs"][0]["body"][0]["calls"][0]["recv_var"] = serde_json::json!("c");
+    assert!(refused(&f).contains("unknown field `recv_var`"));
+    let mut bad = with_calls();
+    bad["funcs"][0]["body"][0]["calls"][2]["recv_var"] = serde_json::json!("c.mu");
+    let why = refused(&bad);
+    assert!(why.contains("\"c.mu\""), "{why}");
+}
