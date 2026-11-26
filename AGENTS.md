@@ -97,13 +97,13 @@ through an authenticated `gh release download`. Steps, each task also runnable a
 
 | task | what |
 |---|---|
-| — | `lint`: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, then `task check-parts`: every cargo test target (lib, bins, integration tests, doc tests) is in a `test` part, and every package and `--test=<name>` a part names exists |
-| — | `test <packages and selectors>`: `cargo test --locked` over them; a part with `--test=<name>` runs each test alone, killed after 180 s |
+| — | `lint`: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, then `task check-parts`: every cargo test target (lib, bins, integration tests, doc tests) is in a `test` part, and every package and `--test=<name>` a part names exists; then the cases of the test budget (`sh scripts/check-part.sh test`, `sh scripts/go-test.sh test`) |
+| — | `test <packages and selectors>`: `cargo test --locked` over them within the test budget (no test over 60 s, a part's tests within 120 s): a part with `--test=<name>` runs each test alone, killed after 60 s, and starts none once its tests ran 120 s; any other part runs its tests on one thread as CI does (`RUST_TEST_THREADS=1`), timed test by test from libtest's output, is ended when a test has run 60 s, naming it, and is killed after 120 s; each prints its ten slowest tests. A test of a `--test=<name>` part that needs a Go adapter takes it from `crates/conformance/tests/support/go_bin.rs`, built once per state of `adapters/go` into `target/tmp/go-bin/`, never once per test |
 | `adapters-check` | `gofmt -l` empty and `go vet` on `adapters/go` |
 | `language-adapters-check` | Format and test the Elixir, Gleam and Odin adapters, run all nine translations of `stmt-if`, then read and evaluate the three same-language outputs. |
 | `examples-check` | every example read twice: byte-equal, equal to its checked-in `*.read.cir.json`, canonical |
 | `examples-pass` | `codespec pass` over `orders` equals `orders.cir.json` and is its own fixed point |
-| `examples-go` | `orders` written as Go equals `out/go`, gofmt-clean, vetted; the Go writer's tests |
+| `examples-go` | `orders` written as Go equals `out/go`, gofmt-clean, vetted; the Go adapters' tests (`scripts/go-test.sh`: the whole `go test` run, compiling included, killed after 120 s, naming the tests under way; a test over 60 s fails once it ends; the compiler's output, failed tests and the ten slowest printed) |
 | `examples-rust` | `orders` written as Rust equals `out/rust`, exactly one refusal (`Service.Audit`), builds with `-D warnings`; a module without facts refused |
 | `examples-greeter` | `greeter` passed, written as Go and as Rust, equal to the checked-in copies, no refusal, both build |
 | `examples-inventory` | the Rust `inventory` crate read twice (byte-equal, equal to `inventory.read.cir.json`, no refusal), passed, written as Go and as Rust equal to the checked-in copies, all built without warnings, drivers formatted and linted, then `codespec harness examples/inventory --seeds 200 --commands 300` byte-equal |

@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"go/types"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -321,8 +322,34 @@ func (f *front) goType(t types.Type) string {
 	})
 }
 
+// One file set serves every load of a process, and one source importer every load from one
+// module, so an imported package is parsed and type-checked once per module, not once per
+// package read: the command reads one directory, its tests read hundreds in one process. Two
+// modules may resolve one import path to different sources (a replace directive), so they never
+// share an importer. Loads run one at a time.
+var (
+	loadFset      = token.NewFileSet()
+	loadImporters = map[string]types.Importer{}
+)
+
+// moduleRoot is the nearest directory at or above dir that holds a go.mod, or "" for none.
+func moduleRoot(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	for d := abs; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
+}
+
 func load(dir string) (*Module, error) {
-	fset := token.NewFileSet()
+	fset := loadFset
 	// The files the toolchain would build for this platform: no test files, build constraints
 	// applied. A directory with no buildable file falls back to every non-test file.
 	keep := func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }
@@ -363,7 +390,13 @@ func load(dir string) (*Module, error) {
 		Instances: map[*ast.Ident]types.Instance{},
 	}
 	ensureGOROOT()
-	conf := types.Config{Importer: importer.ForCompiler(fset, "source", nil)}
+	root := moduleRoot(dir)
+	imp, ok := loadImporters[root]
+	if !ok {
+		imp = importer.ForCompiler(fset, "source", nil)
+		loadImporters[root] = imp
+	}
+	conf := types.Config{Importer: imp}
 	path := importPath(dir)
 	checkAs := name
 	if path != "" {
