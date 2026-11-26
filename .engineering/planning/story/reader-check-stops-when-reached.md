@@ -6,7 +6,32 @@ status: active
 title: The reader check stops on a raise or a foreign statement only when the run reaches it
 relations:
 - decomposes: epic:reader-coverage
-revision: 3
+scope:
+- confidence: inferred
+  path: adapters/c-read/src/body.rs
+- confidence: cited
+  path: adapters/c-read/src/lib.rs
+- confidence: cited
+  path: adapters/c-read/src/main.rs
+- confidence: cited
+  path: adapters/c-read/tests/cases.rs
+- confidence: cited
+  path: adapters/java/README.md
+- confidence: cited
+  path: adapters/java/src/codespec/read/Main.java
+- confidence: inferred
+  path: adapters/java/src/codespec/read/Reader.java
+- confidence: cited
+  path: adapters/java/test/codespec/read/ReaderTest.java
+- confidence: cited
+  path: conformance/cases/stmt-foreign/c/case.c
+- confidence: cited
+  path: conformance/cases/stmt-foreign/java/Case.java
+- confidence: cited
+  path: conformance/reader/c/stmt-foreign
+- confidence: cited
+  path: conformance/reader/java/stmt-foreign
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-10T20:37:32Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-10T20:37:32Z", actor: "human:timo", revision: 3}

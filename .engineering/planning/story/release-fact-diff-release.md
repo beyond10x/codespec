@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:release-fact-diff-release
 kind: story
-status: active
+status: implemented
 title: Release and install the codespec that ships the release fact diff
 summary: The first codespec tag holding the three stories' merges, released with verified assets and installed on the workstation; codespec --version prints it
 relations:
@@ -41,10 +41,11 @@ scope:
   path: website/docs/getting-started.md
 - confidence: inferred
   path: website/docs/guides/add-an-adapter.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-25T01:41:31Z", actor: "human:operator", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-25T01:41:32Z", actor: "human:operator", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-26T04:38:29Z", actor: "human:operator", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 # Story: Release and install the codespec that ships the release fact diff
 
