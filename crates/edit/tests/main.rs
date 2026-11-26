@@ -283,6 +283,63 @@ fn every_rule_has_a_refusing_test_here() {
     }
 }
 
+// A span naming no node is dropped (`story:read-spans-drops-unplaceable-spans`).
+
+/// The `tally` span document with `extra` added to its spans, as the object a reader prints with
+/// `--spans`, behind a POSIX sh reader `codespec-read-fixture` in a fresh directory of `case`.
+fn fixture_reader(case: &str, extra: &[Value]) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("edit-drops")
+        .join(case);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut doc = tally_doc();
+    doc["spans"]
+        .as_array_mut()
+        .unwrap()
+        .extend(extra.iter().cloned());
+    let obj = doc.as_object_mut().unwrap();
+    for k in ["format", "module", "cir_sha256"] {
+        obj.remove(k);
+    }
+    let cir: Value =
+        serde_json::from_slice(&std::fs::read(tally().join("tally.cir.json")).unwrap()).unwrap();
+    obj.insert("cir".into(), cir);
+    std::fs::write(dir.join("out.json"), serde_json::to_vec(&doc).unwrap()).unwrap();
+    let reader = dir.join("codespec-read-fixture");
+    std::fs::write(
+        &reader,
+        format!("#!/bin/sh\nexec cat '{}'\n", dir.join("out.json").display()),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&reader, std::fs::Permissions::from_mode(0o755)).unwrap();
+    reader
+}
+
+/// A copy of the `name` span of `CALL` (a `pick` of `tally`) moved to `at`.
+fn moved_call(at: &str) -> Value {
+    let doc = tally_doc();
+    let mut s = doc["spans"][span(&doc, CALL, "name")].clone();
+    s["at"] = json!(at);
+    s
+}
+
+#[test]
+fn read_spanned_keeps_every_other_span_when_one_names_no_node() {
+    let reader = fixture_reader("one", &[moved_call("funcs.999.body.0")]);
+    let read = codespec_edit::run::read_spanned(&reader, &tally().join("source")).unwrap();
+    let want = read_strict_tally();
+    assert_eq!(read.spans, want);
+}
+
+/// The `tally` span document as strict reading gives it.
+fn read_strict_tally() -> SpanDoc {
+    read(&tally_doc()).unwrap()
+}
+
+mod drops;
+
 fn str_at(row: &[Q], i: usize) -> String {
     match &row[i] {
         Q::Str(s) => s.clone(),
@@ -338,6 +395,101 @@ fn every_function_type_field_and_body_node_of_series_maps_to_its_at_and_back() {
     for (at, _) in &ats {
         let id = ids.id(at).unwrap_or_else(|| panic!("{at} names nothing"));
         assert_eq!(ids.at(&id).as_deref(), Some(at.as_str()));
+    }
+}
+
+// Several functions of one key (`story:go-spans-same-key-functions`): the `inits` fixture, the
+// Go package `example.com/probe` read by `codespec-read-go --spans`, three files, three `init`
+// functions (`funcs.2`, `funcs.6`, `funcs.9`), two `func _()` (`funcs.3`, `funcs.7`) and the
+// methods `T.Close` and `U.Close` (`funcs.0`, `funcs.4`).
+
+fn inits() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/inits")
+}
+
+fn inits_module() -> Module {
+    module(&inits().join("inits.cir.json"))
+}
+
+fn inits_source(path: &str) -> Result<Vec<u8>, String> {
+    std::fs::read(inits().join("source").join(path)).map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_package_with_several_init_functions_reads_with_a_span_on_a_node_of_each() {
+    let m = inits_module();
+    let bytes = std::fs::read(inits().join("inits.spans.json")).unwrap();
+    let doc = spans::read(&bytes, &Ids::new(&m), &inits_source).unwrap();
+    for at in [
+        "funcs.2.body.0.rhs.0",
+        "funcs.6.body.0.rhs.0",
+        "funcs.9.body.0.rhs.0",
+        "funcs.3.body.0.x",
+        "funcs.7.body.0.x",
+    ] {
+        assert!(
+            doc.spans
+                .iter()
+                .any(|s| s.at == at && s.role == spans::Role::Name),
+            "no name span at {at}"
+        );
+    }
+}
+
+#[test]
+fn the_second_and_later_function_of_one_key_has_its_own_id_both_ways() {
+    let m = inits_module();
+    let facts = FactBase::build(std::slice::from_ref(&m));
+    let ids = Ids::from_facts(&m, &facts);
+    let p = "example.com/probe";
+    for (id, at) in [
+        (format!("{p}.init"), "funcs.2"),
+        (format!("{p}.init~2"), "funcs.6"),
+        (format!("{p}.init~3"), "funcs.9"),
+        (format!("{p}._"), "funcs.3"),
+        (format!("{p}._~2"), "funcs.7"),
+        (format!("{p}.T.Close"), "funcs.0"),
+        (format!("{p}.U.Close"), "funcs.4"),
+        (format!("{p}.one"), "funcs.1"),
+    ] {
+        let id = Id::Func(id);
+        assert_eq!(ids.at(&id).as_deref(), Some(at), "{id:?}");
+        assert_eq!(ids.id(at), Some(id), "{at}");
+    }
+    for (id, at) in [
+        (format!("{p}.init#0.rhs.0"), "funcs.2.body.0.rhs.0"),
+        (format!("{p}.init~2#0.rhs.0"), "funcs.6.body.0.rhs.0"),
+        (format!("{p}.init~3#0.rhs.0"), "funcs.9.body.0.rhs.0"),
+        (format!("{p}._~2#0.x"), "funcs.7.body.0.x"),
+    ] {
+        let id = Id::Node(id);
+        assert_eq!(ids.at(&id).as_deref(), Some(at), "{id:?}");
+        assert_eq!(ids.id(at), Some(id), "{at}");
+    }
+    assert_eq!(ids.at(&Id::Func(format!("{p}.init~4"))), None);
+    assert_eq!(ids.at(&Id::Func(format!("{p}.T.Close~2"))), None);
+    // The fact base gives each function a row of its own, under the same ids.
+    let mut funcs: Vec<String> = facts
+        .rows("func")
+        .iter()
+        .filter(|r| str_at(r, 5) != "lambda")
+        .map(|r| str_at(r, 0))
+        .collect();
+    funcs.sort();
+    let mut want: Vec<String> = (0..m.funcs.len())
+        .map(|i| match ids.id(&format!("funcs.{i}")) {
+            Some(Id::Func(f)) => f,
+            other => panic!("funcs.{i} is {other:?}"),
+        })
+        .collect();
+    want.sort();
+    assert_eq!(funcs, want);
+    // Every node of every function maps to its at and back, and no two ats share an id.
+    let mut seen = std::collections::BTreeSet::new();
+    for (at, _) in ids.ats() {
+        let id = ids.id(&at).unwrap_or_else(|| panic!("{at} names nothing"));
+        assert_eq!(ids.at(&id).as_deref(), Some(at.as_str()));
+        assert!(seen.insert(id.key()), "{at}: id {} given twice", id.key());
     }
 }
 

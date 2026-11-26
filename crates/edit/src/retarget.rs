@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use codespec_model::{CallRef, Func, Module, receiver_type_name};
 
 use crate::change::Refusal;
-use crate::ids::label;
+use crate::ids::{func_id, label};
 use crate::lang::go_exported;
 use crate::refs::{Ctx, Item, walk};
 use crate::rename::{Cx, Lookup, Out, Resolved, name_of};
@@ -226,7 +226,7 @@ impl Cx<'_> {
             refuse(
                 out,
                 "collision",
-                &format!("{}.{}", label(m), m.funcs[f].key()),
+                &func_id(m, f),
                 format!("a local or parameter {spelling} would capture the call at {site}"),
             );
         }

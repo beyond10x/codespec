@@ -51,7 +51,7 @@ use crate::compare::{Comparison, compare};
 use crate::diff;
 use crate::ids::{Ids, label, source_names};
 use crate::post;
-use crate::spans::{self, FORMAT, SpanDoc, sha256_hex};
+use crate::spans::{self, Dropped, FORMAT, SpanDoc, sha256_hex};
 
 /// The fields of a reader's `--spans` output.
 const OUTPUT_KEYS: &[&str] = &["cir", "files", "spans", "unspanned", "refs"];
@@ -1102,11 +1102,13 @@ fn reread(reader: &Path, copy: &Copy, dirs: &[&str]) -> Result<Vec<Module>, Stri
 /// [`MAX_NESTING`] levels, as `Module::from_json` reads it.
 const PARSE_STACK: usize = 64 << 20;
 
-/// A module read with spans: the `cir/1` document and its span document, both strictly read.
+/// A module read with spans: the `cir/1` document and its span document, both strictly read, and
+/// the spans and `unspanned` entries of the reader's output that named no node and were dropped.
 #[derive(Debug, Clone)]
 pub struct Spanned {
     pub cir: Module,
     pub spans: SpanDoc,
+    pub dropped: Vec<Dropped>,
 }
 
 impl Spanned {
@@ -1133,11 +1135,12 @@ pub fn reader_lang(reader: &Path) -> String {
 }
 
 /// Run `reader --spans dir`, take its object `{cir, files, spans, unspanned, refs}`, strictly
-/// read the `cir/1` module, add `format`, `module` and `cir_sha256`, and strictly read the span
-/// document against the module and the files under `dir`. A reader that fails on `--spans` or
-/// prints a bare module is refused: "the <lang> reader gives no spans". The reader runs in `dir`,
-/// given as an absolute path (the Go reader resolves imports by the `go.mod` above its working
-/// directory).
+/// read the `cir/1` module, add `format`, `module` and `cir_sha256`, drop every span and
+/// `unspanned` entry whose `at` names no node of the module ([`spans::read_value_dropping`]), and
+/// strictly read the rest against the module and the files under `dir`. A reader that fails on
+/// `--spans` or prints a bare module is refused: "the <lang> reader gives no spans". The reader
+/// runs in `dir`, given as an absolute path (the Go reader resolves imports by the `go.mod` above
+/// its working directory).
 pub fn read_spanned(reader: &Path, dir: &Path) -> Result<Spanned, String> {
     read(reader, dir).map_err(|e| match e {
         Read::NoSpans(m) | Read::Error(m) => m,
@@ -1201,10 +1204,14 @@ fn read(reader: &Path, dir: &Path) -> Result<Spanned, Read> {
     }
     let ids = Ids::new(&module);
     let source = |path: &str| std::fs::read(dir.join(path)).map_err(|e| e.to_string());
-    let spans =
-        spans::read_value(&Value::Object(doc), &ids, &source).map_err(|e| error(e.to_string()))?;
+    let (spans, dropped) = spans::read_value_dropping(&Value::Object(doc), &ids, &source)
+        .map_err(|e| error(e.to_string()))?;
     drop(ids);
-    Ok(Spanned { cir: module, spans })
+    Ok(Spanned {
+        cir: module,
+        spans,
+        dropped,
+    })
 }
 
 /// A reader's output split into the bytes of its `cir` member and its other members; `None` when
