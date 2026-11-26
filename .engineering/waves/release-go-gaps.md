@@ -1,9 +1,9 @@
 # Wave plan: release and Go reader gaps (wave 6)
 
 Derived 2026-11-26 (AEP skill 0.26.0, `aep` 0.80.0) from the three stories the owner accepted
-("accept G5 G6 musl into this wave", relayed by the host-operator session;
+("accept G5 G6 musl into this wave", the owner through the operator role, 2026-11-26;
 `approval-record:release-go-gaps-wave-2026-11-26`). The same order starts the wave once #74 and #78
-merged (603faba6, da023271). Epic: `epic:release-diff-go-field-gaps`. Consumer: the session moving
+merged (603faba6, da023271). Epic: `epic:release-diff-go-field-gaps`. Consumer: the downstream consumer moving
 its code facts onto the 0.14.0 release (gaps G5, G6).
 
 `aep plan artifact waves --kind story --status active` places the three in three waves, one each:
@@ -15,7 +15,7 @@ its code facts onto the 0.14.0 release (gaps G5, G6).
 - release-musl-static / release-ships-go-summaries: `.github/workflows/release-build.yml` (cited), `AGENTS.md`, `crates/cli/src/main.rs` (inferred), `website/docs/getting-started.md` (cited)
 
 Every pair collides on `release-build.yml`, so the units run one after another on one integration
-branch; at most one implementor runs at a time (the session's token hold). Order: G5 first (the
+branch; at most one implementor runs at a time (the coordinator's limit). Order: G5 first (the
 consumer's first gap; musl depends on it), then G6, then musl. Scope of every unit: typed entries,
 cited and inferred as above.
 
@@ -28,8 +28,8 @@ through `slot`; a test over 60 s is killed, the test step ends within 120 s, a p
 Store on the way out: each story needs `test_result` evidence before `active -> implemented`.
 
 Commits this wave makes: this page and the approval, one commit per unit, its merge into the
-integration branch, the closing store commit, one pull request to `main` that the host-operator
-session merges. No tag, no release.
+integration branch, the closing store commit, one pull request to `main` that the operator role
+merges. No tag, no release.
 
 | order | story | unit tree | unit commit | merge | adversary | state |
 |---|---|---|---|---|---|---|
