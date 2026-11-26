@@ -748,3 +748,388 @@ fn an_incomplete_callee_is_named_with_its_module_path_in_the_examples() {
          example.com/q.Raw\n"
     );
 }
+
+// An inherited reason, `calls <func> which is incomplete`, is reported at the callee.
+
+/// The report from the revision `old` to the revision `new` of `tests/fixtures/inherited`, Go
+/// packages of `example.com/probe` (`example.org/lib` is a stub no summary names), with the
+/// fixture barrier and summaries and rta.
+fn inherited(test: &str, old: &str, new: &str) -> Report {
+    let dir = fixtures().join("inherited");
+    let scratch = scratch(test);
+    let old = read_dir(&documents(&scratch, "old", &dir.join(old))).unwrap();
+    let new = read_dir(&documents(&scratch, "new", &dir.join(new))).unwrap();
+    let (barrier, summaries) = (barrier(), summaries());
+    let opts = Options {
+        summaries: &summaries,
+        barrier: Some(&barrier),
+        dispatch: DispatchMode::Rta,
+        ..Default::default()
+    };
+    diff(&old, &new, &opts).unwrap()
+}
+
+const LIB_DO: &str = "extern without summary: example.org/lib.Do";
+
+/// `(kind, unit, value, callers)` of each delta of `r`, from its JSON.
+fn with_callers(r: &Report) -> Vec<(String, String, String, Vec<String>)> {
+    let json: serde_json::Value = serde_json::from_str(&r.to_json()).unwrap();
+    json["deltas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            let s = |k: &str| d[k].as_str().unwrap_or_default().to_owned();
+            let callers = d.get("callers").map_or(Vec::new(), |c| {
+                c.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_str().unwrap().to_owned())
+                    .collect()
+            });
+            (s("kind"), s("unit"), s("value"), callers)
+        })
+        .collect()
+}
+
+fn probe(names: &[&str]) -> Vec<String> {
+    names
+        .iter()
+        .map(|n| format!("example.com/probe.{n}"))
+        .collect()
+}
+
+fn delta(
+    kind: &str,
+    unit: &str,
+    value: &str,
+    callers: &[&str],
+) -> (String, String, String, Vec<String>) {
+    (
+        kind.into(),
+        format!("example.com/probe.{unit}"),
+        value.into(),
+        probe(callers),
+    )
+}
+
+/// The story's reproducer: only `Lib` changes, to call an extern no summary names. One
+/// `unknown-added`, at `Lib`, with `A`, `B` and `C` as its callers; none for them.
+#[test]
+fn an_inherited_reason_is_reported_once_at_the_incomplete_callee() {
+    let r = inherited("inherited-reproducer", "a", "b");
+    assert_eq!(
+        r.to_text(),
+        format!("unknown-added example.com/probe.Lib {LIB_DO} callers=3\n")
+    );
+    let json: serde_json::Value = serde_json::from_str(&r.to_json()).unwrap();
+    assert_eq!(
+        json["deltas"],
+        serde_json::json!([{
+            "kind": "unknown-added", "unit": "example.com/probe.Lib", "value": LIB_DO,
+            "callers": ["example.com/probe.A", "example.com/probe.B", "example.com/probe.C"]
+        }])
+    );
+}
+
+#[test]
+fn a_caller_with_two_calls_of_the_callee_is_listed_once() {
+    let r = inherited("inherited-twice", "twice-a", "twice-b");
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "B", "C"])]
+    );
+}
+
+/// `A` calls `B` calls `Lib`: callers of callers count.
+#[test]
+fn the_callers_of_a_caller_are_listed_too() {
+    let r = inherited("inherited-chain", "chain-a", "chain-b");
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "B"])]
+    );
+}
+
+/// `Lib` incomplete in both revisions, only lines moved: no delta.
+#[test]
+fn a_callee_incomplete_in_both_revisions_gives_no_delta() {
+    let r = inherited("inherited-both", "b", "b-moved");
+    assert_eq!(r.deltas, [], "{}", r.to_text());
+    assert_eq!(r.to_text(), "");
+}
+
+/// The reverse pair: `Lib` stops being incomplete. One `unknown-removed` at `Lib`, its callers
+/// those of the old revision.
+#[test]
+fn a_callee_that_becomes_complete_gives_one_unknown_removed_with_its_callers() {
+    let r = inherited("inherited-reverse", "b", "a");
+    assert_eq!(
+        r.to_text(),
+        format!("unknown-removed example.com/probe.Lib {LIB_DO} callers=3\n")
+    );
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-removed", "Lib", LIB_DO, &["A", "B", "C"])]
+    );
+}
+
+/// `D` starts calling `Lib` in the new revision: its own call is new, so it keeps its delta, and
+/// it is a caller of `Lib` too.
+#[test]
+fn a_function_that_starts_calling_an_incomplete_callee_keeps_its_delta() {
+    let r = inherited("inherited-new-call", "d-a", "d-b");
+    assert_eq!(
+        with_callers(&r),
+        [
+            delta("unknown-added", "D", "calls Lib which is incomplete", &[]),
+            delta("unknown-added", "Lib", LIB_DO, &["A", "B", "C", "D"]),
+        ]
+    );
+}
+
+/// `A` gains a reason of its own besides inheriting `Lib`'s: it has that delta and is still a
+/// caller of `Lib`.
+#[test]
+fn a_caller_with_an_own_new_reason_has_that_delta_and_stays_a_caller() {
+    let r = inherited("inherited-own", "a", "own-b");
+    assert_eq!(
+        with_callers(&r),
+        [
+            delta(
+                "unknown-added",
+                "A",
+                "extern without summary: example.org/lib.Other",
+                &[]
+            ),
+            delta("unknown-added", "Lib", LIB_DO, &["A", "B", "C"]),
+        ]
+    );
+}
+
+/// `A` calls `Lib` through a function value, which rta resolves from the entry `main`: `A` is a
+/// caller of `Lib`, as the effects report already says it is incomplete, and so is `main`, which
+/// calls `A`; neither has a delta of its own.
+#[test]
+fn a_caller_through_a_function_value_is_listed() {
+    let r = inherited("inherited-value", "value-a", "value-b");
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "main"])]
+    );
+}
+
+/// The same inputs twice give the same bytes; each text line's `callers=<n>` is the length of
+/// the JSON list, and a delta without callers prints none.
+#[test]
+fn inherited_reports_are_the_same_bytes_and_text_and_json_hold_the_same_counts() {
+    let one = inherited("inherited-twice-1", "d-a", "d-b");
+    let two = inherited("inherited-twice-2", "d-a", "d-b");
+    assert_eq!(one.to_json(), two.to_json());
+    assert_eq!(one.to_text(), two.to_text());
+    let text: Vec<String> = one.to_text().lines().map(str::to_owned).collect();
+    let json = with_callers(&one);
+    assert_eq!(text.len(), json.len(), "{}", one.to_text());
+    for (line, (kind, unit, value, callers)) in text.iter().zip(&json) {
+        let mut want = format!("{kind} {unit} {value}");
+        if !callers.is_empty() {
+            want.push_str(&format!(" callers={}", callers.len()));
+        }
+        assert_eq!(*line, want);
+    }
+    let read: Report = serde_json::from_str(&one.to_json()).unwrap();
+    assert_eq!(read, one);
+}
+
+// Adversary cases for § Inherited reasons, over `tests/fixtures/adv-inherited` and hand-written
+// documents.
+
+/// `A` calls `Lib` from a function literal of its own body; only `Lib` changes. The package is
+/// `main`, so `main.main` is the entry and rta resolves the literal's call as a function value
+/// (the default of any Go program with a `main`). `A`'s facts did not change, its callee's did:
+/// the story's rule gives one delta, at `Lib`, and `A` (and `main`, which calls `A` and `B`) are
+/// incomplete through `Lib` in the new revision, so they are `Lib`'s callers.
+#[test]
+fn adv_a_caller_through_its_own_function_literal_inherits_and_gets_no_delta() {
+    let r = inherited(
+        "adv-inherited-lambda",
+        "../adv-inherited/lambda-a",
+        "../adv-inherited/lambda-b",
+    );
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "B", "main"])],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// `W` calls a function value it is given; rta counts `A`'s function literal, which calls `Lib`,
+/// among its candidates. Only `Lib` changes: neither `A` nor `W` changed a fact of its own, so
+/// the report holds one delta, at `Lib`.
+#[test]
+fn adv_a_function_value_call_whose_candidate_is_another_functions_literal_gets_no_delta() {
+    let r = inherited(
+        "adv-inherited-value-lambda",
+        "../adv-inherited/value-lambda-a",
+        "../adv-inherited/value-lambda-b",
+    );
+    let deltas: Vec<(String, String, String)> = with_callers(&r)
+        .into_iter()
+        .map(|(kind, unit, value, _)| (kind, unit, value))
+        .collect();
+    assert_eq!(
+        deltas,
+        [(
+            "unknown-added".to_owned(),
+            "example.com/probe.Lib".to_owned(),
+            LIB_DO.to_owned()
+        )],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// The callers search follows literals: `A.lambda@1` calls `Lib`, so `A` (which calls its
+/// literal) and `W` (whose function-value call may reach it) are `Lib`'s callers, and `main`,
+/// which calls both; the literal itself is no unit and is not listed.
+#[test]
+fn the_callers_of_a_callee_reached_through_a_literal_are_its_holder_and_its_value_callers() {
+    let r = inherited(
+        "inherited-value-lambda-callers",
+        "../adv-inherited/value-lambda-a",
+        "../adv-inherited/value-lambda-b",
+    );
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "W", "main"])],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// `A`'s literal gains an extern no summary names. The effects report counts the literal's body
+/// as `A`'s, so the reason is `A`'s own delta, once; `calls A.lambda@1 which is incomplete`, of
+/// `A` and of `W` (whose function-value call may reach the literal), is inherited and no delta.
+/// `W` and `main` are `A`'s callers.
+#[test]
+fn a_literal_whose_own_body_gains_a_reason_gives_its_holder_one_delta() {
+    let r = inherited("inherited-literal-own", "literal-own-a", "literal-own-b");
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "A", LIB_DO, &["W", "main"])],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// `A` and `B` call each other, `B` calls `Lib`, `C` calls `A`; only `Lib` changes. The fixed
+/// point ends on the cycle: one delta at `Lib`, all three callers.
+#[test]
+fn adv_mutual_recursion_through_an_incomplete_callee_ends_with_every_caller() {
+    let r = inherited(
+        "adv-inherited-rec",
+        "../adv-inherited/rec-a",
+        "../adv-inherited/rec-b",
+    );
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "Lib", LIB_DO, &["A", "B", "C"])],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// The cycle `A` <-> `B` itself becomes incomplete: `B` gains the extern. `B`'s reason is its own;
+/// `A` inherits it, and `B`'s `calls A which is incomplete` comes back to `B` and is no delta.
+#[test]
+fn adv_a_cycle_that_becomes_incomplete_reports_once_at_its_own_reason() {
+    let r = inherited(
+        "adv-inherited-cycle",
+        "../adv-inherited/rec-a",
+        "../adv-inherited/cyc-b",
+    );
+    assert_eq!(
+        with_callers(&r),
+        [delta("unknown-added", "B", LIB_DO, &["A", "C"])],
+        "{}",
+        r.to_text()
+    );
+}
+
+/// Two modules each hold a `Raw`; `example.com/p.Raw` is incomplete in both revisions (and
+/// `Other` calls it), `example.com/q.Raw` becomes incomplete. `Caller` of `p` calls `q`'s `Raw`
+/// and `Top` calls `Caller`. Without `--report`: one delta, at `example.com/q.Raw`, callers
+/// `Caller` and `Top`, not `Other`. With `--report p`: `q.Raw` is no unit, so `Caller` keeps its
+/// own delta, with `Top` as its caller.
+#[test]
+fn adv_a_callee_of_one_name_in_two_modules_and_a_left_out_module() {
+    let pair = scratch("adv-two-raw-pair");
+    let goto = serde_json::json!({"k": "foreign", "lang": "go", "src": "goto done",
+        "reason": "statement outside cir/1: goto", "pos": "m.go:2"});
+    let unit = serde_json::json!({"k": "unit"});
+    let func = |name: &str, body: serde_json::Value, pos: &str| {
+        serde_json::json!({"name": name, "exported": true, "params": [], "results": [],
+            "body": body, "pos": pos})
+    };
+    let call = |name: &str, pos: &str| {
+        serde_json::json!({"k": "expr", "x": {"k": "call", "name": name, "args": [], "t": unit},
+            "pos": pos})
+    };
+    let q_raw = serde_json::json!({"k": "expr", "x": {"k": "extern", "path": "example.com/q",
+        "name": "Raw", "args": [], "t": unit}, "pos": "m.go:6"});
+    for (rev, q_body) in [
+        ("a", serde_json::json!([])),
+        ("b", serde_json::json!([goto])),
+    ] {
+        let dir = pair.join(rev);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = serde_json::json!({
+            "format": "cir/1", "name": "p", "path": "example.com/p",
+            "reader": {"language": "go", "name": "hand-written", "version": "1"},
+            "types": [],
+            "funcs": [
+                func("Raw", serde_json::json!([goto]), "m.go:1"),
+                func("Other", serde_json::json!([call("Raw", "m.go:4")]), "m.go:3"),
+                func("Caller", serde_json::json!([q_raw]), "m.go:5"),
+                func("Top", serde_json::json!([call("Caller", "m.go:8")]), "m.go:7"),
+            ],
+            "externs": [{"path": "example.com/q", "name": "Raw", "params": [], "results": []}],
+            "layout": ["func:Raw", "func:Other", "func:Caller", "func:Top"]
+        });
+        let q = serde_json::json!({
+            "format": "cir/1", "name": "q", "path": "example.com/q",
+            "reader": {"language": "go", "name": "hand-written", "version": "1"},
+            "types": [], "funcs": [func("Raw", q_body, "q.go:1")], "layout": ["func:Raw"]
+        });
+        std::fs::write(dir.join("p.cir.json"), p.to_string()).unwrap();
+        std::fs::write(dir.join("q.cir.json"), q.to_string()).unwrap();
+    }
+    let all = report_of("adv-two-raw-all", &pair);
+    assert_eq!(
+        with_callers(&all),
+        [(
+            "unknown-added".to_owned(),
+            "example.com/q.Raw".to_owned(),
+            "foreign statement".to_owned(),
+            vec![
+                "example.com/p.Caller".to_owned(),
+                "example.com/p.Top".to_owned()
+            ]
+        )],
+        "{}",
+        all.to_text()
+    );
+    let only_p = report_only("adv-two-raw-p", &pair, &["example.com/p"]);
+    assert_eq!(
+        with_callers(&only_p),
+        [(
+            "unknown-added".to_owned(),
+            "example.com/p.Caller".to_owned(),
+            "calls example.com/q.Raw which is incomplete".to_owned(),
+            vec!["example.com/p.Top".to_owned()]
+        )],
+        "{}",
+        only_p.to_text()
+    );
+}

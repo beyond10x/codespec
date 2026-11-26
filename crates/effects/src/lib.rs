@@ -438,7 +438,7 @@ pub struct Report {
 }
 
 /// What one function may do.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FuncEffects {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -459,6 +459,40 @@ pub struct FuncEffects {
     pub dispatch: Vec<Dispatch>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unknown_roots: Vec<ReasonCount>,
+    /// Only in memory, never in the document nor in equality: every call of the function to a
+    /// function, a function literal or a module's variable initializers of the set, a call
+    /// through an interface or a function value once per candidate; sorted, each once. Empty in
+    /// a report read from its document.
+    #[serde(skip)]
+    pub calls: Vec<Call>,
+}
+
+impl PartialEq for FuncEffects {
+    fn eq(&self, o: &Self) -> bool {
+        (
+            &self.path,
+            &self.name,
+            &self.pos,
+            &self.effects,
+            &self.raises,
+        ) == (&o.path, &o.name, &o.pos, &o.effects, &o.raises)
+            && (&self.unknown, &self.syscalls, &self.effect_sites)
+                == (&o.unknown, &o.syscalls, &o.effect_sites)
+            && (&self.dispatch, &self.unknown_roots) == (&o.dispatch, &o.unknown_roots)
+    }
+}
+
+impl Eq for FuncEffects {}
+
+/// A call of a function of the set, as [`FuncEffects::calls`] lists it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Call {
+    /// The id of the call (§ Call sites); `None` for a use the table of sites does not number.
+    pub site: Option<CallSite>,
+    /// The callee as the function's reason `calls <func> which is incomplete` names it: its key
+    /// in the function's own module, `<module path>.<key>` in another, a function literal as
+    /// § Call sites names it.
+    pub callee: String,
 }
 
 /// One reason a function's effects may be incomplete.
@@ -880,7 +914,35 @@ pub fn analyze_at_load(
     summaries: &[Summary],
     opts: &Options,
 ) -> (Report, Vec<(usize, FuncEffects)>) {
-    set::analyze(modules, summaries, opts)
+    let (report, at_load, _) = set::analyze(modules, summaries, opts);
+    (report, at_load)
+}
+
+/// What [`analyze_program`] gives.
+#[derive(Debug, Clone)]
+pub struct Program {
+    /// The report of [`analyze_set`].
+    pub report: Report,
+    /// What runs when a module loads that `report` does not list, as [`analyze_at_load`] gives
+    /// it.
+    pub at_load: Vec<(usize, FuncEffects)>,
+    /// Every function literal of the modules the report lists, each with the index of its
+    /// module, computed on the same call graph: named `<holder>.lambda@<n>` as a reason of its
+    /// module names it (§ Call sites), its `unknown` the reasons of its own body and of the
+    /// calls it makes, as for a function. The report names a literal only in a reason `calls
+    /// <holder>.lambda@<n> which is incomplete`; this list is for a reader that follows such a
+    /// reason into the literal.
+    pub literals: Vec<(usize, FuncEffects)>,
+}
+
+/// [`analyze_at_load`] and the function literals of the set, from one analysis.
+pub fn analyze_program(modules: &[Module], summaries: &[Summary], opts: &Options) -> Program {
+    let (report, at_load, literals) = set::analyze(modules, summaries, opts);
+    Program {
+        report,
+        at_load,
+        literals,
+    }
 }
 
 /// `file:line` as `(file, line)`, so `m.go:9` sorts before `m.go:10`.
