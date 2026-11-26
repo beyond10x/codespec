@@ -298,6 +298,10 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `crates/docs/src/coverage.rs::a_floor_file_listing_a_feature_the_reader_claims_is_refused`,
   `crates/docs/src/coverage.rs::the_checked_in_floor_file_lists_no_feature_a_case_holds_a_source_of`.
   A reader that reads more raises its floor in the same change.
+- A Java kit source (`conformance/cases/<case>/java/Case.java`) also compiles as Groovy 2.4: the
+  Groovy reader's corpus is the kit's Java sources, so a form Groovy 2.4 lacks (`do`-`while`, a
+  lambda) fails `reader-groovy` at step 1. Only the Groovy conform run inside
+  `task docs-generate` checks it; `ReaderTest` does not.
 
 ## Elixir, Gleam and Odin
 
