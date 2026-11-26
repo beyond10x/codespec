@@ -4,6 +4,19 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Changed
+
+- `codespec reach` (and the rapid type analysis of `codespec effects` and `codespec trace`) takes
+  as roots of an entry the Go `init` functions and variable initializers of the packages in the
+  import closure of the programs (`main` packages) that hold it, not those of every package of
+  the set; an entry no program holds, or a set without `imports`, keeps every one. The reach
+  report says which per entry (`roots`: `{entry, roots}`, `program` or `all`). For this
+  `cir/1` `Module` has an optional `imports` field, every import path of the package's files
+  (blank and dot imports included), sorted, once each; the Go reader fills it for a package
+  with an import path.
+
+## 0.14.0
+
 ### Added
 
 - `codespec query --max-tuples N` stops a run that holds more than N tuples (a fact a rule
@@ -18,9 +31,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
   the crate doc of `b10x-codespec-effects`). A reason names a function literal
   `<holder>.lambda@<n>`, no longer `func literal at <file>:<line>`.
 - The Go reader records the routes a package registers with `net/http` (`HandleFunc`, `Handle`, a `*http.ServeMux`'s, Go 1.22 method patterns) or echo (`GET` … `Any`, on groups) as `http` entries, and lists a route it cannot follow as an `http route` refusal; `cir/1` `Entry` gains an optional `path`, the module declaring the handler when another package does.
+- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
+  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
+  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
+  `cfg(test)` was around it. `codespec measure`
+  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
+  JSON shows it as `total.left_out`. A document without the field is unchanged.
 
 ### Fixed
 
+- `codespec-read-rust` reads a source whose string, character literal, comment or doc comment holds a
+  control or format character (a zero-width joiner in a test string): strict reading refused the
+  reader's own `src` or `value` and the file gave no document. A string literal's `value` writes
+  such a character as Go's `\uNNNN`, `\UNNNNNNNN` or `\xNN`; a `foreign` statement's `src` writes it as
+  `\u{..}` (a raw string that holds one as the cooked string of the same text, a doc comment's
+  text as `\u{..}`). Strict reading is unchanged.
 - `codespec query` holds memory linear in the documents where it grew with their square or
   cube. A site nothing read (a foreign statement without a call list, an opaque function) in one
   module made every row of every other module rest on it, through a negation of a relation whose
@@ -32,12 +57,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
   apart, and an atom whose variables are all bound runs once per smallest set of sites. Rows rest on fewer sites. On 40 one-file modules the three
   shapes held at most 7,001, 11,240 and 2,694,881 tuples before, and 720, 480 and 640 now; time
   not measured.
-- `cir/1` `Module` has an optional `left_out` field: `{pos, what, reason}` for each declaration
-  a normal build leaves out. The Rust reader fills it for `#[cfg(test)]` code and for an item
-  marked `#[test]`, `#[bench]` or `#[<path>::test]`, which it read as a function before when no
-  `cfg(test)` was around it. `codespec measure`
-  prints the count after the share read (`left out as test-only: 3 functions, 1 module`), and
-  JSON shows it as `total.left_out`. A document without the field is unchanged.
 - `codespec-read-rust` reads `len()` and an index as `usize` (an unsigned platform `int`), so a
   length returned as `usize` has the result's type and its Go output builds; a named index of
   `enumerate()` is refused at its line.
@@ -61,14 +80,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Changed
 
-- `codespec reach` (and the rapid type analysis of `codespec effects` and `codespec trace`) takes
-  as roots of an entry the Go `init` functions and variable initializers of the packages in the
-  import closure of the programs (`main` packages) that hold it, not those of every package of
-  the set; an entry no program holds, or a set without `imports`, keeps every one. The reach
-  report says which per entry (`roots`: `{entry, roots}`, `program` or `all`). For this
-  `cir/1` `Module` has an optional `imports` field, every import path of the package's files
-  (blank and dot imports included), sorted, once each; the Go reader fills it for a package
-  with an import path.
 - The Rust reader reads a shift (`<<`, `>>`, `<<=`, `>>=`) only when its count is proven below
   the left operand's width (a literal or constant below it, `e & m`, `e % k` of an unsigned `e`;
   a `usize`/`isize` only by a literal below 32) and refuses any other at its line, where it read

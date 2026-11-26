@@ -4287,3 +4287,134 @@ fn items_marked_for_the_test_harness_are_left_out() {
         m.left_out
     );
 }
+
+// ----- control and format characters inside literals and comments ------------------------------
+
+/// `m` printed and read back by strict reading: what `codespec read` does with the reader's
+/// output. A refusal here fails a whole file.
+fn read_back(m: &Module) -> Module {
+    Module::from_json(m.to_json().as_bytes())
+        .unwrap_or_else(|e| panic!("strict reading refuses the reader's own output: {e}"))
+}
+
+/// Every string a key `key` holds anywhere in `m`'s JSON.
+fn strings_at(m: &Module, key: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut v: Value = serde_json::from_str(&m.to_json()).unwrap();
+    walk(&mut v, &mut |x| {
+        if let Some(s) = x.get(key).and_then(Value::as_str) {
+            out.push(s.to_string());
+        }
+    });
+    out
+}
+
+const ZWJ: char = '\u{200d}';
+
+#[test]
+fn a_string_literal_holding_a_format_character_is_read_and_written_as_an_escape() {
+    let m = read(&lines(&[
+        "pub fn raw() -> String {",
+        &format!("    String::from(\"a{ZWJ}b\")"),
+        "}",
+        "pub fn escaped() -> String {",
+        "    String::from(\"c\\u{200d}d\")",
+        "}",
+        "pub fn control() -> String {",
+        "    String::from(\"e\\u{1b}f\\u{85}g\\u{feff}h\")",
+        "}",
+    ]));
+    let m = read_back(&m);
+    let values = strings_at(&m, "value");
+    for want in [
+        "\"a\\u200db\"",
+        "\"c\\u200dd\"",
+        "\"e\\x1bf\\u0085g\\ufeffh\"",
+    ] {
+        assert!(values.iter().any(|v| v == want), "{want} in {values:?}");
+    }
+    assert!(m.refusals.is_empty(), "{:?}", m.refusals);
+}
+
+#[test]
+fn a_string_literal_outside_the_basic_plane_holding_a_format_character_is_read() {
+    let m = read(&lines(&[
+        "pub fn tag() -> String {",
+        "    String::from(\"x\\u{e0001}y\")",
+        "}",
+    ]));
+    let m = read_back(&m);
+    let values = strings_at(&m, "value");
+    assert!(
+        values.iter().any(|v| v == "\"x\\U000e0001y\""),
+        "{values:?}"
+    );
+}
+
+/// The source a `foreign` statement keeps is Rust that means what the original did: a format
+/// character in a literal or a comment is the escape for it, a raw string holding one is the
+/// cooked string of the same text.
+#[test]
+fn a_foreign_statement_keeps_a_format_character_as_an_escape_in_its_source() {
+    let m = read(&lines(&[
+        "pub fn run(n: i64) -> i64 {",
+        &format!("    let f = |x: i64| {{ let _s = \"a{ZWJ}b\"; x }};"),
+        &format!("    let g = |x: i64| {{ let _s = r#\"c{ZWJ}\"d\\e\"#; x }};"),
+        &format!("    let h = |x: i64| {{ /* i{ZWJ}j */ let _c = '{ZWJ}'; x }};"),
+        &format!("    let k = |x: i64| {{ // k{ZWJ}l"),
+        "        x };",
+        "    f(n) + g(n) + h(n) + k(n)",
+        "}",
+    ]));
+    let m = read_back(&m);
+    let sources = strings_at(&m, "src");
+    assert_eq!(sources.len(), 5, "{sources:?}");
+    assert!(
+        sources.iter().all(|s| !s.contains(ZWJ)),
+        "a raw format character is left in {sources:?}"
+    );
+    assert!(sources[0].contains("\"a\\u{200d}b\""), "{}", sources[0]);
+    assert!(
+        sources[1].contains("\"c\\u{200d}\\\"d\\\\e\""),
+        "{}",
+        sources[1]
+    );
+    assert!(sources[2].contains("/* i\\u{200d}j */"), "{}", sources[2]);
+    assert!(sources[2].contains("'\\u{200d}'"), "{}", sources[2]);
+    assert!(sources[3].contains("// k\\u{200d}l"), "{}", sources[3]);
+    let refusals: Vec<&str> = m.refusals.iter().map(|r| r.pos.as_str()).collect();
+    assert_eq!(
+        refusals,
+        ["lib.rs:2", "lib.rs:3", "lib.rs:4", "lib.rs:5", "lib.rs:7"],
+        "{:?}",
+        m.refusals
+    );
+}
+
+#[test]
+fn a_format_character_in_a_doc_comment_is_read() {
+    let m = read(&lines(&[
+        &format!("/// A joined{ZWJ}word."),
+        "pub fn doc() -> i64 {",
+        "    1",
+        "}",
+    ]));
+    let m = read_back(&m);
+    assert_eq!(m.funcs[0].doc, "A joined\\u{200d}word.");
+}
+
+/// Strict reading itself is untouched: a document that holds the raw character is refused.
+#[test]
+fn strict_reading_still_refuses_a_raw_format_character_in_a_src() {
+    let m = read(&lines(&[
+        "pub fn f(n: i64) -> i64 {",
+        "    let c = |x: i64| x;",
+        "    c(n)",
+        "}",
+    ]));
+    let json = m
+        .to_json()
+        .replace("|x: i64| x", &format!("|x: i64| \\\"{ZWJ}\\\""));
+    let err = Module::from_json(json.as_bytes()).unwrap_err().to_string();
+    assert!(err.contains("control or format character"), "{err}");
+}
