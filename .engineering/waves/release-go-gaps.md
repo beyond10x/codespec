@@ -33,6 +33,8 @@ session merges. No tag, no release.
 
 | order | story | unit tree | unit commit | merge | adversary | state |
 |---|---|---|---|---|---|---|
-| 1 | story:release-ships-go-summaries | w6-g5 | 977d2370, e11f9db5 | 50dc6fa8 | 5 notes; fixed: canonical exe path (macOS symlink), kit desc; 3 cases kept; 1 pre-existing (barrier language) to the backlog | merged |
-| 2 | story:read-go-newer-toolchain | w6-g6 | 6e34190f, c067cf07 | 5e9ad1a6 | 2 test gaps (mutants), 2 cases kept; go env under the caller GOTOOLCHAIN kept as ensureGOROOT does | merged |
-| 3 | story:release-musl-static | w6-musl | 0cb3f92f, 19b11ceb | 1a67c688 | 2 defects in the static check (unreadable headers, no target/), fixed; workflow guard case added | merged |
+| 1 | story:release-ships-go-summaries | w6-g5 | 977d2370, e11f9db5 | 50dc6fa8 | 5 notes; fixed: canonical exe path (macOS symlink), kit desc; 3 cases kept; 1 pre-existing (barrier language) to the backlog | implemented |
+| 2 | story:read-go-newer-toolchain | w6-g6 | 6e34190f, c067cf07 | 5e9ad1a6 | 2 test gaps (mutants), 2 cases kept; go env under the caller GOTOOLCHAIN kept as ensureGOROOT does | implemented |
+| 3 | story:release-musl-static | w6-musl | 0cb3f92f, 19b11ceb | 1a67c688 | 2 defects in the static check (unreadable headers, no target/), fixed; workflow guard case added | implemented |
+
+Closed 2026-11-26: forge gate on f80ac24c (check run 45867215703, 47 of 47 checks of #79 success) is the test_result of each story; all three moved active -> implemented. Backlog draft from the wave: story:barrier-language-matches-module (pre-existing, adversary of G5). Every wave of this plan is delivered.
