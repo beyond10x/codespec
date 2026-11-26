@@ -8,7 +8,7 @@
   },
   "kit": {
     "version": "0.14.0",
-    "sha256": "75479c71935d7750f035445e53684fc68fda25dc75d1dc64326ac414b5434a75"
+    "sha256": "c2b3f32070278647ab9199d5401420a6ca44137656ec1f79ed0a3cdde2a78d89"
   },
   "codespec": "0.14.0",
   "features": [
@@ -752,6 +752,14 @@
       ]
     },
     {
+      "id": "stmt.defer",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-defer"
+      ]
+    },
+    {
       "id": "stmt.expr",
       "claimed": true,
       "verdict": "pass",
@@ -785,7 +793,7 @@
       ],
       "case": "stmt-foreign",
       "reason": "refused",
-      "detail": "codespec-write-cir: refused Count (case.go:6): foreign go statement: defer is outside cir/1; the evaluator stops there"
+      "detail": "codespec-write-cir: refused Count (case.go:6): foreign go statement: goroutine: concurrency is outside cir/1; the evaluator stops there"
     },
     {
       "id": "stmt.if",
@@ -1079,8 +1087,8 @@
     }
   ],
   "summary": {
-    "claimed": 125,
-    "pass": 125,
+    "claimed": 126,
+    "pass": 126,
     "fail": 0,
     "refused_unclaimed": 2,
     "pass_unclaimed": 1,

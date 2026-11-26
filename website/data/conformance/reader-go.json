@@ -8,10 +8,10 @@
   },
   "kit": {
     "version": "0.14.0",
-    "sha256": "75479c71935d7750f035445e53684fc68fda25dc75d1dc64326ac414b5434a75"
+    "sha256": "c2b3f32070278647ab9199d5401420a6ca44137656ec1f79ed0a3cdde2a78d89"
   },
   "corpus": {
-    "sha256": "595ff47ff0b1e252bf798f65ffc4148ade6df03a6cd00425505a7d296792337c"
+    "sha256": "738d3ba5f985bb950e3a3a8e3b8c1832ebe4b0f4eeefa4c1bc64e4d04d69d9a4"
   },
   "codespec": "0.14.0",
   "features": [
@@ -795,6 +795,14 @@
       ]
     },
     {
+      "id": "stmt.defer",
+      "claimed": true,
+      "verdict": "pass",
+      "cases": [
+        "stmt-defer"
+      ]
+    },
+    {
       "id": "stmt.expr",
       "claimed": true,
       "verdict": "pass",
@@ -1111,8 +1119,8 @@
   ],
   "boundary": [],
   "summary": {
-    "claimed": 115,
-    "pass": 115,
+    "claimed": 116,
+    "pass": 116,
     "fail": 0,
     "refused_unclaimed": 13,
     "pass_unclaimed": 0,
