@@ -117,6 +117,7 @@ through an authenticated `gh release download`. Steps, each task also runnable a
 | `eval-diff` | every exported function of `examples/series` and `examples/inventory` gets 200 seeded calls (`codespec_eval::diff`; a method through a generated probe), written and run by `codespec-write-cir`/`codespec-run-cir`, Go's and Rust's writer and runner, the Go and Rust outputs byte-equal to the evaluator's; a setup call that would return an error is skipped, so every call reaches its function, and fewer than half of a function's seeds reaching it fails; `Inventory.Find` listed with `--refused` as not run as Rust, an unlisted refusal, a stale listing or one for an example not run fails; nothing timed |
 | `conformance-kit` | `conformance/` and `schemas/cir-1.features.json` packed into `target/conformance-kit/codespec-conformance-<version>.tar.gz`, unpacked into `target/conformance-kit/unpacked`, equal to the checked-in files, and `codespec conform --lang go --role writer` run with the unpacked kit as `--kit` and `target/conformance-kit` as its working directory, exit 0; the release workflow ships the same archive |
 | `harness` | the drivers formatted and linted, then `codespec harness examples/orders --seeds 200 --commands 300` byte-equal |
+| `reader-coverage` | `codespec-docs reader-coverage` prints, for the Go, Rust, Java and C readers, the verified count of the features a reader can claim (`rust 113/122 92.6%, 113/118 reachable`: of the applicable features, then of those the language has a source form for) from `website/data/support-matrix.json`, and fails naming each reader whose count is not its floor in `conformance/reader-floors.json` (below: a feature was lost; above: raise the floor to the count), or an entry of that file that its reader claims, whose case passes unclaimed, or that a kit case holds a source of in the language; it regenerates nothing |
 | `docs-check` | `codespec-docs generate --check` rebuilds every reader corpus, runs all registered readers and writers (including the evaluator), and checks their reports, the support matrix, the Go conformance sample and the generated site files. It also checks the comparison (`codespec-comparison/1`: the data read strictly into the types of its schema, a source for every cell, every cited file and line of this tree, `planned` for what is not on `main`, every "only" against the cells, then the page, the badge files and the README badge block byte for byte), and admonition titles. |
 
 Not in the gate: `task examples-netcheck`, which reads `examples/netcheck/source` with every package
@@ -287,6 +288,16 @@ followed by `task docs-generate` in the same commit; `docs-check` fails otherwis
   `crates/docs/src/support.rs::a_matrix_from_fixture_manifests_and_reports_reaches_every_state`;
   every shipped capability rests on an existing check:
   `crates/docs/src/status.rs::every_shipped_capability_rests_on_a_test_that_exists`.
+- Each reader's verified count in `website/data/support-matrix.json` equals its floor in
+  `conformance/reader-floors.json`, and no feature that file lists as without a source form is one
+  its reader claims, reads unclaimed, or has a case source of: `task reader-coverage` (a step of the
+  `task docs-check reader-coverage` part),
+  `crates/docs/src/coverage.rs::the_checked_in_floors_hold_the_four_readers_and_the_matrix_meets_them`,
+  `crates/docs/src/coverage.rs::a_matrix_with_one_reader_count_lowered_fails_naming_the_reader_floor_and_count`,
+  `crates/docs/src/coverage.rs::a_count_above_its_floor_names_the_floor_to_write`,
+  `crates/docs/src/coverage.rs::a_floor_file_listing_a_feature_the_reader_claims_is_refused`,
+  `crates/docs/src/coverage.rs::the_checked_in_floor_file_lists_no_feature_a_case_holds_a_source_of`.
+  A reader that reads more raises its floor in the same change.
 
 ## Elixir, Gleam and Odin
 

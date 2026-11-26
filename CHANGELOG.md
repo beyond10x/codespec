@@ -6,6 +6,15 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `task reader-coverage` (`codespec-docs reader-coverage`) prints, for the Go, Rust, Java and C
+  readers, the verified count of the features a reader can claim and of those its language has a
+  source form for, from `website/data/support-matrix.json`, and fails naming a reader whose count
+  is not its floor in `conformance/reader-floors.json` (`codespec-reader-floors/1`: Go 116,
+  Rust 113, Java 106, C 106 of 122): below it a feature was lost, above it the floor is raised to
+  the count. The file lists each feature a reader's language has no source form for, with the
+  reason, and is refused when it lists one the reader claims or reads unclaimed, or one a kit case
+  holds a source of in that language. It is a step of `task check`. The language support page
+  takes its applicable count from the matrix.
 - `summaries/go-std.effects.json` covers the standard library a service calls: 864 entries in 26
   packages (37 in 6 before): the functions of `log/slog`, `log`, `context`, `time`, `net/http`,
   `encoding/json`, `io` and `os` a service calls, and every function and method of `errors`,

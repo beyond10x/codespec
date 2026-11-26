@@ -16,7 +16,7 @@ tasks:
     cmds: [{task: check}]
 
   check:
-    desc: The gate. Every part of scripts/check-parts.txt in order (format, lint, the test inventory, tests, schema drift, adapters, examples, harness, evaluator, generated docs), the same list CI runs one job per part of.
+    desc: The gate. Every part of scripts/check-parts.txt in order (format, lint, the test inventory, tests, schema drift, adapters, examples, harness, evaluator, generated docs, reader coverage), the same list CI runs one job per part of.
     cmds:
       - sh scripts/planning-only.sh test
       - sh scripts/check-part.sh all
@@ -42,6 +42,11 @@ tasks:
     deps: [build]
     cmds:
       - cargo run --locked -q -p codespec-docs -- generate --check
+
+  reader-coverage:
+    desc: Print, for the Go, Rust, Java and C readers, the verified count of the features a reader can claim and of those its language has a source form for, read from website/data/support-matrix.json; fail naming each reader whose count is not its floor in conformance/reader-floors.json (below it a feature was lost, above it the floor is raised to the count), or an entry of that file a reader claims, reads unclaimed or has a case source of. Regenerates nothing.
+    cmds:
+      - cargo run --locked -q -p codespec-docs -- reader-coverage
 
   docs-site:
     desc: Build the documentation site into website/build (Node; not part of the gate).
