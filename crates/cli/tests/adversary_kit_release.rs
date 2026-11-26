@@ -171,3 +171,106 @@ fn the_archive_check_fails_when_either_summary_file_is_missing() {
         "a flat archive does not hold the files under the kit's directory"
     );
 }
+
+/// Story release-musl-static: the release workflow builds the musl target, runs the static check
+/// on its archive, builds every target with `--target`, and counts the musl archive in SHA256SUMS.
+#[test]
+fn the_release_builds_and_checks_a_musl_archive() {
+    let workflow = repo_file(".github/workflows/release-build.yml");
+    for needle in [
+        "- target: x86_64-unknown-linux-musl",
+        "sh scripts/release-static-check.sh archive \"dist/codespec-$GITHUB_REF_NAME-$TARGET.tar.gz\" \"$GITHUB_REF_NAME\"",
+        "--target \"$TARGET\"",
+        "test \"${#archives[@]}\" -eq 5",
+    ] {
+        assert!(
+            workflow.contains(needle),
+            "release-build.yml lost `{needle}`"
+        );
+    }
+    let check = workflow
+        .split("- name: Every binary of the musl archive is static")
+        .nth(1)
+        .expect("the static check step");
+    assert!(
+        check
+            .lines()
+            .take(3)
+            .any(|l| l.contains("if: matrix.target == 'x86_64-unknown-linux-musl'")),
+        "the static check step runs on every target"
+    );
+}
+
+fn static_check_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap()
+}
+
+/// Adversary case for story release-musl-static. `release-static-check.sh static` says it exits 0
+/// only when every file is a static ELF executable. A file whose ELF header reads but whose program
+/// and section headers are cut off (a truncated copy of this test's own, dynamically linked,
+/// executable) is not one: `readelf -lW` and `-dW` fail, the `$(... | sed ...)` pipelines hide
+/// that, `interp` and `needed` stay empty and the file passes.
+#[test]
+fn static_check_refuses_an_elf_file_readelf_cannot_read() {
+    let root = static_check_root();
+    let work = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("static-check-truncated");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let whole = std::fs::read(std::env::current_exe().unwrap()).unwrap();
+    let cut = work.join("truncated");
+    std::fs::write(&cut, &whole[..200]).unwrap();
+    let out = std::process::Command::new("sh")
+        .arg(root.join("scripts/release-static-check.sh"))
+        .arg("static")
+        .arg(&cut)
+        .output()
+        .unwrap();
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "a truncated ELF file passed `static`: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// `archive` unpacks into `${RUNNER_TEMP:-$PWD/target}/release-static-check.XXXXXX`. In a checkout
+/// that has no `target/` yet and no RUNNER_TEMP (a fresh clone, the way a reader of docs/release.md
+/// runs the script) `mktemp -d` fails before anything is checked. The script, copied into a tree
+/// with no `target/`, must still reach its own verdict on an archive with no ELF file.
+#[test]
+fn archive_mode_runs_in_a_checkout_without_a_target_directory() {
+    let work = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("static-check-no-target");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(work.join("scripts")).unwrap();
+    std::fs::copy(
+        static_check_root().join("scripts/release-static-check.sh"),
+        work.join("scripts/release-static-check.sh"),
+    )
+    .unwrap();
+    std::fs::write(work.join("README.md"), "x").unwrap();
+    let tar = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(work.join("a.tar.gz"))
+        .arg("-C")
+        .arg(&work)
+        .arg("README.md")
+        .status()
+        .unwrap();
+    assert!(tar.success());
+    let out = std::process::Command::new("sh")
+        .arg(work.join("scripts/release-static-check.sh"))
+        .arg("archive")
+        .arg(work.join("a.tar.gz"))
+        .arg("0.0.0")
+        .env_remove("RUNNER_TEMP")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("no ELF file at its top level"),
+        "archive mode died before its own check: {err}"
+    );
+}
