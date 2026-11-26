@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use codespec_effects::{
-    EFFECTS, Options, Report, Summary, analyze, analyze_set, barrier_from_json, summary_from_json,
+    EFFECTS, Options, Report, Summary, Unknown, analyze, analyze_set, barrier_from_json,
+    summary_from_json,
 };
 use codespec_model::Module;
 use serde_json::{Value, json};
@@ -1903,4 +1904,325 @@ fn adv_a_call_site_displays_as_callee_at_n() {
         n: 12,
     };
     assert_eq!(id.to_string(), "iface:error.Error@12");
+}
+
+// --- the class of an `unknown` reason ---
+
+/// The reasons of the function `name` of `example.com/p` in a set of `p`, holding `funcs` and
+/// whatever `extra` sets, and `example.com/b`, an empty module, with the test barrier.
+fn reasons_in_p(name: &str, funcs: Vec<Value>, extra: Value) -> Vec<String> {
+    let p = doc("p", "example.com/p", funcs, extra);
+    let b = doc("b", "example.com/b", vec![], json!({}));
+    let bar = barrier();
+    let opts = Options {
+        barrier: Some(&bar),
+        ..Options::default()
+    };
+    let r = analyze_set(&[p, b], &[std_summary()], &opts);
+    set_entry(&r, "example.com/p", name)
+        .unknown
+        .iter()
+        .map(|u| u.reason.clone())
+        .collect()
+}
+
+/// The reasons of the opaque function `F` of `p` making only `calls`.
+fn reasons_of_calls(calls: Vec<Value>) -> Vec<String> {
+    reasons_in_p("F", vec![], json!({"opaque": [opaque("F", 1, calls)]}))
+}
+
+/// The reasons of the function `G` of `p` whose body is `body`.
+fn reasons_of_body(body: Vec<Value>) -> Vec<String> {
+    reasons_in_p("G", vec![unit_func("G", 1, body)], json!({}))
+}
+
+fn at(line: u32) -> String {
+    format!("m.go:{line}")
+}
+
+/// The one reason of `reasons`.
+fn one(reasons: Vec<String>) -> String {
+    assert_eq!(reasons.len(), 1, "one reason expected: {reasons:?}");
+    reasons.into_iter().next().unwrap()
+}
+
+/// One case per place in `src/set.rs` that makes an `unknown` reason (`site`, counted in source
+/// order: each `self.unknown(` call, then each `reason: format!(` of the report assembly), with
+/// the reason a shape of call site gives there and its class. A place making several families
+/// has a case for each.
+fn reason_cases() -> Vec<(usize, &'static str, String, &'static str)> {
+    let method_on = |t: Value, name: &str| {
+        json!({"k": "expr", "x": {"k": "method", "x": {"k": "var", "name": "v", "t": t},
+            "name": name, "args": [], "t": s()}, "pos": at(2)})
+    };
+    let goto =
+        json!({"k": "foreign", "lang": "go", "src": "goto done", "reason": "goto", "pos": at(4)});
+    let ghost = json!({"t": "Ghost", "methods": [{"name": "Speak", "sig": "func()",
+        "target": {"k": "method", "recv": "Ghost", "name": "Speak", "pos": at(1)}}]});
+    // Strict reading refuses an interface call naming an undeclared interface, so the module
+    // is read with `Nope` declared and loses the declaration after reading, as a module built
+    // in memory may.
+    let undeclared_iface = {
+        let call = json!({"k": "expr", "x": {"k": "iface_call", "iface": "Nope",
+            "name": "Speak", "recv": {"k": "var", "name": "v", "t": {"k": "named", "name": "Nope"}},
+            "args": [], "t": {"k": "tuple", "elems": []}}, "pos": at(2)});
+        let nope = json!({"name": "Nope", "exported": true, "pos": at(1),
+            "methods": [{"name": "Speak", "params": [], "results": []}]});
+        let mut p = doc(
+            "p",
+            "example.com/p",
+            vec![unit_func("G", 1, vec![call])],
+            json!({"interfaces": [nope]}),
+        );
+        p.interfaces.clear();
+        let r = analyze_set(&[p], &[std_summary()], &Options::default());
+        let g = set_entry(&r, "example.com/p", "G");
+        g.unknown.iter().map(|u| u.reason.clone()).collect()
+    };
+    let orphan = json!({"name": "Orphan", "pos": at(4), "reason": "function without a Go body",
+        "no_body": true, "calls": []});
+    let talk = {
+        let user = doc(
+            "u",
+            "example.com/u",
+            vec![unit_func("Talk", 1, vec![foreign(2, vec![speak_iface(2)])])],
+            json!({}),
+        );
+        let r = analyze_set(&[user, impls(true)], &[std_summary()], &Options::default());
+        let talk = set_entry(&r, "example.com/u", "Talk");
+        talk.unknown.iter().map(|u| u.reason.clone()).collect()
+    };
+    vec![
+        (
+            1,
+            "a barrier call whose constant number the table does not name",
+            one(reasons_of_calls(vec![
+                json!({"k": "func", "path": "syscall", "name": "Syscall6",
+                "consts": [{"index": 0, "value": "999"}], "pos": at(2)}),
+            ])),
+            "syscall number <n> has no name",
+        ),
+        (
+            2,
+            "a barrier call whose number is not constant",
+            one(reasons_of_calls(vec![
+                json!({"k": "func", "path": "syscall", "name": "Syscall6", "pos": at(2)}),
+            ])),
+            "syscall number not constant",
+        ),
+        (
+            3,
+            "a call of a function its own module does not declare",
+            one(reasons_of_calls(vec![cfunc("", "Nope", 2)])),
+            "call of undeclared function",
+        ),
+        (
+            4,
+            "a call of a module of the set that does not declare the function",
+            one(reasons_of_calls(vec![cfunc("example.com/b", "Gone", 2)])),
+            "not in its module",
+        ),
+        (
+            5,
+            "a call of an extern no summary names",
+            one(reasons_of_calls(vec![cfunc("example.org/lib", "A", 2)])),
+            "extern without summary",
+        ),
+        (
+            6,
+            "a macro the reader did not expand",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "macro",
+                "path": "log", "name": "info", "pos": at(2)}),
+            ])),
+            "macro invocation, not expanded",
+        ),
+        (
+            6,
+            "a function name the reader did not resolve",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "func", "name": "swap", "pos": at(2)}),
+            ])),
+            "call of a name the reader did not resolve",
+        ),
+        (
+            6,
+            "a method on a value of a type the reader did not know",
+            one(reasons_of_calls(vec![
+                json!({"k": "named", "form": "method", "name": "unwrap", "pos": at(2)}),
+            ])),
+            "method call on a value of a type the reader did not know",
+        ),
+        (
+            7,
+            "a method call ref of a type of its own module without the method",
+            one(reasons_of_calls(vec![
+                json!({"k": "method", "recv": "T", "name": "M", "pos": at(2)}),
+            ])),
+            "method on undeclared type",
+        ),
+        (
+            8,
+            "a method call ref of another module of the set without the method",
+            one(reasons_of_calls(vec![
+                json!({"k": "method", "path": "example.com/b",
+                "recv": "T", "name": "M", "pos": at(2)}),
+            ])),
+            "not in its module",
+        ),
+        (
+            9,
+            "a foreign statement without a call list",
+            one(reasons_of_body(vec![goto.clone()])),
+            "foreign statement",
+        ),
+        (
+            10,
+            "a method call on a receiver of no named type",
+            one(reasons_of_body(vec![method_on(s(), "Len")])),
+            "method on undeclared type",
+        ),
+        (
+            11,
+            "a call through an interface no document declares",
+            one(undeclared_iface),
+            "interface call through an undeclared interface",
+        ),
+        (
+            12,
+            "an interface candidate whose method set names a method outside the set",
+            one(reasons_in_p(
+                "F",
+                vec![],
+                json!({"opaque": [opaque("F", 1, vec![speak_iface(2)])], "methods": [ghost]}),
+            )),
+            "method outside the set",
+        ),
+        (
+            13,
+            "an interface call no type of the set implements",
+            one(reasons_of_calls(vec![speak_iface(2)])),
+            "interface call with no implementation in the set",
+        ),
+        (
+            13,
+            "a method of error no type of the set implements",
+            one(reasons_of_body(vec![method_on(
+                json!({"k": "error"}),
+                "Foo",
+            )])),
+            "method on undeclared type",
+        ),
+        (
+            14,
+            "a call of a function value no function of the set is used as",
+            one(reasons_of_calls(vec![
+                json!({"k": "value", "sig": "func()", "pos": at(2)}),
+            ])),
+            "function value with no candidate in the set",
+        ),
+        (
+            15,
+            "a function value naming a function outside the set",
+            one(reasons_of_calls(vec![
+                json!({"k": "ref", "name": "Nope", "sig": "func()", "pos": at(2)}),
+                json!({"k": "value", "sig": "func()", "pos": at(3)}),
+            ])),
+            "function value outside the set",
+        ),
+        (
+            16,
+            "a function without a body the barrier does not name",
+            one(reasons_in_p("Orphan", vec![], json!({"opaque": [orphan]}))),
+            "function without a body",
+        ),
+        (
+            17,
+            "a candidate of an interface call that is incomplete itself",
+            one(talk),
+            "calls <func> which is incomplete",
+        ),
+        (
+            18,
+            "a call of a function that is incomplete itself",
+            one(reasons_in_p(
+                "F",
+                vec![unit_func("Raw", 3, vec![goto])],
+                json!({"opaque": [opaque("F", 1, vec![cfunc("", "Raw", 2)])]}),
+            )),
+            "calls <func> which is incomplete",
+        ),
+    ]
+}
+
+/// Each place in `src/set.rs` that makes an `unknown` reason has a case, each case's reason has
+/// its class, and the classes are `Unknown::CLASSES` and the reasons of the crate doc's table.
+#[test]
+fn every_shape_of_call_site_that_makes_an_unknown_reason_has_a_class() {
+    let source = include_str!("../src/set.rs");
+    let places =
+        source.matches("self.unknown(").count() + source.matches("reason: format!(").count();
+    let cases = reason_cases();
+    let covered: BTreeSet<usize> = cases.iter().map(|c| c.0).collect();
+    assert_eq!(
+        covered,
+        (1..=places).collect::<BTreeSet<usize>>(),
+        "src/set.rs makes reasons at {places} places; a new one needs a case here"
+    );
+    for (_, shape, reason, class) in &cases {
+        assert_eq!(Unknown::class(reason), *class, "{shape}: {reason}");
+    }
+    let classes: BTreeSet<&str> = cases.iter().map(|c| c.3).collect();
+    let listed: BTreeSet<&str> = Unknown::CLASSES.iter().copied().collect();
+    assert_eq!(classes, listed, "Unknown::CLASSES against the cases");
+    assert_eq!(listed.len(), Unknown::CLASSES.len(), "a class listed twice");
+
+    let doc = include_str!("../src/lib.rs");
+    let table: BTreeSet<&str> = doc
+        .lines()
+        .skip_while(|l| *l != "//! | reason | when |")
+        .skip(2)
+        .take_while(|l| l.starts_with("//! | `"))
+        .map(|l| {
+            let reason = l["//! | `".len()..].split('`').next().unwrap();
+            Unknown::class(reason)
+        })
+        .collect();
+    assert_eq!(
+        table, listed,
+        "the crate doc's table of reasons against Unknown::CLASSES"
+    );
+}
+
+/// A class is a family, not a symbol: two reasons that differ only in what they name have one
+/// class, and a reason without `: ` is its own class.
+#[test]
+fn two_reasons_that_differ_only_in_their_symbol_have_one_class() {
+    for (one, two) in [
+        (
+            "extern without summary: example.org/lib.A",
+            "extern without summary: example.org/lib.B",
+        ),
+        (
+            "calls example.com/h.Bad.Speak which is incomplete",
+            "calls Shout.lambda@1 which is incomplete",
+        ),
+        (
+            "syscall number 999 has no name",
+            "syscall number 7 has no name",
+        ),
+        (
+            "method on undeclared type: error.Foo",
+            "method on undeclared type: string.Len",
+        ),
+    ] {
+        assert_eq!(Unknown::class(one), Unknown::class(two), "{one} / {two}");
+        assert_ne!(Unknown::class(one), one, "{one} names a symbol");
+    }
+    assert_eq!(Unknown::class("foreign statement"), "foreign statement");
+    assert_eq!(Unknown::class("a reason of its own"), "a reason of its own");
+    assert_ne!(
+        Unknown::class("syscall number not constant: syscall.Syscall6"),
+        Unknown::class("syscall number 7 has no name")
+    );
 }

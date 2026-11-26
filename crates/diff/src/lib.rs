@@ -25,6 +25,7 @@
 //! | `format` | string | always `codespec-diff-report/1` |
 //! | `dispatch` | string | `cha` or `rta`, as both sides were analysed |
 //! | `deltas` | array | one object per delta, sorted by `unit`, then `kind`, then `site` (`callee`, then `n`), then `value` |
+//! | `unknowns` | array, only with `--unknowns summary` and omitted when empty | one object per kind and reason class of the `unknown-*` deltas, sorted by `kind`, then `class` (below) |
 //!
 //! A delta is `{kind, unit, site, value, old, new}`; `site`, `value`, `old` and `new` are omitted
 //! when they do not apply:
@@ -57,6 +58,32 @@
 //! its fields separated by one space, a missing one skipped, the site as `<callee>@<n>`:
 //! `syscall-removed example.com/probe.Load syscall.Syscall@1 getpid`, and `old -> new` for a
 //! signature.
+//!
+//! ## `--unknowns summary`
+//!
+//! `--unknowns list`, the default, gives the report above. With `--unknowns summary`
+//! ([`Report::summarize_unknowns`]) `deltas` holds no `unknown-added` or `unknown-removed`
+//! delta; `unknowns` holds them instead, one entry `{kind, class, count, units, examples}` per
+//! kind and reason class: `class` is the class `b10x-codespec-effects` gives the reason
+//! (`Unknown::class`: the text up to its first `: `, a reason without one its own class,
+//! `calls <func> which is incomplete` and `syscall number <n> has no name` one class each),
+//! `count` the deltas of that class, `units` the distinct functions they are of, `examples` the
+//! first three distinct subjects in the order of the deltas (the part of the reason after its
+//! class: after the first `: `, the `<func>` or `<n>`; the function for a reason that is its
+//! whole class). A reason names a callee of the function's own module without the module's
+//! path (`calls Raw which is incomplete`), so an example of `calls <func> which is incomplete`
+//! adds the path of the unit's module (`example.com/p.Raw`) unless the callee already starts
+//! with the path of another module of the program; two functions of one name in two modules
+//! are two examples. The other deltas are unchanged. The text form prints the deltas, then
+//! `<kind> <class> count=<count> units=<units>` per entry, each example below it on a line of
+//! its own indented by two spaces:
+//!
+//! ```text
+//! unknown-added extern without summary count=3 units=3
+//!   example.org/lib.A
+//!   example.org/lib.B
+//!   example.org/lib.C
+//! ```
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -69,13 +96,51 @@ use serde::{Deserialize, Serialize};
 pub const FORMAT: &str = "codespec-diff-report/1";
 
 /// A `codespec-diff-report/1` document.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Report {
     pub format: String,
     /// `cha` or `rta`.
     pub dispatch: String,
     pub deltas: Vec<Delta>,
+    /// Only after [`Report::summarize_unknowns`]: the `unknown-*` deltas, one entry per kind
+    /// and class.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unknowns: Vec<UnknownClass>,
+    /// The labels of the modules of both revisions, which [`diff`] sets: a reason names a
+    /// callee of its own module without its label, and the summary's examples add it. Not part
+    /// of the document or of equality.
+    #[serde(skip)]
+    labels: Vec<String>,
+}
+
+impl PartialEq for Report {
+    fn eq(&self, other: &Self) -> bool {
+        (&self.format, &self.dispatch, &self.deltas, &self.unknowns)
+            == (
+                &other.format,
+                &other.dispatch,
+                &other.deltas,
+                &other.unknowns,
+            )
+    }
+}
+
+impl Eq for Report {}
+
+/// The `unknown-added` or `unknown-removed` deltas of one reason class.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnknownClass {
+    pub kind: String,
+    /// [`codespec_effects::Unknown::class`] of their reasons.
+    pub class: String,
+    /// The deltas.
+    pub count: usize,
+    /// The distinct functions they are of.
+    pub units: usize,
+    /// The first three distinct subjects, in the deltas' order.
+    pub examples: Vec<String>,
 }
 
 /// One difference between the two revisions.
@@ -103,8 +168,9 @@ impl Report {
         s
     }
 
-    /// One line per delta, its fields separated by one space, a missing one skipped; empty
-    /// without a delta.
+    /// One line per delta, its fields separated by one space, a missing one skipped, then one
+    /// line per entry of `unknowns`, each example on a line of its own indented by two spaces;
+    /// empty without either.
     pub fn to_text(&self) -> String {
         let mut out = String::new();
         for d in &self.deltas {
@@ -118,7 +184,75 @@ impl Report {
             out.push_str(&fields.join(" "));
             out.push('\n');
         }
+        for u in &self.unknowns {
+            let (kind, class, count, units) = (&u.kind, &u.class, u.count, u.units);
+            out.push_str(&format!("{kind} {class} count={count} units={units}\n"));
+            for e in &u.examples {
+                out.push_str(&format!("  {e}\n"));
+            }
+        }
         out
+    }
+
+    /// `--unknowns summary`: move the `unknown-added` and `unknown-removed` deltas into
+    /// `unknowns`, one entry per kind and reason class, sorted by kind, then class.
+    pub fn summarize_unknowns(&mut self) {
+        type Group = (usize, BTreeSet<String>, Vec<String>);
+        let mut groups: BTreeMap<(String, String), Group> = BTreeMap::new();
+        self.deltas.retain(|d| {
+            if d.kind != "unknown-added" && d.kind != "unknown-removed" {
+                return true;
+            }
+            let reason = d.value.as_deref().unwrap_or_default();
+            let class = codespec_effects::Unknown::class(reason);
+            let subject = codespec_effects::Unknown::subject(reason).unwrap_or(&d.unit);
+            let subject = if class == INCOMPLETE {
+                qualified(&self.labels, &d.unit, subject)
+            } else {
+                subject.to_owned()
+            };
+            let (count, units, examples) = groups
+                .entry((d.kind.clone(), class.to_owned()))
+                .or_default();
+            *count += 1;
+            units.insert(d.unit.clone());
+            if examples.len() < 3 && !examples.contains(&subject) {
+                examples.push(subject);
+            }
+            false
+        });
+        self.unknowns.extend(groups.into_iter().map(
+            |((kind, class), (count, units, examples))| UnknownClass {
+                kind,
+                class,
+                count,
+                units: units.len(),
+                examples,
+            },
+        ));
+    }
+}
+
+/// The class whose callee a reason names without its module's label when it is the module of
+/// the function holding the call.
+const INCOMPLETE: &str = "calls <func> which is incomplete";
+
+/// The callee `callee` of a reason of `unit`, with the label of `unit`'s module before it unless
+/// it starts with the label of another module of `labels` (a callee of another module): the
+/// longest label `unit` starts with. `callee` as it is when no label fits.
+fn qualified(labels: &[String], unit: &str, callee: &str) -> String {
+    let under = |name: &str, l: &str| name.strip_prefix(l).is_some_and(|r| r.starts_with('.'));
+    let Some(own) = labels
+        .iter()
+        .filter(|l| under(unit, l))
+        .max_by_key(|l| l.len())
+    else {
+        return callee.to_owned();
+    };
+    if labels.iter().any(|l| l != own && under(callee, l)) {
+        callee.to_owned()
+    } else {
+        format!("{own}.{callee}")
     }
 }
 
@@ -446,5 +580,13 @@ pub fn diff(old: &[Module], new: &[Module], opts: &Options) -> Result<Report, St
             DispatchMode::Rta => "rta".into(),
         },
         deltas,
+        unknowns: Vec::new(),
+        labels: old
+            .iter()
+            .chain(new)
+            .map(|m| label(m).to_owned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
     })
 }
