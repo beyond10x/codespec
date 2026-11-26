@@ -1,0 +1,42 @@
+{
+  "format": "codespec-corpus/1",
+  "language": "Go",
+  "reader": "go",
+  "mode": "top",
+  "count": 6,
+  "seed": null,
+  "fetched_on": "2026-11-25",
+  "snapshot_sha256": "ddfc73041f0e12faa2b6c0ee48a9c7689c312737940ff051e54166ef5be83707",
+  "repositories": [
+    {
+      "name": "avelino/awesome-go",
+      "url": "https://github.com/avelino/awesome-go",
+      "commit": "a8277a047c3c79ac6799ed0cc80554bb8b92d16f"
+    },
+    {
+      "name": "ollama/ollama",
+      "url": "https://github.com/ollama/ollama",
+      "commit": "924cc286cc592f49c481fa84e15fa60dbc75989e"
+    },
+    {
+      "name": "JuliusBrussee/caveman",
+      "url": "https://github.com/JuliusBrussee/caveman",
+      "commit": "47c61be2d10a354f0c5cbe2b90959d24c06b16c6"
+    },
+    {
+      "name": "fatedier/frp",
+      "url": "https://github.com/fatedier/frp",
+      "commit": "a2c975efb5e55102068065d61cfc17ffe34e939d"
+    },
+    {
+      "name": "infiniflow/ragflow",
+      "url": "https://github.com/infiniflow/ragflow",
+      "commit": "bb7b3c28888c21e1610678d3d7b8c2094265a644"
+    },
+    {
+      "name": "syncthing/syncthing",
+      "url": "https://github.com/syncthing/syncthing",
+      "commit": "134b625bcb0f60a527171acc529bf1f8cff71b15"
+    }
+  ]
+}

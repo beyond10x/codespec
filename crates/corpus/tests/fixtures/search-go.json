@@ -1,0 +1,132 @@
+[
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/alpha",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 1000,
+    "stargazersCount": 88300,
+    "url": "https://example.com/example-org/alpha"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/bravo",
+    "isArchived": false,
+    "isFork": true,
+    "language": "Go",
+    "size": 1411,
+    "stargazersCount": 86563,
+    "url": "https://example.com/example-org/bravo"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/charlie",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 1822,
+    "stargazersCount": 84789,
+    "url": "https://example.com/example-org/charlie"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/delta",
+    "isArchived": true,
+    "isFork": false,
+    "language": "Go",
+    "size": 2233,
+    "stargazersCount": 82978,
+    "url": "https://example.com/example-org/delta"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/echo",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 2644,
+    "stargazersCount": 81130,
+    "url": "https://example.com/example-org/echo"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/foxtrot",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 900000,
+    "stargazersCount": 79245,
+    "url": "https://example.com/example-org/foxtrot"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/golf",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 3466,
+    "stargazersCount": 77323,
+    "url": "https://example.com/example-org/golf"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/hotel",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 3877,
+    "stargazersCount": 75364,
+    "url": "https://example.com/example-org/hotel"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/india",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 4288,
+    "stargazersCount": 73368,
+    "url": "https://example.com/example-org/india"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/juliet",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 4699,
+    "stargazersCount": 71335,
+    "url": "https://example.com/example-org/juliet"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/kilo",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 5110,
+    "stargazersCount": 69265,
+    "url": "https://example.com/example-org/kilo"
+  },
+  {
+    "defaultBranch": "master",
+    "fullName": "example-org/lima",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 5521,
+    "stargazersCount": 67158,
+    "url": "https://example.com/example-org/lima"
+  },
+  {
+    "defaultBranch": "main",
+    "fullName": "example-org/mike",
+    "isArchived": false,
+    "isFork": false,
+    "language": "Go",
+    "size": 5932,
+    "stargazersCount": 65014,
+    "url": "https://example.com/example-org/mike"
+  }
+]

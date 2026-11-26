@@ -1,0 +1,85 @@
+{
+  "format": "codespec-corpus-candidates/1",
+  "fetched_on": "2026-11-25",
+  "language": "Go",
+  "max_size_kb": 100000,
+  "excluded": {
+    "forks": 1,
+    "archived": 1,
+    "oversized": 1
+  },
+  "candidates": [
+    {
+      "name": "example-org/alpha",
+      "url": "https://example.com/example-org/alpha",
+      "language": "Go",
+      "commit": "1c3dae8b69a17a0381f804ca66935d91d9d72e22",
+      "stars": 88300,
+      "size_kb": 1000,
+      "rank": 1
+    },
+    {
+      "name": "example-org/charlie",
+      "url": "https://example.com/example-org/charlie",
+      "language": "Go",
+      "commit": "d257b63d0ee5328e9f0850e2b43f5cbdf388b4f5",
+      "stars": 84789,
+      "size_kb": 1822,
+      "rank": 2
+    },
+    {
+      "name": "example-org/echo",
+      "url": "https://example.com/example-org/echo",
+      "language": "Go",
+      "commit": "987b9370c29f992ff7e5055dd051e01548301b56",
+      "stars": 81130,
+      "size_kb": 2644,
+      "rank": 3
+    },
+    {
+      "name": "example-org/golf",
+      "url": "https://example.com/example-org/golf",
+      "language": "Go",
+      "commit": "fe647517faa6a76cf94edf55607c66b521ad5bd8",
+      "stars": 77323,
+      "size_kb": 3466,
+      "rank": 4
+    },
+    {
+      "name": "example-org/hotel",
+      "url": "https://example.com/example-org/hotel",
+      "language": "Go",
+      "commit": "74ed4ffeb3a639966f75bc49022cec8ee83d8ab1",
+      "stars": 75364,
+      "size_kb": 3877,
+      "rank": 5
+    },
+    {
+      "name": "example-org/india",
+      "url": "https://example.com/example-org/india",
+      "language": "Go",
+      "commit": "fe4d950dd6dc13d7d45aa9bd2360af88e88802c2",
+      "stars": 73368,
+      "size_kb": 4288,
+      "rank": 6
+    },
+    {
+      "name": "example-org/juliet",
+      "url": "https://example.com/example-org/juliet",
+      "language": "Go",
+      "commit": "ecf2d1c21163fd65c96568567bdb3de08b591c39",
+      "stars": 71335,
+      "size_kb": 4699,
+      "rank": 7
+    },
+    {
+      "name": "example-org/kilo",
+      "url": "https://example.com/example-org/kilo",
+      "language": "Go",
+      "commit": "c3e55937270971c329798268bcbff6bcda9a5bbe",
+      "stars": 69265,
+      "size_kb": 5110,
+      "rank": 8
+    }
+  ]
+}

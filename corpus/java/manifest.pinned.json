@@ -1,0 +1,42 @@
+{
+  "format": "codespec-corpus/1",
+  "language": "Java",
+  "reader": "java",
+  "mode": "top",
+  "count": 6,
+  "seed": null,
+  "fetched_on": "2026-11-25",
+  "snapshot_sha256": "8a4ed5217266be6f36b62a9f1592d5622a48c0b3d7194a4f84dfc1d3ef5dff61",
+  "repositories": [
+    {
+      "name": "iluwatar/java-design-patterns",
+      "url": "https://github.com/iluwatar/java-design-patterns",
+      "commit": "4cabb204f240240bea319605a5ffa46ded728001"
+    },
+    {
+      "name": "macrozheng/mall",
+      "url": "https://github.com/macrozheng/mall",
+      "commit": "dcaa93b3150352e5044708d7211b5bed0af4509f"
+    },
+    {
+      "name": "doocs/advanced-java",
+      "url": "https://github.com/doocs/advanced-java",
+      "commit": "8aa03929436ab88e6e34273ccf2281886843d91a"
+    },
+    {
+      "name": "TheAlgorithms/Java",
+      "url": "https://github.com/TheAlgorithms/Java",
+      "commit": "15a4a9d36387782eb324416984b6e465d1c3f7cc"
+    },
+    {
+      "name": "termux/termux-app",
+      "url": "https://github.com/termux/termux-app",
+      "commit": "8629e632fcb95da272221be327db653fb24befe9"
+    },
+    {
+      "name": "kdn251/interviews",
+      "url": "https://github.com/kdn251/interviews",
+      "commit": "03fdcb2703ce72dc0606748733d0c13f09d41d21"
+    }
+  ]
+}
