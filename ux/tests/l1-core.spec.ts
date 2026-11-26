@@ -283,6 +283,23 @@ test.describe("round names the units it expected and did not get, and states the
     expect(missingUnits(['page-a'], ['1366x768'], ['light', 'dark'], have)).toEqual([]);
   });
 
+  test('missingGateUnits names every gating page unit and task scenario without a result, so a lost shard fails the ratchet', async () => {
+    const { missingGateUnits } = await import('../core/results.ts');
+    const have = [
+      { kind: 'page' as const, scenario: 'page-a', viewport: '1366x768', theme: 'light' },
+      { kind: 'page' as const, scenario: 'page-a', viewport: '1366x768', theme: 'dark' },
+      { kind: 'page' as const, scenario: 'page-b', viewport: '1366x768', theme: 'dark' },
+      { kind: 'page' as const, scenario: 'page-b', viewport: '390x844', theme: 'light' },
+      { kind: 'task' as const, scenario: 'task-x', viewport: '1366x768', theme: 'light' },
+    ];
+    expect(missingGateUnits(['page-a', 'page-b'], ['task-x', 'task-y'], ['1366x768'], ['light', 'dark'], have)).toEqual([
+      'page-b 1366x768 light',
+      'task-y',
+    ]);
+    expect(missingGateUnits(['page-a'], ['task-x'], ['1366x768'], ['light', 'dark'], have)).toEqual([]);
+    expect(missingGateUnits(['page-a'], [], ['1366x768'], ['light', 'dark'], [])).toEqual(['page-a 1366x768 light', 'page-a 1366x768 dark']);
+  });
+
   test('completenessLines prints the units, the Playwright totals and a red ratchet with its problems', async () => {
     const { completenessLines, playwrightTotals } = await import('../core/round.ts');
     const totals = playwrightTotals({ stats: { expected: 355, unexpected: 7, flaky: 0, skipped: 0 } });
