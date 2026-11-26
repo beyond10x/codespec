@@ -38,6 +38,13 @@ codespec 0.14.0
 each command. Use the directory where you extracted the archive. Build the C, Java and Groovy
 readers from source. [Build instructions](#build-from-source).
 
+The archive also holds `share/codespec/summaries/`: the Go standard library's effect summaries
+`go-std.effects.json` and the linux/amd64 syscall barrier `go-linux-amd64.barrier.json`, at the
+release's version. `codespec diff` and `codespec effects` read them from `share/codespec/summaries/`
+beside the `codespec` executable when you give no `--summaries` or `--barrier`. A flag replaces
+the file of its kind; `--no-default-summaries` reads neither. The conformance archive holds the
+same files under `codespec-conformance-<tag>/share/codespec/summaries/`.
+
 The commands below read the repository's examples. Clone it at the tag you installed:
 
 ```shell-session

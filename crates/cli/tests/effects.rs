@@ -511,3 +511,140 @@ fn adv_diff_help_states_how_each_printed_class_is_formed() {
         );
     }
 }
+
+/// An installed release: `<prefix>/codespec` beside `<prefix>/share/codespec/summaries/` holding
+/// every file of the tree's `summaries/`, in `<CARGO_TARGET_TMPDIR>/<test>/prefix`; the binary.
+/// The binary is a hard link (a copy where linking fails), never a symlink: the executable's
+/// directory is then the symlink's target's.
+fn installed_prefix(test: &str) -> PathBuf {
+    let prefix = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(test)
+        .join("prefix");
+    let _ = std::fs::remove_dir_all(&prefix);
+    let share = prefix.join("share/codespec/summaries");
+    std::fs::create_dir_all(&share).unwrap();
+    let exe = prefix.join("codespec");
+    if std::fs::hard_link(env!("CARGO_BIN_EXE_codespec"), &exe).is_err() {
+        std::fs::copy(env!("CARGO_BIN_EXE_codespec"), &exe).unwrap();
+    }
+    let mut copied = 0;
+    for e in std::fs::read_dir(root().join("summaries")).unwrap() {
+        let p = e.unwrap().path();
+        if p.extension().is_some_and(|x| x == "json") {
+            std::fs::copy(&p, share.join(p.file_name().unwrap())).unwrap();
+            copied += 1;
+        }
+    }
+    assert_eq!(
+        copied, 2,
+        "summaries/ holds the Go summaries and the barrier"
+    );
+    exe
+}
+
+/// Run the installed `exe` with `args` from its own prefix, so no relative path reaches the tree.
+fn installed(exe: &Path, args: &[&str]) -> Output {
+    Command::new(exe)
+        .args(args)
+        .current_dir(exe.parent().unwrap())
+        .output()
+        .unwrap()
+}
+
+/// Story release-ships-go-summaries: from an installed prefix, with no flag, `codespec diff` over
+/// a synthetic Go module that adds a call of `time.Now` reports its `time` effect, read from
+/// `<exe dir>/share/codespec/summaries/`; `--no-default-summaries` reports the extern without
+/// summary; an explicit `--summaries` replaces the default. `codespec effects` does the same.
+#[test]
+fn diff_and_effects_read_the_summaries_installed_beside_the_binary() {
+    let pair = root().join("crates/cli/tests/fixtures/time-now");
+    let a = read_revision("installed-time-now", &pair, "a");
+    let b = read_revision("installed-time-now", &pair, "b");
+    let exe = installed_prefix("installed-time-now");
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+
+    let out = installed(&exe, &["diff", a, b]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|l| l == "effect-added example.com/probe.Stamp time"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("extern without summary"), "{stdout}");
+
+    let off = installed(&exe, &["diff", a, b, "--no-default-summaries"]);
+    assert_eq!(off.status.code(), Some(1), "{}", text(&off));
+    let off = String::from_utf8_lossy(&off.stdout);
+    assert!(
+        off.contains("unknown-added example.com/probe.Stamp extern without summary: time.Now"),
+        "{off}"
+    );
+    assert!(!off.contains("effect-added"), "{off}");
+
+    let empty = exe.with_file_name("empty.effects.json");
+    std::fs::write(
+        &empty,
+        r#"{"format": "codespec-effects/1", "language": "go", "externs": []}"#,
+    )
+    .unwrap();
+    let replaced = installed(
+        &exe,
+        &["diff", a, b, "--summaries", empty.to_str().unwrap()],
+    );
+    assert_eq!(replaced.status.code(), Some(1), "{}", text(&replaced));
+    let replaced = String::from_utf8_lossy(&replaced.stdout);
+    assert!(
+        replaced.contains("extern without summary: time.Now"),
+        "{replaced}"
+    );
+
+    let doc = Path::new(b).join("module.cir.json");
+    let doc = doc.to_str().unwrap();
+    let stamp = |o: &Output| -> serde_json::Value {
+        assert!(o.status.success(), "{}", text(o));
+        let r: serde_json::Value = serde_json::from_slice(&o.stdout).unwrap();
+        r["funcs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == "Stamp")
+            .unwrap_or_else(|| panic!("no Stamp in {r}"))
+            .clone()
+    };
+    let on = stamp(&installed(&exe, &["effects", doc]));
+    assert_eq!(on["effects"], serde_json::json!(["time"]), "{on}");
+    assert_eq!(on["unknown"], serde_json::json!([]), "{on}");
+    let off = stamp(&installed(
+        &exe,
+        &["effects", doc, "--no-default-summaries"],
+    ));
+    assert_eq!(off["effects"], serde_json::json!([]), "{off}");
+    assert_eq!(
+        off["unknown"][0]["reason"], "extern without summary: time.Now",
+        "{off}"
+    );
+}
+
+/// The installed barrier is read without `--barrier`: the syscall pair of
+/// `crates/diff/tests/fixtures/syscall` gives its two syscall deltas from the prefix alone, and
+/// none with `--no-default-summaries`.
+#[test]
+fn diff_reads_the_barrier_installed_beside_the_binary() {
+    let pair = root().join("crates/diff/tests/fixtures/syscall");
+    let a = read_revision("installed-syscall", &pair, "a");
+    let b = read_revision("installed-syscall", &pair, "b");
+    let exe = installed_prefix("installed-syscall");
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let out = installed(&exe, &["diff", a, b]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "syscall-added example.com/probe.Who syscall.Syscall@1 getppid\n\
+         syscall-removed example.com/probe.Who syscall.Syscall@1 getpid\n"
+    );
+    let off = installed(&exe, &["diff", a, b, "--no-default-summaries"]);
+    let off = String::from_utf8_lossy(&off.stdout);
+    assert!(!off.contains("syscall-added"), "{off}");
+}

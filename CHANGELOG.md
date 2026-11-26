@@ -23,6 +23,14 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- Every release archive, the conformance archive too, holds `share/codespec/summaries/`: the Go
+  standard library's effect summaries `go-std.effects.json` and the linux/amd64 syscall barrier
+  `go-linux-amd64.barrier.json` at the release's version. `codespec diff` and `codespec effects`
+  read them from `share/codespec/summaries/` beside the executable when no `--summaries` or
+  `--barrier` is given; a flag replaces the file of its kind, `--no-default-summaries` reads none.
+  A build from the source tree finds no such directory and reads none, as before. The release build
+  and `task conformance-kit` fail when an archive lacks either file
+  (`scripts/release-summaries-check.sh`).
 - `codespec-corpus` (`crates/corpus`), the selection step of the reader self-improvement loop:
   `fetch` writes a candidate snapshot `codespec-corpus-candidates/1` of the top public repositories
   of one language (Go, Rust or Java) by stars from `gh`, with the commit of each default branch,
