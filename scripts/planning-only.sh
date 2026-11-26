@@ -3,22 +3,43 @@
 # check without building or testing (~/beyond10x/AGENTS.md, "Planning-only pull requests skip the
 # tests"). This is the one path list:
 #
-#   planning or prose   .engineering/**, and *.md anywhere else
+#   planning or prose   .engineering/**, and *.md anywhere else, docs/**/*.md included when no
+#                       tracked file outside .engineering/, docs/ and this script names its path
 #   code                everything else, and always website/** (pages.yml checks the site),
-#                       docs/** (tests read docs/query-language.md, docs/conformance.md) and
+#                       a docs/**/*.md some file names (tests read docs/query-language.md and
+#                       docs/conformance.md, website/data/comparison.json cites docs/design.md
+#                       by line), every other docs/** file,
 #                       **/testdata/** (adapters/groovy/testdata/lending/EXPECTED.md is a fixture)
-#                       and the root README.md (codespec-docs writes its badge block)
+#                       and the root README.md (codespec-docs writes its badge block);
+#                       with --site also ux/** (the UX gate of pages.yml reads ux/findings/)
 #
-# usage: scripts/planning-only.sh < <changed paths, one per line>
+# usage: scripts/planning-only.sh [--site] < <changed paths, one per line>
 #          exit 0 when every path is planning or prose, 1 when one is code (named on stderr) or
 #          the list is empty
 #        scripts/planning-only.sh test
 #          the path list's own cases, both sides
 set -eu
+site=
+
+# Whether a tracked file outside .engineering/, docs/ and this script names the path. An error of
+# git grep counts as named.
+named() {
+  rc=0
+  git grep -qF -e "$1" -- ':!.engineering' ':!docs' ':!scripts/planning-only.sh' || rc=$?
+  [ "$rc" -ne 1 ]
+}
 
 kind() {
   case "$1" in
     .engineering/*) echo planning ;;
+    ux/*) if [ -n "$site" ]; then echo code; else kind_rest "$1"; fi ;;
+    docs/*.md) if named "$1"; then echo code; else echo planning; fi ;;
+    *) kind_rest "$1" ;;
+  esac
+}
+
+kind_rest() {
+  case "$1" in
     website/* | docs/* | */testdata/* | testdata/* | README.md) echo code ;;
     *.md) echo planning ;;
     *) echo code ;;
@@ -69,14 +90,29 @@ selftest() {
   expect run website/docs/getting-started.md
   expect run .engineering/planning/story/x.md website/docs/index.md
   expect run docs/query-language.md
+  expect run docs/design.md
+  expect skip docs/planning-only-selftest-note.md
+  expect skip .engineering/planning/story/x.md docs/planning-only-selftest/a.md
+  expect run docs/planning-only-selftest-note.md docs/query-language.md
+  expect run docs/planning-only-selftest.json
   expect run adapters/groovy/testdata/lending/EXPECTED.md
   expect run Cargo.lock
   expect run
+  site=1
+  expect run ux/findings/UXF-001.md
+  expect run .engineering/planning/story/x.md ux/tests/l2-layout.spec.ts
+  expect skip .engineering/planning/story/x.md docs/planning-only-selftest-note.md AGENTS.md
+  expect run website/docs/getting-started.md
+  site=
   return "$failed"
 }
 
 case "${1:-}" in
   test) selftest ;;
   "") classify ;;
-  *) echo "usage: scripts/planning-only.sh [test] < <paths>" >&2; exit 2 ;;
+  --site)
+    site=1
+    classify
+    ;;
+  *) echo "usage: scripts/planning-only.sh [--site | test] < <paths>" >&2; exit 2 ;;
 esac
