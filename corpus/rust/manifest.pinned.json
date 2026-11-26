@@ -1,0 +1,42 @@
+{
+  "format": "codespec-corpus/1",
+  "language": "Rust",
+  "reader": "rust",
+  "mode": "top",
+  "count": 6,
+  "seed": null,
+  "fetched_on": "2026-11-25",
+  "snapshot_sha256": "a243e378589eb4bf058e1ab98c16e70a905042104d162745cbb196419361b5a5",
+  "repositories": [
+    {
+      "name": "ultraworkers/claw-code",
+      "url": "https://github.com/ultraworkers/claw-code",
+      "commit": "ca8752613b3b54b7d8b82e552298cea0f078133c"
+    },
+    {
+      "name": "farion1231/cc-switch",
+      "url": "https://github.com/farion1231/cc-switch",
+      "commit": "aa4a8c63365d1d3ed2eb27872a7da6a0709d0629"
+    },
+    {
+      "name": "rustdesk/rustdesk",
+      "url": "https://github.com/rustdesk/rustdesk",
+      "commit": "a0c0963c483fc8f1aeed4547787d1673adcb583c"
+    },
+    {
+      "name": "tauri-apps/tauri",
+      "url": "https://github.com/tauri-apps/tauri",
+      "commit": "4863d2d74de8b645478c14fe665fe00ae566cf23"
+    },
+    {
+      "name": "rtk-ai/rtk",
+      "url": "https://github.com/rtk-ai/rtk",
+      "commit": "97e68d5358aa5d91d1540ea64df58c9688bcf83d"
+    },
+    {
+      "name": "dani-garcia/vaultwarden",
+      "url": "https://github.com/dani-garcia/vaultwarden",
+      "commit": "dbd7829ed140ae3458abc97dedec9a4421ddff42"
+    }
+  ]
+}

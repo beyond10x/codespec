@@ -1,0 +1,463 @@
+{
+  "format": "codespec-corpus-candidates/1",
+  "fetched_on": "2026-11-25",
+  "language": "Rust",
+  "max_size_kb": 200000,
+  "excluded": {
+    "forks": 0,
+    "archived": 0,
+    "oversized": 31
+  },
+  "candidates": [
+    {
+      "name": "ultraworkers/claw-code",
+      "url": "https://github.com/ultraworkers/claw-code",
+      "language": "Rust",
+      "commit": "ca8752613b3b54b7d8b82e552298cea0f078133c",
+      "stars": 194720,
+      "size_kb": 26729,
+      "rank": 1
+    },
+    {
+      "name": "farion1231/cc-switch",
+      "url": "https://github.com/farion1231/cc-switch",
+      "language": "Rust",
+      "commit": "aa4a8c63365d1d3ed2eb27872a7da6a0709d0629",
+      "stars": 157122,
+      "size_kb": 123440,
+      "rank": 2
+    },
+    {
+      "name": "rustdesk/rustdesk",
+      "url": "https://github.com/rustdesk/rustdesk",
+      "language": "Rust",
+      "commit": "a0c0963c483fc8f1aeed4547787d1673adcb583c",
+      "stars": 131438,
+      "size_kb": 90160,
+      "rank": 3
+    },
+    {
+      "name": "tauri-apps/tauri",
+      "url": "https://github.com/tauri-apps/tauri",
+      "language": "Rust",
+      "commit": "4863d2d74de8b645478c14fe665fe00ae566cf23",
+      "stars": 113150,
+      "size_kb": 115368,
+      "rank": 4
+    },
+    {
+      "name": "rtk-ai/rtk",
+      "url": "https://github.com/rtk-ai/rtk",
+      "language": "Rust",
+      "commit": "97e68d5358aa5d91d1540ea64df58c9688bcf83d",
+      "stars": 87801,
+      "size_kb": 20303,
+      "rank": 5
+    },
+    {
+      "name": "dani-garcia/vaultwarden",
+      "url": "https://github.com/dani-garcia/vaultwarden",
+      "language": "Rust",
+      "commit": "dbd7829ed140ae3458abc97dedec9a4421ddff42",
+      "stars": 71330,
+      "size_kb": 13880,
+      "rank": 6
+    },
+    {
+      "name": "BurntSushi/ripgrep",
+      "url": "https://github.com/BurntSushi/ripgrep",
+      "language": "Rust",
+      "commit": "3e85c6c148fdce38a99ceeb9d2780dc7b03b4a4f",
+      "stars": 70330,
+      "size_kb": 6007,
+      "rank": 7
+    },
+    {
+      "name": "alacritty/alacritty",
+      "url": "https://github.com/alacritty/alacritty",
+      "language": "Rust",
+      "commit": "791efff6d74c66bee390c259e322626ca93aadb6",
+      "stars": 66295,
+      "size_kb": 14597,
+      "rank": 8
+    },
+    {
+      "name": "rust-lang/rustlings",
+      "url": "https://github.com/rust-lang/rustlings",
+      "language": "Rust",
+      "commit": "f7b9b3c5882a1a43275130b95142d94f847526f5",
+      "stars": 64788,
+      "size_kb": 4453,
+      "rank": 9
+    },
+    {
+      "name": "tw93/Pake",
+      "url": "https://github.com/tw93/Pake",
+      "language": "Rust",
+      "commit": "fbba237182edf496576370e13c46d4b050ad9a57",
+      "stars": 64024,
+      "size_kb": 85784,
+      "rank": 10
+    },
+    {
+      "name": "sharkdp/bat",
+      "url": "https://github.com/sharkdp/bat",
+      "language": "Rust",
+      "commit": "4bd5c5b602950ea8fe62ea16d851d6a26eccfb76",
+      "stars": 61501,
+      "size_kb": 36431,
+      "rank": 11
+    },
+    {
+      "name": "FuelLabs/sway",
+      "url": "https://github.com/FuelLabs/sway",
+      "language": "Rust",
+      "commit": "2ce2b31118efa701fb21c1c2e2a4ad9f32ba5e9c",
+      "stars": 61325,
+      "size_kb": 120174,
+      "rank": 12
+    },
+    {
+      "name": "starship/starship",
+      "url": "https://github.com/starship/starship",
+      "language": "Rust",
+      "commit": "1b5c2f257ef276c3020899623a1942b3ecd457f7",
+      "stars": 60906,
+      "size_kb": 47666,
+      "rank": 13
+    },
+    {
+      "name": "rust-unofficial/awesome-rust",
+      "url": "https://github.com/rust-unofficial/awesome-rust",
+      "language": "Rust",
+      "commit": "c82e978b70073344f232e0c8cc3b001d55f0ed63",
+      "stars": 60806,
+      "size_kb": 10072,
+      "rank": 14
+    },
+    {
+      "name": "meilisearch/meilisearch",
+      "url": "https://github.com/meilisearch/meilisearch",
+      "language": "Rust",
+      "commit": "9dbecfa0ac597316b5ed24c945d20b13369039be",
+      "stars": 60000,
+      "size_kb": 93153,
+      "rank": 15
+    },
+    {
+      "name": "typst/typst",
+      "url": "https://github.com/typst/typst",
+      "language": "Rust",
+      "commit": "4dd1e4cab324b56927f598eb36c698f6a4e08825",
+      "stars": 57419,
+      "size_kb": 143045,
+      "rank": 16
+    },
+    {
+      "name": "lencx/ChatGPT",
+      "url": "https://github.com/lencx/ChatGPT",
+      "language": "Rust",
+      "commit": "a6de9a8b61077fa63ad5c3ecbe2bc12e0cb4b4b9",
+      "stars": 54677,
+      "size_kb": 32499,
+      "rank": 17
+    },
+    {
+      "name": "vercel-labs/agent-browser",
+      "url": "https://github.com/vercel-labs/agent-browser",
+      "language": "Rust",
+      "commit": "f0a98351ec920bd826b22c98dacf8414f04b9832",
+      "stars": 53930,
+      "size_kb": 40701,
+      "rank": 18
+    },
+    {
+      "name": "herdrdev/herdr",
+      "url": "https://github.com/herdrdev/herdr",
+      "language": "Rust",
+      "commit": "e8d7d9705a7a2c89cef4dd42079379f05685af87",
+      "stars": 52815,
+      "size_kb": 50888,
+      "rank": 19
+    },
+    {
+      "name": "bevyengine/bevy",
+      "url": "https://github.com/bevyengine/bevy",
+      "language": "Rust",
+      "commit": "93af76a2a6228281b4c5c486ec2d8fa5807f0ca2",
+      "stars": 49998,
+      "size_kb": 182889,
+      "rank": 20
+    },
+    {
+      "name": "helix-editor/helix",
+      "url": "https://github.com/helix-editor/helix",
+      "language": "Rust",
+      "commit": "1a3fdfda6dfdda4567af6093a6249bb2bb422fc6",
+      "stars": 47019,
+      "size_kb": 90787,
+      "rank": 21
+    },
+    {
+      "name": "sharkdp/fd",
+      "url": "https://github.com/sharkdp/fd",
+      "language": "Rust",
+      "commit": "2e8648f10fe55af6258ab90ab889eb8b96033379",
+      "stars": 45196,
+      "size_kb": 2724,
+      "rank": 22
+    },
+    {
+      "name": "parcel-bundler/parcel",
+      "url": "https://github.com/parcel-bundler/parcel",
+      "language": "Rust",
+      "commit": "346bc72407d384bb4d998898b6d272c770b4e7f9",
+      "stars": 44031,
+      "size_kb": 70195,
+      "rank": 23
+    },
+    {
+      "name": "sxyazi/yazi",
+      "url": "https://github.com/sxyazi/yazi",
+      "language": "Rust",
+      "commit": "af6850648e34bb9276d08965e1886fe8497c0734",
+      "stars": 43654,
+      "size_kb": 10270,
+      "rank": 24
+    },
+    {
+      "name": "storytold/craft-anything",
+      "url": "https://github.com/storytold/craft-anything",
+      "language": "Rust",
+      "commit": "0a4e66ba75c81ffa9a860c2987064d1ad61ab305",
+      "stars": 43318,
+      "size_kb": 24507,
+      "rank": 25
+    },
+    {
+      "name": "FuelLabs/fuels-rs",
+      "url": "https://github.com/FuelLabs/fuels-rs",
+      "language": "Rust",
+      "commit": "f5191b6aab3d553ce2348234015e3523b46beb1e",
+      "stars": 42913,
+      "size_kb": 20151,
+      "rank": 26
+    },
+    {
+      "name": "nushell/nushell",
+      "url": "https://github.com/nushell/nushell",
+      "language": "Rust",
+      "commit": "6418f8fc1605faa64e00fd02aa9cce97ae2dfa27",
+      "stars": 41105,
+      "size_kb": 73953,
+      "rank": 27
+    },
+    {
+      "name": "ajeetdsouza/zoxide",
+      "url": "https://github.com/ajeetdsouza/zoxide",
+      "language": "Rust",
+      "commit": "8f588052eadc2cb0e8dd53405ff6fa0845e5345b",
+      "stars": 40744,
+      "size_kb": 5001,
+      "rank": 28
+    },
+    {
+      "name": "cjpais/Handy",
+      "url": "https://github.com/cjpais/Handy",
+      "language": "Rust",
+      "commit": "1f2e9ea944d102bb6970646653cd4f5679805261",
+      "stars": 40185,
+      "size_kb": 26251,
+      "rank": 29
+    },
+    {
+      "name": "DioxusLabs/dioxus",
+      "url": "https://github.com/DioxusLabs/dioxus",
+      "language": "Rust",
+      "commit": "aa878d593051b3441806979f0e9afd0207612209",
+      "stars": 39915,
+      "size_kb": 57712,
+      "rank": 30
+    },
+    {
+      "name": "AlexsJones/llmfit",
+      "url": "https://github.com/AlexsJones/llmfit",
+      "language": "Rust",
+      "commit": "6bc8f67890c1b0223de3f8f404ce06c088aac27f",
+      "stars": 39306,
+      "size_kb": 33771,
+      "rank": 31
+    },
+    {
+      "name": "lapce/lapce",
+      "url": "https://github.com/lapce/lapce",
+      "language": "Rust",
+      "commit": "9e8317c84e9540ac0b09689dd9f9d4fafe44ac00",
+      "stars": 39121,
+      "size_kb": 28893,
+      "rank": 32
+    },
+    {
+      "name": "firecracker-microvm/firecracker",
+      "url": "https://github.com/firecracker-microvm/firecracker",
+      "language": "Rust",
+      "commit": "2a8d0138cdf97de97767717541dac66295f9a28d",
+      "stars": 38219,
+      "size_kb": 45888,
+      "rank": 33
+    },
+    {
+      "name": "h4ckf0r0day/obscura",
+      "url": "https://github.com/h4ckf0r0day/obscura",
+      "language": "Rust",
+      "commit": "6ae41b8707afa81c25eeda814147d5db00ecb233",
+      "stars": 37343,
+      "size_kb": 30175,
+      "rank": 34
+    },
+    {
+      "name": "casey/just",
+      "url": "https://github.com/casey/just",
+      "language": "Rust",
+      "commit": "62784c2a6e169b8ca5f32bd69d5cfeb1d6b5e1fe",
+      "stars": 36840,
+      "size_kb": 18083,
+      "rank": 35
+    },
+    {
+      "name": "jdx/mise",
+      "url": "https://github.com/jdx/mise",
+      "language": "Rust",
+      "commit": "fd93df2cac7839a9dc4c0c491e2de0aafeabc0c1",
+      "stars": 36515,
+      "size_kb": 171364,
+      "rank": 36
+    },
+    {
+      "name": "rustfs/rustfs",
+      "url": "https://github.com/rustfs/rustfs",
+      "language": "Rust",
+      "commit": "1d99817882926cd635cf3ac528fb94ad28d7625b",
+      "stars": 36505,
+      "size_kb": 170231,
+      "rank": 37
+    },
+    {
+      "name": "qdrant/qdrant",
+      "url": "https://github.com/qdrant/qdrant",
+      "language": "Rust",
+      "commit": "23065a0bf6857c3e5da45f6c8939cc746cc0580e",
+      "stars": 35705,
+      "size_kb": 77183,
+      "rank": 38
+    },
+    {
+      "name": "xai-org/x-algorithm",
+      "url": "https://github.com/xai-org/x-algorithm",
+      "language": "Rust",
+      "commit": "52d45989090e63992ba04e4f6cfccd73bf8cc05c",
+      "stars": 34421,
+      "size_kb": 8139,
+      "rank": 39
+    },
+    {
+      "name": "lbjlaq/Antigravity-Manager",
+      "url": "https://github.com/lbjlaq/Antigravity-Manager",
+      "language": "Rust",
+      "commit": "9b6dfc107df6076f114ad2bb516ba54c69aea784",
+      "stars": 34023,
+      "size_kb": 104328,
+      "rank": 40
+    },
+    {
+      "name": "TabbyML/tabby",
+      "url": "https://github.com/TabbyML/tabby",
+      "language": "Rust",
+      "commit": "21b29048d7bcf6b94f9f482f2d0fd05efadfd19f",
+      "stars": 33936,
+      "size_kb": 109305,
+      "rank": 41
+    },
+    {
+      "name": "tokio-rs/tokio",
+      "url": "https://github.com/tokio-rs/tokio",
+      "language": "Rust",
+      "commit": "854013a8cb7d1397e9d037315592dc1d2d55187d",
+      "stars": 33796,
+      "size_kb": 18341,
+      "rank": 42
+    },
+    {
+      "name": "google/comprehensive-rust",
+      "url": "https://github.com/google/comprehensive-rust",
+      "language": "Rust",
+      "commit": "baf25efd192d7c68ef0552aa6803c8aba0f77c4f",
+      "stars": 33572,
+      "size_kb": 29005,
+      "rank": 43
+    },
+    {
+      "name": "surrealdb/surrealdb",
+      "url": "https://github.com/surrealdb/surrealdb",
+      "language": "Rust",
+      "commit": "1b73f91bc12f462ba6eb9cd792d3e8f3336fb619",
+      "stars": 33356,
+      "size_kb": 94816,
+      "rank": 44
+    },
+    {
+      "name": "Zackriya-Solutions/meetily",
+      "url": "https://github.com/Zackriya-Solutions/meetily",
+      "language": "Rust",
+      "commit": "2166bc6fe3ba585580f3f94b79cda7e7b91deb76",
+      "stars": 33039,
+      "size_kb": 47177,
+      "rank": 45
+    },
+    {
+      "name": "ankitects/anki",
+      "url": "https://github.com/ankitects/anki",
+      "language": "Rust",
+      "commit": "149b1901421281110aa4bf6510a971e9c5f2046d",
+      "stars": 33023,
+      "size_kb": 56131,
+      "rank": 46
+    },
+    {
+      "name": "yewstack/yew",
+      "url": "https://github.com/yewstack/yew",
+      "language": "Rust",
+      "commit": "5ee55894001d8671f10f5019bada02fe54400861",
+      "stars": 32870,
+      "size_kb": 21818,
+      "rank": 47
+    },
+    {
+      "name": "dandavison/delta",
+      "url": "https://github.com/dandavison/delta",
+      "language": "Rust",
+      "commit": "561d321b16b2f30ab45511f2d6574600d68c9ad0",
+      "stars": 32832,
+      "size_kb": 11541,
+      "rank": 48
+    },
+    {
+      "name": "atuinsh/atuin",
+      "url": "https://github.com/atuinsh/atuin",
+      "language": "Rust",
+      "commit": "2fdcb5922987fbaa9f16aec4b1337f31256f648c",
+      "stars": 32631,
+      "size_kb": 91312,
+      "rank": 49
+    },
+    {
+      "name": "emilk/egui",
+      "url": "https://github.com/emilk/egui",
+      "language": "Rust",
+      "commit": "13e38025481264daf5cac275d754e72bd6a601e6",
+      "stars": 32488,
+      "size_kb": 96851,
+      "rank": 50
+    }
+  ]
+}
