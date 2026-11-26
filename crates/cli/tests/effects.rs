@@ -354,3 +354,110 @@ fn diff_of_the_moved_lines_fixture_is_empty_and_an_empty_directory_exits_2() {
     let err = String::from_utf8_lossy(&refused.stderr);
     assert!(err.contains(empty.to_str().unwrap()), "{err}");
 }
+
+/// `--unknowns summary` over `crates/diff/tests/fixtures/unknown-classes`: every delta is an
+/// unknown one, so the report's only content is `unknowns`, and the command still exits 1.
+/// `--unknowns list` and no flag print today's four lines; no change at all exits 0.
+#[test]
+fn diff_unknowns_summary_counts_per_class_and_exits_1_with_only_unknowns() {
+    let pair = root().join("crates/diff/tests/fixtures/unknown-classes");
+    let (a, b) = (pair.join("a"), pair.join("b"));
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let summary = codespec(&["diff", a, b, "--unknowns", "summary"]);
+    assert_eq!(summary.status.code(), Some(1), "{}", text(&summary));
+    assert_eq!(
+        String::from_utf8_lossy(&summary.stdout),
+        "unknown-added extern without summary count=3 units=3\n  \
+         example.org/lib.A\n  \
+         example.org/lib.B\n  \
+         example.org/lib.C\n\
+         unknown-added foreign statement count=1 units=1\n  \
+         example.com/probe.Raw\n"
+    );
+    let json = codespec(&["diff", a, b, "--unknowns", "summary", "--format", "json"]);
+    assert_eq!(json.status.code(), Some(1), "{}", text(&json));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(report["deltas"], serde_json::json!([]));
+    assert_eq!(report["unknowns"][0]["count"], 3);
+    let list = codespec(&["diff", a, b, "--unknowns", "list"]);
+    let default = codespec(&["diff", a, b]);
+    assert_eq!(list.status.code(), Some(1), "{}", text(&list));
+    assert_eq!(list.stdout, default.stdout);
+    assert_eq!(String::from_utf8_lossy(&list.stdout).lines().count(), 4);
+    let same = codespec(&["diff", a, a, "--unknowns", "summary", "--format", "json"]);
+    assert_eq!(same.status.code(), Some(0), "{}", text(&same));
+    let report: serde_json::Value = serde_json::from_slice(&same.stdout).unwrap();
+    assert_eq!(report.get("unknowns"), None, "{report}");
+}
+
+/// Adversary: `codespec diff --help` (and so `cli.md`, generated from it) tells the user how a
+/// class is formed: "the reason's text up to its first `: `, one class for a reason without
+/// one". Every class `--unknowns summary` prints must follow that rule from the reason `list`
+/// prints, or be named in the help. The pair is `unknown-classes` with one more function,
+/// `Caller`, that in revision `b` calls `Raw`, which is incomplete there: `list` prints
+/// `calls Raw which is incomplete` (no `: `), so the help's rule makes it a class of its own.
+#[test]
+fn adv_diff_help_states_how_each_printed_class_is_formed() {
+    let src = root().join("crates/diff/tests/fixtures/unknown-classes");
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("adv-unknown-class-rule");
+    let caller = |body: serde_json::Value| {
+        serde_json::json!({"name": "Caller", "exported": true, "params": [], "results": [],
+            "body": body, "pos": "probe.go:19"})
+    };
+    let call_raw = serde_json::json!([{"k": "expr",
+        "x": {"k": "call", "name": "Raw", "args": [], "t": {"k": "unit"}}, "pos": "probe.go:20"}]);
+    for (rev, body) in [("a", serde_json::json!([])), ("b", call_raw)] {
+        let text = std::fs::read_to_string(src.join(rev).join("probe.cir.json")).unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&text).unwrap();
+        doc["funcs"].as_array_mut().unwrap().push(caller(body));
+        doc["layout"]
+            .as_array_mut()
+            .unwrap()
+            .push("func:Caller".into());
+        let out = dir.join(rev);
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("probe.cir.json"), doc.to_string()).unwrap();
+    }
+    let (a, b) = (dir.join("a"), dir.join("b"));
+    let (a, b) = (a.to_str().unwrap(), b.to_str().unwrap());
+    let list = codespec(&["diff", a, b]);
+    assert_eq!(list.status.code(), Some(1), "{}", text(&list));
+    let list = String::from_utf8_lossy(&list.stdout).into_owned();
+    assert!(
+        list.contains("unknown-added example.com/probe.Caller calls Raw which is incomplete\n"),
+        "the fixture should make a `calls .. which is incomplete` reason:\n{list}"
+    );
+    // The rule as `--help` states it, applied to each reason `list` prints.
+    let by_rule: std::collections::BTreeSet<String> = list
+        .lines()
+        .filter_map(|l| {
+            let (kind, rest) = l.split_once(' ')?;
+            let (_unit, reason) = rest.split_once(' ')?;
+            kind.starts_with("unknown-").then(|| {
+                reason
+                    .split_once(": ")
+                    .map_or(reason, |(c, _)| c)
+                    .to_owned()
+            })
+        })
+        .collect();
+    let help = codespec(&["diff", "--help"]);
+    assert!(help.status.success(), "{}", text(&help));
+    let help = String::from_utf8_lossy(&help.stdout)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let summary = codespec(&["diff", a, b, "--unknowns", "summary"]);
+    assert_eq!(summary.status.code(), Some(1), "{}", text(&summary));
+    let summary = String::from_utf8_lossy(&summary.stdout).into_owned();
+    for line in summary.lines().filter(|l| !l.starts_with(' ')) {
+        let (_kind, rest) = line.split_once(' ').unwrap();
+        let class = rest.rsplit_once(" count=").unwrap().0;
+        assert!(
+            by_rule.contains(class) || help.contains(class),
+            "`--unknowns summary` prints the class `{class}`, which the rule `codespec diff \
+             --help` states does not give from any reason `list` prints ({by_rule:?}), and the \
+             help does not name it either\nsummary:\n{summary}"
+        );
+    }
+}

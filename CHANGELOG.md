@@ -4,6 +4,17 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Added
+
+- `codespec diff --unknowns summary` prints, in place of the `unknown-added` and `unknown-removed`
+  deltas, one count per kind and reason class (`unknown-added extern without summary count=3
+  units=3`, up to three examples below; the field `unknowns` in json); `--unknowns list` is the
+  default and the output so far. The class of a reason is its text up to the first `: `, the
+  whole reason without one, and one class each for `calls <func> which is incomplete` and
+  `syscall number <n> has no name` whatever they name (`Unknown::class` of
+  `b10x-codespec-effects`); an example of `calls <func> which is incomplete` names the callee
+  with its module's path. `codespec diff` exits 1 when only the unknowns summary is not empty.
+
 ## 0.14.0
 
 ### Added

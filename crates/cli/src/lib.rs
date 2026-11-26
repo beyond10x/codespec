@@ -222,6 +222,15 @@ pub enum Cmd {
     /// site, raises, reach, entries and unknown reasons. Exit 0 with no delta, 1 with deltas, 2 on
     /// an input error.
     ///
+    /// With --unknowns summary the unknown reasons are counted per class instead of listed: the
+    /// reason's text up to its first `: ` (`extern without summary`), one class for a reason
+    /// without one, except two forms that name their symbol inside the text, each one class
+    /// whatever it names: `calls <func> which is incomplete` and `syscall number <n> has no
+    /// name`. Text prints `unknown-added <class> count=<n> units=<functions>` after the other
+    /// deltas, each of up to three examples indented below (a callee of `calls <func> which is
+    /// incomplete` qualified by its module's path); json holds them in `unknowns`. A report
+    /// holding only such counts exits 1 too.
+    ///
     /// Each directory's *.cir.json documents are read strictly as one program; a directory with
     /// none, a document strict reading refuses and two documents of one directory with the same
     /// module path are input errors. Both revisions are analysed as `codespec effects` and
@@ -264,6 +273,11 @@ pub enum Cmd {
         /// text, one line per delta; or json, codespec-diff-report/1.
         #[arg(long, value_parser = ["text", "json"], default_value = "text")]
         format: String,
+        /// list (default): one delta per unknown reason; or summary: in place of the
+        /// unknown-added and unknown-removed deltas, one count per kind and reason class
+        /// (`unknowns`), with the number of functions and up to three examples.
+        #[arg(long, value_parser = ["list", "summary"], default_value = "list")]
+        unknowns: String,
     },
     /// Print the call tree from one function as codespec-trace/1: its statements, each if, switch
     /// and loop a branch node with its condition, each call expanded into the callee's tree, a

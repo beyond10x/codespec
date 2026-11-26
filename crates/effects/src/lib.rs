@@ -74,6 +74,17 @@
 //! | `function without a body: <path>.<name>` | a function without a body that neither the barrier nor a linkname resolves |
 //! | `syscall number not constant: <path>.<name>` | a barrier function called with a number that is not a constant |
 //! | `syscall number <n> has no name` | the barrier table does not name the number |
+//! | `macro invocation, not expanded: <name>` | a call ref of form `macro` (a `named` call ref) |
+//! | `call of a name the reader did not resolve: <name>` | a `named` call ref of form `func` |
+//! | `method call on a value of a type the reader did not know: <name>` | a `named` call ref of form `method` |
+//! | `interface call through an undeclared interface: <iface>.<name>` | an `iface_call` naming an interface no document of the set declares |
+//! | `method outside the set: <path>.<type>.<name>` | a type a call through an interface may reach whose method set names a method the set does not hold |
+//! | `function value outside the set: <name>` | a function used as a value of the signature that the set does not hold |
+//!
+//! The class of a reason ([`Unknown::class`], the families in [`Unknown::CLASSES`]) is its text
+//! up to its first `: `, or the whole reason without one; `calls <func> which is incomplete` and
+//! `syscall number <n> has no name` are their own classes whatever they name. Two reasons that
+//! differ only in what they name have one class.
 //!
 //! The body of a `lambda` counts as part of the function that holds it: its calls, its
 //! `foreign` statements and its calls of function values. A `call_value` dispatches like a
@@ -447,6 +458,72 @@ pub struct FuncEffects {
 pub struct Unknown {
     pub pos: Pos,
     pub reason: String,
+}
+
+/// The two reasons whose symbol is not after a `: `, each `(prefix, suffix, class)`.
+const SPLICED: [(&str, &str, &str); 2] = [
+    (
+        "calls ",
+        " which is incomplete",
+        "calls <func> which is incomplete",
+    ),
+    (
+        "syscall number ",
+        " has no name",
+        "syscall number <n> has no name",
+    ),
+];
+
+impl Unknown {
+    /// The class of every reason the analysis makes (`src/set.rs`), one per family; a new
+    /// reason is added here with its class.
+    pub const CLASSES: &'static [&'static str] = &[
+        "call of a name the reader did not resolve",
+        "call of undeclared function",
+        "calls <func> which is incomplete",
+        "extern without summary",
+        "foreign statement",
+        "function value outside the set",
+        "function value with no candidate in the set",
+        "function without a body",
+        "interface call through an undeclared interface",
+        "interface call with no implementation in the set",
+        "macro invocation, not expanded",
+        "method call on a value of a type the reader did not know",
+        "method on undeclared type",
+        "method outside the set",
+        "not in its module",
+        "syscall number <n> has no name",
+        "syscall number not constant",
+    ];
+
+    /// The class of the reason `reason`: its family, without the symbol it names. The text up
+    /// to the first `: `, or the whole reason without one; `calls <func> which is incomplete`
+    /// and `syscall number <n> has no name` whatever they name.
+    pub fn class(reason: &str) -> &str {
+        Self::split(reason).0
+    }
+
+    /// What the reason `reason` names apart from its class: the text after its first `: `, the
+    /// `<func>` or `<n>` of the two other forms; `None` for a reason that is its whole class.
+    pub fn subject(reason: &str) -> Option<&str> {
+        Self::split(reason).1
+    }
+
+    fn split(reason: &str) -> (&str, Option<&str>) {
+        for (prefix, suffix, class) in SPLICED {
+            if let Some(symbol) = reason
+                .strip_prefix(prefix)
+                .and_then(|r| r.strip_suffix(suffix))
+            {
+                return (class, Some(symbol));
+            }
+        }
+        match reason.split_once(": ") {
+            Some((class, subject)) => (class, Some(subject)),
+            None => (reason, None),
+        }
+    }
 }
 
 /// A syscall or effect a function reaches, with the positions of its calls that lead there and

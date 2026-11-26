@@ -144,7 +144,8 @@ fn check(command: Cmd) -> Result<ExitCode, String> {
     })
 }
 
-/// `codespec diff`: exit 0 with no delta, 1 with deltas; an input error is the caller's 2.
+/// `codespec diff`: exit 0 with no delta, 1 with deltas (or `unknowns` counts); an input error is
+/// the caller's 2.
 fn diff(command: Cmd) -> Result<ExitCode, String> {
     let Cmd::Diff {
         old,
@@ -156,6 +157,7 @@ fn diff(command: Cmd) -> Result<ExitCode, String> {
         dispatch,
         report,
         format,
+        unknowns,
     } = command
     else {
         unreachable!("main passes only diff");
@@ -172,13 +174,16 @@ fn diff(command: Cmd) -> Result<ExitCode, String> {
         exported,
         dispatch: dispatch_mode(Some(&dispatch), true),
     };
-    let r = codespec_diff::diff(&old, &new, &opts)?;
+    let mut r = codespec_diff::diff(&old, &new, &opts)?;
+    if unknowns == "summary" {
+        r.summarize_unknowns();
+    }
     if format == "json" {
         print!("{}", r.to_json());
     } else {
         print!("{}", r.to_text());
     }
-    Ok(if r.deltas.is_empty() {
+    Ok(if r.deltas.is_empty() && r.unknowns.is_empty() {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE

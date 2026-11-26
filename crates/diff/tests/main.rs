@@ -415,3 +415,336 @@ fn an_entry_without_a_method_is_its_kind_and_on() {
          entry-added example.com/checks.Check scheduled every=5m\n"
     );
 }
+
+// `--unknowns summary`.
+
+/// The list of `tests/fixtures/unknown-classes`: revision `b` makes `First`, `Second` and
+/// `Third` call the externs `example.org/lib.A`, `B` and `C`, which no summary names, and gives
+/// `Raw` a `foreign` statement with no call list.
+const UNKNOWN_CLASSES_LIST: &str = "\
+unknown-added example.com/probe.First extern without summary: example.org/lib.A
+unknown-added example.com/probe.Raw foreign statement
+unknown-added example.com/probe.Second extern without summary: example.org/lib.B
+unknown-added example.com/probe.Third extern without summary: example.org/lib.C
+";
+
+#[test]
+fn unknowns_summary_gives_one_count_per_kind_and_reason_class() {
+    let list = report_of("classes-list", &fixtures().join("unknown-classes"));
+    assert_eq!(list.to_text(), UNKNOWN_CLASSES_LIST);
+    assert!(
+        !list.to_json().contains("\"unknowns\""),
+        "{}",
+        list.to_json()
+    );
+
+    let mut summary = list.clone();
+    summary.summarize_unknowns();
+    assert_eq!(
+        summary.to_text(),
+        "unknown-added extern without summary count=3 units=3\n  \
+         example.org/lib.A\n  \
+         example.org/lib.B\n  \
+         example.org/lib.C\n\
+         unknown-added foreign statement count=1 units=1\n  \
+         example.com/probe.Raw\n"
+    );
+    assert_eq!(summary.deltas, []);
+    let json: serde_json::Value = serde_json::from_str(&summary.to_json()).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "format": "codespec-diff-report/1",
+            "dispatch": "rta",
+            "deltas": [],
+            "unknowns": [
+                {"kind": "unknown-added", "class": "extern without summary", "count": 3,
+                 "units": 3, "examples": ["example.org/lib.A", "example.org/lib.B", "example.org/lib.C"]},
+                {"kind": "unknown-added", "class": "foreign statement", "count": 1,
+                 "units": 1, "examples": ["example.com/probe.Raw"]}
+            ]
+        })
+    );
+}
+
+/// A report of the deltas `(kind, unit, value)`, in that order, read from its document: it
+/// knows no module, so a callee a reason names stays as it is in the examples.
+fn synthetic(deltas: &[(&str, &str, &str)]) -> codespec_diff::Report {
+    let deltas: Vec<serde_json::Value> = deltas
+        .iter()
+        .map(|(kind, unit, value)| {
+            let mut d = serde_json::json!({"kind": kind, "unit": unit});
+            if !value.is_empty() {
+                d["value"] = serde_json::json!(value);
+            }
+            d
+        })
+        .collect();
+    let doc =
+        serde_json::json!({"format": codespec_diff::FORMAT, "dispatch": "rta", "deltas": deltas});
+    serde_json::from_value(doc).unwrap()
+}
+
+fn summarized(deltas: &[(&str, &str, &str)]) -> codespec_diff::Report {
+    let mut r = synthetic(deltas);
+    r.summarize_unknowns();
+    r
+}
+
+/// `(kind, class, count, units)` of each entry of `unknowns`.
+fn counts(r: &codespec_diff::Report) -> Vec<(String, String, usize, usize)> {
+    r.unknowns
+        .iter()
+        .map(|u| (u.kind.clone(), u.class.clone(), u.count, u.units))
+        .collect()
+}
+
+fn row(kind: &str, class: &str, count: usize, units: usize) -> (String, String, usize, usize) {
+    (kind.into(), class.into(), count, units)
+}
+
+#[test]
+fn a_reason_without_a_colon_is_its_own_class_and_a_symbol_is_no_class() {
+    let r = summarized(&[
+        ("unknown-added", "p.A", "calls p.G which is incomplete"),
+        ("unknown-added", "p.B", "calls p.H which is incomplete"),
+        ("unknown-added", "p.B", "foreign statement"),
+        ("unknown-added", "p.C", "a reason of its own"),
+        ("unknown-added", "p.C", "syscall number 7 has no name"),
+        ("unknown-added", "p.D", "syscall number 9 has no name"),
+    ]);
+    assert_eq!(
+        counts(&r),
+        [
+            row("unknown-added", "a reason of its own", 1, 1),
+            row("unknown-added", "calls <func> which is incomplete", 2, 2),
+            row("unknown-added", "foreign statement", 1, 1),
+            row("unknown-added", "syscall number <n> has no name", 2, 2),
+        ]
+    );
+    assert_eq!(r.unknowns[1].examples, ["p.G", "p.H"]);
+    assert_eq!(r.unknowns[3].examples, ["7", "9"]);
+}
+
+#[test]
+fn two_reasons_of_one_class_on_one_function_count_twice_and_the_function_once() {
+    let r = summarized(&[
+        ("unknown-added", "p.A", "extern without summary: lib.X"),
+        ("unknown-added", "p.A", "extern without summary: lib.Y"),
+    ]);
+    assert_eq!(
+        counts(&r),
+        [row("unknown-added", "extern without summary", 2, 1)]
+    );
+    assert_eq!(r.unknowns[0].examples, ["lib.X", "lib.Y"]);
+}
+
+#[test]
+fn an_unknown_removed_of_the_same_class_is_its_own_entry() {
+    let r = summarized(&[
+        ("unknown-added", "p.A", "extern without summary: lib.X"),
+        ("unknown-removed", "p.B", "extern without summary: lib.Y"),
+    ]);
+    assert_eq!(
+        counts(&r),
+        [
+            row("unknown-added", "extern without summary", 1, 1),
+            row("unknown-removed", "extern without summary", 1, 1),
+        ]
+    );
+    assert_eq!(
+        r.to_text(),
+        "unknown-added extern without summary count=1 units=1\n  lib.X\n\
+         unknown-removed extern without summary count=1 units=1\n  lib.Y\n"
+    );
+}
+
+/// Other deltas stay where they are; with no unknown delta the report has no `unknowns` field
+/// and is the report of `list`.
+#[test]
+fn the_other_deltas_stay_and_no_unknown_delta_gives_no_unknowns_field() {
+    let deltas = [
+        ("effect-added", "p.A", "env"),
+        ("unknown-added", "p.A", "extern without summary: lib.X"),
+        ("unit-added", "p.B", ""),
+    ];
+    let r = summarized(&deltas);
+    assert_eq!(
+        r.to_text(),
+        "effect-added p.A env\n\
+         unit-added p.B\n\
+         unknown-added extern without summary count=1 units=1\n  lib.X\n"
+    );
+    let none = summarized(&[deltas[0], deltas[2]]);
+    assert_eq!(none, synthetic(&[deltas[0], deltas[2]]));
+    assert!(!none.to_json().contains("unknowns"), "{}", none.to_json());
+    let empty = summarized(&[]);
+    assert_eq!(empty.to_text(), "");
+    assert!(!empty.to_json().contains("unknowns"), "{}", empty.to_json());
+}
+
+/// The examples are the first three subjects in the deltas' order, each once.
+#[test]
+fn at_most_three_examples_in_delta_order() {
+    let r = summarized(&[
+        ("unknown-added", "p.A", "extern without summary: lib.W"),
+        ("unknown-added", "p.B", "extern without summary: lib.W"),
+        ("unknown-added", "p.B", "extern without summary: lib.V"),
+        ("unknown-added", "p.C", "extern without summary: lib.U"),
+        ("unknown-added", "p.D", "extern without summary: lib.T"),
+    ]);
+    assert_eq!(
+        counts(&r),
+        [row("unknown-added", "extern without summary", 5, 4)]
+    );
+    assert_eq!(r.unknowns[0].examples, ["lib.W", "lib.V", "lib.U"]);
+}
+
+#[test]
+fn the_same_inputs_give_the_same_summary_bytes_and_json_and_text_hold_the_same_counts() {
+    let dir = fixtures().join("unknown-classes");
+    let mut one = report_of("classes-twice-1", &dir);
+    let mut two = report_of("classes-twice-2", &dir);
+    one.summarize_unknowns();
+    two.summarize_unknowns();
+    assert_eq!(one.to_json(), two.to_json());
+    assert_eq!(one.to_text(), two.to_text());
+    let json: serde_json::Value = serde_json::from_str(&one.to_json()).unwrap();
+    let from_json: Vec<String> = json["unknowns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|u| {
+            format!(
+                "{} {} count={} units={}",
+                u["kind"].as_str().unwrap(),
+                u["class"].as_str().unwrap(),
+                u["count"],
+                u["units"]
+            )
+        })
+        .collect();
+    let from_text: Vec<String> = one
+        .to_text()
+        .lines()
+        .filter(|l| !l.starts_with(' '))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(from_json, from_text);
+    let read: codespec_diff::Report = serde_json::from_str(&one.to_json()).unwrap();
+    assert_eq!(read, one);
+}
+
+/// Adversary: two packages of one program each hold an incomplete `Raw`, and `b` adds a caller
+/// of each. `list` gives two `calls Raw which is incomplete` deltas, of two units, about two
+/// different functions (`example.com/p.Raw` and `example.com/q.Raw`; a reason names a callee of
+/// its own module unqualified). The summary's examples are "the first three subjects in the
+/// report's delta order" (story), so they must name both functions; they name one, `Raw`, next
+/// to `count=2 units=2`.
+#[test]
+fn adv_examples_of_two_different_incomplete_callees_name_both() {
+    let pair = scratch("adv-two-raws-pair");
+    let module = |name: &str, caller_calls_raw: bool| {
+        let goto = serde_json::json!({"k": "foreign", "lang": "go", "src": "goto done",
+            "reason": "statement outside cir/1: goto", "pos": "m.go:2"});
+        let call = serde_json::json!({"k": "expr",
+            "x": {"k": "call", "name": "Raw", "args": [], "t": {"k": "unit"}}, "pos": "m.go:5"});
+        let caller_body = if caller_calls_raw { vec![call] } else { vec![] };
+        serde_json::json!({
+            "format": "cir/1",
+            "name": name,
+            "path": format!("example.com/{name}"),
+            "reader": {"language": "go", "name": "hand-written", "version": "1"},
+            "types": [],
+            "funcs": [
+                {"name": "Raw", "exported": true, "params": [], "results": [],
+                 "body": [goto], "pos": "m.go:1"},
+                {"name": "Caller", "exported": true, "params": [], "results": [],
+                 "body": caller_body, "pos": "m.go:4"}
+            ],
+            "layout": ["func:Raw", "func:Caller"]
+        })
+    };
+    for (rev, calls) in [("a", false), ("b", true)] {
+        let dir = pair.join(rev);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["p", "q"] {
+            let doc = module(name, calls).to_string();
+            std::fs::write(dir.join(format!("{name}.cir.json")), doc).unwrap();
+        }
+    }
+    let mut r = report_of("adv-two-raws-run", &pair);
+    assert_eq!(
+        r.to_text(),
+        "unknown-added example.com/p.Caller calls Raw which is incomplete\n\
+         unknown-added example.com/q.Caller calls Raw which is incomplete\n"
+    );
+    r.summarize_unknowns();
+    assert_eq!(
+        counts(&r),
+        [row(
+            "unknown-added",
+            "calls <func> which is incomplete",
+            2,
+            2
+        )]
+    );
+    assert_eq!(
+        r.unknowns[0].examples.len(),
+        2,
+        "two different functions are incomplete, the examples name {:?}\n{}",
+        r.unknowns[0].examples,
+        r.to_text()
+    );
+}
+
+/// An example of `calls <func> which is incomplete` names the callee with its module's path:
+/// `Caller` of `example.com/p` gains a call of its own module's `Raw` (the reason says `Raw`)
+/// and of `example.com/q`'s `Raw` (the reason says `example.com/q.Raw`), both incomplete.
+#[test]
+fn an_incomplete_callee_is_named_with_its_module_path_in_the_examples() {
+    let pair = scratch("qualified-callees-pair");
+    let goto = serde_json::json!({"k": "foreign", "lang": "go", "src": "goto done",
+        "reason": "statement outside cir/1: goto", "pos": "m.go:2"});
+    let raw = serde_json::json!({"name": "Raw", "exported": true, "params": [], "results": [],
+        "body": [goto], "pos": "m.go:1"});
+    let unit = serde_json::json!({"k": "unit"});
+    let calls = serde_json::json!([
+        {"k": "expr", "x": {"k": "call", "name": "Raw", "args": [], "t": unit}, "pos": "m.go:5"},
+        {"k": "expr", "x": {"k": "extern", "path": "example.com/q", "name": "Raw", "args": [],
+         "t": unit}, "pos": "m.go:6"}
+    ]);
+    for (rev, body) in [("a", serde_json::json!([])), ("b", calls)] {
+        let dir = pair.join(rev);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = serde_json::json!({
+            "format": "cir/1", "name": "p", "path": "example.com/p",
+            "reader": {"language": "go", "name": "hand-written", "version": "1"},
+            "types": [],
+            "funcs": [raw, {"name": "Caller", "exported": true, "params": [], "results": [],
+                "body": body, "pos": "m.go:4"}],
+            "externs": [{"path": "example.com/q", "name": "Raw", "params": [], "results": []}],
+            "layout": ["func:Raw", "func:Caller"]
+        });
+        let q = serde_json::json!({
+            "format": "cir/1", "name": "q", "path": "example.com/q",
+            "reader": {"language": "go", "name": "hand-written", "version": "1"},
+            "types": [], "funcs": [raw], "layout": ["func:Raw"]
+        });
+        std::fs::write(dir.join("p.cir.json"), p.to_string()).unwrap();
+        std::fs::write(dir.join("q.cir.json"), q.to_string()).unwrap();
+    }
+    let mut r = report_of("qualified-callees-run", &pair);
+    assert_eq!(
+        r.to_text(),
+        "unknown-added example.com/p.Caller calls Raw which is incomplete\n\
+         unknown-added example.com/p.Caller calls example.com/q.Raw which is incomplete\n"
+    );
+    r.summarize_unknowns();
+    assert_eq!(
+        r.to_text(),
+        "unknown-added calls <func> which is incomplete count=2 units=1\n  \
+         example.com/p.Raw\n  \
+         example.com/q.Raw\n"
+    );
+}
