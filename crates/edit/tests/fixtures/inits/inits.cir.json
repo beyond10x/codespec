@@ -1,0 +1,537 @@
+{
+  "format": "cir/1",
+  "name": "probe",
+  "reader": {
+    "language": "go",
+    "name": "codespec-read-go",
+    "version": "0.13.0"
+  },
+  "types": [
+    {
+      "k": "struct",
+      "name": "T",
+      "exported": true,
+      "fields": [
+        {
+          "name": "n",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "T is closed once.",
+      "pos": "a.go:7"
+    },
+    {
+      "k": "struct",
+      "name": "U",
+      "exported": true,
+      "fields": [
+        {
+          "name": "m",
+          "t": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      ],
+      "doc": "U is closed once.",
+      "pos": "b.go:4"
+    }
+  ],
+  "vars": [
+    {
+      "name": "Registry",
+      "t": {
+        "k": "map",
+        "key": {
+          "k": "string"
+        },
+        "elem": {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      },
+      "init": {
+        "k": "make",
+        "t": {
+          "k": "map",
+          "key": {
+            "k": "string"
+          },
+          "elem": {
+            "k": "int",
+            "width": "platform",
+            "signed": true
+          }
+        }
+      },
+      "pos": "a.go:4"
+    }
+  ],
+  "funcs": [
+    {
+      "name": "Close",
+      "exported": true,
+      "recv": {
+        "name": "t",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "T"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "t",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "T"
+                  }
+                }
+              },
+              "name": "n",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "a.go:10"
+        }
+      ],
+      "doc": "Close closes t.",
+      "pos": "a.go:10"
+    },
+    {
+      "name": "one",
+      "exported": false,
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "1",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "a.go:12"
+        }
+      ],
+      "pos": "a.go:12"
+    },
+    {
+      "name": "init",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "global",
+                "name": "Registry",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "\"a\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "one",
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "a.go:14"
+        }
+      ],
+      "pos": "a.go:14"
+    },
+    {
+      "name": "_",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "one",
+            "args": [],
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "a.go:16"
+        }
+      ],
+      "pos": "a.go:16"
+    },
+    {
+      "name": "Close",
+      "exported": true,
+      "recv": {
+        "name": "u",
+        "t": {
+          "k": "ptr",
+          "elem": {
+            "k": "named",
+            "name": "U"
+          }
+        }
+      },
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "field",
+              "x": {
+                "k": "var",
+                "name": "u",
+                "t": {
+                  "k": "ptr",
+                  "elem": {
+                    "k": "named",
+                    "name": "U"
+                  }
+                }
+              },
+              "name": "m",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "b.go:7"
+        }
+      ],
+      "doc": "Close closes u.",
+      "pos": "b.go:7"
+    },
+    {
+      "name": "two",
+      "exported": false,
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "2",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "b.go:9"
+        }
+      ],
+      "pos": "b.go:9"
+    },
+    {
+      "name": "init",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "global",
+                "name": "Registry",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "\"b\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "two",
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "b.go:11"
+        }
+      ],
+      "pos": "b.go:11"
+    },
+    {
+      "name": "_",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "expr",
+          "x": {
+            "k": "call",
+            "name": "two",
+            "args": [],
+            "t": {
+              "k": "int",
+              "width": "platform",
+              "signed": true
+            }
+          },
+          "pos": "b.go:13"
+        }
+      ],
+      "pos": "b.go:13"
+    },
+    {
+      "name": "three",
+      "exported": false,
+      "params": [],
+      "results": [
+        {
+          "k": "int",
+          "width": "platform",
+          "signed": true
+        }
+      ],
+      "body": [
+        {
+          "k": "return",
+          "results": [
+            {
+              "k": "lit",
+              "value": "3",
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "c.go:3"
+        }
+      ],
+      "pos": "c.go:3"
+    },
+    {
+      "name": "init",
+      "exported": false,
+      "params": [],
+      "results": [],
+      "body": [
+        {
+          "k": "assign",
+          "lhs": [
+            {
+              "k": "index",
+              "x": {
+                "k": "global",
+                "name": "Registry",
+                "t": {
+                  "k": "map",
+                  "key": {
+                    "k": "string"
+                  },
+                  "elem": {
+                    "k": "int",
+                    "width": "platform",
+                    "signed": true
+                  }
+                }
+              },
+              "index": {
+                "k": "lit",
+                "value": "\"c\"",
+                "t": {
+                  "k": "string"
+                }
+              },
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "rhs": [
+            {
+              "k": "call",
+              "name": "three",
+              "args": [],
+              "t": {
+                "k": "int",
+                "width": "platform",
+                "signed": true
+              }
+            }
+          ],
+          "pos": "c.go:5"
+        }
+      ],
+      "pos": "c.go:5"
+    }
+  ],
+  "layout": [
+    "var:Registry",
+    "type:T",
+    "func:T.Close",
+    "func:one",
+    "func:init",
+    "func:_",
+    "type:U",
+    "func:U.Close",
+    "func:two",
+    "func:init",
+    "func:_",
+    "func:three",
+    "func:init"
+  ],
+  "path": "example.com/probe",
+  "methods": [
+    {
+      "t": "T",
+      "methods": [
+        {
+          "name": "Close",
+          "sig": "func() int",
+          "target": {
+            "k": "method",
+            "recv": "T",
+            "name": "Close",
+            "pos": "a.go:10"
+          }
+        }
+      ]
+    },
+    {
+      "t": "U",
+      "methods": [
+        {
+          "name": "Close",
+          "sig": "func() int",
+          "target": {
+            "k": "method",
+            "recv": "U",
+            "name": "Close",
+            "pos": "b.go:7"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,23 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ## Unreleased
 
+### Fixed
+
+- `codespec read --spans` reads a Go package with several `init` functions (or several
+  `func _()`): the second and later function of one key gets the cq id `<module>.<key>~<k>`, so
+  the spans of its nodes name a node and `codespec edit` edits them; it refused such a package with
+  "names no node of the cir/1 document" before. An id of any other function is unchanged.
+- `codespec read --spans` drops a span or `unspanned` entry that names no node of the `cir/1`
+  document, prints `dropped span <at> <role>: names no node of the cir/1 document <module>` on
+  standard error for each, and reads the rest strictly; it refused the whole span document before.
+
+
+- `codespec-read-c` keeps a `switch` with a `case` or `default` label below an arm's top level
+  (inside an `if`, Duff's device) as one `foreign` statement, refused with `a case label nested
+  below an arm's top level`. Before, it read the switch without the arm and kept only the labelled
+  fragment as `foreign`, so a call dispatched to that label ran to another answer without reaching
+  a `foreign` statement.
+
 ### Added
 
 - `task reader-coverage` (`codespec-docs reader-coverage`) prints, for the Go, Rust, Java and C
@@ -75,15 +92,6 @@ Every change a user of `codespec` or of `cir/1` would notice.
   literals of the set with their reasons, and each entry's calls in memory (`FuncEffects::calls`,
   not part of the document).
 
-### Fixed
-
-- `codespec-read-c` keeps a `switch` with a `case` or `default` label below an arm's top level
-  (inside an `if`, Duff's device) as one `foreign` statement, refused with `a case label nested
-  below an arm's top level`. Before, it read the switch without the arm and kept only the labelled
-  fragment as `foreign`, so a call dispatched to that label ran to another answer without reaching
-  a `foreign` statement.
-
-### Changed
 
 - The kit case `stmt-foreign` keeps a goroutine (`go done()`) as its `foreign` statement, since
   its `defer done()` is now a `defer` statement.

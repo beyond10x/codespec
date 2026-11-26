@@ -492,6 +492,28 @@ fn label(m: &Module) -> &str {
     if m.path.is_empty() { &m.name } else { &m.path }
 }
 
+/// The cq id of each function of `m.funcs`, in that order: `<module>.<key>`, and for the second
+/// and later function of one key (Go's several `init` functions of a package, or `_`)
+/// `<module>.<key>~<k>`, `k` its 1-based occurrence among the functions of that key. No key is
+/// spelled with `~`, so such an id is never another function's.
+pub fn func_ids(m: &Module) -> Vec<String> {
+    let l = label(m);
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    m.funcs
+        .iter()
+        .map(|f| {
+            let key = f.key();
+            let k = seen.entry(key.clone()).or_insert(0);
+            *k += 1;
+            if *k == 1 {
+                format!("{l}.{key}")
+            } else {
+                format!("{l}.{key}~{k}")
+            }
+        })
+        .collect()
+}
+
 /// A position of a module's source: `<path>/<file>:<line>`.
 fn at(m: &Module, pos: &str) -> String {
     if m.path.is_empty() {
@@ -1053,21 +1075,27 @@ fn effects(
         ..Default::default()
     };
     let report = codespec_effects::analyze_set(modules, summaries, &opts);
+    let ids: Vec<Vec<String>> = modules.iter().map(func_ids).collect();
     let mut out = Vec::new();
     for fe in &report.funcs {
-        let Some(m) = modules.iter().find(|m| {
-            m.path == fe.path
-                && (m
-                    .funcs
-                    .iter()
-                    .any(|f| f.key() == fe.name && f.pos == fe.pos)
-                    || m.opaque
-                        .iter()
-                        .any(|o| o.key() == fe.name && o.pos == fe.pos))
+        let Some((m, id)) = modules.iter().zip(&ids).find_map(|(m, ids)| {
+            if m.path != fe.path {
+                return None;
+            }
+            if let Some(i) = m
+                .funcs
+                .iter()
+                .position(|f| f.key() == fe.name && f.pos == fe.pos)
+            {
+                return Some((m, ids[i].clone()));
+            }
+            m.opaque
+                .iter()
+                .any(|o| o.key() == fe.name && o.pos == fe.pos)
+                .then(|| (m, format!("{}.{}", label(m), fe.name)))
         }) else {
             continue;
         };
-        let id = format!("{}.{}", label(m), fe.name);
         for (rel, sites) in [("effect", &fe.effect_sites), ("syscall", &fe.syscalls)] {
             for site in sites {
                 for p in &site.at {
@@ -2512,8 +2540,7 @@ impl FactBase {
                     .collect();
                 b.ifaces.entry(id).or_default().extend(methods);
             }
-            for f in &m.funcs {
-                let id = format!("{l}.{}", f.key());
+            for (f, id) in m.funcs.iter().zip(func_ids(m)) {
                 let recv = f
                     .recv
                     .as_ref()

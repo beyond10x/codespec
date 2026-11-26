@@ -51,7 +51,10 @@ pub enum Cmd {
         out: PathBuf,
         /// Run the adapter with --spans and also write the module's codespec-spans/1 document
         /// here, strictly read against the module and the source files; the cir/1 module written
-        /// to OUT is the one a read without --spans gives. A reader without spans is refused.
+        /// to OUT is the one a read without --spans gives. A reader without spans is refused. A
+        /// span or unspanned entry whose `at` names no node of the module is dropped first, with
+        /// one line on standard error each, in document order: "dropped span <at> <role>: names
+        /// no node of the cir/1 document <module>"; the rest is read strictly.
         #[arg(long)]
         spans: Option<PathBuf>,
         /// Directory holding the adapter programs `codespec-read-<lang>` and `codespec-write-<lang>`.
