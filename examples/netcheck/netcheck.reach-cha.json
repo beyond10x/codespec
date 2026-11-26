@@ -5,6 +5,16 @@
     "example.com/netcheck/cmd/server.main",
     "example.com/netcheck/cmd/client.main"
   ],
+  "roots": [
+    {
+      "entry": "example.com/netcheck/cmd/server.main",
+      "roots": "program"
+    },
+    {
+      "entry": "example.com/netcheck/cmd/client.main",
+      "roots": "program"
+    }
+  ],
   "modules": [
     {
       "path": "example.com/netcheck",

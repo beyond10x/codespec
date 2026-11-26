@@ -32,6 +32,7 @@ One source module: a Go package, a Rust crate module, a Java compilation unit se
 | `facts` | [`Facts`](#facts) or null | no | Whole-module analysis results, written by passes and read by writers. |
 | `format` | `string` | yes | Always `cir/1`. |
 | `funcs` | list of [`Func`](#func) | yes |  |
+| `imports` | list of `string` | no | Every import path the module's source files import (Go: blank `_` and dot imports included), sorted by bytes, each once: which modules a program links, so a set knows whose initializers run with it. Go reader only, for a module with an import path. |
 | `inits` | list of [`CallRef`](#callref) | no | Every call the initializers of the module's variables make, and every function they use as a value (Go `var hook = syscall.Connect`): run when the module is loaded. |
 | `injects` | list of [`Inject`](#inject) | no | Every injection point of the module, in source order, with what the container resolves it to. |
 | `interfaces` | list of [`Interface`](#interface) | no | Interface types: the module's own, in source order, then every interface of another module that an `iface_call` goes through, sorted by `path`, then `name`, each once. |

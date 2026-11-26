@@ -199,9 +199,12 @@ pub enum Cmd {
     ///
     /// A function is reached by a call, by being used as a value, or as a candidate of a call
     /// through an interface or a function value. The entries are every --entry, every exported
-    /// function of each --exported module, or when neither is given `main.main`; every Go init
-    /// function and every module's variable initializers are entries too. An entry naming no
-    /// function of the set is refused. The same modules give the same bytes.
+    /// function of each --exported module, or when neither is given `main.main`. The Go init
+    /// functions and variable initializers of the packages a program imports, directly or
+    /// through other packages of the set (its recorded `imports`), are entries too, for each
+    /// entry that program holds; an entry no program holds, or a set without `imports`, takes
+    /// those of every module. The report's `roots` says which, per entry: `program` or `all`.
+    /// An entry naming no function of the set is refused. The same modules give the same bytes.
     Reach {
         /// The modules to analyse, cir/1 documents, read as one program.
         #[arg(required = true)]
@@ -252,10 +255,11 @@ pub enum Cmd {
     /// module path are input errors. Both revisions are analysed as `codespec effects` and
     /// `codespec reach` analyse them, with the same options. The entries of a revision are every
     /// --entry, every exported function of each --exported module and every function its
-    /// documents record as an entry; without --entry and --exported, main.main too; every Go init
-    /// function and every module's variable initializers. A delta names a function as
-    /// `<module path>.<key>` and a call by its call-site id `<callee>@<n>`, never by a file or a
-    /// line: a change that only moves lines gives no delta. The same inputs give the same bytes.
+    /// documents record as an entry; without --entry and --exported, main.main too; and the Go init
+    /// functions and variable initializers that run with them, as `codespec reach` takes them. A
+    /// delta names a function as `<module path>.<key>` and a call by its call-site id
+    /// `<callee>@<n>`, never by a file or a line: a change that only moves lines gives no delta.
+    /// The same inputs give the same bytes.
     /// The format is the crate doc of b10x-codespec-diff.
     Diff {
         /// The old revision: a directory of cir/1 documents.

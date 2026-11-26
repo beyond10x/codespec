@@ -62,6 +62,13 @@
         "$ref": "#/$defs/Func"
       }
     },
+    "imports": {
+      "description": "Every import path the module's source files import (Go: blank `_` and dot imports\nincluded), sorted by bytes, each once: which modules a program links, so a set knows\nwhose initializers run with it. Go reader only, for a module with an import path.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "inits": {
       "description": "Every call the initializers of the module's variables make, and every function they use\nas a value (Go `var hook = syscall.Connect`): run when the module is loaded.",
       "type": "array",
