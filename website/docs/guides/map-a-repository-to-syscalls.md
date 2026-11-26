@@ -30,7 +30,7 @@ $ export CODESPEC=codespec CGO_ENABLED=0
 
 ## 1. One package, summaries only
 
-Read one package and report its effects from `summaries/go-std.effects.json`, 37 standard library
+Read one package and report its effects from `summaries/go-std.effects.json`, 864 standard library
 functions summarised by hand. `examples/envcheck` reads an environment variable, prints and writes
 a file:
 
@@ -51,7 +51,7 @@ no effects and no `unknown`: pure as far as the summaries say. `Save`'s statemen
 because `fs.FileMode` has no `cir/1` type. The reader lists the calls inside it, so `os.WriteFile`
 still counts as `fs.write`.
 
-This mode stops at the summaries. A call of a standard library function the 37 do not name is
+This mode stops at the summaries. A call of a standard library function the 864 do not name is
 `extern without summary`, reported as `unknown`.
 
 ## 2. Read the repository with every import

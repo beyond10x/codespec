@@ -6,6 +6,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- `summaries/go-std.effects.json` covers the standard library a service calls: 864 entries in 26
+  packages (37 in 6 before): the functions of `log/slog`, `log`, `context`, `time`, `net/http`,
+  `encoding/json`, `io` and `os` a service calls, and every function and method of `errors`,
+  `fmt`, `strings`, `strconv`, `sync`, `sync/atomic`, `bufio` (but promoted methods), `bytes`,
+  `path/filepath`, `net/url`, `sort`, `slices`, `maps`, `math`, `regexp` and `unicode/utf8`,
+  with the signatures of Go 1.23. `time.Now` and `context.WithTimeout` have `time`; a `log` or
+  `slog.Logger` call `stdout`, `time`, and `env` and `fs.read` for the local zone, as
+  `Time.Format` and `time.Date` have; `fmt.Fprintf` `io`; `http.Get` `net` and `env` (the proxy
+  environment). The table and the rules that decide a cell are in `docs/static-analysis.md`
+  § 4, which a test compares with the file; Go tests of `codespec-read-go` resolve every entry
+  with `go/types`, refuse one that Go 1.23 lacks and one that names a promoted method.
+- `codespec effects`: a function of the set given as a value to a call outside the set
+  (`once.Do(initX)`, `sort.Slice(x, less)`, `filepath.WalkDir(root, visit)`, a `ref` listed
+  beside such a call) counts as called by the caller at that call, so its effects and unknowns
+  are the caller's; one the set does not hold is `function value outside the set: <name>`.
 - `codespec diff --unknowns summary` prints, in place of the `unknown-added` and `unknown-removed`
   deltas, one count per kind and reason class (`unknown-added extern without summary count=3
   units=3`, up to three examples below; the field `unknowns` in json); `--unknowns list` is the

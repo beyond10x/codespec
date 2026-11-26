@@ -79,7 +79,7 @@
 //! | `method call on a value of a type the reader did not know: <name>` | a `named` call ref of form `method` |
 //! | `interface call through an undeclared interface: <iface>.<name>` | an `iface_call` naming an interface no document of the set declares |
 //! | `method outside the set: <path>.<type>.<name>` | a type a call through an interface may reach whose method set names a method the set does not hold |
-//! | `function value outside the set: <name>` | a function used as a value of the signature that the set does not hold |
+//! | `function value outside the set: <name>` | a function used as a value of the signature, or given to a call outside the set, that the set does not hold |
 //!
 //! The class of a reason ([`Unknown::class`], the families in [`Unknown::CLASSES`]) is its text
 //! up to its first `: `, or the whole reason without one; `calls <func> which is incomplete` and
@@ -93,6 +93,15 @@
 //! (`func([]byte) (int, error)`, named types by import path). An `extern_method` is the extern
 //! `<path>.<type>.<method>`: a summary names it `<type>.<method>`, and in a set the method of that
 //! type in the document with that path.
+//!
+//! A call outside the set (an `extern` or `extern_method` whose path names no document of the set,
+//! summarised or not) may call what it is given: every function of the set used as a value in
+//! its arguments (`sort.Slice(x, less)`, `once.Do(t.Init)`, `http.HandlerFunc(h)` inside an
+//! argument) counts as called by the caller at that call, reached through the call's own site,
+//! as a literal's calls count as its holder's. The same holds for each `ref` call ref listed
+//! beside a `func` or `method` call ref outside the set (a `foreign` statement, an opaque function,
+//! a literal or an `init`). A method of the caller's own value that such a call invokes through
+//! an interface (`sort.Sort(x)`, `fmt.Sprint(x)` calling `x.String`) is not counted.
 //!
 //! ## Call sites
 //!
