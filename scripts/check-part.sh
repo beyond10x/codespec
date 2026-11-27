@@ -5,7 +5,8 @@
 #
 # A part is one of:
 #   lint                     cargo fmt --check, clippy -D warnings, the inventory below, and the
-#                            cases of this script and of scripts/go-test.sh
+#                            cases of this script, of scripts/go-test.sh and of
+#                            scripts/release-static-check.sh
 #   test <word>...           cargo test; a word starting with -- is a target selector (--lib,
 #                            --bins, --doc, --test=<name>), any other word a package
 #   task <name>...           each task in turn
@@ -346,7 +347,8 @@ run() {
       cargo clippy --workspace --all-targets --locked -- -D warnings
       inventory
       selftest
-      sh scripts/go-test.sh test ;;
+      sh scripts/go-test.sh test
+      sh scripts/release-static-check.sh test ;;
     test) test_part "$@" ;;
     task)
       for t in "$@"; do

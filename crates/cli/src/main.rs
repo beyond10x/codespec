@@ -20,6 +20,12 @@ use codespec_conformance::conform::{
 };
 use codespec_model::{Module, features_json, schema_json};
 
+/// On musl, mimalloc: musl's own allocator made `query`, `effects` and `diff` over a large set
+/// slower (the numbers: `docs/release.md`). Other targets keep the system allocator.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> ExitCode {
     let command = Cli::parse().command;
     if let Cmd::Check { .. } = command {
@@ -152,6 +158,7 @@ fn diff(command: Cmd) -> Result<ExitCode, String> {
         new,
         summaries,
         barrier,
+        no_default_summaries,
         entry,
         exported,
         dispatch,
@@ -164,6 +171,7 @@ fn diff(command: Cmd) -> Result<ExitCode, String> {
     };
     let old = codespec_diff::read_dir(&old)?;
     let new = codespec_diff::read_dir(&new)?;
+    let (summaries, barrier) = with_defaults(summaries, barrier, no_default_summaries)?;
     let barrier = read_barrier(barrier.as_deref())?;
     let summaries = read_summaries(&summaries)?;
     let opts = codespec_diff::Options {
@@ -209,6 +217,65 @@ fn read_barrier(path: Option<&Path>) -> Result<Option<codespec_effects::Barrier>
     codespec_effects::barrier_from_json(&bytes)
         .map(Some)
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The summaries and barrier `diff` and `effects` read: each flag as given; for one not given,
+/// unless `off`, the files a release installs in `share/codespec/summaries/` beside the
+/// executable (every `*.effects.json` in name order, the one `*.barrier.json`). Without that
+/// directory, none: a build from the tree finds no default, never the tree's `summaries/`.
+fn with_defaults(
+    summaries: Vec<PathBuf>,
+    barrier: Option<PathBuf>,
+    off: bool,
+) -> Result<(Vec<PathBuf>, Option<PathBuf>), String> {
+    if off || (!summaries.is_empty() && barrier.is_some()) {
+        return Ok((summaries, barrier));
+    }
+    let Some(dir) = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("share/codespec/summaries")))
+        .filter(|dir| dir.is_dir())
+    else {
+        return Ok((summaries, barrier));
+    };
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .map(|e| e.map(|e| e.path()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    files.sort();
+    let named = |suffix: &str| -> Vec<PathBuf> {
+        files
+            .iter()
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.ends_with(suffix))
+            })
+            .cloned()
+            .collect()
+    };
+    let summaries = if summaries.is_empty() {
+        named(".effects.json")
+    } else {
+        summaries
+    };
+    let barrier = match barrier {
+        Some(b) => Some(b),
+        None => {
+            let mut found = named(".barrier.json");
+            if found.len() > 1 {
+                return Err(format!(
+                    "{}: {} barrier documents; name one with --barrier",
+                    dir.display(),
+                    found.len()
+                ));
+            }
+            found.pop()
+        }
+    };
+    Ok((summaries, barrier))
 }
 
 fn read_summaries(paths: &[PathBuf]) -> Result<Vec<codespec_effects::Summary>, String> {
@@ -365,6 +432,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
             modules,
             summaries,
             barrier,
+            no_default_summaries,
             report,
             roots,
             entry,
@@ -372,6 +440,7 @@ fn run(cmd: Cmd) -> Result<(), String> {
             dispatch,
         } => {
             let set = read_set(&modules)?;
+            let (summaries, barrier) = with_defaults(summaries, barrier, no_default_summaries)?;
             let barrier = read_barrier(barrier.as_deref())?;
             let read = read_summaries(&summaries)?;
             let with_entries = !entry.is_empty() || !exported.is_empty();

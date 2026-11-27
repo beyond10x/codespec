@@ -93,6 +93,7 @@ $ codespec effects a.cir.json b.cir.json … --summaries go-std.effects.json --b
 | an extern whose `path` is the import path of a document in the set | is an edge to that document's function |
 | a function both a summary and a document define | the document wins; the report lists it under `notes` |
 | `--summaries` given more than once | where two name one function, the first counts |
+| no `--summaries` or no `--barrier` | the files of that kind in `share/codespec/summaries/` beside the `codespec` executable, which a release archive holds; none from a build of the tree; `--no-default-summaries` reads neither |
 | `--report <import path>` | prints only that module's functions; the others are still analysed |
 
 Statements `cir/1` cannot express still count. The Go reader lists the calls inside a `foreign`

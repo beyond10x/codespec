@@ -165,13 +165,18 @@ pub enum Cmd {
         #[arg(required = true)]
         modules: Vec<PathBuf>,
         /// A codespec-effects/1 summary of functions outside the modules; repeat for several.
-        /// Where two name one function, the first counts.
+        /// Where two name one function, the first counts. Without it, every `*.effects.json` of
+        /// `share/codespec/summaries/` beside the `codespec` executable, in name order.
         #[arg(long = "summaries", value_name = "FILE")]
         summaries: Vec<PathBuf>,
         /// A codespec-barrier/1 document: the functions that enter the operating system and
-        /// what each syscall does.
+        /// what each syscall does. Without it, the `*.barrier.json` of
+        /// `share/codespec/summaries/` beside the `codespec` executable.
         #[arg(long, value_name = "FILE")]
         barrier: Option<PathBuf>,
+        /// Read no summary and no barrier from `share/codespec/summaries/` beside the executable.
+        #[arg(long)]
+        no_default_summaries: bool,
         /// Report only the module with this import path or name; repeat for several. All when
         /// absent.
         #[arg(long = "report", value_name = "MODULE")]
@@ -267,13 +272,18 @@ pub enum Cmd {
         /// The new revision: a directory of cir/1 documents.
         new: PathBuf,
         /// A codespec-effects/1 summary of functions outside the modules; repeat for several.
-        /// Where two name one function, the first counts.
+        /// Where two name one function, the first counts. Without it, every `*.effects.json` of
+        /// `share/codespec/summaries/` beside the `codespec` executable, in name order.
         #[arg(long = "summaries", value_name = "FILE")]
         summaries: Vec<PathBuf>,
         /// A codespec-barrier/1 document: the functions that enter the operating system and
-        /// what each syscall does.
+        /// what each syscall does. Without it, the `*.barrier.json` of
+        /// `share/codespec/summaries/` beside the `codespec` executable.
         #[arg(long, value_name = "FILE")]
         barrier: Option<PathBuf>,
+        /// Read no summary and no barrier from `share/codespec/summaries/` beside the executable.
+        #[arg(long)]
+        no_default_summaries: bool,
         /// An entry function, `<path>.<name>` or `<path>.<type>.<method>`, in both revisions;
         /// repeat for several.
         #[arg(long = "entry", value_name = "FUNC")]

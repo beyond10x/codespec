@@ -14,20 +14,25 @@ for the install directory and `<checkout>` for the clone.
 ## Install
 
 Each [GitHub Release](https://github.com/beyond10x/codespec/releases) carries one archive per
-target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, and `SHA256SUMS` over them. An archive
+target, `codespec-<tag>-<target>.tar.gz`, for `x86_64-unknown-linux-musl`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`, and
+`SHA256SUMS` over them. On x86-64 Linux, pin the `x86_64-unknown-linux-musl` archive: its
+binaries are statically linked and need no particular glibc, so they also run on a host with an
+older glibc and in an `alpine` container. The release build fails when one of them is not static
+or does not run in a plain `alpine` container. The `x86_64-unknown-linux-gnu` archive needs the
+glibc of its build host or newer. An archive
 holds `codespec`, readers, writers and runners for Go, Rust, Elixir, Gleam and Odin, and writers
 and runners for C and the evaluator. Keep `beam/` beside the Elixir and Gleam programs. Download
 the archive for your machine and `SHA256SUMS`, check it and extract it. `<tag>` is the release, for
 example `0.14.0`. On macOS you can verify it with `shasum -a 256 -c --ignore-missing SHA256SUMS`.
 
 ```shell-session
-$ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz
+$ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/codespec-<tag>-x86_64-unknown-linux-musl.tar.gz
 $ curl -LO https://github.com/beyond10x/codespec/releases/download/<tag>/SHA256SUMS
 $ sha256sum -c --ignore-missing SHA256SUMS
-codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz: OK
+codespec-<tag>-x86_64-unknown-linux-musl.tar.gz: OK
 $ mkdir -p ~/.local/share/codespec
-$ tar -xzf codespec-<tag>-x86_64-unknown-linux-gnu.tar.gz -C ~/.local/share/codespec
+$ tar -xzf codespec-<tag>-x86_64-unknown-linux-musl.tar.gz -C ~/.local/share/codespec
 $ export PATH="$HOME/.local/share/codespec:$PATH"
 $ export CODESPEC_ADAPTERS="$HOME/.local/share/codespec"
 $ codespec --version
@@ -37,6 +42,13 @@ codespec 0.14.0
 `codespec` runs an adapter from the directory `CODESPEC_ADAPTERS` names, or from `--adapters` on
 each command. Use the directory where you extracted the archive. Build the C, Java and Groovy
 readers from source. [Build instructions](#build-from-source).
+
+The archive also holds `share/codespec/summaries/`: the Go standard library's effect summaries
+`go-std.effects.json` and the linux/amd64 syscall barrier `go-linux-amd64.barrier.json`, at the
+release's version. `codespec diff` and `codespec effects` read them from `share/codespec/summaries/`
+beside the `codespec` executable when you give no `--summaries` or `--barrier`. A flag replaces
+the file of its kind; `--no-default-summaries` reads neither. The conformance archive holds the
+same files under `codespec-conformance-<tag>/share/codespec/summaries/`.
 
 The commands below read the repository's examples. Clone it at the tag you installed:
 

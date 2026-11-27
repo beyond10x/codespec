@@ -6,6 +6,13 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Fixed
 
+- The release's `codespec-read-go` is built with go1.27.4 (CI's gate too), not the newest go1.23
+  that `adapters/go/go.mod` allows: built with go1.23, it failed on every package importing
+  `math/rand/v2` under a go1.27 host with "method must have no type parameters". When the host's
+  Go (`go env GOVERSION`) is of a newer minor than the Go the reader was built with, the reader
+  now refuses before reading, also with `--spans`: exit 1 and one line naming both versions, a
+  reader built with that Go or `GOTOOLCHAIN=<the reader's Go>` as the way out.
+
 - `codespec read --spans` reads a Go package with several `init` functions (or several
   `func _()`): the second and later function of one key gets the cq id `<module>.<key>~<k>`, so
   the spans of its nodes name a node and `codespec edit` edits them; it refused such a package with
@@ -23,6 +30,21 @@ Every change a user of `codespec` or of `cir/1` would notice.
 
 ### Added
 
+- Each release carries `codespec-<tag>-x86_64-unknown-linux-musl.tar.gz` beside the gnu archive,
+  with the same files, in `SHA256SUMS` too. Its binaries are statically linked (the Go ones built
+  with `CGO_ENABLED=0`, `codespec-read-odin` linked static), so they run on a host with an older
+  glibc and in a plain `alpine` container; pin it on x86-64 Linux. The release build fails when one
+  of them has an interpreter or a `NEEDED` entry (`scripts/release-static-check.sh`) or when its
+  `--version` does not run in `alpine`. `codespec` from the musl archive allocates with mimalloc
+  (`docs/release.md` has the timings against musl's own allocator).
+- Every release archive, the conformance archive too, holds `share/codespec/summaries/`: the Go
+  standard library's effect summaries `go-std.effects.json` and the linux/amd64 syscall barrier
+  `go-linux-amd64.barrier.json` at the release's version. `codespec diff` and `codespec effects`
+  read them from `share/codespec/summaries/` beside the executable when no `--summaries` or
+  `--barrier` is given; a flag replaces the file of its kind, `--no-default-summaries` reads none.
+  A build from the source tree finds no such directory and reads none, as before. The release build
+  and `task conformance-kit` fail when an archive lacks either file
+  (`scripts/release-summaries-check.sh`).
 - `codespec-corpus` (`crates/corpus`), the selection step of the reader self-improvement loop:
   `fetch` writes a candidate snapshot `codespec-corpus-candidates/1` of the top public repositories
   of one language (Go, Rust or Java) by stars from `gh`, with the commit of each default branch,

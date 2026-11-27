@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T18:43:27Z",
+  "actor": "human:operator",
+  "artifact": "story:release-musl-static",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "forge gate on f80ac24c3cc2b20e98a983a0456e83ef7d84faf3: check workflow run 45867215703 (https://github.com/beyond10x/codespec/actions/runs/45867215703), 47 of 47 checks of PR #79 success incl. codespec / task check",
+    "reference": "commit:f80ac24c3cc2b20e98a983a0456e83ef7d84faf3"
+  }
+}

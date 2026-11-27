@@ -8,11 +8,26 @@ the Go source and a refusal at its line.
 codespec-read-go <package dir>
 codespec-read-go --spans <package dir>
 codespec-read-go --describe
+codespec-read-go --version
 ```
 
 `--describe` prints the manifest (`describe.go`). The reader claims every feature whose
 conformance kit case it reads, `stmt.foreign` among them (a goroutine kept verbatim). Facts are
 computed by `codespec pass` and never claimed by a reader.
+
+## The host's Go
+
+The reader type-checks the standard library of the `go` on `PATH` with the `go/types` it was
+built with, and an older `go/types` cannot read a newer library (go1.23 on go1.27's
+`math/rand/v2`: "method must have no type parameters"). `--version` prints
+`codespec-read-go <version> built with <go version>`; the release is built with the Go the three
+`setup-go` steps of `.github/workflows/check.yml` and `release-build.yml` name (one version, a test
+in `toolchain_test.go` checks it). Before it reads (also with `--spans`; `--describe` and
+`--version` read nothing), the reader compares the minor of `go env GOVERSION` (suffix such as
+`-X:nodwarf5` cut) with its own. A host Go of a newer minor is refused: exit 1 and one line on
+standard error naming both versions and the way out, a reader built with that Go or
+`GOTOOLCHAIN=<the reader's Go>`. A newer patch release, an older Go, a devel version or no `go` on
+`PATH` reads as before (`toolchain.go`).
 
 ## Routes
 

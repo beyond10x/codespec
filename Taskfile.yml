@@ -500,7 +500,7 @@ tasks:
       - target/debug/codespec-eval-diff --adapters {{.ADAPTERS}} --build-dir target/eval-diff --refused inventory:rust:Inventory.Find examples/series examples/inventory
 
   conformance-kit:
-    desc: Pack the conformance kit, conformance/ and schemas/cir-1.features.json, into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/ and features file equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
+    desc: Pack the conformance kit, conformance/, schemas/cir-1.features.json and summaries/*.json (under share/codespec/summaries/, checked by scripts/release-summaries-check.sh), into target/conformance-kit/codespec-conformance-VERSION.tar.gz (VERSION from codespec --version), unpack it into target/conformance-kit/unpacked, require the unpacked conformance/, features file and summaries equal to the checked-in ones, and run codespec conform on the Go writer (target/adapters) with the unpacked kit as --kit and target/conformance-kit as the working directory, exit 0. Needs Rust, Go and GNU tar only.
     cmds:
       - cargo build --locked -p b10x-codespec-cli
       - mkdir -p {{.ADAPTERS}}
@@ -513,14 +513,17 @@ tasks:
         scratch="{{.ROOT_DIR}}/target/conformance-kit"
         archive="$scratch/$name.tar.gz"
         rm -rf "$scratch"
-        mkdir -p "$scratch/stage/$name/schemas" "$scratch/unpacked"
+        mkdir -p "$scratch/stage/$name/schemas" "$scratch/stage/$name/share/codespec/summaries" "$scratch/unpacked"
         cp -R conformance "$scratch/stage/$name/"
         cp schemas/cir-1.features.json "$scratch/stage/$name/schemas/"
+        cp summaries/*.json "$scratch/stage/$name/share/codespec/summaries/"
         tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --mode=u+rw,go+r,go-w -C "$scratch/stage" -cf "$scratch/$name.tar" "$name"
         gzip -n -9 -c "$scratch/$name.tar" > "$archive"
+        sh scripts/release-summaries-check.sh "$archive" "$name/"
         tar -xzf "$archive" -C "$scratch/unpacked"
         diff -r conformance "$scratch/unpacked/$name/conformance"
         cmp schemas/cir-1.features.json "$scratch/unpacked/$name/schemas/cir-1.features.json"
+        diff -r summaries "$scratch/unpacked/$name/share/codespec/summaries"
         cd "$scratch"
         {{.CODESPEC}} conform --lang go --role writer --kit "$scratch/unpacked/$name/conformance" --adapters {{.ADAPTERS}} --work "$scratch/work" --out "$scratch/go-writer.json"
         echo "$archive"
